@@ -24,28 +24,38 @@ if [[ -n "${RUN_SLUG:-}" ]]; then
 fi
 ```
 
-## Run
-
-1. Read task YAML + `/home/ubuntu/.agents/grok/instructions/writer.md`.  
-2. Write combined prompt to temp SPEC. Include: only owns_paths; never merge main.  
-3. Blocking:
+## Run — activity-aware timeout (not raw `timeout 570`)
 
 ```bash
 cd "$PROJECT_CWD"
-FINAL=$(mktemp -t grok-final.XXXXXX)
-timeout 570 grok --prompt-file "$SPEC" \
-  -m grok-4.5 \
-  --reasoning-effort high \
-  --permission-mode acceptEdits \
-  --output-format plain \
-  --cwd "$PROJECT_CWD" \
+FINAL="$ARTIFACT_DIR/lane-final.log"
+# SPEC = writer.md + TASK_FILE
+HB=""
+[[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
+
+lane-exec --idle 900 --max 7200 --label grok \
+  ${HB:+--heartbeat "$HB"} \
+  --log "$ARTIFACT_DIR/lane-exec.log" \
+  -- grok --prompt-file "$SPEC" \
+    -m grok-4.5 \
+    --reasoning-effort high \
+    --permission-mode acceptEdits \
+    --output-format plain \
+    --cwd "$PROJECT_CWD" \
   > "$FINAL" 2>&1
 echo GROK_EXIT=$? >> "$FINAL"
 ```
 
-4. Re-run verification yourself; write `ARTIFACT_DIR/report.md` (GROK REPORT).  
-5. Empty diff → STATUS partial.  
-6. `check-owns-paths "$TASK_FILE" --cwd "$PROJECT_CWD"` — fail → STATUS partial.  
-7. Heartbeat done if RUN_SLUG set.
+| Level | Default | Meaning |
+|-------|---------|---------|
+| idle | 900s (15m) | no output/CPU → stuck |
+| max | 7200s (2h) | hard ceiling |
+
+## Post
+
+1. Re-run verification; write `ARTIFACT_DIR/report.md` (GROK REPORT).  
+2. Empty diff → STATUS partial.  
+3. `check-owns-paths`  
+4. Heartbeat done if RUN_SLUG set.
 
 No background. No self-implement. **Never merge/push main.**

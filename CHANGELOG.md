@@ -2,6 +2,9 @@
 
 ## Unreleased (local)
 
+### Fixed
+- **lane-exec**: activity-aware timeouts (idle resets on stdout/CPU; absolute max). Replaces hard `timeout 570` in implementers so thinking agents are not killed mid-run.
+
 ### Added
 - **GPT-5.6 routing** (Sol / Terra / Luna): no GPT-5.5. See `docs/ROUTING.md`, `profiles/claude-codex.yaml`.
   - Write default: **terra** (+ xhigh medium); high-risk: **sol** xhigh

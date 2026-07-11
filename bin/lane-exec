@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Run a long-lived lane CLI (agy/grok/codex) with activity-based timeouts.
+
+Levels
+------
+1. **idle**  — no new stdout/stderr (and optional heartbeat mtime) for IDLE seconds
+               → terminate. Resets whenever the child produces output or heartbeat updates.
+2. **max**   — absolute wall-clock ceiling; always kills even if still active.
+3. **grace** — optional soft notice to log at 80% of max (does not kill).
+
+Unlike `timeout 570`, a thinking/working agent that keeps printing is NOT killed
+until MAX is hit.
+
+Examples
+--------
+  lane-exec --idle 600 --max 5400 -- agy --print "..." --agent lane-frontend ...
+  lane-exec --idle 900 --max 7200 --heartbeat /path/heartbeat.json -- grok ...
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Activity-aware runner for lane CLIs")
+    ap.add_argument(
+        "--idle",
+        type=int,
+        default=600,
+        help="seconds without output/heartbeat before kill (default 600 = 10m)",
+    )
+    ap.add_argument(
+        "--max",
+        type=int,
+        default=5400,
+        help="absolute max wall seconds (default 5400 = 90m)",
+    )
+    ap.add_argument(
+        "--heartbeat",
+        default="",
+        help="optional file path; mtime updates count as activity",
+    )
+    ap.add_argument(
+        "--log",
+        default="",
+        help="tee child stdout+stderr to this file (default: only inherit + track)",
+    )
+    ap.add_argument(
+        "--label",
+        default="lane",
+        help="name for log lines",
+    )
+    ap.add_argument(
+        "cmd",
+        nargs=argparse.REMAINDER,
+        help="command after -- ",
+    )
+    args = ap.parse_args()
+
+    cmd = args.cmd
+    if cmd and cmd[0] == "--":
+        cmd = cmd[1:]
+    if not cmd:
+        print("lane-exec: missing command after --", file=sys.stderr)
+        return 2
+
+    idle_s = max(30, args.idle)
+    max_s = max(idle_s + 30, args.max)
+    hb_path = Path(args.heartbeat) if args.heartbeat else None
+    log_path = Path(args.log) if args.log else None
+
+    log_f = open(log_path, "ab", buffering=0) if log_path else None
+
+    def log_line(msg: str) -> None:
+        line = f"[lane-exec:{args.label}] {msg}\n"
+        sys.stderr.write(line)
+        sys.stderr.flush()
+        if log_f:
+            log_f.write(line.encode())
+
+    # Line-buffered pipes so idle detection sees activity promptly
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,  # kill process group
+        )
+    except FileNotFoundError as e:
+        print(f"lane-exec: cannot start: {e}", file=sys.stderr)
+        return 127
+
+    assert proc.stdout is not None
+    # Make stdout non-blocking via select
+    import select
+
+    fd = proc.stdout.fileno()
+    start = time.monotonic()
+    last_activity = start
+    last_hb_mtime = hb_path.stat().st_mtime if hb_path and hb_path.exists() else 0.0
+    grace_logged = False
+    buf = b""
+
+    log_line(f"start pid={proc.pid} idle={idle_s}s max={max_s}s cmd={' '.join(cmd[:6])}...")
+
+    def kill_tree(sig: int = signal.SIGTERM) -> None:
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            try:
+                proc.send_signal(sig)
+            except ProcessLookupError:
+                pass
+
+    rc = None
+    try:
+        while True:
+            now = time.monotonic()
+            elapsed = now - start
+            idle_for = now - last_activity
+
+            # absolute max
+            if elapsed >= max_s:
+                log_line(f"MAX timeout {max_s}s — killing process group")
+                kill_tree(signal.SIGTERM)
+                time.sleep(2)
+                kill_tree(signal.SIGKILL)
+                rc = 124
+                break
+
+            # grace notice
+            if not grace_logged and elapsed >= 0.8 * max_s:
+                log_line(f"GRACE: {elapsed:.0f}s / max {max_s}s still running")
+                grace_logged = True
+
+            # heartbeat file activity
+            if hb_path and hb_path.exists():
+                try:
+                    m = hb_path.stat().st_mtime
+                    if m > last_hb_mtime:
+                        last_hb_mtime = m
+                        last_activity = now
+                except OSError:
+                    pass
+
+            # CPU activity = still thinking (even if silent)
+            try:
+                # sum jiffies-ish via /proc/<pid>/stat field 14+15 (utime+stime)
+                with open(f"/proc/{proc.pid}/stat", encoding="utf-8") as sf:
+                    parts = sf.read().split()
+                cpu_ticks = int(parts[13]) + int(parts[14])
+                if not hasattr(main, "_last_cpu"):
+                    main._last_cpu = cpu_ticks  # type: ignore
+                if cpu_ticks > main._last_cpu:  # type: ignore
+                    main._last_cpu = cpu_ticks  # type: ignore
+                    last_activity = now
+            except (OSError, IndexError, ValueError):
+                pass
+
+            # idle kill
+            if idle_for >= idle_s:
+                log_line(
+                    f"IDLE timeout {idle_s}s (no output/heartbeat for {idle_for:.0f}s) — killing"
+                )
+                kill_tree(signal.SIGTERM)
+                time.sleep(2)
+                kill_tree(signal.SIGKILL)
+                rc = 124
+                break
+
+            # wait for output up to 1s
+            r, _, _ = select.select([fd], [], [], 1.0)
+            if r:
+                chunk = os.read(fd, 65536)
+                if chunk:
+                    last_activity = time.monotonic()
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
+                    if log_f:
+                        log_f.write(chunk)
+                    buf += chunk
+                    # keep buf from growing unbounded
+                    if len(buf) > 200_000:
+                        buf = buf[-50_000:]
+                else:
+                    # EOF
+                    break
+
+            if proc.poll() is not None:
+                # drain remainder
+                while True:
+                    r, _, _ = select.select([fd], [], [], 0.1)
+                    if not r:
+                        break
+                    chunk = os.read(fd, 65536)
+                    if not chunk:
+                        break
+                    sys.stdout.buffer.write(chunk)
+                    if log_f:
+                        log_f.write(chunk)
+                break
+
+        if rc is None:
+            rc = proc.wait()
+    except KeyboardInterrupt:
+        log_line("SIGINT — killing child")
+        kill_tree(signal.SIGTERM)
+        time.sleep(1)
+        kill_tree(signal.SIGKILL)
+        rc = 130
+    finally:
+        if log_f:
+            log_f.close()
+
+    log_line(f"exit code={rc} wall={time.monotonic() - start:.0f}s")
+    return int(rc if rc is not None else 1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

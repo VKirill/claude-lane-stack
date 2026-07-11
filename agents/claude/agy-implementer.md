@@ -83,22 +83,36 @@ fi
 
 If smoke crashes → **STATUS unavailable** and stop. No multi-hour diagnosis.
 
-## Run (blocking)
+## Run (blocking) — activity-aware timeout
+
+**Do not use raw `timeout 570`** — it kills thinking agents. Use `lane-exec`:
+
+| Level | Default | Meaning |
+|-------|---------|---------|
+| `--idle` | 600s (10m) | no stdout **and** no CPU → kill (stuck) |
+| `--max` | 5400s (90m) | absolute ceiling |
+| grace | 80% max | log only |
 
 ```bash
 cd "$PROJECT_CWD"
 SPEC=$(mktemp -t agy-spec.XXXXXX)
-FINAL=$(mktemp -t agy-final.XXXXXX)
+FINAL="$ARTIFACT_DIR/lane-final.log"
 # write prompt: task YAML excerpts + TASK_FILE/ARTIFACT_DIR/owns_paths/never_touch + verify
+# agy internal --print-timeout must be ≥ max (else agy self-kills while working)
+HB=""
+[[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 
-timeout 570 agy \
-  --print "$(cat "$SPEC")" \
-  --agent "${AGENT:-lane-coder}" \
-  --model "Gemini 3.5 Flash (High)" \
-  --mode accept-edits \
-  --print-timeout 9m \
-  --dangerously-skip-permissions \
-  --add-dir "$PROJECT_CWD" \
+lane-exec --idle 600 --max 5400 --label "agy-${AGENT:-lane-coder}" \
+  ${HB:+--heartbeat "$HB"} \
+  --log "$ARTIFACT_DIR/lane-exec.log" \
+  -- agy \
+    --print "$(cat "$SPEC")" \
+    --agent "${AGENT:-lane-coder}" \
+    --model "Gemini 3.5 Flash (High)" \
+    --mode accept-edits \
+    --print-timeout 90m \
+    --dangerously-skip-permissions \
+    --add-dir "$PROJECT_CWD" \
   > "$FINAL" 2>&1
 echo AGY_EXIT=$? >> "$FINAL"
 ```

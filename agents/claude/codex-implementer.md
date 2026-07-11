@@ -48,22 +48,36 @@ CODEX_REASONING="${CODEX_REASONING:-xhigh}"
 
 Instructions: `~/.agents/codex/instructions/writer-emergency.md` (writer).
 
+## Run — activity-aware timeout (not raw `timeout 570`)
+
 ```bash
 cd "$PROJECT_CWD"
 SPEC=$(mktemp -t codex-write.XXXXXX)
-FINAL=$(mktemp -t codex-write-out.XXXXXX)
+FINAL="$ARTIFACT_DIR/lane-final.log"
+OUT_MSG="$ARTIFACT_DIR/codex-last-message.txt"
 # write SPEC = instructions + TASK_FILE contents + paths
+HB=""
+[[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 
-timeout 570 codex exec \
-  --model "$CODEX_MODEL" \
-  -c model_reasoning_effort="$CODEX_REASONING" \
-  --sandbox workspace-write \
-  --skip-git-repo-check \
-  --full-auto \
-  --cd "$PROJECT_CWD" \
-  --output-last-message "$FINAL" \
-  - < "$SPEC"
+lane-exec --idle 900 --max 7200 --label "codex-${CODEX_MODEL}" \
+  ${HB:+--heartbeat "$HB"} \
+  --log "$ARTIFACT_DIR/lane-exec.log" \
+  -- codex exec \
+    --model "$CODEX_MODEL" \
+    -c model_reasoning_effort="$CODEX_REASONING" \
+    --sandbox workspace-write \
+    --skip-git-repo-check \
+    --full-auto \
+    --cd "$PROJECT_CWD" \
+    --output-last-message "$OUT_MSG" \
+    - < "$SPEC" \
+  > "$FINAL" 2>&1
 echo CODEX_EXIT=$? CODEX_MODEL=$CODEX_MODEL >> "$FINAL"
 ```
+
+| Level | Default | Meaning |
+|-------|---------|---------|
+| idle | 900s | silent + no CPU → kill |
+| max | 7200s | absolute ceiling |
 
 Post: `check-owns-paths`, ensure `ARTIFACT_DIR/report.md` (CODEX REPORT). Empty diff → partial. Never merge main.

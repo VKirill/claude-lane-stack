@@ -25,15 +25,19 @@ mkdir -p "$ARTIFACT_DIR"
 SPEC=$(mktemp -t codex-review.XXXXXX)
 FINAL=$(mktemp -t codex-review-out.XXXXXX)
 
-timeout 570 codex exec \
-  --model gpt-5.6-sol \
-  -c model_reasoning_effort=xhigh \
-  --sandbox read-only \
-  --skip-git-repo-check \
-  --cd "$PROJECT_CWD" \
-  --output-last-message "$FINAL" \
-  - < "$SPEC"
-echo CODEX_EXIT=$? >> "$FINAL"
+# Prefer lane-exec so long reviews are not cut by hard timeout
+lane-exec --idle 900 --max 5400 --label codex-review \
+  --log "$ARTIFACT_DIR/lane-exec.log" \
+  -- codex exec \
+    --model gpt-5.6-sol \
+    -c model_reasoning_effort=xhigh \
+    --sandbox read-only \
+    --skip-git-repo-check \
+    --cd "$PROJECT_CWD" \
+    --output-last-message "$FINAL" \
+    - < "$SPEC" \
+  > "$ARTIFACT_DIR/lane-final.log" 2>&1
+echo CODEX_EXIT=$? >> "$ARTIFACT_DIR/lane-final.log"
 ```
 
 Write `ARTIFACT_DIR/review.md` (REVIEW REPORT, pass|fail). No product edits.
