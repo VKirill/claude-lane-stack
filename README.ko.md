@@ -10,3 +10,9 @@ claude --agent dev-orchestrator
 ```
 
 PM은 항상 Claude Code입니다. 자세한 내용: [README.md](README.md).
+
+---
+
+Author: [@VKirill](https://github.com/VKirill) · Telegram [Помогающий маркетолог](https://t.me/pomogay_marketing)
+
+![](docs/images/01-hero-conveyor.jpg)

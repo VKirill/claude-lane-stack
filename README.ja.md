@@ -13,3 +13,9 @@ claude --agent dev-orchestrator
 ```
 
 PM は常に Claude Code。補助 CLI は `agents-doctor` が検出します。
+
+---
+
+Author: [@VKirill](https://github.com/VKirill) · Telegram [Помогающий маркетолог](https://t.me/pomogay_marketing)
+
+![](docs/images/01-hero-conveyor.jpg)
