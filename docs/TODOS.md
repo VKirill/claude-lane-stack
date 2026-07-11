@@ -22,8 +22,8 @@ Prefer **project** if `package.json` / `.git` / `CLAUDE.md` present. Use **globa
     YYYY-MM-DD-short-slug.md      # quick capture (optional)
   items/
     YYYY-MM-DD-short-slug/
-      README.md                   # for human (RU plain language)
-      AGENT.md                    # for agents (technical)
+      README.md                   # human-oriented, English (chat may be RU)
+      AGENT.md                    # technical, English
       meta.yaml                   # machine fields
       links.md                    # optional: related runs, PRs, URLs
 ```
