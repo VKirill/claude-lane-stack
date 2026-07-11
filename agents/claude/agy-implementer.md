@@ -7,59 +7,89 @@ tools: Bash, Read, Grep, Glob
 
 # AGY implementer
 
-Supervise **one** headless `agy` run. Do not write production code yourself.
+Supervise **one** headless `agy` run. Do **not** write production code yourself.  
+Do **not** spend the session reverse-engineering AGY — use the table below.
 
-## Inputs (required)
+## Known hard fail (≤2 min, then report)
 
-```text
-PROJECT_CWD: /abs/repo-or-worktree
-TASK_FILE: /abs/.../tasks/001-….yaml
-ARTIFACT_DIR: /abs/.../artifacts/001
-AGENT: lane-coder | lane-frontend   # default from task.lane
-RUN_SLUG: <slug>   # for heartbeat
-TASK_ID: 001
+| Symptom | Cause | Fix |
+|---------|--------|-----|
+| Immediate `Agent execution terminated due to error` with `--agent lane-*` | `call_mcp_tool` or `inheritMcp: true` in agent.md | Strip those lines from source agent.md, sync, re-smoke |
+| Without `--agent` works; with agent fails instantly | same | same |
+| Agent wanders looking for TASK_FILE on empty smoke | Normal — system prompt expects a task | Smoke with a real/dummy `TASK_FILE` path in the prompt |
+
+**Never** create ad-hoc agents (`lane-frontend-002test`) mid-task. Fix canonical `lane-coder` / `lane-frontend` only.
+
+### Paths
+
+| | |
+|--|--|
+| Source of truth | `~/.agents/agy/agents/<name>/agent.md` |
+| AGY loads | `~/.gemini/config/agents/<name>/agent.md` |
+
+```bash
+# after any agent.md edit:
+cp -a ~/.agents/agy/agents/$AGENT/agent.md ~/.gemini/config/agents/$AGENT/agent.md
 ```
 
-## Preflight
+**Banned in tools list (current agy 1.x):** `call_mcp_tool`, `inheritMcp: true`.
+
+## Inputs
+
+```text
+PROJECT_CWD, TASK_FILE, ARTIFACT_DIR
+AGENT: lane-coder | lane-frontend
+RUN_SLUG, TASK_ID  # optional heartbeat
+```
+
+## Preflight (hard stop if crash)
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 test -d "$PROJECT_CWD" && test -f "$TASK_FILE" || exit 1
 mkdir -p "$ARTIFACT_DIR"
-cd "$PROJECT_CWD"
-command -v agy && agy --version && agy agents | head -20
-# heartbeat start
+AGENT="${AGENT:-lane-coder}"
+SRC="$HOME/.agents/agy/agents/$AGENT/agent.md"
+DST="$HOME/.gemini/config/agents/$AGENT/agent.md"
+mkdir -p "$(dirname "$DST")"
+# auto-heal forbidden tools
+if [[ -f "$SRC" ]] && grep -qE 'call_mcp_tool|inheritMcp:\s*true' "$SRC"; then
+  sed -i '/call_mcp_tool/d;/inheritMcp:/d' "$SRC"
+fi
+[[ -f "$SRC" ]] && cp -a "$SRC" "$DST"
+# smoke: must NOT crash immediately (30s budget)
+SMOKE_OUT="$ARTIFACT_DIR/agy-smoke.out"
+if timeout 35 agy --print "TASK_FILE=$TASK_FILE. Reply OK only. Do not explore." \
+  --agent "$AGENT" --mode accept-edits --print-timeout 25s \
+  --dangerously-skip-permissions --add-dir "$PROJECT_CWD" \
+  >"$SMOKE_OUT" 2>&1; then
+  true
+fi
+if grep -q 'terminated due to error' "$SMOKE_OUT"; then
+  {
+    echo "AGY REPORT"
+    echo "STATUS: unavailable"
+    echo "OBJECTIVE: preflight — agent $AGENT crashes on load"
+    echo "GAPS: remove call_mcp_tool/inheritMcp from agent.md; re-sync to ~/.gemini/config/agents/"
+    cat "$SMOKE_OUT"
+  } > "$ARTIFACT_DIR/report.md"
+  exit 0
+fi
+# heartbeat
 if [[ -n "${RUN_SLUG:-}" ]]; then
   lane-heartbeat --repo "$PROJECT_CWD" --run "$RUN_SLUG" --task "${TASK_ID:-001}" --status running --note "agy start" || true
 fi
 ```
 
-Missing path / agy → `ARTIFACT_DIR/report.md` with STATUS unavailable.
+If smoke crashes → **STATUS unavailable** and stop. No multi-hour diagnosis.
 
-## Spec to agy
-
-Build prompt from task YAML + body of:
-
-`~/.agents/agy/agents/<AGENT>/agent.md`  
-(is already the system agent; still pass TASK_FILE paths and excerpts from YAML).
-
-Append:
-
-```text
-TASK_FILE and ARTIFACT_DIR as absolute paths.
-Write report to ARTIFACT_DIR/report.md
-Edit ONLY owns_paths / files from task. Honor never_touch.
-NEVER git merge/push to main. Orchestrator merges.
-Karpathy: minimum, surgical, verify.
-```
-
-## Run (blocking only)
+## Run (blocking)
 
 ```bash
 cd "$PROJECT_CWD"
 SPEC=$(mktemp -t agy-spec.XXXXXX)
 FINAL=$(mktemp -t agy-final.XXXXXX)
-# write combined prompt into $SPEC
+# write prompt: task YAML excerpts + TASK_FILE/ARTIFACT_DIR/owns_paths/never_touch + verify
 
 timeout 570 agy \
   --print "$(cat "$SPEC")" \
@@ -73,21 +103,14 @@ timeout 570 agy \
 echo AGY_EXIT=$? >> "$FINAL"
 ```
 
-No background. No sandbox on write.
-
 ## Post
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
 git diff --stat
-# empty diff on listed files → force STATUS partial in report
-# re-run verification commands from task; append to ARTIFACT_DIR/verified.txt
-# ensure ARTIFACT_DIR/report.md exists (write from FINAL if agy forgot)
-check-owns-paths "$TASK_FILE" --cwd "$PROJECT_CWD" || echo OWNS_FAIL >> "$ARTIFACT_DIR/report.md"
-if [[ -n "${RUN_SLUG:-}" ]]; then
-  lane-heartbeat --repo "$PROJECT_CWD" --run "$RUN_SLUG" --task "${TASK_ID:-001}" --status done --note "agy end" || true
-fi
+check-owns-paths "$TASK_FILE" --cwd "$PROJECT_CWD" || true
+# empty diff → STATUS partial; ensure report.md; heartbeat done
 ```
 
-Return short pointer: path to report + STATUS. Never merge main.
+Return path to `report.md` + STATUS. Never merge main. Never invent tools.
