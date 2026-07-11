@@ -70,8 +70,9 @@ def main() -> int:
         print("lane-exec: missing command after --", file=sys.stderr)
         return 2
 
-    idle_s = max(30, args.idle)
-    max_s = max(idle_s + 30, args.max)
+    # allow short idle for tests; production implementers use 600–900
+    idle_s = max(5, int(args.idle))
+    max_s = max(int(args.max), idle_s + 5)
     hb_path = Path(args.heartbeat) if args.heartbeat else None
     log_path = Path(args.log) if args.log else None
 
