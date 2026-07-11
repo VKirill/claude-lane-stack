@@ -1,6 +1,6 @@
 ---
 name: project-onboard
-description: Primary project onboarding for Claude Lane Stack. Creates lean CLAUDE.md + pointer AGENTS.md, PROGRESS/LESSONS, .agents layout, agents-doctor profile. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, новый репозиторий под оркестратор, «подготовь проект».
+description: Primary project onboarding for Claude Lane Stack. Dual scenario (minimal vs full mature docs). Creates lean CLAUDE.md + pointer AGENTS.md, PROGRESS/LESSONS, .agents layout, agents-doctor profile. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, новый репозиторий под оркестратор, «подготовь проект».
 ---
 
 # Project onboard (Claude Lane Stack)
@@ -9,7 +9,7 @@ description: Primary project onboarding for Claude Lane Stack. Creates lean CLAU
 
 | Role | Agent |
 |------|--------|
-| **Default writer** | **Codex** `gpt-5.6-terra` + **high** via `codex-onboarder` (sol if huge monorepo) |
+| **Default writer** | **Codex** `gpt-5.6-terra` + **high** via `codex-onboarder` (sol if huge monorepo / full on large trees) |
 | PM / slash | Claude dispatches `codex-onboarder` (`/project-onboard`) |
 | Fallback only | shell `project-onboard` if `codex` CLI missing |
 
@@ -17,9 +17,29 @@ Also seeds: `docs/ARCHITECTURE.md` template, README anamnesis if missing. Full f
 
 Do **not** use AGY or Grok for onboard. Do **not** have Fable write CLAUDE.md content by hand — dispatch Codex.
 
+## Dual scenario (minimal vs full)
+
+`project-onboard` **auto-detects** maturity and writes `.agents/onboard.scenario.yaml`.
+
+| | **minimal** | **full** (mature) |
+|--|-------------|-------------------|
+| **Signals** | small src tree, few commits, no monorepo, no deploy stack | score ≥ 5: size, monorepo, deploy, docs depth, domain (auth/pay/jobs), tests, history |
+| **Seeds** | CLAUDE · AGENTS · ARCHITECTURE · PROGRESS · LESSONS · plans · memory · routing | + GOTCHAS · GLOSSARY · TESTING · deployment · decisions · nested `apps/*/CLAUDE.md` · optional SECURITY |
+| **Codex job** | Fill spine from evidence only | Fill **all** seeded stubs from evidence; respect existing lowercase wiki names |
+
+**Override:**
+
+```bash
+project-onboard . --minimal
+project-onboard . --full
+ONBOARD_SCENARIO=full project-onboard .
+```
+
+Do **not** seed full pack on every greenfield — community rule: *earn every line*.
+
 ## Goal
 
-Lean always-on `CLAUDE.md` + pointer `AGENTS.md` + `.agents/` + memory + **primary docs** from repo evidence. No duplicate rules in AGENTS.md.
+Lean always-on `CLAUDE.md` + pointer `AGENTS.md` + `.agents/` + memory + **scenario-sized** docs from repo evidence. No duplicate rules in AGENTS.md.
 
 ## MUST
 
@@ -36,9 +56,10 @@ ARTIFACT_DIR: /abs/repo/.agents/runs/_onboard/artifacts/001
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 project-onboard .
+# or: project-onboard . --full
 ```
 
-3. After onboard, reply in Russian: files created, doctor profile, gaps, next step PM.
+3. After onboard, reply in Russian: **scenario**, files created, doctor profile, gaps, next step PM.
 
 4. **Never** invent architecture without evidence; mark hypotheses.
 
@@ -50,8 +71,9 @@ project-onboard .
 | **Ideas** | `.agents/todos/` | backlog |
 | **Session / debt** | `.agents/session-log/`, `agent-notes/` | auto ledger |
 | **Living state** | `PROGRESS.md`, `LESSONS.md` | now/next, do/don't |
-| **Durable product docs** | `docs/` | architecture, decisions, SEO strategy, **COCOON** |
+| **Durable product docs** | `docs/` | architecture, decisions, gotchas, SEO strategy, **COCOON** |
 | **Active product plans** (human-facing strategy) | `docs/plans/<topic>/` | long SEO/product specs |
+| **Onboard scenario** | `.agents/onboard.scenario.yaml` | minimal \| full + score |
 
 **COCOON.md / strategy decks belong in `docs/plans/…`.**  
 **Implementable coding work** for the orchestrator belongs in **`.agents/runs/`** with task YAML.
@@ -88,8 +110,20 @@ CLAUDE.md must say: *Follow karpathy-guidelines on any non-trivial code change.*
 
 ## After onboard checklist
 
+### Always (minimal + full)
+
 - [ ] `CLAUDE.md` + `AGENTS.md`
 - [ ] `PROGRESS.md` / `LESSONS.md`
 - [ ] `.agents/runs/BOARD.md` (via run-board)
 - [ ] `.agents/routing.profile.yaml` (agents-doctor --apply)
+- [ ] `.agents/onboard.scenario.yaml`
+- [ ] `docs/ARCHITECTURE.md` (or existing architecture wiki)
 - [ ] Karpathy skill linked
+
+### Full only
+
+- [ ] `docs/GOTCHAS.md` or existing gotchas filled
+- [ ] `docs/GLOSSARY.md` if domain terms exist
+- [ ] `docs/TESTING.md` with real commands
+- [ ] `docs/deployment.md` from deploy evidence
+- [ ] Nested `apps/*/CLAUDE.md` / `packages/*/CLAUDE.md` if monorepo

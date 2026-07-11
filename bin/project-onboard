@@ -1,9 +1,50 @@
 #!/usr/bin/env bash
 # Bootstrap a repo for Claude Lane Stack: CLAUDE.md, AGENTS.md, memory, doctor.
+# Dual scenario: minimal (spine) vs full (mature project docs).
 set -euo pipefail
 
-REPO="${1:-.}"
-FORCE="${2:-}"
+REPO="."
+FORCE=""
+SCENARIO_OVERRIDE=""
+
+# Args: project-onboard [path] [--force] [--minimal|--full]
+# path and flags may appear in any order
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force) FORCE="--force" ;;
+    --minimal|--min) SCENARIO_OVERRIDE="minimal" ;;
+    --full) SCENARIO_OVERRIDE="full" ;;
+    -h|--help)
+      cat <<'USAGE'
+Usage: project-onboard [path] [--force] [--minimal|--full]
+
+Detects project maturity and seeds docs:
+  minimal — CLAUDE, AGENTS, ARCHITECTURE, memory, plans
+  full    — + GOTCHAS, GLOSSARY, TESTING, deployment, nested CLAUDE, …
+
+Override auto-detect with --minimal / --full or ONBOARD_SCENARIO=minimal|full
+USAGE
+      exit 0
+      ;;
+    -*)
+      echo "Unknown arg: $1" >&2
+      exit 2
+      ;;
+    *)
+      REPO="$1"
+      ;;
+  esac
+  shift
+done
+
+# Env override (CLI wins)
+if [[ -z "$SCENARIO_OVERRIDE" && -n "${ONBOARD_SCENARIO:-}" ]]; then
+  case "${ONBOARD_SCENARIO,,}" in
+    minimal|min|lite) SCENARIO_OVERRIDE="minimal" ;;
+    full|mature|adult) SCENARIO_OVERRIDE="full" ;;
+  esac
+fi
+
 REPO="$(cd "$REPO" && pwd)"
 export PATH="${HOME}/.agents/bin:/home/ubuntu/.agents/bin:$PATH"
 
@@ -11,6 +52,10 @@ STACK_DOCS="${HOME}/.agents/docs"
 if [[ ! -d "$STACK_DOCS" && -d /home/ubuntu/tools/claude-lane-stack/docs ]]; then
   STACK_DOCS=/home/ubuntu/tools/claude-lane-stack/docs
 fi
+
+TPL_DIR="${HOME}/.agents/templates"
+[[ -d "$TPL_DIR" ]] || TPL_DIR="/home/ubuntu/.agents/templates"
+[[ -d "$TPL_DIR" ]] || TPL_DIR="/home/ubuntu/tools/claude-lane-stack/templates"
 
 echo "==> project-onboard: $REPO"
 
@@ -24,6 +69,163 @@ NAME="$(basename "$REPO")"
 if [[ -f "$REPO/package.json" ]]; then
   NAME="$(python3 -c "import json;print(json.load(open('$REPO/package.json')).get('name','$NAME'))" 2>/dev/null || echo "$NAME")"
 fi
+
+# ---------------------------------------------------------------------------
+# Scenario detection: minimal vs full (mature)
+# ---------------------------------------------------------------------------
+detect_scenario() {
+  local score=0
+  local reasons=()
+  local monorepo=0
+  local has_deploy=0
+  local has_domain=0
+  local src_files=0
+  local commits=0
+  local app_pkgs=0
+
+  # Monorepo / multi-package
+  if [[ -f "$REPO/pnpm-workspace.yaml" || -f "$REPO/turbo.json" || -f "$REPO/nx.json" \
+     || -f "$REPO/lerna.json" || -f "$REPO/rush.json" ]]; then
+    monorepo=1
+    score=$((score + 3))
+    reasons+=("workspace_tool(+3)")
+  fi
+  if [[ -d "$REPO/apps" || -d "$REPO/packages" || -d "$REPO/services" ]]; then
+    app_pkgs=$(find "$REPO/apps" "$REPO/packages" "$REPO/services" -mindepth 1 -maxdepth 2 \
+      \( -name package.json -o -name pyproject.toml -o -name go.mod -o -name Cargo.toml \) 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "${app_pkgs:-0}" -ge 2 ]]; then
+      monorepo=1
+      score=$((score + 3))
+      reasons+=("multi_package=${app_pkgs}(+3)")
+    elif [[ "${app_pkgs:-0}" -eq 1 ]]; then
+      score=$((score + 1))
+      reasons+=("single_nested_package(+1)")
+    fi
+  fi
+
+  # Source size (exclude node_modules, .git, dist, build)
+  src_files=$(find "$REPO" -type f \
+    \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.py' \
+       -o -name '*.go' -o -name '*.rs' -o -name '*.vue' -o -name '*.svelte' \) \
+    -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/dist/*' \
+    -not -path '*/.next/*' -not -path '*/build/*' -not -path '*/vendor/*' \
+    -not -path '*/__pycache__/*' -not -path '*/.venv/*' 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "${src_files:-0}" -ge 400 ]]; then
+    score=$((score + 3)); reasons+=("src_files=${src_files}(+3)")
+  elif [[ "${src_files:-0}" -ge 120 ]]; then
+    score=$((score + 2)); reasons+=("src_files=${src_files}(+2)")
+  elif [[ "${src_files:-0}" -ge 40 ]]; then
+    score=$((score + 1)); reasons+=("src_files=${src_files}(+1)")
+  fi
+
+  # Deploy / runtime maturity
+  local dscore=0
+  for f in Dockerfile docker-compose.yml docker-compose.yaml ecosystem.config.js \
+           fly.toml render.yaml Procfile railway.toml; do
+    [[ -f "$REPO/$f" ]] && dscore=$((dscore + 1))
+  done
+  [[ -d "$REPO/k8s" || -d "$REPO/deploy" || -d "$REPO/infra" || -d "$REPO/terraform" ]] && dscore=$((dscore + 1))
+  if [[ -d "$REPO/.github/workflows" ]]; then
+    local wf
+    wf=$(find "$REPO/.github/workflows" -name '*.yml' -o -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
+    [[ "${wf:-0}" -ge 1 ]] && dscore=$((dscore + 1))
+  fi
+  if [[ "$dscore" -ge 2 ]]; then
+    has_deploy=1
+    score=$((score + 2)); reasons+=("deploy_signals=${dscore}(+2)")
+  elif [[ "$dscore" -eq 1 ]]; then
+    has_deploy=1
+    score=$((score + 1)); reasons+=("deploy_signals=1(+1)")
+  fi
+
+  # Existing docs depth
+  if [[ -d "$REPO/docs" ]]; then
+    local docs_n
+    docs_n=$(find "$REPO/docs" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "${docs_n:-0}" -ge 5 ]]; then
+      score=$((score + 2)); reasons+=("docs_md=${docs_n}(+2)")
+    elif [[ "${docs_n:-0}" -ge 2 ]]; then
+      score=$((score + 1)); reasons+=("docs_md=${docs_n}(+1)")
+    fi
+  fi
+
+  # Domain complexity (auth / payments / workers / queues)
+  if rg -l --max-count=1 -i \
+      'stripe|yookassa|cloudpayments|better-auth|passport|webhook|bullmq|gen_jobs|rembg|oauth' \
+      "$REPO" --glob '!node_modules/**' --glob '!.git/**' --glob '!dist/**' \
+      --glob '!**/*.lock' --glob '!**/package-lock.json' 2>/dev/null | head -1 | grep -q .; then
+    has_domain=1
+    score=$((score + 2)); reasons+=("domain_complexity(+2)")
+  fi
+
+  # Tests maturity
+  local tscore=0
+  [[ -f "$REPO/vitest.config.ts" || -f "$REPO/vitest.config.js" || -f "$REPO/jest.config.js" \
+     || -f "$REPO/jest.config.ts" || -f "$REPO/pytest.ini" || -f "$REPO/playwright.config.ts" ]] && tscore=$((tscore + 1))
+  [[ -d "$REPO/e2e" || -d "$REPO/tests" || -d "$REPO/__tests__" ]] && tscore=$((tscore + 1))
+  if grep -qE '"test"|pytest|vitest|playwright' "$REPO/package.json" 2>/dev/null; then
+    tscore=$((tscore + 1))
+  fi
+  if [[ "$tscore" -ge 2 ]]; then
+    score=$((score + 1)); reasons+=("tests(+1)")
+  fi
+
+  # Git history (optional)
+  if [[ -d "$REPO/.git" ]]; then
+    commits=$(git -C "$REPO" rev-list --count HEAD 2>/dev/null || echo 0)
+    if [[ "${commits:-0}" -ge 200 ]]; then
+      score=$((score + 2)); reasons+=("commits=${commits}(+2)")
+    elif [[ "${commits:-0}" -ge 50 ]]; then
+      score=$((score + 1)); reasons+=("commits=${commits}(+1)")
+    fi
+  fi
+
+  # Threshold: full if score >= 5 (or monorepo multi-package)
+  local mode="minimal"
+  if [[ "$score" -ge 5 || ( "$monorepo" -eq 1 && "${app_pkgs:-0}" -ge 2 ) ]]; then
+    mode="full"
+  fi
+
+  # Export for caller
+  DETECTED_SCORE="$score"
+  DETECTED_REASONS="$(IFS=', '; echo "${reasons[*]:-none}")"
+  DETECTED_MONOREPO="$monorepo"
+  DETECTED_DEPLOY="$has_deploy"
+  DETECTED_DOMAIN="$has_domain"
+  DETECTED_SRC_FILES="$src_files"
+  DETECTED_COMMITS="${commits:-0}"
+  DETECTED_APP_PKGS="${app_pkgs:-0}"
+  DETECTED_MODE="$mode"
+}
+
+detect_scenario
+
+SCENARIO="${SCENARIO_OVERRIDE:-$DETECTED_MODE}"
+if [[ -n "$SCENARIO_OVERRIDE" ]]; then
+  echo "    scenario: $SCENARIO (override; auto would be $DETECTED_MODE, score=$DETECTED_SCORE)"
+else
+  echo "    scenario: $SCENARIO (auto, score=$DETECTED_SCORE — $DETECTED_REASONS)"
+fi
+
+mkdir -p "$REPO/.agents"
+cat > "$REPO/.agents/onboard.scenario.yaml" <<EOF
+# Written by project-onboard — dual onboard scenario
+# Override: project-onboard . --minimal | --full   or ONBOARD_SCENARIO=minimal|full
+scenario: $SCENARIO
+detected: $DETECTED_MODE
+score: $DETECTED_SCORE
+reasons: "$DETECTED_REASONS"
+signals:
+  monorepo: $DETECTED_MONOREPO
+  nested_packages: $DETECTED_APP_PKGS
+  src_files: $DETECTED_SRC_FILES
+  commits: $DETECTED_COMMITS
+  deploy: $DETECTED_DEPLOY
+  domain_complexity: $DETECTED_DOMAIN
+override: ${SCENARIO_OVERRIDE:-null}
+generated_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+EOF
+echo "    wrote .agents/onboard.scenario.yaml"
 
 # Memory pack
 if command -v project-memory-init >/dev/null 2>&1; then
@@ -66,6 +268,20 @@ BLOCK
     else
       echo "    CLAUDE.md exists (use --force to regenerate template)"
     fi
+    # ensure docs pointers for full scenario
+    if [[ "$SCENARIO" == "full" ]] && ! grep -q 'GOTCHAS\|gotchas' "$f" 2>/dev/null; then
+      cat >> "$f" <<'BLOCK'
+
+## Docs (full onboard)
+
+- `docs/ARCHITECTURE.md` — system map
+- `docs/GOTCHAS.md` — sharp edges (keep CLAUDE bullets short)
+- `docs/GLOSSARY.md` — domain language
+- `docs/TESTING.md` — verify commands
+- `docs/deployment.md` — ship / rollback
+BLOCK
+      echo "    appended full-docs pointers to CLAUDE.md"
+    fi
     return
   fi
 
@@ -74,11 +290,19 @@ BLOCK
   [[ -f "$REPO/package.json" ]] && VERIFY=$'npm test\nnpm run lint  # if present\nnpm run build  # if present'
   [[ -f "$REPO/pyproject.toml" ]] && VERIFY=$'pytest -q\nruff check .  # if present'
 
+  local DOCS_BLOCK
+  if [[ "$SCENARIO" == "full" ]]; then
+    DOCS_BLOCK=$'- `docs/ARCHITECTURE.md` — system map\n- `docs/GOTCHAS.md` — sharp edges (Critical/High)\n- `docs/GLOSSARY.md` — domain terms\n- `docs/TESTING.md` — how to verify\n- `docs/deployment.md` — ship / rollback\n- `docs/plans/` — durable strategy specs\n- `PROGRESS.md` / `LESSONS.md` — living state'
+  else
+    DOCS_BLOCK=$'- `docs/` — architecture, decisions, product\n- `docs/plans/` — durable strategy specs (SEO cocoons, product plans)\n- `PROGRESS.md` — now / blocked / next\n- `LESSONS.md` — do / don'\''t from past mistakes'
+  fi
+
   cat > "$f" <<EOF
 # ${NAME}
 
 <!-- Keep this file short (≤200 lines). Always-on context for every agent turn. -->
 <!-- Prefer pointers to docs/ over pasting architecture essays. -->
+<!-- Onboard scenario: ${SCENARIO} -->
 
 ## What
 
@@ -107,14 +331,11 @@ ${VERIFY}
 
 ## Gotchas (project-specific only)
 
-- (add after first agent mistakes)
+- (add after first agent mistakes; full detail → \`docs/GOTCHAS.md\` if present)
 
 ## Docs (read when needed — do not dump into context)
 
-- \`docs/\` — architecture, decisions, product
-- \`docs/plans/\` — durable strategy specs (SEO cocoons, product plans)
-- \`PROGRESS.md\` — now / blocked / next
-- \`LESSONS.md\` — do / don't from past mistakes
+${DOCS_BLOCK}
 
 ## Claude Lane Stack (orchestration)
 
@@ -126,6 +347,7 @@ ${VERIFY}
 - **Routing:** \`.agents/routing.profile.yaml\` from \`agents-doctor --apply\`.
 - **Ship:** orchestrator auto-merges to \`main\`; human never merges.
 - **Cold start:** \`resume-project .\`
+- **Onboard scenario:** \`${SCENARIO}\` (see \`.agents/onboard.scenario.yaml\`)
 
 ## Skills
 
@@ -133,7 +355,7 @@ ${VERIFY}
 - \`orchestrator-lanes\` / \`lane-contract\` — when running as PM
 - \`project-memory\` / \`resume-project\` — session continuity
 EOF
-  echo "    wrote $f"
+  echo "    wrote $f (scenario=$SCENARIO)"
 }
 
 write_agents() {
@@ -163,10 +385,130 @@ EOF
   echo "    wrote $f"
 }
 
+seed_tpl() {
+  # seed_tpl <dest-relative> <template-basename>
+  # Skip if path exists OR a case-insensitive sibling already covers the topic
+  # (e.g. docs/gotchas.md vs docs/GOTCHAS.md).
+  local dest="$REPO/$1"
+  local tpl="$TPL_DIR/$2"
+  local base dir sibling
+  base="$(basename "$1")"
+  dir="$(dirname "$dest")"
+
+  if [[ -f "$dest" ]]; then
+    echo "    exists $1"
+    return
+  fi
+  if [[ -d "$dir" ]]; then
+    sibling=$(find "$dir" -maxdepth 1 -type f -iname "$base" 2>/dev/null | head -1 || true)
+    if [[ -n "${sibling:-}" ]]; then
+      echo "    skip $1 (already have $(basename "$sibling"))"
+      return
+    fi
+    # Topic aliases (lowercase wiki style)
+    case "${base,,}" in
+      gotchas.md)
+        if find "$dir" -maxdepth 1 -type f \( -iname '*gotcha*' \) 2>/dev/null | grep -q .; then
+          echo "    skip $1 (gotchas doc already present)"; return
+        fi
+        ;;
+      architecture.md)
+        if find "$dir" -maxdepth 1 -type f \( -iname '*architect*' \) 2>/dev/null | grep -q .; then
+          echo "    skip $1 (architecture doc already present)"; return
+        fi
+        ;;
+      testing.md)
+        if find "$dir" -maxdepth 1 -type f \( -iname 'testing.md' -o -iname 'test.md' -o -iname 'tests.md' \) 2>/dev/null | grep -q .; then
+          echo "    skip $1 (testing doc already present)"; return
+        fi
+        ;;
+      deployment.md)
+        if find "$dir" -maxdepth 1 -type f \( -iname 'deployment.md' -o -iname 'deploy.md' -o -iname 'runbook.md' \) 2>/dev/null | grep -q .; then
+          echo "    skip $1 (deploy doc already present)"; return
+        fi
+        ;;
+      glossary.md)
+        if find "$dir" -maxdepth 1 -type f \( -iname '*glossar*' \) 2>/dev/null | grep -q .; then
+          echo "    skip $1 (glossary already present)"; return
+        fi
+        ;;
+      security.md)
+        if find "$dir" -maxdepth 1 -type f \( -iname 'security.md' -o -iname 'SECURITY.md' \) 2>/dev/null | grep -q .; then
+          echo "    skip $1 (security doc already present)"; return
+        fi
+        ;;
+      decisions.md)
+        if find "$dir" -maxdepth 1 -type f \( -iname 'decisions.md' -o -iname 'adr.md' \) 2>/dev/null | grep -q .; then
+          echo "    skip $1 (decisions already present)"; return
+        fi
+        ;;
+    esac
+  fi
+  if [[ -f "$tpl" ]]; then
+    mkdir -p "$(dirname "$dest")"
+    cp "$tpl" "$dest"
+    echo "    seeded $1"
+  else
+    echo "    WARN: missing template $2"
+  fi
+}
+
+seed_nested_claude() {
+  # For monorepo packages: apps/*/CLAUDE.md, packages/*/CLAUDE.md
+  local base dir name
+  for base in apps packages services; do
+    [[ -d "$REPO/$base" ]] || continue
+    for dir in "$REPO/$base"/*/; do
+      [[ -d "$dir" ]] || continue
+      name="$(basename "$dir")"
+      # only real packages
+      if [[ ! -f "$dir/package.json" && ! -f "$dir/pyproject.toml" \
+         && ! -f "$dir/go.mod" && ! -f "$dir/Cargo.toml" ]]; then
+        continue
+      fi
+      if [[ -f "$dir/CLAUDE.md" ]]; then
+        echo "    exists $base/$name/CLAUDE.md"
+        continue
+      fi
+      cat > "$dir/CLAUDE.md" <<EOF
+# ${name}
+
+<!-- Nested package CLAUDE — keep short. Root rules: ../../CLAUDE.md (or ../../../) -->
+
+## What
+
+Package purpose in one line. (Edit me.)
+
+## Owns
+
+- Paths this package owns:
+- Public exports / API surface:
+
+## Never / Always
+
+- **Never** import from sibling apps in ways root architecture forbids.
+- **Always** run this package's verify commands when changing it.
+
+## Verify
+
+\`\`\`bash
+# package-local test / lint
+\`\`\`
+
+## Pointers
+
+- Root: \`CLAUDE.md\`
+- Architecture: \`docs/ARCHITECTURE.md\`
+EOF
+      echo "    seeded $base/$name/CLAUDE.md"
+    done
+  done
+}
+
 write_claude
 write_agents
 
-# docs/plans + ARCHITECTURE seed
+# docs/plans + ARCHITECTURE seed (both scenarios)
 mkdir -p "$REPO/docs/plans"
 if [[ ! -f "$REPO/docs/plans/README.md" ]]; then
   cat > "$REPO/docs/plans/README.md" <<'EOF'
@@ -178,21 +520,61 @@ Durable **product / SEO / strategy** documents (e.g. COCOON.md, feature SPECs fo
 
 When a plan is ready to implement: promote → `.agents/runs/<slug>/` with task YAML.
 EOF
+  echo "    seeded docs/plans/README.md"
 fi
 
-ARCH_TPL="${HOME}/.agents/templates/ARCHITECTURE.md"
-[[ -f "$ARCH_TPL" ]] || ARCH_TPL="/home/ubuntu/.agents/templates/ARCHITECTURE.md"
-if [[ ! -f "$REPO/docs/ARCHITECTURE.md" && -f "$ARCH_TPL" ]]; then
-  cp "$ARCH_TPL" "$REPO/docs/ARCHITECTURE.md"
-  echo "    seeded docs/ARCHITECTURE.md (fill via codex-onboarder)"
-fi
+seed_tpl "docs/ARCHITECTURE.md" "ARCHITECTURE.md"
 
 # README anamnesis stub only if missing
-README_TPL="${HOME}/.agents/templates/README.anamnesis.md"
-[[ -f "$README_TPL" ]] || README_TPL="/home/ubuntu/.agents/templates/README.anamnesis.md"
-if [[ ! -f "$REPO/README.md" && -f "$README_TPL" ]]; then
-  sed "s/{{PROJECT_NAME}}/$NAME/g" "$README_TPL" > "$REPO/README.md"
-  echo "    seeded README.md anamnesis stub"
+if [[ ! -f "$REPO/README.md" ]]; then
+  seed_tpl "README.md" "README.anamnesis.md"
+  if [[ -f "$REPO/README.md" ]]; then
+    # template may use {{PROJECT_NAME}}
+    if grep -q '{{PROJECT_NAME}}' "$REPO/README.md" 2>/dev/null; then
+      sed -i "s/{{PROJECT_NAME}}/$NAME/g" "$REPO/README.md"
+    fi
+  fi
+fi
+
+# Full scenario extras
+if [[ "$SCENARIO" == "full" ]]; then
+  echo "    full scenario: seeding mature docs…"
+  seed_tpl "docs/GOTCHAS.md" "GOTCHAS.md"
+  seed_tpl "docs/GLOSSARY.md" "GLOSSARY.md"
+  seed_tpl "docs/TESTING.md" "TESTING.md"
+  seed_tpl "docs/deployment.md" "deployment.md"
+  seed_tpl "docs/decisions.md" "decisions.md"
+  if [[ "$DETECTED_MONOREPO" -eq 1 || "$DETECTED_APP_PKGS" -ge 1 ]]; then
+    seed_nested_claude
+  fi
+  # Optional SECURITY notes when domain complexity
+  if [[ "$DETECTED_DOMAIN" -eq 1 && ! -f "$REPO/docs/SECURITY.md" ]]; then
+    cat > "$REPO/docs/SECURITY.md" <<'EOF'
+# Security notes (agents)
+
+> Threat-relevant notes only. **Never** store secrets here. Language: **English**.
+
+## Auth boundaries
+
+- …
+
+## Payments / webhooks (if any)
+
+- Signature validation:
+- Idempotency:
+
+## Secrets
+
+- Env var names (values never in git):
+
+## Data access
+
+- Owner / tenancy checks:
+EOF
+    echo "    seeded docs/SECURITY.md (domain signal)"
+  fi
+else
+  echo "    minimal scenario: spine only (CLAUDE, AGENTS, ARCHITECTURE, memory, plans)"
 fi
 
 # Karpathy symlink into project .claude if missing
@@ -207,8 +589,10 @@ else
 fi
 
 echo ""
-echo "Done. Next:"
-echo "  1) Edit CLAUDE.md What/Stack/Gotchas"
-echo "  2) agents-doctor --apply .   # if not run"
-echo "  3) claude --agent dev-orchestrator"
+echo "Done. scenario=$SCENARIO score=$DETECTED_SCORE"
+echo "  1) Codex fills stubs from evidence (codex-onboarder) — do not invent"
+echo "  2) Edit CLAUDE.md What/Stack/Gotchas"
+echo "  3) agents-doctor --apply ."
+echo "  4) claude --agent dev-orchestrator"
+echo "Override: project-onboard . --minimal | --full"
 echo "Strategy docs → docs/plans/   |   Implementation → .agents/runs/"
