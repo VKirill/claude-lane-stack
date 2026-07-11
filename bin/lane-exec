@@ -181,7 +181,10 @@ def main() -> int:
             # wait for output up to 1s
             r, _, _ = select.select([fd], [], [], 1.0)
             if r:
-                chunk = os.read(fd, 65536)
+                try:
+                    chunk = os.read(fd, 65536)
+                except OSError:
+                    chunk = b""
                 if chunk:
                     last_activity = time.monotonic()
                     sys.stdout.buffer.write(chunk)
@@ -189,17 +192,17 @@ def main() -> int:
                     if log_f:
                         log_f.write(chunk)
                     buf += chunk
-                    # keep buf from growing unbounded
                     if len(buf) > 200_000:
                         buf = buf[-50_000:]
-                else:
-                    # EOF
+                elif proc.poll() is not None:
+                    # real EOF only if process already exited
                     break
+                # else: spurious readiness — keep waiting
 
             if proc.poll() is not None:
                 # drain remainder
                 while True:
-                    r, _, _ = select.select([fd], [], [], 0.1)
+                    r, _, _ = select.select([fd], [], [], 0.2)
                     if not r:
                         break
                     chunk = os.read(fd, 65536)
