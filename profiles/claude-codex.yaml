@@ -1,0 +1,7 @@
+pm: claude
+profile: claude-codex
+lanes:
+  fast_write: codex
+  main_write: codex
+  review: codex
+  emergency_write: codex

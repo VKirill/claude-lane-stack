@@ -1,0 +1,23 @@
+---
+description: "{{one_line_description}}"
+argument-hint: "{{argument_hint}}"
+profile: "{{profile_name_or_omit}}"
+---
+
+You are running the `/{{prompt_name}}` custom prompt.
+
+Inputs:
+- $ARGUMENTS — full argument string
+- $1, $2, ... — positional args
+
+Task:
+
+{{describe_task_in_plain_english}}
+
+Output format:
+
+{{describe_expected_output}}
+
+Constraints:
+- {{constraint_1}}
+- {{constraint_2}}

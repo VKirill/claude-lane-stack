@@ -1,0 +1,8 @@
+# Claude + AGY + Grok + Codex
+pm: claude
+profile: full
+lanes:
+  fast_write: agy          # agy-implementer → lane-coder | lane-frontend
+  main_write: grok         # grok-implementer
+  review: codex            # codex-reviewer
+  emergency_write: codex   # codex-implementer

@@ -1,0 +1,20 @@
+id: "001"
+title: "Example task — edit only listed paths"
+risk: low
+lane: agy-coder
+status: pending
+project_cwd: "/abs/path/to/repo-or-worktree"
+owns_paths:
+  - src/example.ts
+never_touch:
+  - .env*
+  - prisma/**
+objective: |
+  Demonstrate owns_paths + report.md contract.
+verification:
+  - "true"
+done_when:
+  - "true"
+acceptance:
+  - "report.md STATUS complete"
+depends_on: []

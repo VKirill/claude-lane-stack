@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Refresh .agents/runs/BOARD.md from all run STATUS/task YAML."""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
+
+
+def parse_simple_yaml_status(text: str) -> dict:
+    out = {}
+    for key in ("id", "title", "status", "lane", "risk"):
+        m = re.search(rf"^{key}:\s*[\"']?([^\"'\n#]+)", text, re.M)
+        if m:
+            out[key] = m.group(1).strip().strip('"').strip("'")
+    return out
+
+
+def load_task(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if yaml:
+        try:
+            data = yaml.safe_load(text) or {}
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    return parse_simple_yaml_status(text)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("repo", nargs="?", default=".")
+    args = ap.parse_args()
+    repo = Path(args.repo).resolve()
+    runs = repo / ".agents" / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    board = runs / "BOARD.md"
+
+    lines = [
+        f"# Agent board",
+        f"",
+        f"_Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} by run-board_",
+        f"",
+        f"| Run | Task | Status | Lane | Title |",
+        f"|-----|------|--------|------|-------|",
+    ]
+
+    active = []
+    if runs.exists():
+        for run_dir in sorted(p for p in runs.iterdir() if p.is_dir()):
+            slug = run_dir.name
+            tasks_dir = run_dir / "tasks"
+            if not tasks_dir.is_dir():
+                continue
+            for task in sorted(tasks_dir.glob("*.yaml")):
+                data = load_task(task)
+                tid = str(data.get("id") or task.stem.split("-")[0])
+                status = str(data.get("status") or "?")
+                lane = str(data.get("lane") or "")
+                title = str(data.get("title") or task.stem)[:60]
+                lines.append(f"| `{slug}` | {tid} | **{status}** | {lane} | {title} |")
+                if status in ("running", "stalled", "blocked", "review", "pending"):
+                    active.append((slug, tid, status, title))
+
+    lines.append("")
+    lines.append("## Needs attention")
+    lines.append("")
+    if not active:
+        lines.append("_None — all clear or no tasks._")
+    else:
+        for slug, tid, status, title in active:
+            lines.append(f"- `{slug}` task {tid}: **{status}** — {title}")
+
+    lines.append("")
+    lines.append("## Commands")
+    lines.append("")
+    lines.append("```bash")
+    lines.append("lane-stall-check . --minutes 5")
+    lines.append("resume-project .")
+    lines.append("```")
+    lines.append("")
+
+    board.write_text("\n".join(lines), encoding="utf-8")
+    print(board)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

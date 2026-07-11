@@ -1,0 +1,9 @@
+pm: claude
+profile: claude-only
+lanes:
+  fast_write: claude-worker
+  main_write: claude-worker
+  review: claude-reviewer
+  emergency_write: claude-worker
+notes:
+  - No external write CLI — use Claude subagents only (slower/costlier).

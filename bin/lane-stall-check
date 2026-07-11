@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Find running tasks with stale heartbeats; optionally mark stalled in YAML."""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def parse_status(text: str) -> str:
+    m = re.search(r"^status:\s*[\"']?([\w-]+)", text, re.M)
+    return m.group(1) if m else ""
+
+
+def set_status(text: str, status: str) -> str:
+    if re.search(r"^status:", text, re.M):
+        return re.sub(r"^status:\s*.*$", f"status: {status}", text, count=1, flags=re.M)
+    return f"status: {status}\n" + text
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("repo", nargs="?", default=".")
+    ap.add_argument("--minutes", type=float, default=5.0)
+    ap.add_argument("--mark", action="store_true", help="set status: stalled on stale tasks")
+    args = ap.parse_args()
+    repo = Path(args.repo).resolve()
+    runs = repo / ".agents" / "runs"
+    if not runs.is_dir():
+        print("no .agents/runs", file=sys.stderr)
+        return 0
+
+    now = datetime.now(timezone.utc)
+    stale = []
+    for run_dir in sorted(p for p in runs.iterdir() if p.is_dir()):
+        tasks_dir = run_dir / "tasks"
+        if not tasks_dir.is_dir():
+            continue
+        for task in tasks_dir.glob("*.yaml"):
+            text = task.read_text(encoding="utf-8", errors="replace")
+            st = parse_status(text)
+            if st not in ("running", "review", "stalled"):
+                continue
+            tid_m = re.search(r"^id:\s*[\"']?(\w+)", text, re.M)
+            tid = tid_m.group(1) if tid_m else task.stem.split("-")[0]
+            hb_path = run_dir / "artifacts" / tid / "heartbeat.json"
+            age_min = None
+            if hb_path.exists():
+                try:
+                    hb = json.loads(hb_path.read_text(encoding="utf-8"))
+                    ts = datetime.fromisoformat(hb["ts"].replace("Z", "+00:00"))
+                    age_min = (now - ts).total_seconds() / 60.0
+                except Exception:
+                    age_min = 9999.0
+            else:
+                # use task mtime as weak signal
+                age_min = (now.timestamp() - task.stat().st_mtime) / 60.0
+
+            if age_min is not None and age_min >= args.minutes and st == "running":
+                stale.append((run_dir.name, tid, age_min, task))
+                if args.mark:
+                    task.write_text(set_status(text, "stalled"), encoding="utf-8")
+
+    if not stale:
+        print("OK: no stalled running tasks")
+        return 0
+
+    print(f"STALE ({len(stale)}) — no heartbeat ≥ {args.minutes} min:")
+    for slug, tid, age, path in stale:
+        print(f"  {slug} task {tid}: ~{age:.1f}m  {path}")
+    print("Re-dispatch or: lane-stall-check . --minutes 5 --mark")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

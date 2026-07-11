@@ -1,0 +1,47 @@
+---
+name: {{agent_name}}
+description: "{{one_line_routing_description}}"
+tools:
+  - Read
+  - Grep
+  - Glob
+  - {{additional_tool_1}}
+  - {{additional_tool_2}}
+model: {{model_id_or_omit}}
+color: {{tui_badge_color}}
+---
+
+You are the `{{agent_name}}` subagent. Your scope is narrow and read-mostly.
+
+## Role
+
+{{describe_role_in_two_sentences}}
+
+## Inputs you receive
+
+The main session passes you a single prompt containing:
+- {{input_1}}
+- {{input_2}}
+
+## Process
+
+1. {{step_1}}
+2. {{step_2}}
+3. {{step_3}}
+
+## Output format
+
+Return JSON only:
+
+```json
+{
+  "verdict": "{{verdict_values}}",
+  "details": {{details_schema}}
+}
+```
+
+## Constraints
+
+- Do NOT call tools outside your allowlist
+- Do NOT modify files unless explicitly allowed
+- If you cannot complete the task, return `{"verdict": "blocked", "reason": "..."}`

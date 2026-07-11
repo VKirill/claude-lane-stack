@@ -1,0 +1,53 @@
+# {{project_name}} — Codex CLI configuration
+# Project file: .codex/config.toml
+# Precedence: CLI flag > -c override > this file > ~/.codex/config.toml > defaults
+
+model = "gpt-5-codex"
+model_reasoning_effort = "medium"      # low | medium | high
+
+# Safe default — switch to a profile when you want to act
+approval_policy = "untrusted"          # untrusted | on-request | never
+sandbox_mode = "read-only"             # read-only | workspace-write | danger-full-access
+
+web_search = "cached"                  # cached | live | disabled
+
+# ----- Profiles ------------------------------------------------------
+
+[profiles.review]
+# Read-only, fast model, for code review work
+model = "gpt-5.5"
+sandbox_mode = "read-only"
+approval_policy = "untrusted"
+model_reasoning_effort = "low"
+
+[profiles.build]
+# Productive default — codex -p build
+model = "gpt-5-codex"
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+model_reasoning_effort = "medium"
+
+[profiles.refactor]
+# Heavy reasoning for hard refactors — codex -p refactor
+model = "gpt-5.5"
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"
+model_reasoning_effort = "high"
+
+[profiles.ci-review]
+# Headless CI review — codex exec ... -p ci-review
+model = "gpt-5.5"
+sandbox_mode = "read-only"
+approval_policy = "never"
+web_search = "disabled"
+
+# ----- MCP servers ---------------------------------------------------
+
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "{{project_root}}"]
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }

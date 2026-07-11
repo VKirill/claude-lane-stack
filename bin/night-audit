@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="${1:-.}"
+ROOT="$(cd "$ROOT" && pwd)"
+DAY="$(date +%Y-%m-%d)"
+OUT_DIR="$ROOT/.agents/session-log"
+mkdir -p "$OUT_DIR"
+OUT="$OUT_DIR/AUDIT-${DAY}.md"
+{
+  echo "# Night audit — ${DAY}"
+  echo; echo "Project: \`$ROOT\`"; echo "Generated: $(date -Iseconds)"; echo
+  echo "## PROGRESS (live state)"; echo
+  if [[ -f "$ROOT/PROGRESS.md" ]]; then head -40 "$ROOT/PROGRESS.md"; else echo "_Missing PROGRESS.md — run project-memory-init._"; fi
+  echo; echo "## LESSONS (recent titles)"; echo
+  if [[ -f "$ROOT/LESSONS.md" ]]; then grep -E '^### ' "$ROOT/LESSONS.md" | tail -15 || echo "_No lesson entries yet._"; else echo "_Missing LESSONS.md._"; fi
+  echo; echo "## Session log index (head 25)"; echo
+  if [[ -f "$OUT_DIR/INDEX.md" ]]; then head -30 "$OUT_DIR/INDEX.md"; else echo "_No session-log INDEX yet._"; fi
+  echo; echo "## Agent notes OPEN"; echo
+  if [[ -f "$ROOT/.agents/agent-notes/OPEN.md" ]]; then
+    grep -E '^\s*-\s*\[\s*\]|^## ' "$ROOT/.agents/agent-notes/OPEN.md" | head -40 || head -40 "$ROOT/.agents/agent-notes/OPEN.md"
+  else echo "_No OPEN.md._"; fi
+  echo; echo "## Todos open (if any)"; echo
+  if [[ -f "$ROOT/.agents/todos/INDEX.md" ]]; then head -25 "$ROOT/.agents/todos/INDEX.md"; else echo "_No .agents/todos/INDEX.md._"; fi
+  echo; echo "## Git (dirty snapshot)"; echo; echo '```'
+  git -C "$ROOT" status -sb 2>/dev/null || echo "not a git repo"
+  git -C "$ROOT" diff --stat HEAD 2>/dev/null | head -40 || true
+  echo '```'; echo; echo "## Suggested actions"; echo
+  echo "1. Close or promote OPEN agent-notes items to todos/runs"
+  echo "2. Refresh PROGRESS.md Now/Next/Blocked"
+  echo "3. If a durable fork appeared in session logs → ADR in docs/decisions.md"
+  echo "4. Run test suite if Last verify is stale"
+  echo; echo "---"; echo "_night-audit — ~/.agents/bin/night-audit_"
+} > "$OUT"
+echo "wrote $OUT"

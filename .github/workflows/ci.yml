@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile hooks and doctor
+        run: |
+          python3 -m py_compile hooks/*.py bin/agents-doctor bin/check-owns-paths bin/lane-stall-check bin/lane-heartbeat bin/run-board 2>/dev/null || \
+          python3 -m py_compile hooks/*.py
+          python3 bin/agents-doctor --json || true
+      - name: Shell scripts syntax
+        run: |
+          bash -n install.sh
+          for f in bin/wt-create bin/wt-merge-main bin/resume-project bin/project-memory-init bin/night-audit; do
+            [[ -f "$f" ]] && bash -n "$f"
+          done

@@ -1,0 +1,52 @@
+# {{project_name}}
+
+Project memory for Claude Code. Keep under 500 lines.
+
+## Stack
+
+- Language: {{primary_language}}
+- Framework: {{primary_framework}}
+- Runtime: {{runtime}}
+- Package manager: {{pkg_manager}}
+
+## Commands
+
+```bash
+{{install_cmd}}       # install dependencies
+{{dev_cmd}}           # start dev server
+{{test_cmd}}          # run tests
+{{build_cmd}}         # production build
+{{lint_cmd}}          # lint
+```
+
+## Project layout
+
+```
+src/
+  features/           # feature-first modules
+  shared/             # cross-cutting utils
+  app/                # entry, server, routes
+tests/                # integration tests
+.claude/              # this skill's config
+```
+
+## Conventions
+
+- Use {{formatter}} for formatting (auto-runs on save via hook)
+- TypeScript strict; no `any` escapes
+- Imports: absolute via `@/` alias
+- Tests colocated as `*.test.ts`
+
+## Don't
+
+- Don't edit `.env*` files (blocked by `permissions.deny`)
+- Don't run `npm publish` (blocked)
+- Don't commit `.claude/settings.local.json`
+
+## Plan mode for unfamiliar areas
+
+When working in unfamiliar parts of the codebase, prefer `claude --permission-mode plan` first.
+
+## CI
+
+PRs are auto-reviewed by `claude -p` in `.github/workflows/claude-review.yml`.

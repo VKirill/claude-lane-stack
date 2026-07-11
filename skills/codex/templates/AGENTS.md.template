@@ -1,0 +1,52 @@
+# {{project_name}}
+
+Project memory for Codex CLI (and OpenCode — same file). Keep under 500 lines.
+
+## Stack
+
+- Language: {{primary_language}}
+- Framework: {{primary_framework}}
+- Runtime: {{runtime}}
+- Package manager: {{pkg_manager}}
+
+## Commands
+
+```bash
+{{install_cmd}}       # install dependencies
+{{dev_cmd}}           # start dev server
+{{test_cmd}}          # run tests
+{{build_cmd}}         # production build
+{{lint_cmd}}          # lint
+```
+
+## Layout
+
+```
+src/
+  features/
+  shared/
+  app/
+tests/
+```
+
+## Conventions
+
+- Format with {{formatter}} on save (wrapper script around `codex exec`)
+- TypeScript strict
+- Imports: absolute via `@/` alias
+
+## Don't
+
+- Don't edit `.env*` files
+- Don't run `npm publish`
+- Don't commit `~/.codex/auth.json`
+
+## Recommended profiles
+
+- `codex -p review` — read-only fast review
+- `codex -p build` — productive default (full-auto-ish)
+- `codex -p refactor` — gpt-5.5 + high reasoning for hard work
+
+## CI
+
+PRs auto-reviewed by `codex exec ... -p ci-review` in `.github/workflows/codex-review.yml`.

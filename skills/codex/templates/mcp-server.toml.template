@@ -1,0 +1,11 @@
+# Add to .codex/config.toml or ~/.codex/config.toml
+
+[mcp_servers.{{server_name}}]
+command = "{{executable}}"
+args = ["{{arg1}}", "{{arg2}}"]
+env = { {{ENV_KEY}} = "${{ENV_KEY}}" }
+
+# HTTP/SSE variant:
+# [mcp_servers.{{remote_server_name}}]
+# url = "https://{{host}}/sse"
+# headers = { Authorization = "Bearer ${MCP_TOKEN}" }

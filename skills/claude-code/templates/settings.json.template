@@ -1,0 +1,78 @@
+{
+  "$schema": "https://docs.claude.com/en/schemas/settings.json",
+  "model": "{{default_model}}",
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit({{editable_glob}})",
+      "Write({{editable_glob}})",
+      "Bash(npm test:*)",
+      "Bash(npm run build)",
+      "Bash(npm run lint)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "WebFetch(domain:docs.{{primary_doc_host}})"
+    ],
+    "deny": [
+      "Edit(.env*)",
+      "Edit(**/secrets/**)",
+      "Write(.env*)",
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(curl * | bash)",
+      "Bash(npm publish:*)"
+    ]
+  },
+  "sandbox": {
+    "network": {
+      "deniedDomains": ["*"],
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "github.com",
+        "api.github.com",
+        "raw.githubusercontent.com",
+        "docs.anthropic.com"
+      ]
+    }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "{{formatter_cmd}} $FILE_PATH || true" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "${HOME}/.claude/hooks/audit-bash.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "echo \"[$(date)] claude session ended\" >> ${HOME}/.claude/activity.log" }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "{{project_root}}"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+    }
+  }
+}

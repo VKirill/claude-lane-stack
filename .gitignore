@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+.agents/capabilities.json
+.agents/routing.profile.yaml
+*.env
+metamcp.env
+.worktrees/

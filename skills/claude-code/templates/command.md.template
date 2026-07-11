@@ -1,0 +1,24 @@
+---
+description: "{{one_line_description}}"
+allowed-tools: "{{tool_matchers_comma_separated}}"
+argument-hint: "{{argument_hint}}"
+model: "{{model_override_or_omit}}"
+---
+
+You are running the `/{{command_name}}` slash command.
+
+Inputs:
+- $ARGUMENTS — raw arguments passed by the user
+- $1, $2, ... — positional args split on whitespace
+
+Task:
+
+{{describe_task_in_plain_english}}
+
+Output format:
+
+{{describe_expected_output}}
+
+Constraints:
+- {{constraint_1}}
+- {{constraint_2}}

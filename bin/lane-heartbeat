@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Write heartbeat for a task under .agents/runs/<run>/artifacts/<task>/heartbeat.json"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--repo", required=True, help="repo root or worktree (finds .agents upward)")
+    ap.add_argument("--run", required=True, help="run slug")
+    ap.add_argument("--task", required=True, help="task id e.g. 001")
+    ap.add_argument(
+        "--status",
+        default="running",
+        choices=["running", "done", "blocked", "stalled", "review", "partial"],
+    )
+    ap.add_argument("--note", default="")
+    args = ap.parse_args()
+
+    start = Path(args.repo).resolve()
+    root = start
+    agents = None
+    for p in [start, *start.parents]:
+        if (p / ".agents" / "runs").is_dir() or (p / ".git").exists():
+            # prefer path that has .agents/runs
+            if (p / ".agents").is_dir():
+                agents = p / ".agents"
+                root = p
+                break
+    if agents is None:
+        # worktree: look for .agents in start
+        agents = start / ".agents"
+        agents.mkdir(parents=True, exist_ok=True)
+        root = start
+
+    task_id = args.task
+    art = agents / "runs" / args.run / "artifacts" / task_id
+    art.mkdir(parents=True, exist_ok=True)
+    hb = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "status": args.status,
+        "note": args.note,
+        "run": args.run,
+        "task": task_id,
+        "cwd": str(start),
+        "repo": str(root),
+    }
+    path = art / "heartbeat.json"
+    path.write_text(json.dumps(hb, indent=2) + "\n", encoding="utf-8")
+
+    # also stamp STATUS snippet file
+    status_path = agents / "runs" / args.run / "STATUS.md"
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    line = f"- `{task_id}` heartbeat **{args.status}** @ {hb['ts'][:19]}Z {args.note}\n"
+    if status_path.exists():
+        text = status_path.read_text(encoding="utf-8", errors="replace")
+        if "## Heartbeats" not in text:
+            text = text.rstrip() + "\n\n## Heartbeats\n\n" + line
+        else:
+            text = text.rstrip() + "\n" + line
+        status_path.write_text(text + "\n", encoding="utf-8")
+    else:
+        status_path.write_text(
+            f"# STATUS `{args.run}`\n\n## Heartbeats\n\n{line}",
+            encoding="utf-8",
+        )
+
+    print(path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

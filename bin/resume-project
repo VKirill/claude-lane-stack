@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Cold-start brief for orchestrator / human: PROGRESS + BOARD + OPEN + recent logs + runs
+set -euo pipefail
+
+REPO="${1:-.}"
+REPO="$(cd "$REPO" && pwd)"
+export PATH="/home/ubuntu/.agents/bin:$PATH"
+
+echo "======== RESUME PROJECT ========"
+echo "REPO: $REPO"
+echo "TIME: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo
+
+if [[ -d "$REPO/.git" ]] || git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "--- git ---"
+  git -C "$REPO" status -sb 2>/dev/null || true
+  git -C "$REPO" log -3 --oneline 2>/dev/null || true
+  echo
+fi
+
+if [[ -x /home/ubuntu/.agents/bin/run-board ]]; then
+  /home/ubuntu/.agents/bin/run-board "$REPO" >/dev/null 2>&1 || true
+fi
+
+for f in PROGRESS.md LESSONS.md docs/decisions.md .agents/agent-notes/OPEN.md .agents/runs/BOARD.md; do
+  if [[ -f "$REPO/$f" ]]; then
+    echo "======== $f ========"
+    # skip huge auto sections partially
+    head -n 80 "$REPO/$f"
+    echo
+  fi
+done
+
+echo "======== active runs ========"
+if [[ -d "$REPO/.agents/runs" ]]; then
+  for d in "$REPO/.agents/runs"/*/; do
+    [[ -d "$d" ]] || continue
+    slug="$(basename "$d")"
+    [[ "$slug" == "BOARD.md" ]] && continue
+    echo "## $slug"
+    if [[ -f "$d/STATUS.md" ]]; then
+      head -n 40 "$d/STATUS.md"
+    fi
+    if [[ -f "$d/worktree.json" ]]; then
+      echo "worktree: $(cat "$d/worktree.json")"
+    fi
+    if [[ -f "$d/MERGE.md" ]]; then
+      echo "(already merged — see MERGE.md)"
+    fi
+    echo
+  done
+else
+  echo "(no .agents/runs)"
+fi
+
+echo "======== recent session-log ========"
+LOGDIR="$REPO/.agents/session-log"
+if [[ -d "$LOGDIR" ]]; then
+  # latest 3 md files
+  find "$LOGDIR" -name '*.md' ! -name 'INDEX.md' ! -name 'AUDIT-*' -type f -printf '%T@ %p\n' 2>/dev/null \
+    | sort -nr | head -3 | while read -r _ p; do
+      echo "--- $p ---"
+      head -n 40 "$p"
+      echo
+    done
+  [[ -f "$LOGDIR/INDEX.md" ]] && { echo "INDEX (head):"; head -n 20 "$LOGDIR/INDEX.md"; }
+else
+  echo "(no session-log)"
+fi
+
+echo "======== stall check ========"
+if [[ -x /home/ubuntu/.agents/bin/lane-stall-check ]]; then
+  /home/ubuntu/.agents/bin/lane-stall-check "$REPO" --minutes 5 || true
+fi
+
+echo "======== next actions for PM ========"
+echo "1. Read BOARD + PROGRESS Now/Next"
+echo "2. Resume stalled/running tasks or start new run"
+echo "3. Never ask human to merge — use wt-merge-main when run green"
+echo "======== END RESUME ========"

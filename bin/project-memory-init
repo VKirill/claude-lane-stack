@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="${1:-.}"
+ROOT="$(cd "$ROOT" && pwd)"
+TPL="${HOME}/.agents/templates"
+install_if_missing() {
+  local dest="$1" src="$2"
+  if [[ -e "$dest" ]]; then echo "skip exists: $dest"; return; fi
+  mkdir -p "$(dirname "$dest")"
+  cp "$src" "$dest"
+  echo "created: $dest"
+}
+install_if_missing "$ROOT/PROGRESS.md" "$TPL/PROGRESS.md"
+install_if_missing "$ROOT/LESSONS.md" "$TPL/LESSONS.md"
+install_if_missing "$ROOT/docs/decisions.md" "$TPL/decisions.md"
+install_if_missing "$ROOT/.agents/agent-notes/OPEN.md" "$TPL/agent-notes-OPEN.md"
+mkdir -p "$ROOT/.agents/session-log" "$ROOT/.agents/todos" "$ROOT/.agents/runs"
+install_if_missing "$ROOT/.agents/session-log/README.md" "$TPL/session-log-README.md"
+if [[ ! -f "$ROOT/.agents/session-log/INDEX.md" ]]; then
+  printf '%s\n' '# Session log (agent handoff index)' '' '_No sessions yet._' > "$ROOT/.agents/session-log/INDEX.md"
+  echo "created: $ROOT/.agents/session-log/INDEX.md"
+fi
+for f in AGENTS.md CLAUDE.md; do
+  path="$ROOT/$f"
+  [[ -f "$path" ]] || continue
+  if ! grep -q 'PROGRESS.md\|project-memory' "$path" 2>/dev/null; then
+    cat >> "$path" << 'EOP'
+
+## Project memory (agents)
+
+On session start: read `PROGRESS.md` (if present), skim `LESSONS.md`.  
+On task done: update PROGRESS / LESSONS / `docs/decisions.md` per skill `project-memory`.  
+Auto handoff: `.agents/session-log/` (hooks). Ideas: `.agents/todos/`.
+EOP
+    echo "appended memory pointer: $path"
+  fi
+done
+echo "project-memory-init done: $ROOT"

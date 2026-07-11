@@ -1,0 +1,7 @@
+pm: claude
+profile: claude-grok
+lanes:
+  fast_write: grok
+  main_write: grok
+  review: claude-reviewer
+  emergency_write: grok

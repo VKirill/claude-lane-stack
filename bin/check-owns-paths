@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Verify task changes stay inside owns_paths; never_touch clean.
+
+On main/master: uncommitted-only (dirty tree is common).
+On feature/worktree branch: merge-base(main)...HEAD + uncommitted.
+"""
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
+
+IGNORE_PREFIXES = (
+    ".agents/",
+    ".repowise/",
+    ".worktrees/",
+    ".claude/worktrees/",
+    "node_modules/",
+    ".git/",
+)
+
+
+def load_task(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if yaml:
+        try:
+            data = yaml.safe_load(text) or {}
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    data: dict = {}
+    m = re.search(r"^project_cwd:\s*[\"']?([^\"'\n]+)", text, re.M)
+    if m:
+        data["project_cwd"] = m.group(1).strip()
+    return data
+
+
+def match_any(path: str, patterns: list) -> bool:
+    path = path.lstrip("./")
+    for pat in patterns:
+        pat = str(pat).strip().strip('"').strip("'")
+        if not pat:
+            continue
+        if pat.endswith("/**"):
+            prefix = pat[:-3].rstrip("/")
+            if path == prefix or path.startswith(prefix + "/"):
+                return True
+        if fnmatch.fnmatch(path, pat):
+            return True
+        if path == pat or path.startswith(pat.rstrip("/") + "/"):
+            return True
+    return False
+
+
+def run_git(cwd: Path, *args: str) -> str:
+    try:
+        return subprocess.check_output(
+            ["git", *args], cwd=str(cwd), text=True, stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        return ""
+
+
+def main_ref(cwd: Path) -> str:
+    for ref in ("main", "master"):
+        if run_git(cwd, "rev-parse", "--verify", ref).strip():
+            return ref
+    return "HEAD"
+
+
+def filter_noise(files: list[str]) -> list[str]:
+    out = []
+    for f in files:
+        if any(f.startswith(p) for p in IGNORE_PREFIXES):
+            continue
+        out.append(f)
+    return sorted(set(out))
+
+
+def uncommitted(cwd: Path) -> list[str]:
+    files: list[str] = []
+    for cmd in (
+        ["diff", "--name-only", "HEAD"],
+        ["diff", "--name-only", "--cached"],
+        ["ls-files", "--others", "--exclude-standard"],
+    ):
+        for line in run_git(cwd, *cmd).splitlines():
+            if line.strip():
+                files.append(line.strip())
+    return filter_noise(files)
+
+
+def branch_changes(cwd: Path, base: str) -> list[str]:
+    files: list[str] = []
+    mb = run_git(cwd, "merge-base", base, "HEAD").strip()
+    spec = f"{mb}...HEAD" if mb else f"{base}...HEAD"
+    for line in run_git(cwd, "diff", "--name-only", spec).splitlines():
+        if line.strip():
+            files.append(line.strip())
+    files.extend(uncommitted(cwd))
+    return filter_noise(files)
+
+
+def evaluate(changed: list[str], owns: list, never: list) -> int:
+    if not owns:
+        print("WARN: no owns_paths/files — skip strict check")
+        return 0
+    if not changed:
+        print("OK: no changed files to check")
+        return 0
+
+    violations, never_hits = [], []
+    for f in changed:
+        if match_any(f, never):
+            never_hits.append(f)
+        elif not match_any(f, owns):
+            violations.append(f)
+
+    if never_hits:
+        print("FAIL never_touch:")
+        for f in never_hits:
+            print(f"  {f}")
+    if violations:
+        print("FAIL outside owns_paths:")
+        for f in violations[:40]:
+            print(f"  {f}")
+        if len(violations) > 40:
+            print(f"  ... +{len(violations) - 40} more")
+        print("owns_paths:")
+        for p in owns:
+            print(f"  - {p}")
+    if never_hits or violations:
+        return 1
+    print(f"OK: {len(changed)} changed file(s) within owns_paths")
+    for f in changed[:30]:
+        print(f"  {f}")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("task_file")
+    ap.add_argument("--cwd", default="")
+    ap.add_argument("--base", default="")
+    ap.add_argument("--uncommitted-only", action="store_true")
+    args = ap.parse_args()
+
+    task_path = Path(args.task_file).resolve()
+    data = load_task(task_path)
+    owns = data.get("owns_paths") or data.get("files") or []
+    never = data.get("never_touch") or []
+    if isinstance(owns, str):
+        owns = [owns]
+    if isinstance(never, str):
+        never = [never]
+    owns, never = list(owns or []), list(never or [])
+
+    cwd = Path(args.cwd or data.get("project_cwd") or ".").resolve()
+    branch = run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+    if args.uncommitted_only or (branch in ("main", "master") and not args.base):
+        print(f"(mode: uncommitted-only on {branch})")
+        return evaluate(uncommitted(cwd), owns, never)
+
+    base = args.base or main_ref(cwd)
+    print(f"(mode: vs {base}...HEAD + uncommitted on {branch})")
+    return evaluate(branch_changes(cwd, base), owns, never)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

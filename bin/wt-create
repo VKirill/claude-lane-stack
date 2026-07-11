@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Create git worktree for a run slug. Solo: workers use this path; PM merges later.
+set -euo pipefail
+
+REPO="${1:-.}"
+SLUG="${2:-}"
+if [[ -z "$SLUG" ]]; then
+  echo "Usage: wt-create <repo> <slug>" >&2
+  exit 2
+fi
+
+REPO="$(cd "$REPO" && pwd)"
+cd "$REPO"
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "Not a git repo: $REPO" >&2
+  exit 1
+fi
+
+# Prefer main, else master
+BASE="$(git rev-parse --verify main 2>/dev/null || git rev-parse --verify master 2>/dev/null || git rev-parse HEAD)"
+BRANCH="agent/${SLUG}"
+WT_ROOT="$REPO/.worktrees"
+WT_PATH="$WT_ROOT/$SLUG"
+
+mkdir -p "$WT_ROOT"
+# ignore worktrees in git if possible
+if [[ -f .gitignore ]] && ! grep -qxF '.worktrees/' .gitignore 2>/dev/null; then
+  echo '.worktrees/' >> .gitignore || true
+fi
+
+if [[ -d "$WT_PATH" ]]; then
+  echo "Worktree already exists: $WT_PATH" >&2
+  echo "WORKTREE_PATH=$WT_PATH"
+  echo "BRANCH=$BRANCH"
+  echo "BASE_REF=$BASE"
+  exit 0
+fi
+
+# fetch not required offline
+if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+  git worktree add "$WT_PATH" "$BRANCH"
+else
+  git worktree add -b "$BRANCH" "$WT_PATH" "$BASE"
+fi
+
+# symlink node_modules if present at root and missing in wt
+if [[ -d "$REPO/node_modules" && ! -e "$WT_PATH/node_modules" ]]; then
+  ln -s "$REPO/node_modules" "$WT_PATH/node_modules" || true
+fi
+
+# ensure .agents exists in worktree (shared via git or copy structure)
+mkdir -p "$WT_PATH/.agents/runs/$SLUG"/{tasks,artifacts}
+
+# write pointer in main repo run dir
+RUN_DIR="$REPO/.agents/runs/$SLUG"
+mkdir -p "$RUN_DIR"
+cat > "$RUN_DIR/worktree.json" <<EOF
+{
+  "slug": "$SLUG",
+  "branch": "$BRANCH",
+  "path": "$WT_PATH",
+  "base": "$BASE",
+  "repo": "$REPO",
+  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
+# symlink run metadata into worktree if runs not tracked
+if [[ ! -e "$WT_PATH/.agents/runs/$SLUG/PLAN.md" && -f "$RUN_DIR/PLAN.md" ]]; then
+  ln -sfn "$RUN_DIR" "$WT_PATH/.agents/runs/$SLUG-main" 2>/dev/null || true
+fi
+
+echo "WORKTREE_PATH=$WT_PATH"
+echo "BRANCH=$BRANCH"
+echo "BASE_REF=$BASE"
+echo "Wrote $RUN_DIR/worktree.json"

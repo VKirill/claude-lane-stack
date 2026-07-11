@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# PM-only: merge agent/<slug> worktree branch into main, remove worktree.
+set -euo pipefail
+
+REPO="${1:-.}"
+SLUG="${2:-}"
+if [[ -z "$SLUG" ]]; then
+  echo "Usage: wt-merge-main <repo> <slug>" >&2
+  exit 2
+fi
+
+REPO="$(cd "$REPO" && pwd)"
+cd "$REPO"
+
+MAIN_REF="main"
+if ! git rev-parse --verify main >/dev/null 2>&1; then
+  MAIN_REF="master"
+fi
+
+BRANCH="agent/${SLUG}"
+WT_PATH="$REPO/.worktrees/$SLUG"
+RUN_DIR="$REPO/.agents/runs/$SLUG"
+META="$RUN_DIR/worktree.json"
+
+if [[ -f "$META" ]]; then
+  # prefer path from json if jq/python available
+  if command -v python3 >/dev/null; then
+    WT_PATH="$(python3 -c "import json;print(json.load(open('$META')).get('path','$WT_PATH'))" 2>/dev/null || echo "$WT_PATH")"
+    BRANCH="$(python3 -c "import json;print(json.load(open('$META')).get('branch','$BRANCH'))" 2>/dev/null || echo "$BRANCH")"
+  fi
+fi
+
+# Commit any leftover changes inside worktree
+if [[ -d "$WT_PATH" ]]; then
+  (
+    cd "$WT_PATH"
+    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+      git add -A
+      git commit -m "wip(${SLUG}): auto-commit before merge to ${MAIN_REF}" || true
+    fi
+  )
+fi
+
+# Ensure we're not mid-merge on main
+if [[ -d .git/rebase-merge || -d .git/MERGE_HEAD ]]; then
+  echo "Repo mid-rebase/merge — resolve first" >&2
+  exit 1
+fi
+
+git checkout "$MAIN_REF"
+git merge --no-ff "$BRANCH" -m "merge(${SLUG}): auto-merge agent worktree to ${MAIN_REF}"
+
+# remove worktree
+if [[ -d "$WT_PATH" ]]; then
+  git worktree remove --force "$WT_PATH" 2>/dev/null || rm -rf "$WT_PATH"
+fi
+
+# optional: keep branch for history (default delete local agent branch)
+git branch -d "$BRANCH" 2>/dev/null || git branch -D "$BRANCH" 2>/dev/null || true
+
+mkdir -p "$RUN_DIR"
+SHA="$(git rev-parse --short HEAD)"
+cat > "$RUN_DIR/MERGE.md" <<EOF
+# MERGE \`$SLUG\`
+
+- **into:** \`$MAIN_REF\`
+- **from:** \`$BRANCH\`
+- **commit:** \`$SHA\`
+- **at:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+- **by:** orchestrator (wt-merge-main)
+
+Human did not merge. Worktree removed.
+EOF
+
+# refresh board if available
+if command -v run-board >/dev/null 2>&1; then
+  run-board "$REPO" || true
+elif [[ -x /home/ubuntu/.agents/bin/run-board ]]; then
+  /home/ubuntu/.agents/bin/run-board "$REPO" || true
+fi
+
+echo "MERGED=$SHA"
+echo "MERGE_MD=$RUN_DIR/MERGE.md"
+echo "On $MAIN_REF — human has nothing to merge."
