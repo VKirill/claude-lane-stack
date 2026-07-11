@@ -51,7 +51,7 @@ No task database. No required cloud service. **Plain files + plain git** — eve
 
 ## 👥 Who it's for
 
-- 🧑‍💻 **Solo developers** shipping real projects who want parallel AI workers without chat chaos
+- 🧑‍💻 **Solo developers** who want an agentic coding workflow — parallel AI agents without chat chaos
 - 🚀 **Indie hackers** who'd rather describe features than babysit branches
 - 🧠 **Vibe-coders** — you know *what* you want; the factory handles *how*
 - 🏢 **A one-person agency** running several client repos with the same discipline
@@ -262,7 +262,7 @@ No — **only Claude Code is required**. Everything else is an optional worker. 
 <details>
 <summary><b>How is this different from plain Claude Code?</b></summary>
 
-Plain Claude Code is one worker in one chat. Lane Stack adds the **management layer**: task cards with file ownership, parallel lanes from different vendors, an independent review gate, automatic merge to `main`, and cold-start recovery. You do strategy; it does logistics.
+Plain Claude Code is one worker in one chat (subagents included). Lane Stack adds the **management layer** on top: task cards with file ownership, parallel agent lanes from different vendors, an independent review gate, automatic merge to `main`, and cold-start recovery. You do strategy; it does logistics.
 
 </details>
 
