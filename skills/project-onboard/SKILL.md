@@ -1,6 +1,6 @@
 ---
 name: project-onboard
-description: Primary project onboarding for Claude Lane Stack. Dual scenario (minimal vs full mature docs). Creates lean CLAUDE.md + pointer AGENTS.md, PROGRESS/LESSONS, .agents layout, agents-doctor profile. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, новый репозиторий под оркестратор, «подготовь проект».
+description: Primary project onboarding for Claude Lane Stack. Dual scenario (minimal|full) and dual depth (fast|deep forensic). Creates lean CLAUDE.md + pointer AGENTS.md, PROGRESS/LESSONS, .agents layout. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, «подготовь проект», deep onboard.
 ---
 
 # Project onboard (Claude Lane Stack)
@@ -9,121 +9,89 @@ description: Primary project onboarding for Claude Lane Stack. Dual scenario (mi
 
 | Role | Agent |
 |------|--------|
-| **Default writer** | **Codex** `gpt-5.6-terra` + **high** via `codex-onboarder` (sol if huge monorepo / full on large trees) |
-| PM / slash | Claude dispatches `codex-onboarder` (`/project-onboard`) |
-| Fallback only | shell `project-onboard` if `codex` CLI missing |
+| **Default writer** | **Codex** via `codex-onboarder` |
+| **fast** | `gpt-5.6-terra` + high |
+| **deep** (default on full) | `gpt-5.6-sol` + high |
+| PM / slash | `/project-onboard` or natural language |
+| Fallback | shell `project-onboard` only (seeds; no deep fill) |
 
-Also seeds: `docs/ARCHITECTURE.md` template, README anamnesis if missing. Full fill = Codex.
+Do **not** use AGY or Grok. Do **not** have Fable hand-write the full CLAUDE — dispatch `codex-onboarder`.
 
-Do **not** use AGY or Grok for onboard. Do **not** have Fable write CLAUDE.md content by hand — dispatch Codex.
+## Dual axes
 
-## Dual scenario (minimal vs full)
+### 1) Scenario — *what* to seed
 
-`project-onboard` **auto-detects** maturity and writes `.agents/onboard.scenario.yaml`.
+| | **minimal** | **full** |
+|--|-------------|----------|
+| When | score &lt; 5 | score ≥ 5 or multi-package |
+| Seeds | spine | + GOTCHAS GLOSSARY TESTING deployment nested CLAUDE SECURITY… |
 
-| | **minimal** | **full** (mature) |
-|--|-------------|-------------------|
-| **Signals** | small src tree, few commits, no monorepo, no deploy stack | score ≥ 5: size, monorepo, deploy, docs depth, domain (auth/pay/jobs), tests, history |
-| **Seeds** | CLAUDE · AGENTS · ARCHITECTURE · PROGRESS · LESSONS · plans · memory · routing | + GOTCHAS · GLOSSARY · TESTING · deployment · decisions · nested `apps/*/CLAUDE.md` · optional SECURITY |
-| **Codex job** | Fill spine from evidence only | Fill **all** seeded stubs from evidence; respect existing lowercase wiki names |
+### 2) Depth — *how hard* to analyze
 
-**Override:**
+| | **fast** | **deep** (Recommended on full) |
+|--|----------|--------------------------------|
+| Default | minimal scenario | full scenario |
+| Explore | top dirs + manifests | entrypoints, top modules, flows, wiki↔code, run tests |
+| CLAUDE | real but shallow OK | evidence-heavy Never/Always + state warnings |
+| Report | DEPTH: fast | MODULES_READ ≥8, FLOWS_TRACED, WIKI_MISMATCHES, VERIFY |
 
 ```bash
-project-onboard . --minimal
-project-onboard . --full
-ONBOARD_SCENARIO=full project-onboard .
+project-onboard .                 # auto scenario + depth
+project-onboard . --deep          # force forensic
+project-onboard . --fast          # passport only
+project-onboard . --full --deep
+ONBOARD_DEPTH=deep project-onboard .
 ```
 
-Do **not** seed full pack on every greenfield — community rule: *earn every line*.
+Auto-written: `.agents/onboard.scenario.yaml` (`scenario` + **`depth`**)  
+and `.agents/runs/_onboard/artifacts/001/deep-scan.md` (tree, entrypoints, large files, git status).
 
-## Goal
+## MUST (PM)
 
-Lean always-on `CLAUDE.md` + pointer `AGENTS.md` + `.agents/` + memory + **scenario-sized** docs from repo evidence. No duplicate rules in AGENTS.md.
-
-## MUST
-
-1. Prefer:
+1. Spawn:
 
 ```text
 Agent → codex-onboarder
 PROJECT_CWD: /abs/repo
 ARTIFACT_DIR: /abs/repo/.agents/runs/_onboard/artifacts/001
+ONBOARD_DEPTH: deep    # omit to use auto from scenario.yaml
 ```
 
-2. Fallback shell (no codex):
+2. After agent finishes, reply in **Russian**: scenario, **depth**, files, verify result, wiki mismatches, gaps, next step.
 
-```bash
-export PATH="$HOME/.agents/bin:$PATH"
-project-onboard .
-# or: project-onboard . --full
-```
+3. If report says `DEPTH: deep` but `MODULES_READ` thin or only stubs filled → treat as **partial**, re-dispatch with explicit deep.
 
-3. After onboard, reply in Russian: **scenario**, files created, doctor profile, gaps, next step PM.
+## Goal
 
-4. **Never** invent architecture without evidence; mark hypotheses.
+Cold-start passport that agents can trust. Deep mode is **forensic**: code first, wiki second, no fiction.
 
-## Where things go (important)
+## Where things go
 
-| Kind | Path | Examples |
-|------|------|----------|
-| **Execution** (runs, tasks, reports, merge) | `.agents/runs/<slug>/` | PLAN.md, tasks/*.yaml, report.md |
-| **Ideas** | `.agents/todos/` | backlog |
-| **Session / debt** | `.agents/session-log/`, `agent-notes/` | auto ledger |
-| **Living state** | `PROGRESS.md`, `LESSONS.md` | now/next, do/don't |
-| **Durable product docs** | `docs/` | architecture, decisions, gotchas, SEO strategy, **COCOON** |
-| **Active product plans** (human-facing strategy) | `docs/plans/<topic>/` | long SEO/product specs |
-| **Onboard scenario** | `.agents/onboard.scenario.yaml` | minimal \| full + score |
+| Kind | Path |
+|------|------|
+| Execution | `.agents/runs/<slug>/` |
+| Ideas | `.agents/todos/` |
+| Scenario/depth | `.agents/onboard.scenario.yaml` |
+| Deep evidence | `.agents/runs/_onboard/artifacts/001/deep-scan.md` |
+| Report | `…/report.md` |
+| Living | `PROGRESS.md`, `LESSONS.md` |
+| Durable docs | `docs/` |
 
-**COCOON.md / strategy decks belong in `docs/plans/…`.**  
-**Implementable coding work** for the orchestrator belongs in **`.agents/runs/`** with task YAML.
+## CLAUDE.md
 
-If user says «делай / реализуй» after a docs plan → **promote**: create `.agents/runs/<slug>/` from that plan (do not re-plan only in docs/).
-
-## CLAUDE.md tone (community 2026)
-
-- **≤ ~150–200 lines** always-on context (shorter better).  
-- **EN** for rules (models follow better); RU ok for human-facing notes outside.  
-- Critical first: Never/Always, verify commands, gotchas.  
-- **Pointers** to docs, not full wiki dump.  
-- No stack 101 the model already knows.  
-- Section **Lane Stack** if this project uses orchestrator.  
-- Section **Karpathy** pointer (skill `karpathy-guidelines`).  
-- Compounding: after repeated mistakes → add one line to LESSONS or CLAUDE Never.
+- ≤150–200 lines body (before gitnexus footer).  
+- EN rules; pointers to docs.  
+- Lane Stack + karpathy.
 
 ## AGENTS.md
 
-```markdown
-# Agents
+Pointer only — do not duplicate CLAUDE.
 
-Read **[CLAUDE.md](./CLAUDE.md)** — single source of project instructions for all coding agents (Claude, Codex, AGY, Grok).
+## After checklist
 
-Do not duplicate rules here.
-```
-
-Optional symlink: `ln -sfn CLAUDE.md AGENTS.md` (some tools prefer real file).
-
-## Karpathy
-
-Ensure skill exists globally (`~/.agents/skills/karpathy-guidelines` or Claude skills).  
-CLAUDE.md must say: *Follow karpathy-guidelines on any non-trivial code change.*
-
-## After onboard checklist
-
-### Always (minimal + full)
-
-- [ ] `CLAUDE.md` + `AGENTS.md`
-- [ ] `PROGRESS.md` / `LESSONS.md`
-- [ ] `.agents/runs/BOARD.md` (via run-board)
-- [ ] `.agents/routing.profile.yaml` (agents-doctor --apply)
-- [ ] `.agents/onboard.scenario.yaml`
-- [ ] `docs/ARCHITECTURE.md` (or existing architecture wiki)
-- [ ] Karpathy skill linked
-
-### Full only
-
-- [ ] `docs/GOTCHAS.md` or existing gotchas filled
-- [ ] `docs/GLOSSARY.md` if domain terms exist
-- [ ] `docs/TESTING.md` with real commands
-- [ ] `docs/deployment.md` from deploy evidence
-- [ ] Nested `apps/*/CLAUDE.md` / `packages/*/CLAUDE.md` if monorepo
+- [ ] scenario + depth in yaml  
+- [ ] deep-scan.md exists  
+- [ ] CLAUDE real (not “Edit me”)  
+- [ ] report STATUS + DEPTH  
+- [ ] deep: MODULES_READ / FLOWS / WIKI_MISMATCHES / VERIFY filled  
+- [ ] agents-doctor / routing if available  

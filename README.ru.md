@@ -119,7 +119,7 @@ agents-doctor --apply .
 claude --agent dev-orchestrator
 ```
 
-Первый раз в проекте, внутри чата: **`/project-onboard`** — создаёт «паспорт» репозитория (`CLAUDE.md`, стартовые доки). Авто-выбор **minimal** vs **full** (взрослый проект) — см. [`docs/ONBOARD-SCENARIOS.md`](docs/ONBOARD-SCENARIOS.md); оверрайд: `project-onboard . --minimal` / `--full`.
+Первый раз в проекте, внутри чата: **`/project-onboard`** — создаёт «паспорт» репозитория (`CLAUDE.md`, стартовые доки). Авто-выбор **minimal** vs **full** и глубины **fast** vs **deep** (у full по умолчанию deep) — см. [`docs/ONBOARD-SCENARIOS.md`](docs/ONBOARD-SCENARIOS.md). Оверрайд: `--minimal`/`--full`, `--fast`/`--deep`, `/project-onboard deep`.
 После перерыва: **`/resume-project`** — «Сейчас / Блокеры / Дальше».
 
 > [!IMPORTANT]

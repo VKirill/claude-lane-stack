@@ -9,6 +9,12 @@
 - **lane-exec**: activity-aware timeouts (idle resets on stdout/CPU; absolute max). Replaces hard `timeout 570` in implementers so thinking agents are not killed mid-run.
 
 ### Added
+- **Onboard depth** `fast` | `deep` (default: full→deep, minimal→fast):
+  - Forensic deep checklist in Codex `onboard.md` (entrypoints, flows, wiki↔code, verify, ship, secrets)
+  - Auto `deep-scan.md` evidence pack under `.agents/runs/_onboard/artifacts/001/`
+  - Flags: `--deep` / `--fast`, `ONBOARD_DEPTH=`, `/project-onboard deep`
+  - Nested deploy detect (maxdepth 3 compose/Dockerfile) for maturity score
+  - Deep uses **gpt-5.6-sol** high; fast uses terra high
 - **Dual onboard scenarios** (`minimal` vs `full`):
   - Auto maturity score in `project-onboard` → `.agents/onboard.scenario.yaml`
   - Override: `--minimal` / `--full` or `ONBOARD_SCENARIO=`

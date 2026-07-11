@@ -119,7 +119,7 @@ agents-doctor --apply .
 claude --agent dev-orchestrator
 ```
 
-First time on a project, inside the chat: **`/project-onboard`** — writes the repo's passport (`CLAUDE.md`, starter docs). Auto-picks **minimal** vs **full** mature docs (see [`docs/ONBOARD-SCENARIOS.md`](docs/ONBOARD-SCENARIOS.md)); override with `project-onboard . --minimal` / `--full`.
+First time on a project, inside the chat: **`/project-onboard`** — writes the repo's passport (`CLAUDE.md`, starter docs). Auto-picks **minimal** vs **full**, and **fast** vs **deep** forensic analysis (full→deep by default; see [`docs/ONBOARD-SCENARIOS.md`](docs/ONBOARD-SCENARIOS.md)). Override: `--minimal`/`--full`, `--fast`/`--deep`, or `/project-onboard deep`.
 Coming back after a break: **`/resume-project`** — Now / Blocked / Next.
 
 > [!IMPORTANT]

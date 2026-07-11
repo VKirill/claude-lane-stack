@@ -1,59 +1,67 @@
-# Onboard scenarios (minimal vs full)
+# Onboard scenarios + depth
 
-Claude Lane Stack does **not** dump the same docs into every repo. `project-onboard` scores maturity and picks a path.
+Claude Lane Stack onboarding has **two axes**.
 
-## Detection
+## Axis 1 — Scenario (`minimal` | `full`)
 
-Written to `.agents/onboard.scenario.yaml`.
+What files get **seeded**.
 
-| Signal | Points (approx) |
-|--------|-----------------|
-| Workspace tool (pnpm/turbo/nx/lerna) | +3 |
-| ≥2 packages under apps/packages/services | +3 |
-| Source files ≥40 / ≥120 / ≥400 | +1 / +2 / +3 |
-| Deploy signals (Docker, PM2, k8s, CI, …) | +1–2 |
-| Existing docs depth | +1–2 |
-| Domain (auth, payments, queues, workers) | +2 |
-| Solid test layout | +1 |
-| Git commits ≥50 / ≥200 | +1 / +2 |
+| Scenario | When | Seeds |
+|----------|------|--------|
+| **minimal** | score &lt; 5 | CLAUDE, AGENTS, ARCHITECTURE, memory, plans |
+| **full** | score ≥ 5 or multi-package monorepo | + GOTCHAS, GLOSSARY, TESTING, deployment, nested CLAUDE, optional SECURITY |
 
-**full** if `score ≥ 5` or multi-package monorepo. Else **minimal**.
+Signals: workspace tools, multi-package, src size, **nested** deploy files (maxdepth 3), docs depth, domain keywords, tests, git history.
 
 Override: `project-onboard . --minimal | --full` or `ONBOARD_SCENARIO=…`.
 
-## What gets seeded
+## Axis 2 — Depth (`fast` | `deep`)
 
-### Minimal (greenfield / small)
+How hard **Codex** must analyze before `STATUS: complete`.
 
-- `CLAUDE.md`, `AGENTS.md`
-- `docs/ARCHITECTURE.md`
-- `PROGRESS.md`, `LESSONS.md`
-- `docs/plans/README.md`
-- `.agents/` memory + routing + BOARD
-- README anamnesis if missing
+| Depth | Default | Behavior |
+|-------|---------|----------|
+| **fast** | minimal scenario | Passport fill; shallow explore OK |
+| **deep** | full scenario | Forensic: entrypoints, module walk, 3–7 flows, wiki↔code audit, run verify, ship/secrets surface |
 
-### Full (mature)
+Override: `project-onboard . --deep | --fast` or `ONBOARD_DEPTH=…` or `/project-onboard deep`.
 
-Everything above, plus stubs for:
+Written to `.agents/onboard.scenario.yaml` as `depth:`.
 
-- `docs/GOTCHAS.md`
-- `docs/GLOSSARY.md`
-- `docs/TESTING.md`
-- `docs/deployment.md`
-- `docs/decisions.md` (if missing)
-- nested `apps/*/CLAUDE.md`, `packages/*/CLAUDE.md`
-- `docs/SECURITY.md` when domain complexity detected
+## Auto evidence
 
-**Skip seed** if a case-insensitive sibling already exists (`gotchas.md` vs `GOTCHAS.md`).
+`project-onboard` always writes:
+
+`.agents/runs/_onboard/artifacts/001/deep-scan.md`
+
+— top-level listing, git status/log, entrypoints, largest source files, docs index, deep checklist reminder.
+
+Codex **must** read this when depth=deep.
 
 ## Who fills content
 
 | Step | Who |
 |------|-----|
-| Detect + seed empty templates | `project-onboard` (bash) |
-| Fill from **repo evidence** | Codex `codex-onboarder` (`gpt-5.6-terra` high) |
-| Nightly honesty | `docs-maintain` (respects scenario; no full-pack on minimal) |
+| Detect + seed + deep-scan | `project-onboard` (bash) |
+| Fill from evidence | Codex `codex-onboarder` (sol for deep, terra for fast) |
+| Nightly honesty | `docs-maintain` (respects scenario; does not invent full-pack on minimal) |
+
+## Models
+
+| Depth | Model |
+|-------|--------|
+| fast | gpt-5.6-terra high |
+| deep | gpt-5.6-sol high |
 
 ## Language
 
 All durable docs: **English**. See [LANGUAGE.md](LANGUAGE.md).
+
+## Slash
+
+```
+/project-onboard
+/project-onboard deep
+/project-onboard fast
+/project-onboard /path/to/repo deep
+```

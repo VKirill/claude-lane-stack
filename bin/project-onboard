@@ -1,28 +1,36 @@
 #!/usr/bin/env bash
 # Bootstrap a repo for Claude Lane Stack: CLAUDE.md, AGENTS.md, memory, doctor.
 # Dual scenario: minimal (spine) vs full (mature project docs).
+# Dual depth: fast (passport) vs deep (forensic module walk + wiki↔code audit).
 set -euo pipefail
 
 REPO="."
 FORCE=""
 SCENARIO_OVERRIDE=""
+DEPTH_OVERRIDE=""
 
-# Args: project-onboard [path] [--force] [--minimal|--full]
+# Args: project-onboard [path] [--force] [--minimal|--full] [--fast|--deep]
 # path and flags may appear in any order
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --force) FORCE="--force" ;;
     --minimal|--min) SCENARIO_OVERRIDE="minimal" ;;
     --full) SCENARIO_OVERRIDE="full" ;;
+    --fast|--lite) DEPTH_OVERRIDE="fast" ;;
+    --deep) DEPTH_OVERRIDE="deep" ;;
     -h|--help)
       cat <<'USAGE'
-Usage: project-onboard [path] [--force] [--minimal|--full]
+Usage: project-onboard [path] [--force] [--minimal|--full] [--fast|--deep]
 
-Detects project maturity and seeds docs:
+Maturity (what to seed):
   minimal — CLAUDE, AGENTS, ARCHITECTURE, memory, plans
   full    — + GOTCHAS, GLOSSARY, TESTING, deployment, nested CLAUDE, …
 
-Override auto-detect with --minimal / --full or ONBOARD_SCENARIO=minimal|full
+Depth (how hard Codex must analyze — written to onboard.scenario.yaml):
+  deep    — default for full; forensic walk, wiki↔code audit, real verify (Recommended)
+  fast    — default for minimal; spine fill only, shallow explore
+
+Override: ONBOARD_SCENARIO=minimal|full  ONBOARD_DEPTH=fast|deep
 USAGE
       exit 0
       ;;
@@ -42,6 +50,12 @@ if [[ -z "$SCENARIO_OVERRIDE" && -n "${ONBOARD_SCENARIO:-}" ]]; then
   case "${ONBOARD_SCENARIO,,}" in
     minimal|min|lite) SCENARIO_OVERRIDE="minimal" ;;
     full|mature|adult) SCENARIO_OVERRIDE="full" ;;
+  esac
+fi
+if [[ -z "$DEPTH_OVERRIDE" && -n "${ONBOARD_DEPTH:-}" ]]; then
+  case "${ONBOARD_DEPTH,,}" in
+    fast|lite|shallow) DEPTH_OVERRIDE="fast" ;;
+    deep|full|forensic) DEPTH_OVERRIDE="deep" ;;
   esac
 fi
 
@@ -123,17 +137,30 @@ detect_scenario() {
     score=$((score + 1)); reasons+=("src_files=${src_files}(+1)")
   fi
 
-  # Deploy / runtime maturity
+  # Deploy / runtime maturity (root + nested maxdepth 3 — e.g. rust-sync/docker-compose.yml)
   local dscore=0
   for f in Dockerfile docker-compose.yml docker-compose.yaml ecosystem.config.js \
            fly.toml render.yaml Procfile railway.toml; do
     [[ -f "$REPO/$f" ]] && dscore=$((dscore + 1))
   done
+  local nested_deploy
+  nested_deploy=$(find "$REPO" -maxdepth 3 -type f \
+    \( -name 'Dockerfile' -o -name 'docker-compose.yml' -o -name 'docker-compose.yaml' \
+       -o -name 'ecosystem.config.js' -o -name 'fly.toml' -o -name 'Procfile' \) \
+    -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | wc -l | tr -d ' ' || true)
+  if [[ "${nested_deploy:-0}" -ge 1 ]]; then
+    dscore=$((dscore + 1))
+  fi
   [[ -d "$REPO/k8s" || -d "$REPO/deploy" || -d "$REPO/infra" || -d "$REPO/terraform" ]] && dscore=$((dscore + 1))
   if [[ -d "$REPO/.github/workflows" ]]; then
     local wf
     wf=$(find "$REPO/.github/workflows" -name '*.yml' -o -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
     [[ "${wf:-0}" -ge 1 ]] && dscore=$((dscore + 1))
+  fi
+  # Cargo release Docker, PM2, systemd units
+  if find "$REPO" -maxdepth 3 -type f \( -name '*.service' -o -name 'safe-build.sh' \) \
+      -not -path '*/.git/*' 2>/dev/null | grep -q .; then
+    dscore=$((dscore + 1))
   fi
   if [[ "$dscore" -ge 2 ]]; then
     has_deploy=1
@@ -219,11 +246,23 @@ else
   echo "    scenario: $SCENARIO (auto, score=$DETECTED_SCORE — $DETECTED_REASONS)"
 fi
 
+# Depth: full → deep by default; minimal → fast by default (override with --deep/--fast)
+if [[ -n "$DEPTH_OVERRIDE" ]]; then
+  DEPTH="$DEPTH_OVERRIDE"
+elif [[ "$SCENARIO" == "full" ]]; then
+  DEPTH="deep"
+else
+  DEPTH="fast"
+fi
+echo "    depth: $DEPTH"
+
 mkdir -p "$REPO/.agents"
 cat > "$REPO/.agents/onboard.scenario.yaml" <<EOF
-# Written by project-onboard — dual onboard scenario
-# Override: project-onboard . --minimal | --full   or ONBOARD_SCENARIO=minimal|full
+# Written by project-onboard — dual scenario + dual depth
+# Override: --minimal|--full  --fast|--deep
+# Env: ONBOARD_SCENARIO=minimal|full  ONBOARD_DEPTH=fast|deep
 scenario: $SCENARIO
+depth: $DEPTH
 detected: $DETECTED_MODE
 score: $DETECTED_SCORE
 reasons: "$DETECTED_REASONS"
@@ -235,7 +274,9 @@ signals:
   deploy: $DETECTED_DEPLOY
   domain_complexity: $DETECTED_DOMAIN
 override: ${SCENARIO_OVERRIDE:-null}
+depth_override: ${DEPTH_OVERRIDE:-null}
 generated_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# Codex: if depth=deep you MUST complete the deep checklist in onboard.md before STATUS: complete
 EOF
 echo "    wrote .agents/onboard.scenario.yaml"
 
@@ -600,11 +641,92 @@ else
   echo "    WARN: karpathy-guidelines not found under ~/.agents/skills — install Claude Lane Stack"
 fi
 
+# Deep scan evidence pack for Codex (always useful; required reading when depth=deep)
+write_deep_scan() {
+  local out="$REPO/.agents/runs/_onboard/artifacts/001/deep-scan.md"
+  mkdir -p "$(dirname "$out")"
+  {
+    echo "# Deep scan evidence (auto) — for codex-onboarder"
+    echo ""
+    echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "Scenario: \`$SCENARIO\` · Depth: \`$DEPTH\` · Score: $DETECTED_SCORE"
+    echo ""
+    echo "## Top-level"
+    echo '```'
+    ls -la "$REPO" 2>/dev/null | head -60
+    echo '```'
+    echo ""
+    echo "## Git status (short)"
+    echo '```'
+    git -C "$REPO" status --short 2>/dev/null | head -80 || echo "(not a git repo)"
+    echo '```'
+    echo ""
+    echo "## Recent commits"
+    echo '```'
+    git -C "$REPO" log --oneline -15 2>/dev/null || true
+    echo '```'
+    echo ""
+    echo "## Likely entrypoints / package manifests"
+    echo '```'
+    find "$REPO" -maxdepth 4 -type f \
+      \( -name 'main.rs' -o -name 'main.go' -o -name 'main.py' -o -name 'index.ts' \
+         -o -name 'index.js' -o -name 'app.ts' -o -name 'server.ts' -o -name 'instrumentation.ts' \
+         -o -name 'package.json' -o -name 'Cargo.toml' -o -name 'pyproject.toml' \
+         -o -name 'go.mod' -o -name 'Dockerfile' -o -name 'docker-compose.yml' \
+         -o -name 'docker-compose.yaml' -o -name 'ecosystem.config.js' -o -name 'Makefile' \) \
+      -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/target/*' \
+      -not -path '*/.next/*' -not -path '*/dist/*' 2>/dev/null | head -80
+    echo '```'
+    echo ""
+    echo "## Largest source files (approx LOC)"
+    echo '```'
+    find "$REPO" -type f \
+      \( -name '*.rs' -o -name '*.ts' -o -name '*.tsx' -o -name '*.py' -o -name '*.go' -o -name '*.js' \) \
+      -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/target/*' \
+      -not -path '*/.next/*' -not -path '*/dist/*' -not -path '*/vendor/*' 2>/dev/null \
+      | head -400 \
+      | xargs -r wc -l 2>/dev/null \
+      | sort -nr \
+      | head -25
+    echo '```'
+    echo ""
+    echo "## Docs index"
+    echo '```'
+    find "$REPO/docs" -name '*.md' 2>/dev/null | head -60 || echo "(no docs/)"
+    echo '```'
+    echo ""
+    echo "## Scripts / verify hints"
+    echo '```'
+    if [[ -f "$REPO/package.json" ]]; then
+      python3 -c "import json;d=json.load(open('$REPO/package.json'));print(json.dumps(d.get('scripts',{}),indent=2))" 2>/dev/null || true
+    fi
+    [[ -f "$REPO/rust-sync/Cargo.toml" ]] && echo "rust-sync/Cargo.toml present — try: cd rust-sync && cargo test"
+    [[ -f "$REPO/Cargo.toml" ]] && echo "Cargo.toml present — try: cargo test"
+    [[ -f "$REPO/pyproject.toml" ]] && echo "pyproject — try: pytest -q"
+    echo '```'
+    echo ""
+    echo "## Codex deep checklist (must complete when depth=deep)"
+    echo ""
+    echo "1. Map every runtime entrypoint and process type (daemon/API/worker/cron/SPA)."
+    echo "2. Trace 3–7 critical flows end-to-end with \`file:line\` evidence."
+    echo "3. Wiki↔code audit: list claims that contradict the working tree (interval, steps, stack)."
+    echo "4. Never/Always only from proven traps (gotchas, code guards, recent bugs)."
+    echo "5. Real verify matrix — run build/test if feasible; record expected failures without secrets."
+    echo "6. Ship path from actual Dockerfile/compose/PM2/workflows (no invented clouds)."
+    echo "7. Secrets surface: env **names** only + where they are loaded (never paste values)."
+    echo "8. Stale wiki / dead root files → PROGRESS Blocked + LESSONS if non-obvious."
+    echo "9. Report: DEPTH, modules_read, flows_traced, wiki_mismatches, GAPS ranked."
+  } > "$out"
+  echo "    wrote $out"
+}
+
+write_deep_scan
+
 echo ""
-echo "Done. scenario=$SCENARIO score=$DETECTED_SCORE"
-echo "  1) Codex fills stubs from evidence (codex-onboarder) — do not invent"
-echo "  2) Edit CLAUDE.md What/Stack/Gotchas"
+echo "Done. scenario=$SCENARIO depth=$DEPTH score=$DETECTED_SCORE"
+echo "  1) Codex fills from evidence (depth=$DEPTH) — deep checklist in deep-scan.md"
+echo "  2) Read .agents/onboard.scenario.yaml + deep-scan.md"
 echo "  3) agents-doctor --apply ."
 echo "  4) claude --agent dev-orchestrator"
-echo "Override: project-onboard . --minimal | --full"
+echo "Override: project-onboard . --minimal|--full --fast|--deep"
 echo "Strategy docs → docs/plans/   |   Implementation → .agents/runs/"
