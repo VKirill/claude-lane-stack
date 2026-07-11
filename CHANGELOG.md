@@ -1,16 +1,19 @@
 # Changelog
 
-## Unreleased (local, pending push)
-
-### Fixed
-- **AGY lane agents crash**: removed `call_mcp_tool` / `inheritMcp` from `lane-coder` and `lane-frontend` (agy 1.x cannot build tool converter).
-- **agy-implementer**: mandatory preflight smoke; auto-strip banned tools; fail fast with `STATUS: unavailable` instead of long diagnosis.
-- **antigravity skill**: documents ban + sync path `~/.agents/agy` → `~/.gemini/config/agents`.
+## Unreleased (local)
 
 ### Added
-- Beginner guides (EN/RU + locales), author/Telegram branding, conveyor visuals.
-- `codex-onboarder`, `project-onboard`, file-contract solo merge tooling.
-- `agents-doctor` profiles for optional AGY/Grok/Codex.
+- **GPT-5.6 routing** (Sol / Terra / Luna): no GPT-5.5. See `docs/ROUTING.md`, `profiles/claude-codex.yaml`.
+  - Write default: **terra** (+ xhigh medium); high-risk: **sol** xhigh
+  - Review/ship: **sol** xhigh
+  - Onboard / docs-maintain: **terra** high
+  - Luna: trivia only, not default lanes
+- **Onboard** seeds `docs/ARCHITECTURE.md` + README anamnesis pattern; Codex fills from evidence.
+- **docs-maintainer**: `docs-maintain-project`, `docs-maintain-all`, skill + `codex-docs-maintainer` agent.
+- Templates: `ARCHITECTURE.md`, `README.anamnesis.md`.
+
+### Fixed
+- AGY: ban `call_mcp_tool` / `inheritMcp` on lane agents; agy-implementer preflight.
 
 ## 0.1.0
-- Initial public package.
+- Initial public package (file contracts, solo merge, beginner guides).

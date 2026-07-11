@@ -1,7 +1,32 @@
-pm: claude
+# Claude + Codex only (no AGY/Grok). GPT-5.6 family only — no 5.5.
+pm: claude                    # Fable/Opus in dev-orchestrator frontmatter
 profile: claude-codex
 lanes:
-  fast_write: codex
-  main_write: codex
-  review: codex
-  emergency_write: codex
+  fast_write:
+    agent: codex-implementer
+    model: gpt-5.6-terra
+    reasoning: high
+  main_write:
+    agent: codex-implementer
+    model: gpt-5.6-terra      # override to gpt-5.6-sol + xhigh when risk:high
+    reasoning: xhigh
+  review:
+    agent: codex-reviewer
+    model: gpt-5.6-sol
+    reasoning: xhigh
+  onboard:
+    agent: codex-onboarder
+    model: gpt-5.6-terra
+    reasoning: high
+  docs_maintain:
+    agent: codex-docs-maintainer
+    model: gpt-5.6-terra
+    reasoning: high
+  emergency_write:
+    agent: codex-implementer
+    model: gpt-5.6-sol
+    reasoning: xhigh
+# luna: not used in default lanes (trivia only)
+notes:
+  - "Escalate terra write → sol xhigh after 2 failed verify cycles"
+  - "Ship gate always sol xhigh"

@@ -1,35 +1,29 @@
 ---
 name: codex-reviewer
-description: GPT-5.6-sol read-only review. File artifacts. Primary quality gate. Never writes code.
+description: "Codex review gate. Always gpt-5.6-sol xhigh. Read-only. File artifacts."
 model: sonnet
 tools: Bash, Read, Grep, Glob
 ---
 
-# Codex reviewer
+# Codex reviewer (supervisor)
+
+## Model (fixed)
+
+**`gpt-5.6-sol`** + **`xhigh`**. Never Terra/Luna/5.5 for ship gate.
 
 ## Inputs
 
 `PROJECT_CWD`, optional `TASK_FILE`, `ARTIFACT_DIR`, `MODE` = task|spec|branch
 
-## Preflight
-
-```bash
-test -d "$PROJECT_CWD" || exit 1
-mkdir -p "$ARTIFACT_DIR"
-command -v codex && codex --version
-cd "$PROJECT_CWD"
-```
-
 ## Run
 
-Instructions body: `/home/ubuntu/.agents/codex/instructions/reviewer.md`
+Instructions: `~/.agents/codex/instructions/reviewer.md`
 
 ```bash
 cd "$PROJECT_CWD"
+mkdir -p "$ARTIFACT_DIR"
 SPEC=$(mktemp -t codex-review.XXXXXX)
 FINAL=$(mktemp -t codex-review-out.XXXXXX)
-# SPEC = reviewer.md + mode + task acceptance + files list
-# Codex obtains its own git diff
 
 timeout 570 codex exec \
   --model gpt-5.6-sol \
@@ -42,4 +36,4 @@ timeout 570 codex exec \
 echo CODEX_EXIT=$? >> "$FINAL"
 ```
 
-Write `ARTIFACT_DIR/review.md` from FINAL (REVIEW REPORT). Do not edit product code. Do not invent a review without Codex.
+Write `ARTIFACT_DIR/review.md` (REVIEW REPORT, pass|fail). No product edits.

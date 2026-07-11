@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
 description: "Solo PM. File runs/todos. AGY/Grok write, Codex review. Auto-merge to main. agentmemory MCP. No production code edits."
-tools: Agent(agy-implementer, grok-implementer, codex-reviewer, codex-implementer, codex-onboarder), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
+tools: Agent(agy-implementer, grok-implementer, codex-reviewer, codex-implementer, codex-onboarder, codex-docs-maintainer), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: default
 model: fable
 effort: high
@@ -66,7 +66,10 @@ You are **dev-orchestrator** — solo PM for one human operator.
 | agentmemory MCP | past sessions — **never** shell into memory store |
 | gitnexus | discovery for task YAML |
 | Agent → agy/grok/codex | write / review |
-| Agent → **codex-onboarder** | onboard only (`gpt-5.6-sol` + xhigh) |
+| Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
+| Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
+| codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
+| codex-reviewer | always **sol** xhigh |
 
 ## Loop
 

@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Refresh docs for one Claude Lane Stack project via Codex terra (or dry-run detect).
+set -euo pipefail
+export PATH="${HOME}/.agents/bin:${PATH}"
+
+REPO="${1:-.}"
+SINCE="${2:-24 hours ago}"
+DRY="${3:-}"
+REPO="$(cd "$REPO" && pwd)"
+
+is_lane_stack() {
+  [[ -f "$REPO/CLAUDE.md" ]] && grep -q 'Claude Lane Stack' "$REPO/CLAUDE.md" && return 0
+  [[ -f "$REPO/.agents/routing.profile.yaml" ]] && return 0
+  [[ -d "$REPO/.agents/runs" ]] && return 0
+  return 1
+}
+
+if ! is_lane_stack; then
+  echo "SKIP: not a Claude Lane Stack project: $REPO"
+  exit 0
+fi
+
+cd "$REPO"
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "SKIP: not a git repo: $REPO"
+  exit 0
+fi
+
+# substantive change?
+STAT=$(git log --since="$SINCE" --oneline --no-merges -- . \
+  ':(exclude)*.md' ':(exclude).agents/**' ':(exclude)docs/**' 2>/dev/null | head -20 || true)
+if [[ -z "$STAT" ]]; then
+  # also count any commit
+  ANY=$(git log --since="$SINCE" --oneline -5 2>/dev/null || true)
+  if [[ -z "$ANY" ]]; then
+    echo "SKIP: no commits since $SINCE"
+    exit 0
+  fi
+fi
+
+echo "PROJECT=$REPO SINCE=$SINCE"
+echo "Recent:"
+git log --since="$SINCE" --oneline -10 || true
+
+if [[ "$DRY" == "--dry-run" ]]; then
+  echo "DRY-RUN: would dispatch codex-docs-maintainer"
+  exit 0
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "ERROR: codex CLI required for docs-maintain" >&2
+  exit 1
+fi
+
+ART="$REPO/.agents/session-log"
+mkdir -p "$ART"
+DAY=$(date -u +%Y-%m-%d)
+REPORT="$ART/DOCS-$DAY.md"
+SPEC=$(mktemp -t docs-maintain.XXXXXX)
+FINAL=$(mktemp -t docs-maintain-out.XXXXXX)
+INSTR="${HOME}/.agents/codex/instructions/docs-maintain.md"
+[[ -f "$INSTR" ]] || INSTR="/home/ubuntu/.agents/codex/instructions/docs-maintain.md"
+
+{
+  cat "$INSTR"
+  echo ""
+  echo "PROJECT_CWD=$REPO"
+  echo "SINCE=$SINCE"
+  echo "Write final summary also suitable for $REPORT"
+} > "$SPEC"
+
+timeout 450 codex exec \
+  --model gpt-5.6-terra \
+  -c model_reasoning_effort=high \
+  --sandbox workspace-write \
+  --skip-git-repo-check \
+  --full-auto \
+  --cd "$REPO" \
+  --output-last-message "$FINAL" \
+  - < "$SPEC" || true
+
+{
+  echo "# DOCS maintain $DAY"
+  echo "repo: $REPO"
+  echo "since: $SINCE"
+  echo ""
+  cat "$FINAL" 2>/dev/null || echo "(no codex output)"
+} > "$REPORT"
+
+echo "WROTE $REPORT"

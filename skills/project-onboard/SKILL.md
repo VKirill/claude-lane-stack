@@ -9,9 +9,11 @@ description: Primary project onboarding for Claude Lane Stack. Creates lean CLAU
 
 | Role | Agent |
 |------|--------|
-| **Default writer** | **Codex** `gpt-5.6-sol` + **xhigh** via Claude agent `codex-onboarder` |
+| **Default writer** | **Codex** `gpt-5.6-terra` + **high** via `codex-onboarder` (sol if huge monorepo) |
 | PM / slash | Claude dispatches `codex-onboarder` (`/project-onboard`) |
 | Fallback only | shell `project-onboard` if `codex` CLI missing |
+
+Also seeds: `docs/ARCHITECTURE.md` template, README anamnesis if missing. Full fill = Codex.
 
 Do **not** use AGY or Grok for onboard. Do **not** have Fable write CLAUDE.md content by hand — dispatch Codex.
 

@@ -1,19 +1,20 @@
 # Routing profiles
 
-**PM is always Claude Code** (`dev-orchestrator`).
+**PM is always Claude Code** (`dev-orchestrator`, Fable/Opus).
 
-| Profile | Requires | Write | Review |
+| Profile | Aux CLIs | Write | Review |
 |---------|----------|-------|--------|
-| `full` | AGY + Grok + Codex | AGY fast, Grok main | Codex |
-| `claude-codex` | Codex | Codex | Codex |
-| `claude-agy` | AGY | AGY | Claude reviewer agent |
-| `claude-grok` | Grok | Grok | Claude reviewer agent |
-| `claude-only` | — | Claude subagents | Claude reviewer |
+| `full` | AGY + Grok + Codex | AGY + Grok | Codex **sol** xhigh |
+| `claude-codex` | Codex only | **terra** (sol if high risk) | **sol** xhigh |
+| `claude-agy` | AGY | AGY | Claude reviewer |
+| `claude-grok` | Grok | Grok | Claude reviewer |
+| `claude-only` | — | Claude Sonnet/Opus workers | Claude |
 
-Generate for your machine:
+GPT-5.6 only on Codex: **sol** · **terra** · **luna** (optional trivia). **No 5.5.**
 
 ```bash
 agents-doctor --apply .
-# → .agents/capabilities.json
 # → .agents/routing.profile.yaml
 ```
+
+See `docs/ROUTING.md`.

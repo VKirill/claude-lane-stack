@@ -166,7 +166,7 @@ EOF
 write_claude
 write_agents
 
-# docs/plans placeholder
+# docs/plans + ARCHITECTURE seed
 mkdir -p "$REPO/docs/plans"
 if [[ ! -f "$REPO/docs/plans/README.md" ]]; then
   cat > "$REPO/docs/plans/README.md" <<'EOF'
@@ -178,6 +178,21 @@ Durable **product / SEO / strategy** documents (e.g. COCOON.md, feature SPECs fo
 
 When a plan is ready to implement: promote → `.agents/runs/<slug>/` with task YAML.
 EOF
+fi
+
+ARCH_TPL="${HOME}/.agents/templates/ARCHITECTURE.md"
+[[ -f "$ARCH_TPL" ]] || ARCH_TPL="/home/ubuntu/.agents/templates/ARCHITECTURE.md"
+if [[ ! -f "$REPO/docs/ARCHITECTURE.md" && -f "$ARCH_TPL" ]]; then
+  cp "$ARCH_TPL" "$REPO/docs/ARCHITECTURE.md"
+  echo "    seeded docs/ARCHITECTURE.md (fill via codex-onboarder)"
+fi
+
+# README anamnesis stub only if missing
+README_TPL="${HOME}/.agents/templates/README.anamnesis.md"
+[[ -f "$README_TPL" ]] || README_TPL="/home/ubuntu/.agents/templates/README.anamnesis.md"
+if [[ ! -f "$REPO/README.md" && -f "$README_TPL" ]]; then
+  sed "s/{{PROJECT_NAME}}/$NAME/g" "$README_TPL" > "$REPO/README.md"
+  echo "    seeded README.md anamnesis stub"
 fi
 
 # Karpathy symlink into project .claude if missing
