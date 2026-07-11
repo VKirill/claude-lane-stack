@@ -301,6 +301,7 @@ your-app/
 | トピック | ドキュメント |
 |-------|-----|
 | 🐣 プレーンな言葉のウォークスルー | [docs/BEGINNER.ja.md](docs/BEGINNER.ja.md) |
+| ⚖️ 代替ツールとの比較 | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ ソロのルール — なぜあなたはマージしないのか | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ タスクカード YAML の構造 | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 誰が書き / 誰がレビューするか | [docs/ROUTING.md](docs/ROUTING.md) |

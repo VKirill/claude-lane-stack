@@ -301,6 +301,7 @@ Cada CLI habla únicamente con su propio proveedor, exactamente igual que si fun
 | Tema | Documento |
 |-------|-----|
 | 🐣 Recorrido en lenguaje sencillo | [docs/BEGINNER.es.md](docs/BEGINNER.es.md) |
+| ⚖️ Comparativa con alternativas | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ Reglas del modo en solitario — por qué nunca haces merge | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ Anatomía YAML de la tarjeta de tarea | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 Quién escribe / quién revisa | [docs/ROUTING.md](docs/ROUTING.md) |

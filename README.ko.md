@@ -301,6 +301,7 @@ your-app/
 | 주제 | 문서 |
 |-------|-----|
 | 🐣 쉬운 말 안내 | [docs/BEGINNER.ko.md](docs/BEGINNER.ko.md) |
+| ⚖️ 대안 도구와 비교 | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ 솔로 규칙 — 왜 당신은 머지하지 않는가 | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ 태스크 카드 YAML 해부 | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 누가 쓰고 / 누가 리뷰하는가 | [docs/ROUTING.md](docs/ROUTING.md) |

@@ -301,6 +301,7 @@ Jedes CLI spricht nur mit seinem eigenen Anbieter, genau wie im Alleinbetrieb �
 | Thema | Dokument |
 |-------|-----|
 | 🐣 Anleitung in Klartext | [docs/BEGINNER.de.md](docs/BEGINNER.de.md) |
+| ⚖️ Vergleich mit Alternativen | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ Solo-Regeln — warum du nie mergst | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ Anatomie der Task-Card-YAML | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 Wer schreibt / wer reviewt | [docs/ROUTING.md](docs/ROUTING.md) |

@@ -301,6 +301,7 @@ your-app/
 | 主题 | 文档 |
 |-------|-----|
 | 🐣 大白话逐步讲解 | [docs/BEGINNER.zh-CN.md](docs/BEGINNER.zh-CN.md) |
+| ⚖️ 与同类工具对比 | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ 单人规则 —— 为什么你从不合并 | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ 任务卡 YAML 结构剖析 | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 谁写代码 / 谁评审 | [docs/ROUTING.md](docs/ROUTING.md) |

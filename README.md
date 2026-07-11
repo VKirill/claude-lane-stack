@@ -301,6 +301,7 @@ Each CLI talks only to its own vendor, exactly as it would standalone — the st
 | Topic | Doc |
 |-------|-----|
 | 🐣 Plain-language walkthrough | [docs/BEGINNER.md](docs/BEGINNER.md) |
+| ⚖️ Comparison with alternatives | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ Solo rules — why you never merge | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ Task card YAML anatomy | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 Who writes / who reviews | [docs/ROUTING.md](docs/ROUTING.md) |

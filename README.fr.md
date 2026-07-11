@@ -301,6 +301,7 @@ Chaque CLI ne parle qu'à son propre fournisseur, exactement comme s'il était s
 | Sujet | Doc |
 |-------|-----|
 | 🐣 Guide en langage clair | [docs/BEGINNER.fr.md](docs/BEGINNER.fr.md) |
+| ⚖️ Comparatif avec les alternatives | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ Règles solo — pourquoi tu ne fusionnes jamais | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ Anatomie YAML d'une fiche de tâche | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 Qui écrit / qui relit | [docs/ROUTING.md](docs/ROUTING.md) |

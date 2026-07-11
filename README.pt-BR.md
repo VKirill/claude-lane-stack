@@ -301,6 +301,7 @@ Cada CLI conversa só com o próprio fornecedor, exatamente como faria sozinha �
 | Tópico | Documento |
 |-------|-----|
 | 🐣 Passo a passo em linguagem simples | [docs/BEGINNER.pt-BR.md](docs/BEGINNER.pt-BR.md) |
+| ⚖️ Comparativo com alternativas | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ Regras solo — por que você nunca faz merge | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ Anatomia do YAML do cartão de tarefa | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 Quem escreve / quem revisa | [docs/ROUTING.md](docs/ROUTING.md) |

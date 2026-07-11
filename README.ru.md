@@ -301,6 +301,7 @@ your-app/
 | Тема | Документ |
 |------|----------|
 | 🐣 Маршрут простым языком | [docs/BEGINNER.ru.md](docs/BEGINNER.ru.md) |
+| ⚖️ Сравнение с альтернативами | [docs/COMPARISON.md](docs/COMPARISON.md) |
 | 🧑‍✈️ Правила соло-режима — почему вы не мержите | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
 | 🗂️ Анатомия YAML-карточки | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🔀 Кто пишет / кто ревьюит | [docs/ROUTING.md](docs/ROUTING.md) |
