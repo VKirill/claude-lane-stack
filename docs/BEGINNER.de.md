@@ -37,13 +37,13 @@ Du führst **keine** fünf Chats und du mergst **keine** Branches von Hand.
 
 ---
 
-## 🗺️ Die Reise
+## 📍 Die Reise
 
 Drei Stationen, in deinem eigenen Tempo. Keine Timer, kein „Tag 1 / Tag 2“ — eine Station ist fertig, wenn ihre Checkliste besteht.
 
 | Station | Was passiert | Wie oft |
 |---------|--------------|-----------|
-| 🏗️ [**1. Die Fabrik installieren**](#-station-1--die-fabrik-installieren) | Der Stack landet in `~/.agents` | Einmal pro Computer |
+| 🧰 [**1. Die Fabrik installieren**](#-station-1--die-fabrik-installieren) | Der Stack landet in `~/.agents` | Einmal pro Computer |
 | 🔌 [**2. Dein Projekt anbinden**](#-station-2--dein-projekt-anbinden) | Worker erkennen, Projektdokumente schreiben | Einmal pro Repository |
 | 🚀 [**3. Erste Aufgabe**](#-station-3--deine-erste-aufgabe) | Der PM baut etwas Kleines für dich | Danach jeden Tag |
 
@@ -51,7 +51,7 @@ Dazu zwei Situationen, die dir später begegnen: [Zurückkommen nach einer Pause
 
 ---
 
-## 🏗️ Station 1 — Die Fabrik installieren
+## 🧰 Station 1 — Die Fabrik installieren
 
 *Einmal pro Computer.*
 

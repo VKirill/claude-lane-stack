@@ -61,7 +61,7 @@ Pas de base de données de tâches. Aucun service cloud obligatoire. **De simple
 
 ---
 
-## ⚙️ Comment ça marche
+## 🧩 Comment ça marche
 
 <div align="center">
 <img src="docs/images/02-lanes-routing.jpg" alt="Trois voies de workers — écriture rapide, écriture lourde, revue — fusionnant dans la branche main sous le contrôle du PM" width="90%" />
@@ -129,7 +129,7 @@ Tu reviens après une pause : **`/resume-project`** — Maintenant / Bloqué / E
 
 ---
 
-## 🗂️ Fiches de tâche : comment les workers restent dans leur voie
+## 📋 Fiches de tâche : comment les workers restent dans leur voie
 
 <div align="center">
 <img src="docs/images/04-file-contracts.jpg" alt="Chaque cellule de worker a une fiche de travail — un contrat YAML listant l'objectif, les fichiers réservés et les commandes de vérification" width="90%" />
@@ -173,7 +173,7 @@ Règles de l'orchestration solo : [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHEST
 
 ---
 
-## ⌨️ Aide-mémoire des commandes
+## 🧾 Aide-mémoire des commandes
 
 ### Ce que tu tapes, toi
 
@@ -203,7 +203,7 @@ Règles de l'orchestration solo : [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHEST
 
 ---
 
-## 🎚️ Profils de capacité
+## 🚦 Profils de capacité
 
 `agents-doctor` écrit l'un des cinq profils selon les CLI qu'il trouve — le PM route en conséquence :
 

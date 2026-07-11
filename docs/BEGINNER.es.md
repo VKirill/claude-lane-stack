@@ -37,13 +37,13 @@ flowchart LR
 
 ---
 
-## 🗺️ El recorrido
+## 📍 El recorrido
 
 Tres estaciones, a tu propio ritmo. Sin cronómetros, sin «día 1 / día 2» — cada estación está lista cuando pasa su checklist.
 
 | Estación | Qué pasa | Con qué frecuencia |
 |---------|--------------|-----------|
-| 🏗️ [**1. Instala la fábrica**](#-estación-1--instala-la-fábrica) | El stack llega a `~/.agents` | Una vez por equipo |
+| 🧰 [**1. Instala la fábrica**](#-estación-1--instala-la-fábrica) | El stack llega a `~/.agents` | Una vez por equipo |
 | 🔌 [**2. Conecta tu proyecto**](#-estación-2--conecta-tu-proyecto) | Detecta workers, escribe los docs del proyecto | Una vez por repositorio |
 | 🚀 [**3. Primera tarea**](#-estación-3--tu-primera-tarea) | El PM construye algo pequeño para ti | Luego cada día |
 
@@ -51,7 +51,7 @@ Además, dos situaciones que encontrarás más adelante: [volver tras una pausa]
 
 ---
 
-## 🏗️ Estación 1 — Instala la fábrica
+## 🧰 Estación 1 — Instala la fábrica
 
 *Una vez por equipo.*
 

@@ -61,7 +61,7 @@ Keine Task-Datenbank. Kein zwingender Cloud-Dienst. **Einfache Dateien + einfach
 
 ---
 
-## ⚙️ Wie es funktioniert
+## 🧩 Wie es funktioniert
 
 <div align="center">
 <img src="docs/images/02-lanes-routing.jpg" alt="Drei Worker-Lanes — schnelles Schreiben, schweres Schreiben, Review — die unter Kontrolle des PM in den main-Branch zusammenfließen" width="90%" />
@@ -129,7 +129,7 @@ Wenn du nach einer Pause zurückkommst: **`/resume-project`** — Now / Blocked 
 
 ---
 
-## 🗂️ Task Cards: Wie Worker in ihrer Lane bleiben
+## 📋 Task Cards: Wie Worker in ihrer Lane bleiben
 
 <div align="center">
 <img src="docs/images/04-file-contracts.jpg" alt="Jede Worker-Zelle hat eine Job-Karte — einen YAML-Vertrag mit Ziel, eigenen Dateien und Verifikationsbefehlen" width="90%" />
@@ -173,7 +173,7 @@ Regeln der Solo-Orchestrierung: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRA
 
 ---
 
-## ⌨️ Befehls-Spickzettel
+## 🧾 Befehls-Spickzettel
 
 ### Das tippst du
 
@@ -203,7 +203,7 @@ Regeln der Solo-Orchestrierung: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRA
 
 ---
 
-## 🎚️ Capability-Profile
+## 🚦 Capability-Profile
 
 `agents-doctor` schreibt eines von fünf Profilen, je nachdem, welche CLIs es findet — der PM routet entsprechend:
 

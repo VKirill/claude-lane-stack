@@ -61,7 +61,7 @@
 
 ---
 
-## ⚙️ 工作原理
+## 🧩 工作原理
 
 <div align="center">
 <img src="docs/images/02-lanes-routing.jpg" alt="三条工人车道 —— 快速写入、重度写入、评审 —— 在 PM 的掌控下汇入 main 主分支" width="90%" />
@@ -129,7 +129,7 @@ claude --agent dev-orchestrator
 
 ---
 
-## 🗂️ 任务卡：让工人各守其道
+## 📋 任务卡：让工人各守其道
 
 <div align="center">
 <img src="docs/images/04-file-contracts.jpg" alt="每个工人工位都有一张工作卡 —— 一份列出目标、所属文件和验证命令的 YAML 契约" width="90%" />
@@ -173,7 +173,7 @@ review: codex-reviewer # 谁来把关合并
 
 ---
 
-## ⌨️ 命令速查表
+## 🧾 命令速查表
 
 ### 这些是你来输入的
 
@@ -203,7 +203,7 @@ review: codex-reviewer # 谁来把关合并
 
 ---
 
-## 🎚️ 能力档案
+## 🚦 能力档案
 
 `agents-doctor` 会根据它找到的 CLI，写出五种档案之一 —— PM 据此路由：
 

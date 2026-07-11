@@ -61,7 +61,7 @@ Sin base de datos de tareas. Sin servicio en la nube obligatorio. **Archivos sim
 
 ---
 
-## ⚙️ Cómo funciona
+## 🧩 Cómo funciona
 
 <div align="center">
 <img src="docs/images/02-lanes-routing.jpg" alt="Tres carriles de workers — escritura rápida, escritura pesada, revisión — fusionándose en la rama main bajo el control del PM" width="90%" />
@@ -129,7 +129,7 @@ Al volver tras una pausa: **`/resume-project`** — Ahora / Bloqueado / Siguient
 
 ---
 
-## 🗂️ Tarjetas de tarea: cómo cada worker se mantiene en su carril
+## 📋 Tarjetas de tarea: cómo cada worker se mantiene en su carril
 
 <div align="center">
 <img src="docs/images/04-file-contracts.jpg" alt="Cada celda de worker tiene una tarjeta de trabajo — un contrato YAML que lista objetivo, archivos propios y comandos de verificación" width="90%" />
@@ -173,7 +173,7 @@ Reglas de orquestación en solitario: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORC
 
 ---
 
-## ⌨️ Referencia rápida de comandos
+## 🧾 Referencia rápida de comandos
 
 ### Estos los escribes tú
 
@@ -203,7 +203,7 @@ Reglas de orquestación en solitario: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORC
 
 ---
 
-## 🎚️ Perfiles de capacidad
+## 🚦 Perfiles de capacidad
 
 `agents-doctor` escribe uno de cinco perfiles según los CLI que encuentre — el PM enruta en consecuencia:
 

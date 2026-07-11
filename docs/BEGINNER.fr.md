@@ -37,13 +37,13 @@ Tu ne fais **pas** tourner cinq chats et tu ne fusionnes **pas** les branches à
 
 ---
 
-## 🗺️ Le parcours
+## 📍 Le parcours
 
 Trois étapes, à ton rythme. Pas de minuteur, pas de « jour 1 / jour 2 » — chaque étape est terminée quand sa checklist passe.
 
 | Étape | Ce qui se passe | À quelle fréquence |
 |---------|--------------|-----------|
-| 🏗️ [**1. Installer l'usine**](#-étape-1--installer-lusine) | Le stack arrive dans `~/.agents` | Une fois par ordinateur |
+| 🧰 [**1. Installer l'usine**](#-étape-1--installer-lusine) | Le stack arrive dans `~/.agents` | Une fois par ordinateur |
 | 🔌 [**2. Connecter ton projet**](#-étape-2--connecter-ton-projet) | Détecte les workers, écrit les docs du projet | Une fois par dépôt |
 | 🚀 [**3. Ta première tâche**](#-étape-3--ta-première-tâche) | Le PM te construit quelque chose de petit | Puis tous les jours |
 
@@ -51,7 +51,7 @@ Plus deux situations que tu rencontreras plus tard : [revenir après une pause](
 
 ---
 
-## 🏗️ Étape 1 — Installer l'usine
+## 🧰 Étape 1 — Installer l'usine
 
 *Une fois par ordinateur.*
 
