@@ -6,3 +6,6 @@ __pycache__/
 *.env
 metamcp.env
 .worktrees/
+.agents/
+PROGRESS.md
+LESSONS.md
