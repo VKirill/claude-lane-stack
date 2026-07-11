@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased (local)
+## 1.1.0 — 2026-07-11
+
+Deep onboard, dual scenarios, activity-aware lanes, and Claude Bash background survival.
+
+## 1.1.0 details
 
 ### Changed
 - **Language policy**: all agent-written files English; chat with human Russian (`docs/LANGUAGE.md`).
@@ -38,3 +42,4 @@
 
 ## 0.1.0
 - Initial public package (file contracts, solo merge, beginner guides).
+
