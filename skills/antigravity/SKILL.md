@@ -5,7 +5,7 @@ description: "Antigravity CLI (agy) file-lane executor. Agents in ~/.agents/agy/
 
 # Antigravity (agy) — file lanes
 
-Binary: `agy` (≥ 1.1.1). Agents source: `~/.agents/agy/agents/*/agent.md`  
+Binary: `agy` (≥ 1.1.1). Agents source: `/home/ubuntu/.agents/agy/agents/*/agent.md`  
 Synced to: `~/.gemini/config/agents/<name>/` for discovery.
 
 ## Agents

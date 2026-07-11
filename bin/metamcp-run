@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Hybrid MetaMCP launcher — child servers from ~/.agents/metamcp.mcp.json
+set -euo pipefail
+# shellcheck disable=SC1091
+[[ -f /home/ubuntu/.agents/metamcp.env ]] && source /home/ubuntu/.agents/metamcp.env
+# fallback bearer from bashrc if missing
+if [[ -z "${SELFY_MCP_BEARER:-}" && -f /home/ubuntu/.bashrc ]]; then
+  # shellcheck disable=SC1090
+  eval "$(grep -E '^export SELFY_MCP_BEARER=' /home/ubuntu/.bashrc | head -1)" || true
+fi
+export PATH="/home/ubuntu/.npm-global/bin:/home/ubuntu/.agents/bin:/home/ubuntu/.local/bin:${PATH:-/usr/bin}"
+CFG=/home/ubuntu/.agents/metamcp.mcp.json
+if command -v metamcp >/dev/null 2>&1; then
+  exec metamcp --config "$CFG" "$@"
+fi
+if [[ -x /home/ubuntu/.npm-global/bin/metamcp ]]; then
+  exec /home/ubuntu/.npm-global/bin/metamcp --config "$CFG" "$@"
+fi
+if [[ -f /home/ubuntu/mcp_server/metamcp/package.json ]]; then
+  if [[ -f /home/ubuntu/mcp_server/metamcp/dist/index.js ]]; then
+    exec node /home/ubuntu/mcp_server/metamcp/dist/index.js --config "$CFG" "$@"
+  fi
+fi
+exec npx -y @mentu/metamcp@latest --config "$CFG" "$@"

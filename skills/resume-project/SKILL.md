@@ -10,7 +10,7 @@ description: Cold-start project context for orchestrator or human. Use when user
 1. Run (or Read output of):
 
 ```bash
-~/.agents/bin/resume-project "$(pwd)"
+/home/ubuntu/.agents/bin/resume-project "$(pwd)"
 ```
 
 2. Synthesize in RU (short):

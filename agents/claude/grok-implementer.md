@@ -26,7 +26,7 @@ fi
 
 ## Run
 
-1. Read task YAML + `~/.agents/grok/instructions/writer.md`.  
+1. Read task YAML + `/home/ubuntu/.agents/grok/instructions/writer.md`.  
 2. Write combined prompt to temp SPEC. Include: only owns_paths; never merge main.  
 3. Blocking:
 

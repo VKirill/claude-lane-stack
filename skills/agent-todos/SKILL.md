@@ -5,7 +5,7 @@ description: "File-based TODO/ideas board for humans + agent technical notes. Us
 
 # Agent TODOs (files only)
 
-**Canon layout:** `~/.agents/docs/TODOS.md`  
+**Canon layout:** `/home/ubuntu/.agents/docs/TODOS.md`  
 **No orchestrator MCP.** No `todo_add` / task CLI for ideas.
 
 ## When to use

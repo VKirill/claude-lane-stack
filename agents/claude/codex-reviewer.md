@@ -22,7 +22,7 @@ cd "$PROJECT_CWD"
 
 ## Run
 
-Instructions body: `~/.agents/codex/instructions/reviewer.md`
+Instructions body: `/home/ubuntu/.agents/codex/instructions/reviewer.md`
 
 ```bash
 cd "$PROJECT_CWD"

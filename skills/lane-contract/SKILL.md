@@ -5,8 +5,8 @@ description: File-based task contracts under .agents/runs/ with owns_paths and s
 
 # Lane contract (files only)
 
-Canonical: `~/.agents/docs/FILE-CONTRACT.md`.  
-Solo: `~/.agents/docs/SOLO-ORCHESTRATION.md`.
+Canonical: `/home/ubuntu/.agents/docs/FILE-CONTRACT.md`.  
+Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 
 ## Orchestrator must
 

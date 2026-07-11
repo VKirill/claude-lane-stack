@@ -9,7 +9,7 @@ tools: Bash, Read, Grep, Glob
 
 Same I/O as grok-implementer (`PROJECT_CWD`, `TASK_FILE`, `ARTIFACT_DIR`).
 
-Instructions: `~/.agents/codex/instructions/writer-emergency.md`
+Instructions: `/home/ubuntu/.agents/codex/instructions/writer-emergency.md`
 
 ```bash
 timeout 570 codex exec \

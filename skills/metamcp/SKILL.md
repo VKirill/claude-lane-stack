@@ -16,9 +16,9 @@ description: Hybrid MetaMCP gateway — agentmemory + gitnexus direct; all other
 
 **Never behind MetaMCP (removed):** `orchestrator-mcp`, `agent-consult`, `repowise`.
 
-Launcher: `~/.agents/bin/metamcp-run`  
-Config: `~/.agents/metamcp.mcp.json`  
-Env secrets: `~/.agents/metamcp.env` (600)
+Launcher: `/home/ubuntu/.agents/bin/metamcp-run`  
+Config: `/home/ubuntu/.agents/metamcp.mcp.json`  
+Env secrets: `/home/ubuntu/.agents/metamcp.env` (600)
 
 ## MetaMCP tools (`@mentu/metamcp@0.4.1` → 4 tools)
 

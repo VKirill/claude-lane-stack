@@ -8,7 +8,7 @@ description: >
 
 # Project memory
 
-**Canon:** `~/.agents/docs/PROJECT-MEMORY.md`  
+**Canon:** `/home/ubuntu/.agents/docs/PROJECT-MEMORY.md`  
 **Templates:** `~/.agents/templates/`  
 **Init:** `~/.agents/bin/project-memory-init <repo>`
 
