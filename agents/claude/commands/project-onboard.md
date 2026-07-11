@@ -1,19 +1,19 @@
 ---
-description: Bootstrap project for Claude Lane Stack — CLAUDE.md, AGENTS.md pointer, memory, doctor
+description: Onboard project — Codex gpt-5.6-sol xhigh fills CLAUDE.md, docs, lane stack files
 ---
 
-Запусти онбординг репозитория (cwd или $ARGUMENTS):
+Онбординг репозитория делает **только Codex** (`gpt-5.6-sol` + `xhigh`), не AGY/Grok.
 
-```bash
-export PATH="$HOME/.agents/bin:$PATH"
-project-onboard ${ARGUMENTS:-.}
+1. `PROJECT_CWD` = текущий cwd или путь из `$ARGUMENTS`
+2. Spawn **Agent → codex-onboarder** with:
+
+```text
+PROJECT_CWD: <abs>
+ARTIFACT_DIR: <abs>/.agents/runs/_onboard/artifacts/001
+FORCE: 0
 ```
 
-Затем skill `project-onboard`: проверь результат, коротко по-русски что создано, profile doctor, напомни:
+3. After report: short RU — что создано, profile doctor, gaps для человека.
+4. Do **not** implement features in this command.
 
-- execution → `.agents/runs/`
-- strategy (COCOON и т.п.) → `docs/plans/`
-- AGENTS.md = pointer на CLAUDE.md
-- karpathy-guidelines на любой нетривиальный код
-
-Не раздувай CLAUDE.md.
+If codex missing: fall back to `project-onboard` shell script only and warn.

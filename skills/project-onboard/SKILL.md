@@ -5,28 +5,40 @@ description: Primary project onboarding for Claude Lane Stack. Creates lean CLAU
 
 # Project onboard (Claude Lane Stack)
 
+## Who runs it
+
+| Role | Agent |
+|------|--------|
+| **Default writer** | **Codex** `gpt-5.6-sol` + **xhigh** via Claude agent `codex-onboarder` |
+| PM / slash | Claude dispatches `codex-onboarder` (`/project-onboard`) |
+| Fallback only | shell `project-onboard` if `codex` CLI missing |
+
+Do **not** use AGY or Grok for onboard. Do **not** have Fable write CLAUDE.md content by hand — dispatch Codex.
+
 ## Goal
 
-One lean always-on context file + execution home under `.agents/` + memory pack. **No** duplicate instruction walls in AGENTS.md.
+Lean always-on `CLAUDE.md` + pointer `AGENTS.md` + `.agents/` + memory + **primary docs** from repo evidence. No duplicate rules in AGENTS.md.
 
 ## MUST
 
-1. Run from **repo root** (git top-level preferred).
+1. Prefer:
+
+```text
+Agent → codex-onboarder
+PROJECT_CWD: /abs/repo
+ARTIFACT_DIR: /abs/repo/.agents/runs/_onboard/artifacts/001
+```
+
+2. Fallback shell (no codex):
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 project-onboard .
-# or: project-onboard . --force   # overwrite CLAUDE.md sections carefully
 ```
 
-2. If script unavailable, create files per **templates** below (same layout).
+3. After onboard, reply in Russian: files created, doctor profile, gaps, next step PM.
 
-3. After onboard, reply in Russian:
-   - what was created
-   - profile from `agents-doctor`
-   - next: `claude --agent dev-orchestrator` or continue current PM
-
-4. **Never** invent long architecture essays into CLAUDE.md — only non-obvious facts + pointers to `docs/`.
+4. **Never** invent architecture without evidence; mark hypotheses.
 
 ## Where things go (important)
 

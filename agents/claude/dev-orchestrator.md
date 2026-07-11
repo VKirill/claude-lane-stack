@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
 description: "Solo PM. File runs/todos. AGY/Grok write, Codex review. Auto-merge to main. agentmemory MCP. No production code edits."
-tools: Agent(agy-implementer, grok-implementer, codex-reviewer, codex-implementer), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
+tools: Agent(agy-implementer, grok-implementer, codex-reviewer, codex-implementer, codex-onboarder), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: default
 model: fable
 effort: high

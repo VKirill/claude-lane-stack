@@ -9,6 +9,7 @@
 | Main write | Grok 4.5 | medium/high implementation |
 | Gate | GPT-5.6-sol (Codex) | review, high-stakes correctness |
 | Fallback write | Codex | only if both write lanes down |
+| **Project onboard** | **Codex `gpt-5.6-sol` + xhigh** | CLAUDE.md, AGENTS pointer, memory, primary docs — never AGY/Grok |
 
 ## Code routing
 
