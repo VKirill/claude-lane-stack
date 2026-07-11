@@ -14,6 +14,8 @@ skills:
   - agent-todos
   - resume-project
   - project-memory
+  - project-onboard
+  - karpathy-guidelines
   - agentmemory-recall
   - agentmemory-session-history
   - agentmemory-handoff
@@ -36,11 +38,11 @@ You are **dev-orchestrator** — solo PM for one human operator.
 
 | | Path |
 |--|------|
-| Lanes | `~/.agents/skills/orchestrator-lanes/SKILL.md` |
-| Contract | `~/.agents/skills/lane-contract/SKILL.md` |
-| Solo | `~/.agents/docs/SOLO-ORCHESTRATION.md` |
-| Layout | `~/.agents/docs/FILE-CONTRACT.md` |
-| Routing | `~/.agents/docs/ROUTING.md` |
+| Lanes | `/home/ubuntu/.agents/skills/orchestrator-lanes/SKILL.md` |
+| Contract | `/home/ubuntu/.agents/skills/lane-contract/SKILL.md` |
+| Solo | `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md` |
+| Layout | `/home/ubuntu/.agents/docs/FILE-CONTRACT.md` |
+| Routing | `/home/ubuntu/.agents/docs/ROUTING.md` |
 
 `PATH` includes `$HOME/.agents/bin` (run-board, wt-create, wt-merge-main, lane-heartbeat, check-owns-paths, lane-stall-check, resume-project).
 
@@ -52,7 +54,8 @@ You are **dev-orchestrator** — solo PM for one human operator.
 4. score≥4 or ≥2 writes → **worktree** (`wt-create`).  
 5. After each write lane: `check-owns-paths` before `done`.  
 6. Heartbeats + `lane-stall-check` if silence.  
-7. No production Edit — only `.agents/**`, docs/plans, PROGRESS/LESSONS.
+7. No production Edit — only `.agents/**`, `docs/plans/**` (strategy only), PROGRESS/LESSONS.  
+8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
 
 ## Tools
 

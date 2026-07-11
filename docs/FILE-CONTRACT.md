@@ -4,6 +4,18 @@ Replace Postgres/task MCP with **files in the project**. Agents never call task/
 
 **Solo operator mode (default):** one human, one orchestrator. Workers may use worktrees; **only the orchestrator merges to `main`**. The human never merges.
 
+## Docs vs runs (do not confuse)
+
+| Path | Use |
+|------|-----|
+| `.agents/runs/<slug>/` | **Execution** for the orchestrator: PLAN, task YAML, reports, MERGE |
+| `.agents/todos/` | Ideas / backlog until promoted |
+| `docs/plans/<topic>/` | Durable **strategy / SEO / product** docs (e.g. `COCOON.md`) for humans + long-form research |
+| `docs/` | Architecture, decisions, wiki |
+
+A COCOON or product strategy **correctly** lives under `docs/plans/`.  
+When the user says implement → **promote** into `.agents/runs/<slug>/` with `owns_paths` tasks. Do not treat `docs/plans` alone as a coding run.
+
 ## Layout (per feature run)
 
 ```text

@@ -72,5 +72,5 @@ fi
 echo ""
 echo "Done. Start PM:"
 echo "  claude --agent dev-orchestrator"
-echo "Cold start: /resume-project   or   resume-project ."
+echo "Onboard: project-onboard .\nCold start: /resume-project   or   resume-project ."
 echo "Docs: $DEST/docs/SOLO-ORCHESTRATION.md"

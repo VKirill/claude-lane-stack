@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# Bootstrap a repo for Claude Lane Stack: CLAUDE.md, AGENTS.md, memory, doctor.
+set -euo pipefail
+
+REPO="${1:-.}"
+FORCE="${2:-}"
+REPO="$(cd "$REPO" && pwd)"
+export PATH="${HOME}/.agents/bin:/home/ubuntu/.agents/bin:$PATH"
+
+STACK_DOCS="${HOME}/.agents/docs"
+if [[ ! -d "$STACK_DOCS" && -d /home/ubuntu/tools/claude-lane-stack/docs ]]; then
+  STACK_DOCS=/home/ubuntu/tools/claude-lane-stack/docs
+fi
+
+echo "==> project-onboard: $REPO"
+
+# Detect stack hints
+PKG=""
+[[ -f "$REPO/package.json" ]] && PKG="node"
+[[ -f "$REPO/pyproject.toml" || -f "$REPO/requirements.txt" ]] && PKG="${PKG:+$PKG+}python"
+[[ -f "$REPO/go.mod" ]] && PKG="${PKG:+$PKG+}go"
+[[ -f "$REPO/Cargo.toml" ]] && PKG="${PKG:+$PKG+}rust"
+NAME="$(basename "$REPO")"
+if [[ -f "$REPO/package.json" ]]; then
+  NAME="$(python3 -c "import json;print(json.load(open('$REPO/package.json')).get('name','$NAME'))" 2>/dev/null || echo "$NAME")"
+fi
+
+# Memory pack
+if command -v project-memory-init >/dev/null 2>&1; then
+  project-memory-init "$REPO" || true
+else
+  mkdir -p "$REPO/.agents"/{runs,todos,session-log,agent-notes}
+fi
+
+# Board
+command -v run-board >/dev/null 2>&1 && run-board "$REPO" || true
+
+# Doctor profile
+if command -v agents-doctor >/dev/null 2>&1; then
+  agents-doctor --apply "$REPO" || true
+fi
+
+# Karpathy skill note
+KARPATHY_OK=0
+[[ -d "${HOME}/.agents/skills/karpathy-guidelines" || -d "${HOME}/.claude/skills/karpathy-guidelines" ]] && KARPATHY_OK=1
+
+write_claude() {
+  local f="$REPO/CLAUDE.md"
+  if [[ -f "$f" && "$FORCE" != "--force" ]]; then
+    # inject Lane Stack block if missing
+    if ! grep -q 'Claude Lane Stack\|Lane Stack' "$f" 2>/dev/null; then
+      cat >> "$f" <<'BLOCK'
+
+## Claude Lane Stack (orchestration)
+
+- **PM:** `claude --agent dev-orchestrator` only for multi-step build.
+- **Execution state:** `.agents/runs/<slug>/` (PLAN, tasks/*.yaml, artifacts, MERGE).
+- **Ideas:** `.agents/todos/` — not a run until promoted.
+- **Durable strategy / SEO / product plans:** `docs/plans/<topic>/` (e.g. COCOON.md). Promote to `.agents/runs/` when implementing.
+- **Routing:** read `.agents/routing.profile.yaml` if present (`agents-doctor --apply`).
+- **Ship:** orchestrator merges to `main` (`wt-merge-main`); human never merges.
+- **Discipline:** skill `karpathy-guidelines` on non-trivial code (think → minimum → surgical → verify).
+- **Cold start:** `resume-project .` or `/resume-project`.
+BLOCK
+      echo "    appended Lane Stack block to existing CLAUDE.md"
+    else
+      echo "    CLAUDE.md exists (use --force to regenerate template)"
+    fi
+    return
+  fi
+
+  # Detect verify commands lightly
+  local VERIFY="echo 'set verify commands'"
+  [[ -f "$REPO/package.json" ]] && VERIFY=$'npm test\nnpm run lint  # if present\nnpm run build  # if present'
+  [[ -f "$REPO/pyproject.toml" ]] && VERIFY=$'pytest -q\nruff check .  # if present'
+
+  cat > "$f" <<EOF
+# ${NAME}
+
+<!-- Keep this file short (≤200 lines). Always-on context for every agent turn. -->
+<!-- Prefer pointers to docs/ over pasting architecture essays. -->
+
+## What
+
+One-line purpose of this repo. (Edit me.)
+
+**Stack:** ${PKG:-unknown} — refine after first session.
+
+## Never / Always
+
+- **Never** commit secrets or \`.env\`.
+- **Never** expand scope beyond the task contract / user ask.
+- **Always** run verify commands before claiming done.
+- **Always** follow skill \`karpathy-guidelines\` on non-trivial code changes.
+
+## Verify
+
+\`\`\`bash
+${VERIFY}
+\`\`\`
+
+## Project map
+
+\`\`\`
+# top-level dirs only — edit after explore
+\`\`\`
+
+## Gotchas (project-specific only)
+
+- (add after first agent mistakes)
+
+## Docs (read when needed — do not dump into context)
+
+- \`docs/\` — architecture, decisions, product
+- \`docs/plans/\` — durable strategy specs (SEO cocoons, product plans)
+- \`PROGRESS.md\` — now / blocked / next
+- \`LESSONS.md\` — do / don't from past mistakes
+
+## Claude Lane Stack (orchestration)
+
+- **PM:** \`claude --agent dev-orchestrator\` for multi-step build.
+- **Execution:** \`.agents/runs/<slug>/\` — PLAN.md, tasks/*.yaml, artifacts/, MERGE.md.
+- **Ideas:** \`.agents/todos/\` until promoted to a run.
+- **Strategy docs:** \`docs/plans/<topic>/\` (e.g. COCOON.md) — **not** a substitute for a run.
+- **Promote:** when user says implement → create \`.agents/runs/<slug>/\` from the plan.
+- **Routing:** \`.agents/routing.profile.yaml\` from \`agents-doctor --apply\`.
+- **Ship:** orchestrator auto-merges to \`main\`; human never merges.
+- **Cold start:** \`resume-project .\`
+
+## Skills
+
+- \`karpathy-guidelines\` — mandatory coding discipline
+- \`orchestrator-lanes\` / \`lane-contract\` — when running as PM
+- \`project-memory\` / \`resume-project\` — session continuity
+EOF
+  echo "    wrote $f"
+}
+
+write_agents() {
+  local f="$REPO/AGENTS.md"
+  if [[ -f "$f" && "$FORCE" != "--force" ]]; then
+    if ! grep -q 'CLAUDE.md' "$f" 2>/dev/null; then
+      cat > "$f" <<'EOF'
+# Agents
+
+Read **[CLAUDE.md](./CLAUDE.md)** — single source of project instructions for all coding agents (Claude, Codex, AGY, Grok).
+
+Do not duplicate rules here.
+EOF
+      echo "    rewrote AGENTS.md as pointer"
+    else
+      echo "    AGENTS.md already points at CLAUDE.md (or exists)"
+    fi
+    return
+  fi
+  cat > "$f" <<'EOF'
+# Agents
+
+Read **[CLAUDE.md](./CLAUDE.md)** — single source of project instructions for all coding agents (Claude, Codex, AGY, Grok).
+
+Do not duplicate rules here.
+EOF
+  echo "    wrote $f"
+}
+
+write_claude
+write_agents
+
+# docs/plans placeholder
+mkdir -p "$REPO/docs/plans"
+if [[ ! -f "$REPO/docs/plans/README.md" ]]; then
+  cat > "$REPO/docs/plans/README.md" <<'EOF'
+# docs/plans
+
+Durable **product / SEO / strategy** documents (e.g. COCOON.md, feature SPECs for humans).
+
+**Coding execution** for Claude Lane Stack lives in `.agents/runs/<slug>/`, not here.
+
+When a plan is ready to implement: promote → `.agents/runs/<slug>/` with task YAML.
+EOF
+fi
+
+# Karpathy symlink into project .claude if missing
+if [[ "$KARPATHY_OK" -eq 1 ]]; then
+  mkdir -p "$REPO/.claude/skills"
+  if [[ -d "${HOME}/.agents/skills/karpathy-guidelines" && ! -e "$REPO/.claude/skills/karpathy-guidelines" ]]; then
+    ln -sfn "${HOME}/.agents/skills/karpathy-guidelines" "$REPO/.claude/skills/karpathy-guidelines" 2>/dev/null || true
+  fi
+  echo "    karpathy-guidelines skill available"
+else
+  echo "    WARN: karpathy-guidelines not found under ~/.agents/skills — install Claude Lane Stack"
+fi
+
+echo ""
+echo "Done. Next:"
+echo "  1) Edit CLAUDE.md What/Stack/Gotchas"
+echo "  2) agents-doctor --apply .   # if not run"
+echo "  3) claude --agent dev-orchestrator"
+echo "Strategy docs → docs/plans/   |   Implementation → .agents/runs/"

@@ -7,9 +7,7 @@ description: Solo file-based multi-lane orchestration. AGY/Grok write, Codex rev
 
 Load: **karpathy-guidelines**, **lane-contract**, **project-memory**, **resume-project**.
 
-Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md` (install path `~/.agents/docs/` or repo `docs/`).
-
-**Routing profile:** if `.agents/routing.profile.yaml` exists (from `agents-doctor --apply`), map write/review lanes from it. PM is always Claude. Missing Grok/AGY/Codex → use profile fallbacks (Codex write, AGY-only, or Claude worker).
+Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md` under `/home/ubuntu/.agents/docs/`.
 
 You are the **only** person who merges to `main`. Human never merges.
 
@@ -25,6 +23,9 @@ You are the **only** person who merges to `main`. Human never merges.
 | 11+ | Split feature; ask user |
 
 ## Phase 1 — Files
+
+**Not** `docs/plans/` for coding execution.  
+`docs/plans/` = strategy (COCOON, product). Promote strategy → run when implementing.
 
 ```bash
 mkdir -p .agents/runs/<slug>/{tasks,artifacts}
