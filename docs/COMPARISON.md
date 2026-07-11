@@ -47,6 +47,8 @@ Most tools in this niche optimize for **scale** — more agents, more panes, mor
 3. **Writers and reviewers are different vendors.** A task written by AGY or Grok is gated by Codex review — cross-vendor scrutiny catches what self-review misses.
 4. **It shrinks gracefully.** `agents-doctor` detects what's installed and writes a matching profile. Nothing but Claude Code? `claude-only` mode still runs the whole conveyor — slower, but the same discipline.
 5. **A beginner can actually start.** [Plain-language guide](BEGINNER.md) in 9 languages, no orchestration vocabulary required.
+6. **Onboard matches the project.** Dual **minimal|full** scenario + **fast|deep** depth (forensic passport on mature repos) — not one stub for every toy and monorepo. See [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md).
+7. **Long lanes survive Claude Bash.** Host kills foreground Bash ~2 minutes; **`lane-bg` + `lane-wait` + `lane-exec`** keep AGY/Grok/Codex alive. See [LANE-EXEC.md](LANE-EXEC.md).
 
 ## 🤝 When to pick something else
 

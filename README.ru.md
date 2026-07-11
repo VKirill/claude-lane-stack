@@ -1,22 +1,22 @@
 <div align="center">
 
-<img src="docs/images/01-hero-conveyor.jpg" alt="Claude Lane Stack — мульти-агентный конвейер кода: один человек, один ИИ-менеджер, рабочие линии, авто-merge в main" width="100%" />
+<img src="docs/images/01-hero-conveyor.jpg" alt="Claude Lane Stack — конвейер мульти-агентной разработки: один человек, один ИИ-PM, рабочие линии, авто-merge в main" width="100%" />
 
 # 🏭 Claude Lane Stack
 
-### Маленькая ИИ-фабрика кода для одного человека
+### Маленький ИИ-завод для одного человека · **v1.1.0**
 
-**Мультиагентная оркестрация ИИ-агентов для Claude Code** — вы говорите с одним ИИ-менеджером,
-он раздаёт задачи воркерам (AGY / Grok / Codex), проверяет их работу
-и **сам кладёт готовый код в `main`**. Без пяти чатов. Без ручных merge.
+**Мульти-агентная оркестрация для Claude Code** — вы говорите с одним ИИ-менеджером проекта,
+он раздаёт задачи воркерам (AGY / Grok / Codex), проверяет результат
+и **сам мержит готовый код в `main`**. Без пяти чатов. Без ручных merge.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
-[![Гайд новичка](https://img.shields.io/badge/Начните%20отсюда-Гайд%20новичка-brightgreen)](docs/BEGINNER.ru.md)
+[![Beginner guide](https://img.shields.io/badge/Старт-Гайд%20для%20новичков-brightgreen)](docs/BEGINNER.ru.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
 
-🌍 **README:** [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [한국어](README.ko.md) · [Português](README.pt-BR.md)
+🌍 **README:** [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [한국어](README.ko.md) · [Português](README.pt-BR.md)  
 🐣 **Гайд новичка:** [RU](docs/BEGINNER.ru.md) · [EN](docs/BEGINNER.md) · [中文](docs/BEGINNER.zh-CN.md) · [日本語](docs/BEGINNER.ja.md) · [ES](docs/BEGINNER.es.md) · [DE](docs/BEGINNER.de.md) · [FR](docs/BEGINNER.fr.md) · [KO](docs/BEGINNER.ko.md) · [PT](docs/BEGINNER.pt-BR.md)
 
 </div>
@@ -25,179 +25,246 @@
 
 ## 📌 Содержание
 
-- [Зачем это](#-зачем-это) · [Для кого](#-для-кого) · [Как это работает](#-как-это-работает)
-- [Быстрый старт](#-быстрый-старт-3-команды) · [Карточки задач](#-карточки-задач-как-воркеры-не-мешают-друг-другу) · [Вы не мержите](#-вы-не-мержите--это-делает-менеджер)
+- [Зачем это](#-зачем-это) · [Кому подходит](#-кому-подходит) · [Как устроено](#-как-устроено)
+- [Быстрый старт](#-быстрый-старт-3-команды) · [Онборд 2.0](#-онборд-20--сценарий--глубина) · [Лейны, которые доезжают](#-лейны-которые-доезжают--фон)
+- [Карточки задач](#-карточки-задач--как-воркеры-не-пересекаются) · [Merge делает PM](#-merge-делает-pm--не-вы)
 - [Шпаргалка](#-шпаргалка-команд) · [Профили](#-профили-возможностей) · [FAQ](#-faq) · [Документация](#-карта-документации)
 
 ---
 
 ## 💡 Зачем это
 
-Работа с ИИ-инструментами обычно выглядит так: пять окон чатов, копипаст кусков кода, ветки, которые вы мержите руками в полночь, — и никто не проверяет ничью работу.
+Обычно работа с ИИ-кодом выглядит так: пять окон чата, копипаст кусков, ветки, которые мержите в полночь вручную, и никто никого не ревьюит.
 
 **Claude Lane Stack превращает это в конвейер:**
 
 | 😩 Пять чатов | 🏭 Lane Stack |
 |---------------|---------------|
-| Каждой модели заново объясняете контекст | Контекст держит один менеджер, воркеры получают **карточки задач** |
-| Модели перезаписывают файлы друг друга | В карточке перечислены **разрешённые файлы** — воркер не выходит из своей полосы |
-| Код ИИ никто не ревьюит | Отдельная **линия ревью** (Codex) стоит перед каждым merge |
-| Вы мержите ветки вручную | Менеджер сам мержит в **`main`** после проверок |
-| Утром: «а что мы вчера делали?» | `/resume-project` — «Сейчас / Блокеры / Дальше» за секунды |
+| Каждый раз заново объясняете контекст | Один PM держит контекст, воркеры получают **карточки** |
+| Модели затирают чужие файлы | У карточки список **своих путей** — воркер не лезет чужое |
+| Никто не ревьюит код ИИ | Отдельная **линия ревью** (Codex) перед merge |
+| Merge руками | PM мержит в **`main`** после проверок |
+| Утром: «а что мы делали?» | `/resume-project` — Сейчас / Блок / Дальше |
+| Онборд = пустой CLAUDE | **Deep forensic-паспорт** на взрослых репо |
+| AGY/Grok умирают через ~2 мин | **`lane-bg` + `lane-wait`** — detach + poll |
 
-Без базы задач. Без обязательных облачных сервисов. **Обычные файлы + обычный git** — всё видно прямо в репозитории.
+Без обязательной БД и облака. **Обычные файлы + git** — всё можно открыть и проаудитить.
 
 ---
 
-## 👥 Для кого
+## 👥 Кому подходит
 
-- 🧑‍💻 **Соло-разработчики**, которым нужна агентная разработка: параллельные ИИ-агенты без хаоса чатов
-- 🚀 **Инди-хакеры**, которым интереснее описывать фичи, чем нянчить ветки
-- 🧠 **Вайб-кодеры** — вы знаете, *что* хотите; фабрика разберётся, *как*
-- 🏢 **Агентство из одного человека** — несколько клиентских репозиториев с одной дисциплиной
+- 🧑‍💻 **Соло-разработчики** — агентный workflow без хаоса чатов  
+- 🚀 **Инди-хакеры** — описываете фичу, а не нянчите ветки  
+- 🧠 **Вайб-кодеры** — знаете *что*, завод делает *как*  
+- 🏢 **Соло-агентство** — несколько клиентских репо с одной дисциплиной  
 
 > [!TIP]
-> Впервые слышите слово «оркестрация»? Начните с **[гайда новичка](docs/BEGINNER.ru.md)** — там всё объяснено как маленькая фабрика, без жаргона.
+> Слово «оркестрация» пугает? Начните с **[гайда для новичков](docs/BEGINNER.ru.md)** — там про завод, без жаргона.
 
 ---
 
-## 🧩 Как это работает
+## 🧩 Как устроено
 
-<div align="center">
-<img src="docs/images/02-lanes-routing.jpg" alt="Три рабочие линии — быстрая запись, тяжёлая запись, ревью — сливаются в main под контролем менеджера" width="90%" />
-</div>
-
-Вы разговариваете с **одним агентом** — `dev-orchestrator`, проект-менеджером. Он распределяет работу по линиям:
+Вы общаетесь с **одним агентом** — `dev-orchestrator` (PM). Он раскидывает работу по линиям:
 
 ```mermaid
 flowchart LR
     subgraph you ["🧑 Вы"]
-        A["Обычный язык:<br/>«добавь тёмную тему»"]
+        A["Своими словами:<br/>«добавь тёмную тему»"]
     end
-    subgraph pm ["🤖 Менеджер — dev-orchestrator"]
-        B["План → карточки задач<br/>.agents/runs/"]
+    subgraph pm ["🤖 PM — dev-orchestrator"]
+        B["План → карточки<br/>.agents/runs/"]
     end
-    subgraph lanes ["👷 Линии воркеров (опционально)"]
-        C["⚡ AGY — быстрая запись"]
-        D["🔧 Grok — тяжёлая запись"]
+    subgraph lanes ["👷 Линии (опционально)"]
+        C["⚡ AGY — быстрые правки"]
+        D["🔧 Grok — тяжёлые правки"]
         E["🔍 Codex — ревью"]
     end
     A --> B
     B --> C & D
     C & D --> E
-    E -->|проверки пройдены| F[("📦 main")]
-    E -->|замечания| B
+    E -->|ок| F[("📦 main")]
+    E -->|правки| B
 ```
 
 | Роль | Кто | Что делает |
 |------|-----|------------|
-| 👑 Владелец | **Вы** | Говорите, *что* нужно — на любом языке |
-| 🤖 Проект-менеджер | Агент Claude Code `dev-orchestrator` | Планирует, раздаёт, проверяет, **мержит** |
-| ⚡🔧 Линии записи | AGY, Grok *(опционально)* | Реализуют карточки задач |
-| 🔍 Линия ревью | Codex *(опционально)* | Независимый контроль качества |
-| 🗂️ Карточки задач | YAML-файлы в `.agents/runs/` | Цех фабрики — всё можно открыть и прочитать |
-| 📦 Официальный код | Git-ветка **`main`** | Финал каждой успешной задачи |
+| 👑 Владелец | **Вы** | Говорите *что* нужно (в чате — на русском) |
+| 🤖 PM | Claude Code `dev-orchestrator` | Планирует, диспатчит, проверяет, **мержит** |
+| ⚡🔧 Пишущие | AGY, Grok *(опц.)* | Делают карточки (через `lane-bg`) |
+| 🔍 Ревью / онборд | Codex *(опц.)* | Ревью, emergency-write, **паспорт проекта** |
+| 🗂️ Карточки | YAML в `.agents/runs/` | Пол цеха — всё видно в git |
+| 📦 Официальный код | ветка **`main`** | Куда падает успешная работа |
+
+**Язык:** файлы (контракты, CLAUDE, отчёты, docs) — **English**. Чат с человеком — **русский**. См. [docs/LANGUAGE.md](docs/LANGUAGE.md).
+
+**Модели Codex:** только GPT-**5.6** — **Sol** (ревью / deep / high-risk), **Terra** (обычный write / docs), **Luna** (мелочь). Без 5.5. См. [docs/ROUTING.md](docs/ROUTING.md).
 
 > [!NOTE]
-> **Обязателен только Claude Code.** Отсутствие воркеров — не проблема: `agents-doctor` определяет, что установлено, и менеджер подстраивается — вплоть до чистого режима `claude-only`.
+> **Обязателен только Claude Code.** Остальное опционально — `agents-doctor` подстроит профиль, вплоть до `claude-only`.
 
 ---
 
 ## 🚀 Быстрый старт (3 команды)
 
 ```bash
-# 1️⃣  Установить стек — один раз на компьютер
+# 1️⃣  Установить завод — один раз на машину
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && ./install.sh
-export PATH="$HOME/.agents/bin:$PATH"        # или откройте новый терминал
+cd claude-lane-stack && git checkout v1.1.0   # или main
+./install.sh
+export PATH="$HOME/.agents/bin:$PATH"
 
-# 2️⃣  В ВАШЕМ проекте — определить доступных воркеров, один раз на репозиторий
+# 2️⃣  В ВАШЕМ проекте — один раз на репо
 cd /path/to/your-project
 agents-doctor --apply .
 
-# 3️⃣  Запустить менеджера и говорить по-человечески
+# 3️⃣  Запустить PM и говорить как с человеком
 claude --agent dev-orchestrator
 ```
 
-Первый раз в проекте, внутри чата: **`/project-onboard`** — создаёт «паспорт» репозитория (`CLAUDE.md`, стартовые доки). Авто-выбор **minimal** vs **full** и глубины **fast** vs **deep** (у full по умолчанию deep) — см. [`docs/ONBOARD-SCENARIOS.md`](docs/ONBOARD-SCENARIOS.md). Оверрайд: `--minimal`/`--full`, `--fast`/`--deep`, `/project-onboard deep`.
-После перерыва: **`/resume-project`** — «Сейчас / Блокеры / Дальше».
+В чате:
+
+| Команда | Когда |
+|---------|--------|
+| **`/project-onboard`** | Первый раз в репо — паспорт (auto minimal/full + fast/deep) |
+| **`/project-onboard deep`** | Принудительно forensic |
+| **`/resume-project`** | После перерыва — Сейчас / Блок / Дальше |
 
 > [!IMPORTANT]
-> `/resume-project` — команда «с возвращением» для *следующих* сессий, а **не** шаг установки.
+> `/resume-project` — это «с возвращением», **не** шаг установки.
 
-📖 Полный маршрут простым языком: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)**
+📖 Гайд: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)** · Релиз: **[v1.1.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)**
 
 ---
 
-## 📋 Карточки задач: как воркеры не мешают друг другу
+## 🧭 Онборд 2.0 — сценарий + глубина
 
-<div align="center">
-<img src="docs/images/04-file-contracts.jpg" alt="У каждой рабочей ячейки — карточка задания: YAML-контракт с целью, разрешёнными файлами и командами проверки" width="90%" />
-</div>
+Первый заход — не тонкий stub. **`project-onboard` + Codex** собирают настоящий паспорт.
 
-Каждая задача — маленький **YAML-контракт** в `.agents/runs/`: менеджер его пишет, воркеры выполняют:
+### Ось 1 — Сценарий (*что* сидится)
+
+| | 🟢 **minimal** | 🟣 **full** |
+|--|----------------|-------------|
+| Когда | score &lt; 5 (маленький / новый) | score ≥ 5 или monorepo |
+| Seeds | CLAUDE · AGENTS · ARCHITECTURE · memory · plans | + GOTCHAS · GLOSSARY · TESTING · deployment · nested CLAUDE · SECURITY при domain |
+
+### Ось 2 — Глубина (*как глубоко* копает Codex)
+
+| | ⚡ **fast** | 🔬 **deep** (default на full) |
+|--|------------|--------------------------------|
+| Explore | верх + манифесты | entrypoints, модули, 3–7 flow, wiki↔code, прогон тестов |
+| Модель | `gpt-5.6-terra` high | `gpt-5.6-sol` high |
+| Отчёт | паспорт | MODULES_READ · FLOWS · WIKI_MISMATCHES · VERIFY |
+
+```bash
+project-onboard .
+project-onboard . --deep
+project-onboard . --minimal --fast
+```
+
+Пишет:
+
+- `.agents/onboard.scenario.yaml`  
+- `.agents/runs/_onboard/artifacts/001/deep-scan.md`  
+- Существующую wiki **не дублирует** (`gotchas.md` вместо `GOTCHAS.md`)  
+
+Подробно: [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md)
+
+---
+
+## 🏃 Лейны, которые доезжают — фон
+
+Claude Code **убивает foreground Bash ~за 2 минуты**. Это лимит **хоста**, не `lane-exec`.
+
+Длинные AGY / Grok / Codex **обязаны** отцепляться:
+
+```bash
+lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
+  lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
+  agy --print "..." --agent lane-frontend --print-timeout 90m ...
+
+lane-wait --dir "$ARTIFACT_DIR" --once   # 2 = running, 0 = done
+```
+
+| Инструмент | Роль |
+|------------|------|
+| **`lane-bg`** | nohup — работа переживает смерть Bash |
+| **`lane-wait`** | короткие poll |
+| **`lane-exec`** | idle/max на **отцепленном** процессе |
+
+Implementers и `dev-orchestrator` уже проинструктированы. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
+
+После обновления стека — **новая сессия** PM / свежий spawn implementer.
+
+---
+
+## 📋 Карточки задач — как воркеры не пересекаются
+
+Каждая работа — **YAML-контракт** в `.agents/runs/` (**English**):
 
 ```yaml
 task: add-dark-mode
-goal: Переключатель тёмной темы на странице настроек
-owns_paths:            # 🔒 ЕДИНСТВЕННЫЕ файлы, которые можно трогать
+goal: Dark theme toggle on the settings page
+owns_paths:
   - src/settings/**
   - src/theme.css
 verify:
   - npm test
   - npm run lint
-lane: agy-implementer  # кто выполняет
-review: codex-reviewer # кто пропускает в merge
+lane: agy-implementer
+review: codex-reviewer
 ```
 
-- 🔒 `owns_paths` — параллельные воркеры **не сталкиваются**: `check-owns-paths` завалит задачу, если воркер вышел за список
-- ✅ `verify` — merge заблокирован, пока проверки не пройдут
-- 📜 Карточки остаются в истории git — полный след: какой агент что делал и зачем
+- 🔒 `owns_paths` — параллельные воркеры не сталкиваются  
+- ✅ `verify` — без зелёных проверок нет merge  
+- 📜 карточки в git — аудит  
 
 Подробнее: [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md)
 
 ---
 
-## 📦 Вы не мержите — это делает менеджер
+## 📦 Merge делает PM — не вы
 
-<div align="center">
-<img src="docs/images/03-auto-merge-main.jpg" alt="Робот-менеджер укладывает проверенный код в хранилище main, пока разработчик отдыхает с кофе" width="90%" />
-</div>
-
-Финал каждой успешной задачи одинаков: **проверенный код оказывается в `main`** — его мержит оркестратор через `wt-merge-main` после ревью и проверок. Воркеры работают в изолированных **git worktree**, поэтому параллельные задачи не топчут друг друга.
+Конец успешной работы: **проверенный код в `main`**, merge делает оркестратор (`wt-merge-main`). Воркеры пишут в **worktree**.
 
 > [!WARNING]
-> Если агент просит *вас* разрулить ветки — это сбой процесса, а не ваша обязанность. Скажите менеджеру: *«мержить — твоя работа»*.
+> Если агент просит *вас* смержить ветки — это баг процесса. Скажите: *«merge — твоя работа»*.
 
-Правила соло-оркестрации: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
+Правила: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 
 ---
 
 ## 🧾 Шпаргалка команд
 
-### Это печатаете вы
+### Вы набираете
 
-| Команда / фраза | Что это | Когда |
-|-----------------|---------|-------|
-| `./install.sh` | Установка фабрики в `~/.agents` | Один раз на компьютер |
-| `agents-doctor --apply .` | Определить CLI → записать профиль маршрутизации | Один раз на проект |
-| `claude --agent dev-orchestrator` | Открыть **единственный нужный чат** | Каждую сессию |
-| `/project-onboard` | Паспорт репозитория через Codex (CLAUDE.md + доки) | Первый раз в репозитории |
-| *«Добавь тёмную тему в настройки»* | Рабочий запрос — любой язык | Фичи и фиксы |
-| `/resume-project` | «Сейчас / Блокеры / Дальше» | После перерыва |
-| *«Застряло»* | Менеджер проверит замолчавших воркеров | Долгая тишина |
+| Команда | Что | Когда |
+|---------|-----|--------|
+| `./install.sh` | Поставить завод в `~/.agents` | Раз на машину |
+| `agents-doctor --apply .` | Профиль маршрутизации | Раз на проект |
+| `claude --agent dev-orchestrator` | **Единственный нужный чат** | Каждая сессия |
+| `/project-onboard` | Паспорт (scenario + depth auto) | Первый раз в репо |
+| `/project-onboard deep` | Forensic-онборд | Взрослые / грязные репо |
+| *«Добавь тёмную тему…»* | Задача своими словами | Фичи и фиксы |
+| `/resume-project` | Сейчас / Блок / Дальше | После перерыва |
+| *«Завис»* | PM смотрит silent workers | Долгое молчание |
 
 <details>
-<summary>🤖 <b>Это обычно печатает только менеджер</b></summary>
+<summary>🤖 <b>Обычно только PM / implementers</b></summary>
 
-| Команда | Что это |
-|---------|---------|
-| `run-board` | Обновить табло задач |
-| `wt-create` / `wt-merge-main` | Изолированный worktree + **merge в `main`** |
-| `check-owns-paths` | Воркер остался в своём списке файлов? |
-| `lane-heartbeat` / `lane-stall-check` | Воркер жив? Кто замолчал? |
-| `project-memory-init` | Создать файлы памяти PROGRESS / LESSONS |
-| `night-audit` | Ночная уборка по задачам и докам |
+| Команда | Зачем |
+|---------|--------|
+| `run-board` | Табло задач |
+| `wt-create` / `wt-merge-main` | Worktree + **merge в main** |
+| `check-owns-paths` | Не вышел ли воркер за owns |
+| `lane-bg` / `lane-wait` | Фон + poll |
+| `lane-exec` | Idle/max по активности |
+| `lane-heartbeat` / `lane-stall-check` | Жив? Замолчал? |
+| `project-onboard` | Seed + deep-scan |
+| `docs-maintain-project` | Актуализация docs |
+| `project-memory-init` | PROGRESS / LESSONS |
+| `night-audit` | Ночная уборка |
 
 </details>
 
@@ -205,22 +272,20 @@ review: codex-reviewer # кто пропускает в merge
 
 ## 🚦 Профили возможностей
 
-`agents-doctor` записывает один из пяти профилей — в зависимости от того, какие CLI нашёл; менеджер маршрутизирует соответственно:
-
-| Профиль | У вас есть | Линия записи | Линия ревью |
-|---------|-----------|--------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
+| Профиль | Есть | Пишет | Ревью |
+|---------|------|-------|-------|
+| `full` | AGY + Grok + Codex | AGY / Grok | Codex Sol |
 | `claude-agy` | AGY | AGY | Claude |
 | `claude-grok` | Grok | Grok | Claude |
-| `claude-codex` | Codex | Codex | Codex |
-| `claude-only` | только Claude Code | Сабагенты Claude | Сабагенты Claude |
+| `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |
+| `claude-only` | только Claude | subagents | subagents |
 
 ```bash
-agents-doctor            # показать отчёт обнаружения
-agents-doctor --apply .  # сохранить профиль в проект
+agents-doctor
+agents-doctor --apply .
 ```
 
-Подробнее: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
+[profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
 
 ---
 
@@ -228,24 +293,28 @@ agents-doctor --apply .  # сохранить профиль в проект
 
 ```text
 claude-lane-stack/
-├── agents/        # определения агентов: менеджер claude + линии agy / grok / codex
-├── bin/           # 11 CLI-инструментов: agents-doctor, run-board, wt-merge-main, …
-├── skills/        # 11 скиллов: оркестрация, контракты, память проекта, онбординг
-├── profiles/      # 5 профилей маршрутизации (full → claude-only)
-├── hooks/         # защитные хуки: shell guard, code-quality guard, session ledger
-├── templates/     # шаблоны PROGRESS / LESSONS / decisions / session-log
-├── docs/          # гайд новичка + глубокие разборы (таблица ниже ↓)
-└── install.sh     # кладёт всё в ~/.agents
+├── agents/        # PM + agy / grok / codex (implementers, onboard, review)
+├── bin/           # agents-doctor, project-onboard, lane-bg, lane-wait, lane-exec, …
+├── skills/        # orchestration, contracts, memory, onboard, …
+├── profiles/      # full → claude-only
+├── hooks/         # guards + session ledger
+├── templates/     # ARCHITECTURE, GOTCHAS, TESTING, deployment, …
+├── docs/          # beginner + deep dives
+└── install.sh     # → ~/.agents
 ```
 
-А в **вашем** проекте после онбординга:
+После онборда в **вашем** проекте:
 
 ```text
 your-app/
-├── CLAUDE.md          # короткие постоянные правила проекта
-├── AGENTS.md          # указатель «читай CLAUDE.md» для других инструментов
-├── .agents/runs/      # 🏭 цех — карточки задач, отчёты, заметки о merge
-└── docs/plans/        # 🧠 стратегические документы (не цех)
+├── CLAUDE.md
+├── AGENTS.md
+├── PROGRESS.md / LESSONS.md
+├── .agents/
+│   ├── onboard.scenario.yaml
+│   ├── routing.profile.yaml
+│   └── runs/
+└── docs/
 ```
 
 ---
@@ -253,44 +322,44 @@ your-app/
 ## ❓ FAQ
 
 <details>
-<summary><b>Нужно ли ставить AGY, Grok и Codex одновременно?</b></summary>
+<summary><b>Нужны ли сразу AGY, Grok и Codex?</b></summary>
 
-Нет — **обязателен только Claude Code**. Остальное — опциональные воркеры. `agents-doctor` определяет ваш набор, и менеджер подстраивается вплоть до режима `claude-only`.
-
-</details>
-
-<details>
-<summary><b>Чем это отличается от обычного Claude Code?</b></summary>
-
-Обычный Claude Code — один воркер в одном чате. Lane Stack добавляет **слой управления**: карточки задач с владением файлами, параллельные линии от разных вендоров, независимое ревью, автоматический merge в `main` и восстановление после холодного старта. Вы занимаетесь стратегией, он — логистикой.
+Нет — **достаточно Claude Code**. Остальное опционально.
 
 </details>
 
 <details>
-<summary><b>Нужна база данных или облачный сервис?</b></summary>
+<summary><b>Чем это лучше «просто Claude Code»?</b></summary>
 
-Нет. Состояние живёт в **обычных файлах внутри репозитория** (`.agents/runs/`) и в git. Всё можно прочитать, продиффать и проаудировать.
-
-</details>
-
-<details>
-<summary><b>Заработает на моём существующем проекте?</b></summary>
-
-Да. `cd your-project && agents-doctor --apply .`, затем `/project-onboard` создаст паспорт вокруг существующего кода. Ничего не переписывается без задачи.
+Claude — один воркер. Lane Stack — **менеджмент**: карточки, owns_paths, multi-vendor, ревью, auto-merge, deep-онборд, cold-start.
 
 </details>
 
 <details>
-<summary><b>Что если воркер замолчал посреди задачи?</b></summary>
+<summary><b>AGY умер через ~2 минуты — это lane-exec?</b></summary>
 
-В стеке есть `lane-heartbeat` / `lane-stall-check` — менеджер находит зависших и переназначает задачу. Всегда можно сказать: *«застряло»*.
+Чаще **нет**. Claude убивает **foreground Bash**. Нужны **`lane-bg` + `lane-wait`**. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md). После апдейта — **новая сессия** PM.
 
 </details>
 
 <details>
-<summary><b>Мой код в безопасности?</b></summary>
+<summary><b>minimal / full / deep — что выбирать?</b></summary>
 
-Каждый CLI общается только со своим вендором — ровно как и без стека, **дополнительных серверов нет**. Секретам не место в карточках задач; чувствительные зоны (auth, платежи) заслуживают линии ревью. См. [SECURITY.md](SECURITY.md).
+Обычно ничего — **auto**. Toy → minimal+fast. Взрослый → full+deep. Форс: `/project-onboard deep`.
+
+</details>
+
+<details>
+<summary><b>Нужна ли БД или облако?</b></summary>
+
+Нет. Состояние — **файлы в репо** + git.
+
+</details>
+
+<details>
+<summary><b>Подойдёт к уже существующему проекту?</b></summary>
+
+Да. `agents-doctor --apply .` → `/project-onboard`. Wiki не затирается, а линкуется.
 
 </details>
 
@@ -298,25 +367,28 @@ your-app/
 
 ## 📚 Карта документации
 
-| Тема | Документ |
-|------|----------|
-| 🐣 Маршрут простым языком | [docs/BEGINNER.ru.md](docs/BEGINNER.ru.md) |
+| Тема | Док |
+|------|-----|
+| 🐣 Гайд для новичков | [docs/BEGINNER.ru.md](docs/BEGINNER.ru.md) |
+| 🧭 Онборд: scenario + depth | [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) |
+| ⏱️ Таймауты + фон | [docs/LANE-EXEC.md](docs/LANE-EXEC.md) |
+| 🌐 Язык (EN файлы / RU чат) | [docs/LANGUAGE.md](docs/LANGUAGE.md) |
+| 🔀 Маршрутизация Sol/Terra | [docs/ROUTING.md](docs/ROUTING.md) |
 | ⚖️ Сравнение с альтернативами | [docs/COMPARISON.md](docs/COMPARISON.md) |
-| 🧑‍✈️ Правила соло-режима — почему вы не мержите | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
-| 🗂️ Анатомия YAML-карточки | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
-| 🔀 Кто пишет / кто ревьюит | [docs/ROUTING.md](docs/ROUTING.md) |
-| 🛡️ Защитные хуки | [docs/HOOKS.md](docs/HOOKS.md) |
-| 🧠 Память проекта (PROGRESS / LESSONS) | [docs/PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md) |
-| 📝 Бэклог идей | [docs/TODOS.md](docs/TODOS.md) |<!-- guardian: allow — ссылка на существующий файл docs/TODOS.md, не TODO-маркер -->
-| 🔌 Настройки MCP (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
-| 🤝 Контрибьютинг | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| 🔐 Политика безопасности | [SECURITY.md](SECURITY.md) |
+| 🧑‍✈️ Solo-правила | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
+| 🗂️ YAML-контракт | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
+| 🛡️ Хуки | [docs/HOOKS.md](docs/HOOKS.md) |
+| 🧠 Память проекта | [docs/PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md) |
+| 📝 Идеи | [docs/TODOS.md](docs/TODOS.md) |
+| 🔌 MCP | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
+| 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| 🚀 Релиз v1.1.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0) |
 
 ---
 
 ## 📜 Лицензия
 
-MIT — [LICENSE](LICENSE). Пользуйтесь, форкайте, стройте свою фабрику.
+MIT — [LICENSE](LICENSE).
 
 ---
 
@@ -326,8 +398,8 @@ MIT — [LICENSE](LICENSE). Пользуйтесь, форкайте, строй
 
 **Кирилл Вечкасов** · [@VKirill](https://github.com/VKirill) · Telegram: [Помогающий маркетолог](https://t.me/pomogay_marketing)
 
-*Я собираю работающие конвейеры, а не «ещё один чат с LLM».*
+*Строю рабочие конвейеры, а не ещё один чат с LLM.*
 
-⭐ **Если идея конвейера откликнулась — поставьте звезду.** Это правда помогает соло-разработчикам найти проект.
+⭐ **Если идея конвейера зашла — поставьте звезду.** Это помогает соло-разработчикам найти репо.
 
 </div>

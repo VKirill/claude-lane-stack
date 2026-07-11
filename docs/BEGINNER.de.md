@@ -142,7 +142,10 @@ Codex (oder Claude selbst, wenn Codex fehlt) schreibt den „Ausweis“ des Proj
 
 *Gleicher Ordner, gleicher Befehl, jede Arbeitssitzung:*
 
-```bash
+```
+
+> **v1.1.0:** `/project-onboard` wählt minimal/full und fast/deep. Lange Lanes: `lane-bg` ([LANE-EXEC.md](LANE-EXEC.md)).
+bash
 claude --agent dev-orchestrator
 ```
 

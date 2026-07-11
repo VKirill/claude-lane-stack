@@ -4,6 +4,9 @@
 
 Deep onboard, dual scenarios, activity-aware lanes, and Claude Bash background survival.
 
+### Docs
+- Full refresh of README (EN/RU) + v1.1.0 blocks on all locale READMEs; BEGINNER EN/RU + locale notes; ROUTING/LANE-EXEC/ONBOARD/COMPARISON/PROJECT-MEMORY/FILE-CONTRACT/llms.txt/install.sh aligned to current product.
+
 ## 1.1.0 details
 
 ### Changed

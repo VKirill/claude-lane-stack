@@ -116,22 +116,32 @@ Then, **inside the Claude chat**, one command:
 
 ```text
 /project-onboard
+# or force deep analysis on a mature repo:
+/project-onboard deep
 ```
 
-Codex (or Claude itself if Codex is absent) writes the project's "passport": `CLAUDE.md`, starter docs, memory files. Wait for it to finish — this is a one-time thing per repo.
+Codex builds the project **passport** (`CLAUDE.md`, memory, docs pack). It auto-picks:
+
+| Axis | Values | Default |
+|------|--------|---------|
+| **Scenario** | `minimal` (small) · `full` (mature) | by maturity score |
+| **Depth** | `fast` (passport) · `deep` (forensic) | full → **deep** |
+
+Deep mode walks entrypoints, flows, wiki↔code mismatches, and real verify commands — not just a stub CLAUDE. See [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md).
 
 **What the profile means** — just "which workers are available here":
 
 | Profile | You have installed | Who writes code | Who reviews |
 |---------|-------------------|-----------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
-| `claude-codex` | Codex only | Codex | Codex |
+| `full` | AGY + Grok + Codex | AGY / Grok | Codex Sol |
+| `claude-codex` | Codex only | Codex Terra/Sol | Codex Sol |
 | `claude-only` | Just Claude Code | Claude subagents | Claude subagents |
 
 **Station 2 checklist — done when:**
 
 - [ ] `agents-doctor --apply .` printed a profile name (e.g. `full` or `claude-only`)
-- [ ] `CLAUDE.md` exists in the project root after `/project-onboard`
+- [ ] `CLAUDE.md` exists and is **not** an empty "Edit me" stub
+- [ ] `.agents/onboard.scenario.yaml` exists (`scenario` + `depth`)
 
 > [!NOTE]
 > A "worse" profile is not a problem. `claude-only` works fine — it's just slower and uses one brain instead of three.
@@ -195,6 +205,9 @@ You get a short **Now / Blocked / Next** summary and continue in plain language.
 ## 🧯 When something looks stuck
 
 Long silence? Workers can stall — the stack has tooling for exactly this.
+
+> [!IMPORTANT]
+> If a write lane **dies after ~2 minutes**, that is usually **Claude killing foreground Bash**, not a bug in your code. Upgrade to **v1.1.0+** so implementers use `lane-bg` + `lane-wait`, then start a **fresh** PM session. Details: [LANE-EXEC.md](LANE-EXEC.md).
 
 | Say to the PM | What happens |
 |---------------|--------------|

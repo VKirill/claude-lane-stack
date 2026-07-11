@@ -4,19 +4,19 @@
 
 # 🏭 Claude Lane Stack
 
-### A small AI coding factory for one person
+### A small AI coding factory for one person · **v1.1.0**
 
 **Multi-agent orchestration for Claude Code** — you talk to one AI project manager,
 it dispatches optional workers (AGY / Grok / Codex), reviews their output
 and **merges finished code to `main`**. No five chats. No manual merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Start%20here-Beginner%20guide-brightgreen)](docs/BEGINNER.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
 
-🌍 **README:** [Русский](README.ru.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [한국어](README.ko.md) · [Português](README.pt-BR.md)
+🌍 **README:** [Русский](README.ru.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [한국어](README.ko.md) · [Português](README.pt-BR.md)  
 🐣 **Beginner guide:** [EN](docs/BEGINNER.md) · [RU](docs/BEGINNER.ru.md) · [中文](docs/BEGINNER.zh-CN.md) · [日本語](docs/BEGINNER.ja.md) · [ES](docs/BEGINNER.es.md) · [DE](docs/BEGINNER.de.md) · [FR](docs/BEGINNER.fr.md) · [KO](docs/BEGINNER.ko.md) · [PT](docs/BEGINNER.pt-BR.md)
 
 </div>
@@ -26,7 +26,8 @@ and **merges finished code to `main`**. No five chats. No manual merges.
 ## 📌 Table of contents
 
 - [Why this exists](#-why-this-exists) · [Who it's for](#-who-its-for) · [How it works](#-how-it-works)
-- [Quick start](#-quick-start-3-commands) · [Task cards](#-task-cards-how-workers-stay-in-their-lane) · [You never merge](#-you-never-merge--the-pm-does)
+- [Quick start](#-quick-start-3-commands) · [Onboard 2.0](#-onboard-20--scenario--depth) · [Lanes that finish](#-lanes-that-finish--background-survival)
+- [Task cards](#-task-cards-how-workers-stay-in-their-lane) · [You never merge](#-you-never-merge--the-pm-does)
 - [Cheat sheet](#-commands-cheat-sheet) · [Profiles](#-capability-profiles) · [FAQ](#-faq) · [Docs](#-documentation-map)
 
 ---
@@ -44,6 +45,8 @@ Working with AI coding tools usually looks like this: five chat windows, copy-pa
 | Nobody reviews the AI's code | A dedicated **review lane** (Codex) gates every merge |
 | You merge branches manually | The PM merges to **`main`** after checks pass |
 | Next morning: "what were we doing?" | `/resume-project` — Now / Blocked / Next in seconds |
+| Onboard is a thin CLAUDE stub | **Deep forensic passport** on mature repos |
+| Long AGY/Grok runs die at ~2 min | **`lane-bg` + `lane-wait`** — detach + poll |
 
 No task database. No required cloud service. **Plain files + plain git** — everything is inspectable in your repo.
 
@@ -91,15 +94,19 @@ flowchart LR
 
 | Role | Who | What they do |
 |------|-----|--------------|
-| 👑 Owner | **You** | Say *what* you want, in any language |
+| 👑 Owner | **You** | Say *what* you want (chat may be any language) |
 | 🤖 Project manager | Claude Code agent `dev-orchestrator` | Plans, dispatches, verifies, **merges** |
-| ⚡🔧 Write lanes | AGY, Grok *(optional)* | Implement task cards |
-| 🔍 Review lane | Codex *(optional)* | Independent quality gate |
-| 🗂️ Task cards | YAML files in `.agents/runs/` | The factory floor — fully inspectable |
+| ⚡🔧 Write lanes | AGY, Grok *(optional)* | Implement task cards (detached via `lane-bg`) |
+| 🔍 Review / write / onboard | Codex *(optional)* | Review gate, emergency write, **project passport** |
+| 🗂️ Task cards | YAML in `.agents/runs/` | Factory floor — fully inspectable |
 | 📦 Official code | Git branch **`main`** | Where every successful job ends |
 
+**Language policy:** durable files (contracts, CLAUDE, reports, docs) are **English**. Chat with the human may be **Russian** (or your language) — the PM translates. See [docs/LANGUAGE.md](docs/LANGUAGE.md).
+
+**Models (Codex):** GPT-**5.6** only — **Sol** (review / deep / high-risk), **Terra** (scoped write / docs), **Luna** (trivia only). No 5.5. See [docs/ROUTING.md](docs/ROUTING.md).
+
 > [!NOTE]
-> **Only Claude Code is required.** Missing workers are fine — `agents-doctor` detects what's installed and the PM adapts, down to a pure `claude-only` mode.
+> **Only Claude Code is required.** Missing workers are fine — `agents-doctor` detects what's installed and the PM adapts, down to pure `claude-only` mode.
 
 ---
 
@@ -108,7 +115,8 @@ flowchart LR
 ```bash
 # 1️⃣  Install the stack — once per computer
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && ./install.sh
+cd claude-lane-stack && git checkout v1.1.0   # or: main
+./install.sh
 export PATH="$HOME/.agents/bin:$PATH"        # or open a new terminal
 
 # 2️⃣  In YOUR project — detect available workers, once per repo
@@ -119,13 +127,79 @@ agents-doctor --apply .
 claude --agent dev-orchestrator
 ```
 
-First time on a project, inside the chat: **`/project-onboard`** — writes the repo's passport (`CLAUDE.md`, starter docs). Auto-picks **minimal** vs **full**, and **fast** vs **deep** forensic analysis (full→deep by default; see [`docs/ONBOARD-SCENARIOS.md`](docs/ONBOARD-SCENARIOS.md)). Override: `--minimal`/`--full`, `--fast`/`--deep`, or `/project-onboard deep`.
-Coming back after a break: **`/resume-project`** — Now / Blocked / Next.
+Then in chat:
+
+| Command | When |
+|---------|------|
+| **`/project-onboard`** | First time on a repo — passport + docs (auto **minimal/full** + **fast/deep**) |
+| **`/project-onboard deep`** | Force forensic analysis |
+| **`/resume-project`** | Cold start after a break — Now / Blocked / Next |
 
 > [!IMPORTANT]
-> `/resume-project` is a *"welcome back"* command for later sessions — **not** an installation step.
+> `/resume-project` is a *"welcome back"* command — **not** an installation step.
 
-📖 Full plain-language walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)**
+📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.1.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)**
+
+---
+
+## 🧭 Onboard 2.0 — scenario + depth
+
+First-time setup is not a thin stub. **`project-onboard` + Codex** build a real passport.
+
+### Axis 1 — Scenario (*what* to seed)
+
+| | 🟢 **minimal** | 🟣 **full** |
+|--|----------------|-------------|
+| When | score &lt; 5 (small / greenfield) | score ≥ 5 or multi-package monorepo |
+| Seeds | CLAUDE · AGENTS · ARCHITECTURE · memory · plans | + GOTCHAS · GLOSSARY · TESTING · deployment · nested `apps/*/CLAUDE.md` · SECURITY when domain-heavy |
+
+### Axis 2 — Depth (*how hard* Codex digs)
+
+| | ⚡ **fast** | 🔬 **deep** (default on full) |
+|--|------------|--------------------------------|
+| Explore | top dirs + manifests | entrypoints, top modules, 3–7 flows, wiki↔code, run tests |
+| Model | `gpt-5.6-terra` high | `gpt-5.6-sol` high |
+| Report | passport filled | MODULES_READ · FLOWS · WIKI_MISMATCHES · VERIFY |
+
+```bash
+project-onboard .                 # auto scenario + depth
+project-onboard . --deep          # force forensic
+project-onboard . --minimal --fast
+```
+
+Writes:
+
+- `.agents/onboard.scenario.yaml` — `scenario` + `depth` + score  
+- `.agents/runs/_onboard/artifacts/001/deep-scan.md` — evidence pack for Codex  
+- Prefer **pointers** to existing wiki (`gotchas.md`) over UPPERCASE duplicates  
+
+Full guide: [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md)
+
+---
+
+## 🏃 Lanes that finish — background survival
+
+Claude Code **kills foreground Bash around ~2 minutes**. That is a **host** limit, not `lane-exec`.
+
+Long AGY / Grok / Codex jobs **must** detach:
+
+```bash
+# 1) Start detached (returns immediately)
+lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
+  lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
+  agy --print "..." --agent lane-frontend --print-timeout 90m ...
+
+# 2) Poll with short Bash (safe)
+lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = running, 0 = done
+```
+
+| Tool | Role |
+|------|------|
+| **`lane-bg`** | nohup detach — job survives Bash death |
+| **`lane-wait`** | short status polls |
+| **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
+
+Implementers and `dev-orchestrator` are instructed to use this pattern. Details: [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
 
 ---
 
@@ -135,7 +209,7 @@ Coming back after a break: **`/resume-project`** — Now / Blocked / Next.
 <img src="docs/images/04-file-contracts.jpg" alt="Each worker cell has a job card — a YAML contract listing goal, owned files and verification commands" width="90%" />
 </div>
 
-Every job is a small **YAML contract** in `.agents/runs/` — created by the PM, obeyed by workers:
+Every job is a small **YAML contract** in `.agents/runs/` — created by the PM, obeyed by workers (**English**):
 
 ```yaml
 task: add-dark-mode
@@ -150,9 +224,9 @@ lane: agy-implementer  # who executes
 review: codex-reviewer # who gates the merge
 ```
 
-- 🔒 `owns_paths` — parallel workers **can't collide**: `check-owns-paths` fails the task if a worker strays
-- ✅ `verify` — merge is blocked until checks pass
-- 📜 Cards stay in git history — a full audit trail of what every agent did and why
+- 🔒 `owns_paths` — parallel workers **can't collide**: `check-owns-paths` fails the task if a worker strays  
+- ✅ `verify` — merge is blocked until checks pass  
+- 📜 Cards stay in git history — audit trail of what every agent did  
 
 Details: [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md)
 
@@ -164,12 +238,12 @@ Details: [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md)
 <img src="docs/images/03-auto-merge-main.jpg" alt="The PM robot places verified code into the main vault while the developer relaxes with coffee" width="90%" />
 </div>
 
-The end of every successful job is the same: **verified code lands on `main`**, merged by the orchestrator via `wt-merge-main` after review and checks. Workers build in isolated **git worktrees**, so parallel jobs never trample each other.
+The end of every successful job is the same: **verified code lands on `main`**, merged by the orchestrator via `wt-merge-main` after review and checks. Workers build in isolated **git worktrees**.
 
 > [!WARNING]
-> If an agent ever asks *you* to resolve branches — that's a bug in the flow, not a chore for you. Tell the PM: *«merging is your job»*.
+> If an agent ever asks *you* to resolve branches — that's a bug in the flow. Tell the PM: *«merging is your job»*.
 
-Solo-orchestration rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
+Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 
 ---
 
@@ -179,25 +253,30 @@ Solo-orchestration rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.m
 
 | Command / phrase | What it is | When |
 |------------------|------------|------|
-| `./install.sh` | Install the factory kit into `~/.agents` | Once per computer |
-| `agents-doctor --apply .` | Detect CLIs → write routing profile | Once per project |
-| `claude --agent dev-orchestrator` | Open the **only chat you need** | Every session |
-| `/project-onboard` | Repo passport via Codex (CLAUDE.md + docs) | First time on a repo |
-| *«Add dark mode to settings»* | A work request — any language | Features & fixes |
+| `./install.sh` | Install kit into `~/.agents` | Once per computer |
+| `agents-doctor --apply .` | Detect CLIs → routing profile | Once per project |
+| `claude --agent dev-orchestrator` | **The only chat you need** | Every session |
+| `/project-onboard` | Passport via Codex (scenario + depth auto) | First time on a repo |
+| `/project-onboard deep` | Force forensic onboard | Mature / messy repos |
+| *«Add dark mode…»* | Work request — any language | Features & fixes |
 | `/resume-project` | Now / Blocked / Next | After a break |
 | *«It's stuck»* | PM checks silent workers | Long silence |
 
 <details>
-<summary>🤖 <b>Usually only the PM types these</b></summary>
+<summary>🤖 <b>Usually only the PM / implementers type these</b></summary>
 
 | Command | What it is |
 |---------|------------|
-| `run-board` | Refresh the job scoreboard |
-| `wt-create` / `wt-merge-main` | Isolated worktree + **merge into `main`** |
-| `check-owns-paths` | Did the worker stay inside its file list? |
-| `lane-heartbeat` / `lane-stall-check` | Is the worker alive? Who went silent? |
-| `project-memory-init` | Create PROGRESS / LESSONS memory files |
-| `night-audit` | Scheduled housekeeping over runs & docs |
+| `run-board` | Job scoreboard |
+| `wt-create` / `wt-merge-main` | Worktree + **merge into `main`** |
+| `check-owns-paths` | Did the worker stay in its file list? |
+| `lane-bg` / `lane-wait` | Detach long lane + poll status |
+| `lane-exec` | Activity-aware idle/max wrapper |
+| `lane-heartbeat` / `lane-stall-check` | Alive? Silent? |
+| `project-onboard` | Shell seed + deep-scan (Codex fills) |
+| `docs-maintain-project` | Nightly/daily docs honesty |
+| `project-memory-init` | PROGRESS / LESSONS |
+| `night-audit` | Housekeeping |
 
 </details>
 
@@ -205,19 +284,19 @@ Solo-orchestration rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.m
 
 ## 🚦 Capability profiles
 
-`agents-doctor` writes one of five profiles depending on which CLIs it finds — the PM routes accordingly:
+`agents-doctor` writes one of five profiles:
 
 | Profile | You have | Write lane | Review lane |
 |---------|----------|------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
+| `full` | AGY + Grok + Codex | AGY / Grok | Codex Sol |
 | `claude-agy` | AGY | AGY | Claude |
 | `claude-grok` | Grok | Grok | Claude |
-| `claude-codex` | Codex | Codex | Codex |
-| `claude-only` | just Claude Code | Claude subagents | Claude subagents |
+| `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |
+| `claude-only` | Claude Code only | Claude subagents | Claude subagents |
 
 ```bash
-agents-doctor            # show detection report
-agents-doctor --apply .  # save the profile into the project
+agents-doctor            # report
+agents-doctor --apply .  # save into project
 ```
 
 More: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
@@ -228,24 +307,29 @@ More: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING
 
 ```text
 claude-lane-stack/
-├── agents/        # agent definitions: claude PM + agy / grok / codex lanes
-├── bin/           # 11 CLI tools: agents-doctor, run-board, wt-merge-main, …
-├── skills/        # 11 skills: orchestration, contracts, project memory, onboarding
-├── profiles/      # 5 routing profiles (full → claude-only)
-├── hooks/         # safety hooks: shell guard, code-quality guard, session ledger
-├── templates/     # PROGRESS / LESSONS / decisions / session-log templates
-├── docs/          # beginner guide + deep dives (this table ↓)
-└── install.sh     # puts everything into ~/.agents
+├── agents/        # claude PM + agy / grok / codex lanes (implementers, onboard, review)
+├── bin/           # agents-doctor, project-onboard, lane-bg, lane-wait, lane-exec,
+│                  # wt-*, run-board, docs-maintain-*, …
+├── skills/        # orchestration, contracts, memory, onboard, antigravity, …
+├── profiles/      # full → claude-only
+├── hooks/         # shell guard, code-quality, session ledger
+├── templates/     # ARCHITECTURE, GOTCHAS, TESTING, deployment, README anamnesis, …
+├── docs/          # beginner + deep dives (table below)
+└── install.sh     # → ~/.agents
 ```
 
-And inside **your** project after onboarding:
+Inside **your** project after onboard:
 
 ```text
 your-app/
-├── CLAUDE.md          # short always-on project rules
-├── AGENTS.md          # "read CLAUDE.md" pointer for other tools
-├── .agents/runs/      # 🏭 factory floor — task cards, reports, merge notes
-└── docs/plans/        # 🧠 strategy documents (not the factory floor)
+├── CLAUDE.md                      # always-on rules (≤200 lines body)
+├── AGENTS.md                      # pointer → CLAUDE.md
+├── PROGRESS.md / LESSONS.md       # living memory
+├── .agents/
+│   ├── onboard.scenario.yaml      # scenario + depth + score
+│   ├── routing.profile.yaml       # agents-doctor
+│   └── runs/                      # 🏭 factory floor
+└── docs/                          # architecture, gotchas, deployment, plans/…
 ```
 
 ---
@@ -255,42 +339,49 @@ your-app/
 <details>
 <summary><b>Do I need AGY, Grok and Codex all installed?</b></summary>
 
-No — **only Claude Code is required**. Everything else is an optional worker. `agents-doctor` detects your setup and the PM adapts, down to `claude-only` mode.
+No — **only Claude Code is required**. Everything else is optional. `agents-doctor` adapts down to `claude-only`.
 
 </details>
 
 <details>
 <summary><b>How is this different from plain Claude Code?</b></summary>
 
-Plain Claude Code is one worker in one chat (subagents included). Lane Stack adds the **management layer** on top: task cards with file ownership, parallel agent lanes from different vendors, an independent review gate, automatic merge to `main`, and cold-start recovery. You do strategy; it does logistics.
+Plain Claude is one worker in one chat. Lane Stack adds **management**: task cards with ownership, multi-vendor lanes, independent review, auto-merge to `main`, deep onboard, cold-start recovery.
 
 </details>
 
 <details>
-<summary><b>Does it need a database or a cloud service?</b></summary>
+<summary><b>My AGY run dies after ~2 minutes — is that lane-exec?</b></summary>
 
-No. State lives in **plain files inside your repo** (`.agents/runs/`) and in git. You can read, diff and audit everything.
+Usually **no**. Claude kills **foreground Bash** ~2 min. Fix: implementers must use **`lane-bg`** + **`lane-wait`**. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md). After upgrading, start a **fresh** dev-orchestrator session.
+
+</details>
+
+<details>
+<summary><b>minimal vs full vs deep — which do I pick?</b></summary>
+
+Usually nothing — **auto**. Toy repo → minimal + fast. Mature monorepo → full + deep. Override with `/project-onboard deep` or `project-onboard . --full --deep`.
+
+</details>
+
+<details>
+<summary><b>Does it need a database or cloud service?</b></summary>
+
+No. State is **files in your repo** (`.agents/runs/`) + git.
 
 </details>
 
 <details>
 <summary><b>Will it work on my existing project?</b></summary>
 
-Yes. `cd your-project && agents-doctor --apply .`, then `/project-onboard` writes the passport around your existing code. Nothing is rewritten without a task.
-
-</details>
-
-<details>
-<summary><b>What if a worker goes silent mid-task?</b></summary>
-
-The stack ships `lane-heartbeat` / `lane-stall-check` — the PM detects stalls and re-dispatches. You can always say *«it's stuck»*.
+Yes. `agents-doctor --apply .` then `/project-onboard`. Existing wiki pages are **linked**, not blindly duplicated (`gotchas.md` wins over `GOTCHAS.md`).
 
 </details>
 
 <details>
 <summary><b>Is my code safe?</b></summary>
 
-Each CLI talks only to its own vendor, exactly as it would standalone — the stack adds **no extra servers**. Secrets don't belong in task files; sensitive areas (auth, payments) deserve the review lane. See [SECURITY.md](SECURITY.md).
+Each CLI talks only to its own vendor. No extra servers. Don't put secrets in task YAML; use the review lane for auth/pay. [SECURITY.md](SECURITY.md).
 
 </details>
 
@@ -299,18 +390,23 @@ Each CLI talks only to its own vendor, exactly as it would standalone — the st
 ## 📚 Documentation map
 
 | Topic | Doc |
-|-------|-----|
+|-------|------|
 | 🐣 Plain-language walkthrough | [docs/BEGINNER.md](docs/BEGINNER.md) |
+| 🧭 Onboard scenarios + depth | [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) |
+| ⏱️ Lane timeouts + background | [docs/LANE-EXEC.md](docs/LANE-EXEC.md) |
+| 🌐 Language policy (EN files / RU chat) | [docs/LANGUAGE.md](docs/LANGUAGE.md) |
+| 🔀 Who writes / who reviews (Sol/Terra) | [docs/ROUTING.md](docs/ROUTING.md) |
 | ⚖️ Comparison with alternatives | [docs/COMPARISON.md](docs/COMPARISON.md) |
-| 🧑‍✈️ Solo rules — why you never merge | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
-| 🗂️ Task card YAML anatomy | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
-| 🔀 Who writes / who reviews | [docs/ROUTING.md](docs/ROUTING.md) |
+| 🧑‍✈️ Solo rules — you never merge | [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) |
+| 🗂️ Task card YAML | [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md) |
 | 🛡️ Safety hooks | [docs/HOOKS.md](docs/HOOKS.md) |
-| 🧠 Project memory (PROGRESS / LESSONS) | [docs/PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md) |
+| 🧠 Project memory | [docs/PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md) |
 | 📝 Ideas backlog | [docs/TODOS.md](docs/TODOS.md) |<!-- guardian: allow — link to existing docs/TODOS.md file, not a new TODO marker -->
-| 🔌 MCP setups (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
+| 🔌 MCP (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
+| 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
+| 🚀 Release v1.1.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0) |
 | 🤝 Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| 🔐 Security policy | [SECURITY.md](SECURITY.md) |
+| 🔐 Security | [SECURITY.md](SECURITY.md) |
 
 ---
 
@@ -328,6 +424,6 @@ MIT — [LICENSE](LICENSE). Use it, fork it, build your own factory.
 
 *I build working conveyors, not another chat with an LLM.*
 
-⭐ **If the conveyor idea clicks — star the repo.** It genuinely helps solo builders find it.
+⭐ **If the conveyor idea clicks — star the repo.** It helps solo builders find it.
 
 </div>

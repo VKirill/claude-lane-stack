@@ -29,6 +29,24 @@
 - [快速开始](#-快速开始3-条命令) · [任务卡](#-任务卡让工人各守其道) · [你从不合并](#-你从不合并pm-代劳)
 - [命令速查](#-命令速查表) · [能力档案](#-能力档案) · [常见问题](#-常见问题) · [文档地图](#-文档地图)
 
+<!-- v1.1.0-whats-new -->
+
+---
+
+## 🆕 v1.1.0 新特性（当前现状）
+
+| 能力 | 说明 |
+|------|------|
+| 🧭 **Onboard 2.0** | 自动 **minimal / full** 场景 + **fast / deep** 深度（成熟仓库默认 deep 取证分析） |
+| 🔬 Deep 清单 | 入口、关键流、wiki↔code 对照、真实测试、部署与密钥面（只写环境变量名） |
+| 🏃 **lane-bg / lane-wait** | Claude 前台 Bash ~2 分钟会被杀掉；长任务必须后台 + 轮询 |
+| ⏱️ **lane-exec** | 按活动重置 idle，硬上限 max（用于已 detach 的进程） |
+| 🧠 模型 | 仅 GPT-**5.6** Sol / Terra / Luna（无 5.5）；文件英文，聊天可用本地语言 |
+| 🚀 命令 | `/project-onboard` · `/project-onboard deep` · `project-onboard . --deep` |
+
+文档：[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [ROUTING.md](docs/ROUTING.md) · [发布说明](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+
+
 ---
 
 ## 💡 为什么需要它

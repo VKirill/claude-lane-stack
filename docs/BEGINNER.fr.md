@@ -142,7 +142,10 @@ Codex (ou Claude lui-même si Codex est absent) écrit le « passeport » du pro
 
 *Même dossier, même commande, à chaque session de travail :*
 
-```bash
+```
+
+> **v1.1.0:** `/project-onboard` choisit minimal/full et fast/deep. Lanes longues: `lane-bg` ([LANE-EXEC.md](LANE-EXEC.md)).
+bash
 claude --agent dev-orchestrator
 ```
 

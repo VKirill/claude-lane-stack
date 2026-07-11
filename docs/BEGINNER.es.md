@@ -142,7 +142,10 @@ Codex (o el propio Claude si Codex no está) escribe el «pasaporte» del proyec
 
 *Misma carpeta, mismo comando, cada sesión de trabajo:*
 
-```bash
+```
+
+> **v1.1.0:** `/project-onboard` elige minimal/full y fast/deep. Lanes largas: `lane-bg` ([LANE-EXEC.md](LANE-EXEC.md)).
+bash
 claude --agent dev-orchestrator
 ```
 

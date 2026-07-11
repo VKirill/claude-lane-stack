@@ -37,7 +37,13 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
         review.md         # codex when required
         verified.txt
         heartbeat.json    # last touch from lane
+        lane-bg.pid       # detached supervisor (lane-bg)
+        lane-bg.exit      # set when lane finishes
+        lane-bg.supervisor.log
+        lane-exec.log     # activity-aware wrapper
 ```
+
+Long CLI lanes **must** start with `lane-bg` and poll via `lane-wait --once` — Claude kills foreground Bash ~2 minutes. See [LANE-EXEC.md](LANE-EXEC.md).
 
 `<slug>` = kebab-case feature, e.g. `fix-subscription-panel-flicker`.
 

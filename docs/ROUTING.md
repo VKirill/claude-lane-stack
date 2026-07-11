@@ -11,7 +11,8 @@
 | Main write | Grok 4.5 | — |
 | Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `xhigh` |
 | Fallback write | Codex | see claude-codex table |
-| Onboard / docs maintain | Codex **Terra** (Sol if huge monorepo) | `gpt-5.6-terra` + `high` |
+| Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
+| Onboard **deep** (default on full) | Codex **Sol** | `gpt-5.6-sol` + `high` |
 | Thin wrappers (implementer/reviewer supervisors) | Claude **Sonnet** | shell-out only |
 
 ## GPT-5.6 Sol / Terra / Luna (Codex)
@@ -42,7 +43,8 @@
 | main_write (medium) | codex-implementer | **terra** | xhigh |
 | main_write (high / high_risk_paths) | codex-implementer | **sol** | xhigh |
 | review / ship | codex-reviewer | **sol** | xhigh |
-| onboard | codex-onboarder | **terra** (sol if huge) | high |
+| onboard (fast) | codex-onboarder | **terra** | high |
+| onboard (deep / full default) | codex-onboarder | **sol** | high |
 | docs-maintain | codex-docs-maintainer | **terra** | high |
 | emergency_write | codex-implementer | **sol** | xhigh |
 | luna | — | optional trivia only | low/medium |
@@ -59,6 +61,17 @@ See `profiles/claude-codex.yaml`.
 | low write | Claude Sonnet worker |
 | medium/high write | Claude Opus worker |
 | review | Claude Opus read-only review agent |
+
+## Long lanes under Claude Code
+
+Foreground Bash dies ~**2 minutes**. Write lanes **must** detach:
+
+```bash
+lane-bg --dir "$ARTIFACT_DIR" -- … lane-exec … -- agy|grok|codex …
+lane-wait --dir "$ARTIFACT_DIR" --once
+```
+
+See [LANE-EXEC.md](LANE-EXEC.md). PM waits on the **Agent** tool, not a 90m Bash call.
 
 ## Parallelism (solo)
 

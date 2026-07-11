@@ -1,22 +1,27 @@
 # Claude Lane Stack
 
-> Multi-agent orchestration for Claude Code: you talk to one AI project manager (`dev-orchestrator`), it dispatches optional worker lanes (AGY / Grok / Codex) through file-based YAML task contracts, verifies their output with an independent review lane, and auto-merges finished code to the `main` git branch. Built for solo developers. No database, no cloud service — plain files and plain git. MIT license.
+> Multi-agent orchestration for Claude Code (v1.1.0): you talk to one AI project manager (`dev-orchestrator`), it dispatches optional worker lanes (AGY / Grok / Codex) through file-based YAML task contracts in `.agents/runs/`, verifies with an independent review lane (Codex Sol), and auto-merges finished code to git `main` via `wt-merge-main`. Built for solo developers. No required database or cloud service — plain files + plain git. MIT license.
 
-Key facts: only Claude Code is required (workers are optional and auto-detected by `agents-doctor`); each task card lists `owns_paths` so parallel workers cannot touch each other's files; workers run in isolated git worktrees; merging to `main` is always done by the orchestrator, never by the human. Author: Kirill Vechkasov (@VKirill).
+Key facts:
+- Only Claude Code is required; workers optional and auto-detected by `agents-doctor` (profiles: full → claude-only).
+- Task cards list `owns_paths` so parallel workers cannot touch each other's files; optional git worktrees.
+- Merging to `main` is always done by the orchestrator, never the human.
+- **Onboard 2.0**: dual scenario `minimal|full` + dual depth `fast|deep` (full defaults to deep forensic). Commands: `/project-onboard`, `/project-onboard deep`, shell `project-onboard`.
+- **Long lanes**: Claude foreground Bash dies ~2 minutes — use `lane-bg` + `lane-wait` around `lane-exec` (activity-aware idle/max). See docs/LANE-EXEC.md.
+- **Language**: durable files English; chat with human may be Russian (docs/LANGUAGE.md).
+- **Codex models**: GPT-5.6 Sol (review/deep/high-risk), Terra (scoped write/docs), Luna (trivia only). No 5.5.
+- Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0
 
 ## Docs
 
-- [README](https://github.com/VKirill/claude-lane-stack/blob/main/README.md): overview, quick start, FAQ — also available in Russian, Chinese, Japanese, Spanish, German, French, Korean, Portuguese
-- [Beginner guide](https://github.com/VKirill/claude-lane-stack/blob/main/docs/BEGINNER.md): plain-language walkthrough for people new to agent orchestration
-- [Solo orchestration rules](https://github.com/VKirill/claude-lane-stack/blob/main/docs/SOLO-ORCHESTRATION.md): why the human never merges
-- [File contract anatomy](https://github.com/VKirill/claude-lane-stack/blob/main/docs/FILE-CONTRACT.md): YAML task card format, owns_paths, verify commands
-- [Routing](https://github.com/VKirill/claude-lane-stack/blob/main/docs/ROUTING.md): which lane writes, which lane reviews
-- [Hooks](https://github.com/VKirill/claude-lane-stack/blob/main/docs/HOOKS.md): shell and code-quality guard rails
-- [Project memory](https://github.com/VKirill/claude-lane-stack/blob/main/docs/PROJECT-MEMORY.md): PROGRESS / LESSONS conventions
-
-## Optional
-
-- [Comparison with alternatives](https://github.com/VKirill/claude-lane-stack/blob/main/docs/COMPARISON.md): how Lane Stack differs from other Claude Code multi-agent orchestrators
-- [Profiles](https://github.com/VKirill/claude-lane-stack/blob/main/profiles/README.md): capability profiles from full (AGY+Grok+Codex) to claude-only
+- [README](https://github.com/VKirill/claude-lane-stack/blob/main/README.md) — also RU, ZH, JA, ES, DE, FR, KO, PT-BR
+- [Beginner guide](https://github.com/VKirill/claude-lane-stack/blob/main/docs/BEGINNER.md)
+- [Onboard scenarios + depth](https://github.com/VKirill/claude-lane-stack/blob/main/docs/ONBOARD-SCENARIOS.md)
+- [Lane exec + background](https://github.com/VKirill/claude-lane-stack/blob/main/docs/LANE-EXEC.md)
+- [Language policy](https://github.com/VKirill/claude-lane-stack/blob/main/docs/LANGUAGE.md)
+- [Routing Sol/Terra/Luna](https://github.com/VKirill/claude-lane-stack/blob/main/docs/ROUTING.md)
+- [Solo orchestration](https://github.com/VKirill/claude-lane-stack/blob/main/docs/SOLO-ORCHESTRATION.md)
+- [File contract](https://github.com/VKirill/claude-lane-stack/blob/main/docs/FILE-CONTRACT.md)
+- [Comparison](https://github.com/VKirill/claude-lane-stack/blob/main/docs/COMPARISON.md)
+- [Project memory](https://github.com/VKirill/claude-lane-stack/blob/main/docs/PROJECT-MEMORY.md)
 - [Changelog](https://github.com/VKirill/claude-lane-stack/blob/main/CHANGELOG.md)
-- [Security policy](https://github.com/VKirill/claude-lane-stack/blob/main/SECURITY.md)

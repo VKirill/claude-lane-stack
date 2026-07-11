@@ -29,6 +29,24 @@
 - 빠른 시작 · 태스크 카드 · 머지는 당신이 하지 않아요
 - 치트 시트 · 프로파일 · FAQ · 문서
 
+<!-- v1.1.0-whats-new -->
+
+---
+
+## 🆕 v1.1.0 현재 기능 요약
+
+| 기능 | 설명 |
+|------|------|
+| 🧭 **Onboard 2.0** | **minimal / full** 시나리오 + **fast / deep** 깊이 (성숙 레포는 deep) |
+| 🔬 Deep | 엔트리포인트, 플로우, wiki↔코드, 실제 테스트, 배포, 시크릿 이름만 |
+| 🏃 **lane-bg / lane-wait** | Claude foreground Bash ~2분 종료 → 긴 레인은 detach 필수 |
+| ⏱️ **lane-exec** | 활동 기반 idle + 절대 max (detach 프로세스) |
+| 🧠 모델 | GPT-**5.6** Sol / Terra / Luna 만 (5.5 없음). 파일은 영어 |
+| 🚀 명령 | `/project-onboard` · `/project-onboard deep` |
+
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+
+
 ---
 
 ## 💡 왜 필요한가

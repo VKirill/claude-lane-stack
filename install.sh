@@ -70,8 +70,11 @@ else
 fi
 
 echo ""
-echo "Done. Start PM:"
+echo "Done. (v1.1.0+) Start PM:"
+echo "  export PATH=\"\$HOME/.agents/bin:\$PATH\""
 echo "  claude --agent dev-orchestrator"
-echo "Onboard: project-onboard .\nCold start: /resume-project   or   resume-project ."
-echo "Beginner: docs/BEGINNER.md (RU: docs/BEGINNER.ru.md)
-Docs: $DEST/docs/SOLO-ORCHESTRATION.md"
+echo "Onboard:  /project-onboard   or   project-onboard . [--deep|--fast]"
+echo "Cold start: /resume-project   or   resume-project ."
+echo "Long lanes: lane-bg + lane-wait (never long foreground Bash)"
+echo "Beginner: docs/BEGINNER.md · RU: docs/BEGINNER.ru.md"
+echo "Docs: $DEST/docs/  (ONBOARD-SCENARIOS, LANE-EXEC, ROUTING, LANGUAGE)"

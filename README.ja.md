@@ -29,6 +29,24 @@
 - クイックスタート · タスクカード · あなたはマージしない
 - チートシート · プロファイル · FAQ · ドキュメント
 
+<!-- v1.1.0-whats-new -->
+
+---
+
+## 🆕 v1.1.0 の現状（重要）
+
+| 機能 | 内容 |
+|------|------|
+| 🧭 **Onboard 2.0** | **minimal / full** シナリオ + **fast / deep** 深度を自動判定（成熟リポは deep） |
+| 🔬 Deep | エントリポイント・フロー・wiki↔コード差分・実テスト・デプロイ・シークレット名のみ |
+| 🏃 **lane-bg / lane-wait** | Claude の foreground Bash は約2分で殺される → 長時間レーンは必ず detach |
+| ⏱️ **lane-exec** | 活動ベース idle + 絶対 max（detach 後の子プロセス向け） |
+| 🧠 モデル | GPT-**5.6** Sol / Terra / Luna のみ（5.5 なし）。ファイルは英語 |
+| 🚀 コマンド | `/project-onboard` · `/project-onboard deep` |
+
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+
+
 ---
 
 ## 💡 なぜ存在するのか

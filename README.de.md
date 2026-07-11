@@ -29,6 +29,24 @@ und **mergt fertigen Code nach `main`**. Keine fünf Chats. Keine manuellen Merg
 - [Schnellstart](#-schnellstart-3-befehle) · [Task Cards](#-task-cards-wie-worker-in-ihrer-lane-bleiben) · [Du mergst nie](#-du-mergst-nie--das-macht-der-pm)
 - [Spickzettel](#-befehls-spickzettel) · [Profile](#-capability-profile) · [FAQ](#-faq) · [Docs](#-dokumentations-übersicht)
 
+<!-- v1.1.0-whats-new -->
+
+---
+
+## 🆕 Neu in v1.1.0 (aktueller Stand)
+
+| Fähigkeit | Inhalt |
+|-----------|--------|
+| 🧭 **Onboard 2.0** | **minimal / full** + Tiefe **fast / deep** (full → deep forensisch) |
+| 🔬 Deep | Entrypoints, Flows, Wiki↔Code, echte Tests, Deploy, Secrets (nur Namen) |
+| 🏃 **lane-bg / lane-wait** | Claude killt Foreground-Bash ~2 Min → lange Lanes immer detach |
+| ⏱️ **lane-exec** | Aktivitäts-Idle + hartes Max auf dem detached Prozess |
+| 🧠 Modelle | Nur GPT-**5.6** Sol / Terra / Luna (kein 5.5). Dateien Englisch |
+| 🚀 Befehle | `/project-onboard` · `/project-onboard deep` |
+
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+
+
 ---
 
 ## 💡 Warum es das gibt

@@ -142,7 +142,10 @@ O Codex (ou o próprio Claude, se o Codex não estiver presente) escreve o "pass
 
 *Mesma pasta, mesmo comando, toda sessão de trabalho:*
 
-```bash
+```
+
+> **v1.1.0:** `/project-onboard` escolhe minimal/full e fast/deep. Lanes longas: `lane-bg` ([LANE-EXEC.md](LANE-EXEC.md)).
+bash
 claude --agent dev-orchestrator
 ```
 

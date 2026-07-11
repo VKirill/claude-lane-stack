@@ -116,22 +116,32 @@ claude --agent dev-orchestrator
 
 ```text
 /project-onboard
+# или принудительно глубокий анализ:
+/project-onboard deep
 ```
 
-Codex (или сам Claude, если Codex не установлен) напишет «паспорт» проекта: `CLAUDE.md`, стартовые доки, файлы памяти. Дождитесь окончания — это разовая операция для репозитория.
+Codex собирает **паспорт** проекта (`CLAUDE.md`, memory, пакет docs). Автоматически выбирает:
+
+| Ось | Значения | По умолчанию |
+|-----|----------|--------------|
+| **Сценарий** | `minimal` (маленький) · `full` (взрослый) | по score |
+| **Глубина** | `fast` (паспорт) · `deep` (forensic) | у full → **deep** |
+
+Deep ходит по entrypoints, flow, wiki↔code и реальным verify-командам — не оставляет stub «Edit me». См. [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md).
 
 **Что означает профиль** — просто «какие рабочие здесь доступны»:
 
 | Профиль | Установлено | Кто пишет код | Кто ревьюит |
 |---------|-------------|---------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
-| `claude-codex` | только Codex | Codex | Codex |
+| `full` | AGY + Grok + Codex | AGY / Grok | Codex Sol |
+| `claude-codex` | только Codex | Codex Terra/Sol | Codex Sol |
 | `claude-only` | только Claude Code | Сабагенты Claude | Сабагенты Claude |
 
 **Чек-лист станции 2 — готово, когда:**
 
 - [ ] `agents-doctor --apply .` напечатал имя профиля (например, `full` или `claude-only`)
-- [ ] После `/project-onboard` в корне проекта появился `CLAUDE.md`
+- [ ] `CLAUDE.md` есть и это **не** пустой stub «Edit me»
+- [ ] Есть `.agents/onboard.scenario.yaml` (`scenario` + `depth`)
 
 > [!NOTE]
 > «Слабый» профиль — не беда. `claude-only` прекрасно работает — просто медленнее и одним мозгом вместо трёх.
@@ -195,6 +205,9 @@ claude --agent dev-orchestrator
 ## 🧯 Когда что-то застряло
 
 Долгая тишина? Воркеры бывают зависают — в стеке есть инструменты ровно для этого.
+
+> [!IMPORTANT]
+> Если пишущий lane **умирает примерно через 2 минуты** — чаще всего это **Claude убивает foreground Bash**, а не баг вашего кода. Обновитесь до **v1.1.0+** (`lane-bg` + `lane-wait`), затем **новая сессия** PM. Подробнее: [LANE-EXEC.md](LANE-EXEC.md).
 
 | Скажите менеджеру | Что произойдёт |
 |-------------------|----------------|

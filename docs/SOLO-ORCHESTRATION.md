@@ -2,6 +2,8 @@
 
 You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 
+**Related:** [LANE-EXEC.md](LANE-EXEC.md) (background lanes) · [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md) · [LANGUAGE.md](LANGUAGE.md) · [ROUTING.md](ROUTING.md)
+
 ## Non-negotiables
 
 1. **Orchestrator owns `main`.** Workers never push/merge to main. PM merges when the run is green.  
