@@ -90,14 +90,19 @@ detect_scenario() {
     score=$((score + 3))
     reasons+=("workspace_tool(+3)")
   fi
-  if [[ -d "$REPO/apps" || -d "$REPO/packages" || -d "$REPO/services" ]]; then
-    app_pkgs=$(find "$REPO/apps" "$REPO/packages" "$REPO/services" -mindepth 1 -maxdepth 2 \
-      \( -name package.json -o -name pyproject.toml -o -name go.mod -o -name Cargo.toml \) 2>/dev/null | wc -l | tr -d ' ')
-    if [[ "${app_pkgs:-0}" -ge 2 ]]; then
+  local _pkg_roots=()
+  [[ -d "$REPO/apps" ]] && _pkg_roots+=("$REPO/apps")
+  [[ -d "$REPO/packages" ]] && _pkg_roots+=("$REPO/packages")
+  [[ -d "$REPO/services" ]] && _pkg_roots+=("$REPO/services")
+  if [[ ${#_pkg_roots[@]} -gt 0 ]]; then
+    app_pkgs=$(find "${_pkg_roots[@]}" -mindepth 1 -maxdepth 2 \
+      \( -name package.json -o -name pyproject.toml -o -name go.mod -o -name Cargo.toml \) 2>/dev/null | wc -l | tr -d ' ' || true)
+    app_pkgs="${app_pkgs:-0}"
+    if [[ "$app_pkgs" -ge 2 ]]; then
       monorepo=1
       score=$((score + 3))
       reasons+=("multi_package=${app_pkgs}(+3)")
-    elif [[ "${app_pkgs:-0}" -eq 1 ]]; then
+    elif [[ "$app_pkgs" -eq 1 ]]; then
       score=$((score + 1))
       reasons+=("single_nested_package(+1)")
     fi
@@ -150,12 +155,15 @@ detect_scenario() {
   fi
 
   # Domain complexity (auth / payments / workers / queues)
-  if rg -l --max-count=1 -i \
-      'stripe|yookassa|cloudpayments|better-auth|passport|webhook|bullmq|gen_jobs|rembg|oauth' \
-      "$REPO" --glob '!node_modules/**' --glob '!.git/**' --glob '!dist/**' \
-      --glob '!**/*.lock' --glob '!**/package-lock.json' 2>/dev/null | head -1 | grep -q .; then
-    has_domain=1
-    score=$((score + 2)); reasons+=("domain_complexity(+2)")
+  if command -v rg >/dev/null 2>&1; then
+    if rg -l --max-count=1 -i \
+        'stripe|yookassa|cloudpayments|better-auth|passport|webhook|bullmq|gen_jobs|rembg|oauth' \
+        "$REPO" --glob '!node_modules/**' --glob '!.git/**' --glob '!dist/**' \
+        --glob '!**/*.lock' --glob '!**/package-lock.json' 2>/dev/null \
+        | head -1 | grep -q .; then
+      has_domain=1
+      score=$((score + 2)); reasons+=("domain_complexity(+2)")
+    fi
   fi
 
   # Tests maturity
@@ -188,7 +196,11 @@ detect_scenario() {
 
   # Export for caller
   DETECTED_SCORE="$score"
-  DETECTED_REASONS="$(IFS=', '; echo "${reasons[*]:-none}")"
+  if [[ ${#reasons[@]} -eq 0 ]]; then
+    DETECTED_REASONS="none"
+  else
+    DETECTED_REASONS="$(IFS=', '; echo "${reasons[*]}")"
+  fi
   DETECTED_MONOREPO="$monorepo"
   DETECTED_DEPLOY="$has_deploy"
   DETECTED_DOMAIN="$has_domain"
