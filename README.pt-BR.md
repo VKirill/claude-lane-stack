@@ -7,7 +7,7 @@
 ### Uma pequena fábrica de código com IA para uma pessoa
 
 **Orquestração multiagente para o Claude Code** — você fala com um único gerente de projeto de IA,
-que aciona workers opcionais (AGY / Grok / Codex), revisa o que eles produzem
+que aciona agentes de IA opcionais (AGY / Grok / Codex), revisa o que eles produzem
 e **faz o merge do código pronto na `main`**. Sem cinco chats. Sem merges manuais.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -51,7 +51,7 @@ Sem banco de dados de tarefas. Sem serviço de nuvem obrigatório. **Arquivos si
 
 ## 👥 Para quem é
 
-- 🧑‍💻 **Desenvolvedores solo** que entregam projetos reais e querem workers de IA em paralelo sem o caos dos chats
+- 🧑‍💻 **Desenvolvedores solo** que entregam projetos reais e querem programação agêntica com vários workers de IA em paralelo, sem o caos dos chats
 - 🚀 **Indie hackers** que preferem descrever funcionalidades a ficar de babá de branches
 - 🧠 **Vibe-coders** — você sabe *o que* quer; a fábrica cuida do *como*
 - 🏢 **Uma agência de uma pessoa só** tocando vários repositórios de clientes com a mesma disciplina
@@ -262,7 +262,7 @@ Não — **só o Claude Code é obrigatório**. Todo o resto é um worker opcion
 <details>
 <summary><b>Como isto é diferente do Claude Code puro?</b></summary>
 
-O Claude Code puro é um worker em um chat. O Lane Stack adiciona a **camada de gestão**: cartões de tarefa com posse de arquivos, pistas paralelas de fornecedores diferentes, um portão de revisão independente, merge automático na `main` e recuperação de cold start. Você cuida da estratégia; ele cuida da logística.
+O Claude Code puro é um worker em um chat, com no máximo alguns subagentes na mesma sessão. O Lane Stack adiciona a **camada de gestão**: cartões de tarefa com posse de arquivos, pistas paralelas de fornecedores diferentes, um portão de revisão independente, merge automático na `main` e recuperação de cold start. Você cuida da estratégia; ele cuida da logística.
 
 </details>
 

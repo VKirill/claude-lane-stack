@@ -6,7 +6,7 @@
 
 ### Una pequeña fábrica de código con IA para una sola persona
 
-**Orquestación multi-agente para Claude Code** — hablas con un único jefe de proyecto de IA,
+**Orquestación multiagente de agentes de IA para Claude Code** — hablas con un único jefe de proyecto,
 que despacha workers opcionales (AGY / Grok / Codex), revisa su salida
 y **fusiona el código terminado en `main`**. Sin cinco chats. Sin merges manuales.
 
@@ -51,7 +51,7 @@ Sin base de datos de tareas. Sin servicio en la nube obligatorio. **Archivos sim
 
 ## 👥 Para quién es
 
-- 🧑‍💻 **Desarrolladores en solitario** que sacan proyectos reales y quieren workers de IA en paralelo sin el caos de los chats
+- 🧑‍💻 **Desarrolladores en solitario** que sacan proyectos reales con programación agéntica y quieren workers de IA en paralelo sin el caos de los chats
 - 🚀 **Indie hackers** que prefieren describir funcionalidades antes que cuidar ramas
 - 🧠 **Vibe-coders** — sabes *qué* quieres; la fábrica se encarga del *cómo*
 - 🏢 **Una agencia unipersonal** que lleva varios repos de clientes con la misma disciplina
@@ -262,7 +262,7 @@ No — **solo Claude Code es obligatorio**. Todo lo demás es un worker opcional
 <details>
 <summary><b>¿En qué se diferencia de Claude Code a secas?</b></summary>
 
-Claude Code a secas es un worker en un chat. Lane Stack añade la **capa de gestión**: tarjetas de tarea con propiedad de archivos, carriles en paralelo de distintos proveedores, un control de revisión independiente, merge automático a `main` y recuperación en arranque en frío. Tú haces la estrategia; él hace la logística.
+Claude Code a secas ejecuta subagentes dentro de un único chat. Lane Stack añade la **capa de gestión**: tarjetas de tarea con propiedad de archivos, carriles en paralelo de distintos proveedores, un control de revisión independiente, merge automático a `main` y recuperación en arranque en frío. Tú haces la estrategia; él hace la logística.
 
 </details>
 

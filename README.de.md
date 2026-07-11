@@ -6,7 +6,7 @@
 
 ### Eine kleine KI-Coding-Fabrik für eine Person
 
-**Multi-Agent-Orchestrierung für Claude Code** — du sprichst mit einem KI-Projektmanager,
+**Multi-Agenten-Orchestrierung für Claude Code** — statt fünf KI-Agenten einzeln zu steuern, sprichst du mit einem KI-Projektmanager,
 er verteilt optionale Worker (AGY / Grok / Codex), prüft deren Output
 und **mergt fertigen Code nach `main`**. Keine fünf Chats. Keine manuellen Merges.
 
@@ -51,7 +51,7 @@ Keine Task-Datenbank. Kein zwingender Cloud-Dienst. **Einfache Dateien + einfach
 
 ## 👥 Für wen es ist
 
-- 🧑‍💻 **Solo-Entwickler**, die echte Projekte ausliefern und parallele KI-Worker ohne Chat-Chaos wollen
+- 🧑‍💻 **Solo-Entwickler**, die echte Projekte per agentic coding ausliefern und parallele KI-Worker ohne Chat-Chaos wollen
 - 🚀 **Indie-Hacker**, die lieber Features beschreiben als Branches zu babysitten
 - 🧠 **Vibe-Coder** — du weißt, *was* du willst; die Fabrik kümmert sich um das *Wie*
 - 🏢 **Eine Ein-Personen-Agentur**, die mehrere Kundenprojekte mit derselben Disziplin betreibt
@@ -262,7 +262,7 @@ Nein — **nur Claude Code ist erforderlich**. Alles andere ist ein optionaler W
 <details>
 <summary><b>Wie unterscheidet sich das von reinem Claude Code?</b></summary>
 
-Reines Claude Code ist ein Worker in einem Chat. Lane Stack fügt die **Management-Ebene** hinzu: Task Cards mit Dateibesitz, parallele Lanes von verschiedenen Anbietern, ein unabhängiges Review-Gate, automatischer Merge nach `main` und Wiederaufnahme nach dem Kaltstart. Du machst Strategie; es macht Logistik.
+Reines Claude Code ist ein Worker in einem Chat — selbst mit Subagenten bleibt alles in einer einzigen Session. Lane Stack fügt die **Management-Ebene** hinzu: Task Cards mit Dateibesitz, parallele Lanes von verschiedenen Anbietern, ein unabhängiges Review-Gate, automatischer Merge nach `main` und Wiederaufnahme nach dem Kaltstart. Du machst Strategie; es macht Logistik.
 
 </details>
 

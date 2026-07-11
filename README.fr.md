@@ -6,7 +6,7 @@
 
 ### Une petite usine de code IA pour une seule personne
 
-**Orchestration multi-agent pour Claude Code** — tu parles à un seul chef de projet IA,
+**Orchestration multi-agents pour Claude Code** — tu parles à un seul chef de projet qui orchestre tes agents IA,
 il dépêche des workers optionnels (AGY / Grok / Codex), relit leur travail
 et **fusionne le code terminé vers `main`**. Fini les cinq chats. Fini les fusions manuelles.
 
@@ -51,7 +51,7 @@ Pas de base de données de tâches. Aucun service cloud obligatoire. **De simple
 
 ## 👥 Pour qui c'est fait
 
-- 🧑‍💻 **Les développeurs solo** qui livrent de vrais projets et veulent des workers IA en parallèle, sans le chaos des chats
+- 🧑‍💻 **Les développeurs solo** qui font du codage agentique sur de vrais projets et veulent des workers IA en parallèle, sans le chaos des chats
 - 🚀 **Les indie hackers** qui préfèrent décrire des fonctionnalités plutôt que surveiller des branches
 - 🧠 **Les vibe-codeurs** — tu sais *ce que* tu veux ; l'usine s'occupe du *comment*
 - 🏢 **Une agence d'une seule personne** qui gère plusieurs dépôts clients avec la même discipline
@@ -262,7 +262,7 @@ Non — **seul Claude Code est requis**. Tout le reste est un worker optionnel. 
 <details>
 <summary><b>En quoi est-ce différent de Claude Code tout seul ?</b></summary>
 
-Claude Code tout seul, c'est un worker dans un chat. Lane Stack ajoute la **couche de gestion** : fiches de tâche avec propriété des fichiers, voies parallèles issues de différents fournisseurs, un contrôle de revue indépendant, la fusion automatique vers `main`, et la reprise à froid. Toi, tu fais la stratégie ; lui, la logistique.
+Claude Code tout seul, c'est un seul chat où tu diriges les sous-agents toi-même. Lane Stack ajoute la **couche de gestion** : fiches de tâche avec propriété des fichiers, voies parallèles issues de différents fournisseurs, un contrôle de revue indépendant, la fusion automatique vers `main`, et la reprise à froid. Toi, tu fais la stratégie ; lui, la logistique.
 
 </details>
 
