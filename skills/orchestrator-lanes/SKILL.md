@@ -58,6 +58,8 @@ PROJECT_CWD: <worktree or repo>
 TASK_FILE: .../tasks/001-….yaml
 ARTIFACT_DIR: .../artifacts/001
 Load karpathy-guidelines. Read TASK_FILE. Own only owns_paths. Never merge to main.
+MUST: start the CLI via lane-bg (never long foreground Bash — host kills ~2m).
+Poll with lane-wait --dir ARTIFACT_DIR --once until done.
 Heartbeat: lane-heartbeat --repo PROJECT_CWD --run <slug> --task 001 --status running
 Write report.md to ARTIFACT_DIR.
 ```
@@ -68,6 +70,18 @@ Write report.md to ARTIFACT_DIR.
 | agy-frontend | agy-implementer → lane-frontend |
 | grok | grok-implementer |
 | codex-review | codex-reviewer |
+
+### Background rule (prevents 2-minute kills)
+
+```bash
+# implementer starts (returns immediately):
+lane-bg --dir "$ARTIFACT_DIR" --label grok -- lane-exec ... -- grok ...
+
+# implementer or PM checks (short Bash, safe):
+lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = running, 0 = done
+```
+
+Docs: `~/.agents/docs/LANE-EXEC.md`. Bins: `lane-bg`, `lane-wait`, `lane-exec`.
 
 After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `run-board`.
 

@@ -83,39 +83,59 @@ fi
 
 If smoke crashes → **STATUS unavailable** and stop. No multi-hour diagnosis.
 
-## Run (blocking) — activity-aware timeout
+## Run — MUST be background (Claude Bash kills ~2 min foreground)
 
-**Do not use raw `timeout 570`** — it kills thinking agents. Use `lane-exec`:
+**Do not** run `lane-exec` / `agy` as a long **foreground** Bash call.  
+Claude host kills foreground Bash around **~2 minutes** — that is **not** lane-exec idle/max.
+
+**Do not use raw `timeout 570`.** Use `lane-bg` + `lane-exec` + poll `lane-wait --once`.
 
 | Level | Default | Meaning |
 |-------|---------|---------|
-| `--idle` | 600s (10m) | no stdout **and** no CPU → kill (stuck) |
-| `--max` | 5400s (90m) | absolute ceiling |
-| grace | 80% max | log only |
+| Claude Bash foreground | ~2m | kills if you block here — **avoid** |
+| `lane-exec --idle` | 600s | no stdout **and** no CPU → kill (stuck) |
+| `lane-exec --max` | 5400s | absolute ceiling for the **detached** process |
 
 ```bash
+export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
-SPEC=$(mktemp -t agy-spec.XXXXXX)
+SPEC="$ARTIFACT_DIR/agy-spec.txt"
 FINAL="$ARTIFACT_DIR/lane-final.log"
-# write prompt: task YAML excerpts + TASK_FILE/ARTIFACT_DIR/owns_paths/never_touch + verify
-# agy internal --print-timeout must be ≥ max (else agy self-kills while working)
+# write prompt into $SPEC: task YAML + TASK_FILE/ARTIFACT_DIR/owns_paths/never_touch + verify
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 
-lane-exec --idle 600 --max 5400 --label "agy-${AGENT:-lane-coder}" \
-  ${HB:+--heartbeat "$HB"} \
-  --log "$ARTIFACT_DIR/lane-exec.log" \
-  -- agy \
-    --print "$(cat "$SPEC")" \
-    --agent "${AGENT:-lane-coder}" \
-    --model "Gemini 3.5 Flash (High)" \
-    --mode accept-edits \
-    --print-timeout 90m \
-    --dangerously-skip-permissions \
-    --add-dir "$PROJECT_CWD" \
-  > "$FINAL" 2>&1
-echo AGY_EXIT=$? >> "$FINAL"
+# 1) Start DETACHED (returns immediately)
+lane-bg --dir "$ARTIFACT_DIR" --label "agy-${AGENT:-lane-coder}" -- \
+  lane-exec --idle 600 --max 5400 --label "agy-${AGENT:-lane-coder}" \
+    ${HB:+--heartbeat "$HB"} \
+    --log "$ARTIFACT_DIR/lane-exec.log" \
+    -- bash -c 'agy --print "$(cat "$0")" --agent "$1" --model "Gemini 3.5 Flash (High)" \
+        --mode accept-edits --print-timeout 90m --dangerously-skip-permissions \
+        --add-dir "$2" > "$3" 2>&1; echo AGY_EXIT=$? >> "$3"' \
+      "$SPEC" "${AGENT:-lane-coder}" "$PROJECT_CWD" "$FINAL"
+
+# 2) Poll with SHORT Bash only (each call < 30s). Repeat until done.
+# Prefer host run_in_background for step 1 if available; still poll with --once.
+while true; do
+  set +e
+  lane-wait --dir "$ARTIFACT_DIR" --once
+  st=$?
+  set -e
+  [[ "$st" -eq 0 ]] && break
+  [[ "$st" -eq 3 ]] && sleep 5 && continue
+  # still running — brief sleep via short command, then poll again (new Bash tool call OK)
+  sleep 25
+done
 ```
+
+**Pattern for the agent (recommended tool use):**
+
+1. One Bash: `lane-bg ...` (or Bash `run_in_background=true` wrapping the same).  
+2. Loop: Bash `lane-wait --dir "$ARTIFACT_DIR" --once` every ~20–30s until `status=done`.  
+3. Then Post below.
+
+If you only have blocking Bash and cannot loop long: after `lane-bg`, call `lane-wait --dir ... --interval 25 --max-wait 5400` **only if** that wait itself is backgrounded — never foreground 90m.
 
 ## Post
 

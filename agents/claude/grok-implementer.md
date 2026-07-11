@@ -24,32 +24,37 @@ if [[ -n "${RUN_SLUG:-}" ]]; then
 fi
 ```
 
-## Run — activity-aware timeout (not raw `timeout 570`)
+## Run — MUST be background (Claude Bash kills ~2 min foreground)
+
+**Do not** block foreground Bash on `lane-exec` / `grok` for the full lane.  
+Host kills foreground Bash ~**2 minutes** — not lane-exec.
 
 ```bash
+export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
 FINAL="$ARTIFACT_DIR/lane-final.log"
 # SPEC = writer.md + TASK_FILE
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 
-lane-exec --idle 900 --max 7200 --label grok \
-  ${HB:+--heartbeat "$HB"} \
-  --log "$ARTIFACT_DIR/lane-exec.log" \
-  -- grok --prompt-file "$SPEC" \
-    -m grok-4.5 \
-    --reasoning-effort high \
-    --permission-mode acceptEdits \
-    --output-format plain \
-    --cwd "$PROJECT_CWD" \
-  > "$FINAL" 2>&1
-echo GROK_EXIT=$? >> "$FINAL"
+lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
+  lane-exec --idle 900 --max 7200 --label grok \
+    ${HB:+--heartbeat "$HB"} \
+    --log "$ARTIFACT_DIR/lane-exec.log" \
+    -- bash -c 'grok --prompt-file "$0" -m grok-4.5 --reasoning-effort high \
+        --permission-mode acceptEdits --output-format plain --cwd "$1" > "$2" 2>&1; \
+        echo GROK_EXIT=$? >> "$2"' \
+      "$SPEC" "$PROJECT_CWD" "$FINAL"
+
+# Poll short:
+#   lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = still running; 0 = done
 ```
 
 | Level | Default | Meaning |
 |-------|---------|---------|
-| idle | 900s (15m) | no output/CPU → stuck |
-| max | 7200s (2h) | hard ceiling |
+| Claude Bash FG | ~2m | avoid long block |
+| idle | 900s | no output/CPU → stuck |
+| max | 7200s | hard ceiling on **detached** process |
 
 ## Post
 
@@ -58,4 +63,5 @@ echo GROK_EXIT=$? >> "$FINAL"
 3. `check-owns-paths`  
 4. Heartbeat done if RUN_SLUG set.
 
-No background. No self-implement. **Never merge/push main.**
+No self-implement. **Never merge/push main.**  
+**Do** detach the lane (`lane-bg`); **do not** leave a 90m foreground Bash.

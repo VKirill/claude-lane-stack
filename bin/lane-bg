@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Start a long lane under nohup so Claude Bash foreground (~2 min) cannot kill it.
+# Usage:
+#   lane-bg --dir ARTIFACT_DIR --label NAME -- lane-exec ... -- cmd
+# Writes: ARTIFACT_DIR/lane-bg.pid, lane-bg.meta, appends to lane-bg.supervisor.log
+set -euo pipefail
+
+DIR=""
+LABEL="lane"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir) DIR="$2"; shift 2 ;;
+    --label) LABEL="$2"; shift 2 ;;
+    --) shift; break ;;
+    -h|--help)
+      echo "Usage: lane-bg --dir ARTIFACT_DIR [--label NAME] -- <command...>"
+      exit 0
+      ;;
+    *)
+      # allow: lane-bg ARTIFACT_DIR -- cmd
+      if [[ -z "$DIR" && "$1" != --* ]]; then DIR="$1"; shift; continue; fi
+      echo "Unknown arg: $1" >&2; exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$DIR" || $# -lt 1 ]]; then
+  echo "Usage: lane-bg --dir ARTIFACT_DIR -- <command...>" >&2
+  exit 2
+fi
+
+mkdir -p "$DIR"
+PID_FILE="$DIR/lane-bg.pid"
+META="$DIR/lane-bg.meta"
+SUP_LOG="$DIR/lane-bg.supervisor.log"
+CMD_FILE="$DIR/lane-bg.cmd"
+
+# already running?
+if [[ -f "$PID_FILE" ]]; then
+  old=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [[ -n "${old:-}" ]] && kill -0 "$old" 2>/dev/null; then
+    echo "LANE_BG_ALREADY_RUNNING pid=$old dir=$DIR"
+    exit 0
+  fi
+fi
+
+printf '%s\n' "$@" > "$CMD_FILE"
+{
+  echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "label=$LABEL"
+  echo "cwd=$(pwd)"
+  echo "cmd=$*"
+} > "$META"
+
+# detach fully from Claude Bash process group
+nohup bash -c '
+  set +e
+  DIR="$1"; shift
+  SUP_LOG="$DIR/lane-bg.supervisor.log"
+  PID_FILE="$DIR/lane-bg.pid"
+  echo "$$" > "$PID_FILE"
+  echo "[lane-bg] pid=$$ start $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$SUP_LOG"
+  "$@" >> "$SUP_LOG" 2>&1
+  ec=$?
+  echo "[lane-bg] exit=$ec end $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$SUP_LOG"
+  echo "exit_code=$ec" >> "$DIR/lane-bg.meta"
+  echo "ended_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$DIR/lane-bg.meta"
+  # leave pid file for lane-wait to see exit; mark done
+  echo "$ec" > "$DIR/lane-bg.exit"
+  exit $ec
+' _ "$DIR" "$@" >/dev/null 2>&1 &
+
+# parent nohup returns immediately; child rewrites pid — wait briefly
+sleep 0.3
+if [[ -f "$PID_FILE" ]]; then
+  echo "LANE_BG_STARTED pid=$(cat "$PID_FILE") dir=$DIR label=$LABEL log=$SUP_LOG"
+else
+  # fallback: outer nohup pid
+  echo "LANE_BG_STARTED pid=unknown dir=$DIR label=$LABEL log=$SUP_LOG"
+fi
+exit 0

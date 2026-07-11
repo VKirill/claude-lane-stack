@@ -6,6 +6,7 @@
 - **Language policy**: all agent-written files English; chat with human Russian (`docs/LANGUAGE.md`).
 
 ### Fixed
+- **Lane background under Claude Bash**: long `lane-exec`/`agy`/`grok`/`codex` must use **`lane-bg`** + poll **`lane-wait --once`**. Foreground Bash is killed ~2 minutes by the host (not lane-exec idle/max). Implementers + dev-orchestrator + LANE-EXEC updated.
 - **lane-exec**: activity-aware timeouts (idle resets on stdout/CPU; absolute max). Replaces hard `timeout 570` in implementers so thinking agents are not killed mid-run.
 
 ### Added

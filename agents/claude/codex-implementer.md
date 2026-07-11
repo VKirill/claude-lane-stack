@@ -48,36 +48,37 @@ CODEX_REASONING="${CODEX_REASONING:-xhigh}"
 
 Instructions: `~/.agents/codex/instructions/writer-emergency.md` (writer).
 
-## Run — activity-aware timeout (not raw `timeout 570`)
+## Run — MUST be background (Claude Bash kills ~2 min foreground)
+
+**Do not** block foreground Bash on full `codex exec`. Use `lane-bg` + poll `lane-wait --once`.
 
 ```bash
+export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
-SPEC=$(mktemp -t codex-write.XXXXXX)
+SPEC="$ARTIFACT_DIR/codex-spec.txt"
 FINAL="$ARTIFACT_DIR/lane-final.log"
 OUT_MSG="$ARTIFACT_DIR/codex-last-message.txt"
 # write SPEC = instructions + TASK_FILE contents + paths
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 
-lane-exec --idle 900 --max 7200 --label "codex-${CODEX_MODEL}" \
-  ${HB:+--heartbeat "$HB"} \
-  --log "$ARTIFACT_DIR/lane-exec.log" \
-  -- codex exec \
-    --model "$CODEX_MODEL" \
-    -c model_reasoning_effort="$CODEX_REASONING" \
-    --sandbox workspace-write \
-    --skip-git-repo-check \
-    --full-auto \
-    --cd "$PROJECT_CWD" \
-    --output-last-message "$OUT_MSG" \
-    - < "$SPEC" \
-  > "$FINAL" 2>&1
-echo CODEX_EXIT=$? CODEX_MODEL=$CODEX_MODEL >> "$FINAL"
+lane-bg --dir "$ARTIFACT_DIR" --label "codex-${CODEX_MODEL}" -- \
+  lane-exec --idle 900 --max 7200 --label "codex-${CODEX_MODEL}" \
+    ${HB:+--heartbeat "$HB"} \
+    --log "$ARTIFACT_DIR/lane-exec.log" \
+    -- bash -c 'codex exec --model "$0" -c model_reasoning_effort="$1" \
+        --sandbox workspace-write --skip-git-repo-check --full-auto \
+        --cd "$2" --output-last-message "$3" - < "$4" > "$5" 2>&1; \
+        echo CODEX_EXIT=$? CODEX_MODEL=$0 >> "$5"' \
+      "$CODEX_MODEL" "$CODEX_REASONING" "$PROJECT_CWD" "$OUT_MSG" "$SPEC" "$FINAL"
+
+# Poll: lane-wait --dir "$ARTIFACT_DIR" --once  (repeat until status=done)
 ```
 
 | Level | Default | Meaning |
 |-------|---------|---------|
+| Claude Bash FG | ~2m | avoid long block |
 | idle | 900s | silent + no CPU → kill |
-| max | 7200s | absolute ceiling |
+| max | 7200s | absolute ceiling (detached) |
 
 Post: `check-owns-paths`, ensure `ARTIFACT_DIR/report.md` (CODEX REPORT). Empty diff → partial. Never merge main.

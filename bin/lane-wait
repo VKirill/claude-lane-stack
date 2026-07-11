@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Poll a lane started by lane-bg. Each invocation is short (safe for Claude Bash).
+# Usage:
+#   lane-wait --dir ARTIFACT_DIR [--interval 20] [--max-wait 7200] [--once]
+# Exit: 0 done (has exit code), 2 still running, 3 missing/never started, 124 max-wait
+set -euo pipefail
+
+DIR=""
+INTERVAL=20
+MAX_WAIT=7200
+ONCE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir) DIR="$2"; shift 2 ;;
+    --interval) INTERVAL="$2"; shift 2 ;;
+    --max-wait) MAX_WAIT="$2"; shift 2 ;;
+    --once) ONCE=1; shift ;;
+    -h|--help)
+      echo "Usage: lane-wait --dir ARTIFACT_DIR [--interval 20] [--max-wait 7200] [--once]"
+      exit 0
+      ;;
+    *)
+      if [[ -z "$DIR" && "$1" != --* ]]; then DIR="$1"; shift; continue; fi
+      echo "Unknown: $1" >&2; exit 2
+      ;;
+  esac
+done
+
+[[ -n "$DIR" ]] || { echo "need --dir" >&2; exit 2; }
+
+PID_FILE="$DIR/lane-bg.pid"
+EXIT_FILE="$DIR/lane-bg.exit"
+SUP_LOG="$DIR/lane-bg.supervisor.log"
+REPORT="$DIR/report.md"
+START=$(date +%s)
+
+status_once() {
+  local pid="" running=0 ec=""
+  [[ -f "$PID_FILE" ]] && pid=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [[ -f "$EXIT_FILE" ]]; then
+    ec=$(cat "$EXIT_FILE" 2>/dev/null || echo "?")
+    echo "LANE_WAIT status=done exit=$ec pid=${pid:-?} dir=$DIR"
+    if [[ -f "$SUP_LOG" ]]; then
+      echo "--- supervisor tail ---"
+      tail -n 25 "$SUP_LOG" 2>/dev/null || true
+    fi
+    if [[ -f "$REPORT" ]]; then
+      echo "--- report head ---"
+      head -n 30 "$REPORT" 2>/dev/null || true
+    fi
+    return 0
+  fi
+  if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+    running=1
+  fi
+  if [[ "$running" -eq 1 ]]; then
+    echo "LANE_WAIT status=running pid=$pid dir=$DIR elapsed=$(( $(date +%s) - START ))s"
+    if [[ -f "$SUP_LOG" ]]; then
+      echo "--- supervisor tail ---"
+      tail -n 15 "$SUP_LOG" 2>/dev/null || true
+    fi
+    # heartbeat file if any
+    if [[ -f "$DIR/heartbeat.json" ]]; then
+      echo "--- heartbeat ---"
+      cat "$DIR/heartbeat.json" 2>/dev/null | head -c 400; echo
+    fi
+    return 2
+  fi
+  # no pid and no exit — not started or crashed before pid write
+  if [[ -f "$SUP_LOG" ]] && grep -q '\[lane-bg\] exit=' "$SUP_LOG" 2>/dev/null; then
+    echo "LANE_WAIT status=done (log) dir=$DIR"
+    tail -n 20 "$SUP_LOG"
+    return 0
+  fi
+  echo "LANE_WAIT status=unknown dir=$DIR (no pid/exit)"
+  return 3
+}
+
+if [[ "$ONCE" -eq 1 ]]; then
+  status_once
+  exit $?
+fi
+
+# loop — still one process; callers should prefer --once from Claude and re-invoke
+while true; do
+  set +e
+  status_once
+  st=$?
+  set -e
+  if [[ "$st" -eq 0 ]]; then exit 0; fi
+  if [[ "$st" -eq 3 ]]; then
+    # wait a bit for pid file after start
+    if [[ $(( $(date +%s) - START )) -gt 15 ]]; then exit 3; fi
+  fi
+  if [[ $(( $(date +%s) - START )) -ge "$MAX_WAIT" ]]; then
+    echo "LANE_WAIT status=timeout max_wait=$MAX_WAIT"
+    exit 124
+  fi
+  sleep "$INTERVAL"
+done
