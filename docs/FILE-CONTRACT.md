@@ -2,6 +2,8 @@
 
 Replace Postgres/task MCP with **files in the project**. Agents never call task/orchestrator MCP — they only `Read` paths.
 
+**Language:** all contract files (**PLAN, SPEC, STATUS, task YAML, report.md, review.md, MERGE.md**) are **English only**. Chat with the human may be Russian. See [LANGUAGE.md](LANGUAGE.md).
+
 **Solo operator mode (default):** one human, one orchestrator. Workers may use worktrees; **only the orchestrator merges to `main`**. The human never merges.
 
 ## Docs vs runs (do not confuse)

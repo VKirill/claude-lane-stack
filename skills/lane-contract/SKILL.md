@@ -24,9 +24,10 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 2. Work only in `PROJECT_CWD`.  
 3. Edit **only** `owns_paths` (or `files`). Honor `never_touch`.  
 4. Heartbeat: `lane-heartbeat --repo … --run … --task … --status running`.  
-5. Write `ARTIFACT_DIR/report.md` + run `done_when` / verification.  
+5. Write `ARTIFACT_DIR/report.md` + run `done_when` / verification — **report body in English**.  
 6. **Never** `git checkout main`, merge to main, or `git push` unless task says otherwise (default: never).  
-7. On build errors outside owns_paths: do not fix; note in report.
+7. On build errors outside owns_paths: do not fix; note in report.  
+8. All durable files English (see LANGUAGE.md).
 
 ## Minimal fields
 

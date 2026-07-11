@@ -2,6 +2,9 @@
 
 ## Unreleased (local)
 
+### Changed
+- **Language policy**: all agent-written files English; chat with human Russian (`docs/LANGUAGE.md`).
+
 ### Fixed
 - **lane-exec**: activity-aware timeouts (idle resets on stdout/CPU; absolute max). Replaces hard `timeout 570` in implementers so thinking agents are not killed mid-run.
 

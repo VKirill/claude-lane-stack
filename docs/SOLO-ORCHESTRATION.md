@@ -41,3 +41,7 @@ PROGRESS.md  ←  Now/Next updated
 - Say what you want; do not manage branches.  
 - Cold start: `/resume-project` or «продолжи» → PM reads BOARD + PROGRESS.  
 - If something stuck >5 min: «проверь stall» → PM runs stall-check + re-dispatch.
+
+## Language
+
+All agent-written files **English**. Chat with human **Russian**. See [LANGUAGE.md](LANGUAGE.md).

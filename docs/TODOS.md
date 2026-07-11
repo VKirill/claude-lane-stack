@@ -1,6 +1,8 @@
 # File-based TODOs / ideas (no orchestrator MCP)
 
-Human-readable ideas + agent technical memory. Not a run queue (runs live under `.agents/runs/`).
+Human-readable ideas + agent technical memory.
+
+**Language: all todo files English only** (see LANGUAGE.md). Chat may be Russian. Not a run queue (runs live under `.agents/runs/`).
 
 ## Where
 

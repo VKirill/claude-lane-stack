@@ -5,65 +5,62 @@ description: "File-based TODO/ideas board for humans + agent technical notes. Us
 
 # Agent TODOs (files only)
 
-**Canon layout:** `/home/ubuntu/.agents/docs/TODOS.md`  
+**Canon layout:** `~/.agents/docs/TODOS.md`  
+**Language:** **all todo files in English** (README, AGENT.md, meta, INDEX). Chat with the user may be Russian — summarize in RU, write EN to disk.  
+See `~/.agents/docs/LANGUAGE.md`.  
 **No orchestrator MCP.** No `todo_add` / task CLI for ideas.
 
 ## When to use
 
 | User intent | Action |
 |-------------|--------|
-| Discuss only | Optionally append to open item's README/AGENT if one is active |
-| «Занеси в todo / запиши / не забудь» | **Create or update** item folder + INDEX |
-| «Делай / реализуй» | Promote → `.agents/runs/<slug>/` (lane-contract), mark todo `ready`→ link `related_runs` |
-| «Покажи todo» | Read INDEX + list open items (paths) |
+| Discuss only | Optionally append to open item README/AGENT if active |
+| «Занеси в todo / запиши / не забудь» | **Create or update** item folder + INDEX (**English body**) |
+| «Делай / реализуй» | Promote → `.agents/runs/<slug>/` (lane-contract), link `related_runs` |
+| «Покажи todo» | Read INDEX + list open items; explain in **Russian** if user speaks RU |
 | «Закрой / сделано / не надо» | status done/dropped + INDEX |
 
 ## Choose root
 
 ```text
-PROJECT_TODO_ROOT = <cwd>/.agents/todos     if cwd looks like a project
-GLOBAL_TODO_ROOT  = ~/.agents/todos         else or if user says global
+PROJECT_TODO_ROOT = <cwd>/.agents/todos     if project
+GLOBAL_TODO_ROOT  = ~/.agents/todos         else or user says global
 ```
 
-Project signals: `.git`, `package.json`, `pyproject.toml`, `CLAUDE.md`, `AGENTS.md`.
+## Create item
 
-## Create item (algorithm)
+1. Slug: `YYYY-MM-DD-` + kebab 3–6 words from title (**ASCII**).  
+2. Paths: `items/<slug>/README.md`, `AGENT.md`, `meta.yaml`  
+3. Fill **both** README and AGENT in **English**.  
+4. Update `INDEX.md` (English titles).  
+5. Tell user in **Russian** one sentence + path.
 
-1. Slug: `YYYY-MM-DD-` + kebab 3–6 words from title (ascii translit ok).  
-2. Paths:
-   - `items/<slug>/README.md`
-   - `items/<slug>/AGENT.md`
-   - `items/<slug>/meta.yaml`
-3. Fill **both** README (human) and AGENT (technical) — never only one.  
-4. Rebuild/update `INDEX.md`.  
-5. Tell user: **one plain sentence** + path to folder (clickable relative path).
-
-### README.md template (human, RU)
+### README.md (human-oriented, **English**)
 
 ```markdown
-# <Короткий заголовок>
+# <Short title>
 
-## Зачем
+## Why
 …
 
-## Что хотим
+## What we want
 - …
 
-## Не сейчас
+## Not now
 - …
 
-## Открытые вопросы
-- …  # only product/business
+## Open questions
+- …  # product/business only
 
-## Как понять, что готово
+## Done when
 - …
 
-## История
+## History
 ### YYYY-MM-DD
-- Обсудили: …
+- Discussed: …
 ```
 
-### AGENT.md template (technical)
+### AGENT.md (technical, **English**)
 
 ```markdown
 # Agent notes — <slug>
@@ -86,11 +83,11 @@ Project signals: `.git`, `package.json`, `pyproject.toml`, `CLAUDE.md`, `AGENTS.
 1. …
 
 ## Discovery
-- gitnexus / grep notes: …
+- …
 
 ## Spawn hint (when promoted to run)
 - risk: low|medium|high
-- lane: agy-frontend | agy-coder | grok
+- lane: agy-frontend | agy-coder | grok | codex
 - seed tasks:
   - [ ] …
 - verification ideas:
@@ -100,75 +97,32 @@ Project signals: `.git`, `package.json`, `pyproject.toml`, `CLAUDE.md`, `AGENTS.
 - …
 ```
 
-### meta.yaml template
+### meta.yaml
 
-See TODOS.md. Always set `created`/`updated` ISO-8601.
+English `title` / fields. ISO-8601 dates. See TODOS.md.
 
-## Update existing item
+## Update existing
 
-If discussion continues on same idea:
+Append **History** in README; merge tech into AGENT.md; bump `updated`; refresh INDEX.
 
-1. Find folder by slug or title match in INDEX.  
-2. Append **История** in README.  
-3. Merge technical facts into AGENT.md (Context / Hypotheses / Do not).  
-4. Bump `updated` + status (often `incubating`).  
-5. Refresh INDEX row.
+## Capture quality
 
-## Capture quality bar
-
-**Human side:** user could re-read in 3 months and know *why* and *what success looks like*.  
-**Agent side:** another session could open AGENT.md and start a run without re-asking the same tech questions.
-
-If the chat was shallow, still write what you have; put gaps under **Открытые вопросы** / **Hypotheses**.
-
-## INDEX.md maintenance
-
-After every write:
-
-```markdown
-# TODOs — <ProjectName|Global>
-
-| status | priority | id | title |
-|--------|----------|-----|--------|
-| open | medium | 2026-07-11-foo | Foo |
-
-## Incubating
-- …
-
-## Ready to run
-- …
-
-## Parked / done (short)
-- …
-```
-
-Max ~30 open rows visible; older done → short list or `ARCHIVE.md`.
-
-## Inbox (optional fast path)
-
-If user dumps a one-liner and says «потом»:
-
-`inbox/YYYY-MM-DD-slug.md` with 5–10 lines, then either promote to full `items/` same turn or on next «разверни todo».
+Human side: re-read in 3 months, know *why* and success criteria.  
+Agent side: another session can start a run from AGENT.md alone.
 
 ## Promote to run
 
-When user asks to implement:
-
-1. Ensure AGENT.md has enough Context + Spawn hint (ask only business gaps).  
-2. Create `.agents/runs/<slug>/` per FILE-CONTRACT / lane-contract.  
-3. Seed `tasks/001-….yaml` from Spawn hint + excerpts.  
-4. Set todo `status: ready` or `done` if fully absorbed; set `related_runs: [<slug>]`.  
-5. Continue with orchestrator-lanes dispatch.
+Per FILE-CONTRACT / lane-contract. Task YAML **English**.
 
 ## Anti-patterns
 
-- ❌ Storing todos only in chat memory  
+- ❌ Chat-only todos  
 - ❌ One giant TODO.md without folders  
-- ❌ Implementing production code from a todo without a run  
-- ❌ Calling orchestrator-mcp / `todo_add`  
-- ❌ Secret keys in README/AGENT  
-- ❌ English-only wall for a RU-speaking user in README  
+- ❌ Production code without a run  
+- ❌ Orchestrator MCP / `todo_add`  
+- ❌ Secrets in README/AGENT  
+- ❌ **Russian (or any non-EN) as the durable file language** for todos/runs  
 
-## Session start (optional)
+## Session start
 
-If project has `.agents/todos/INDEX.md`, you may show **count** of open/ready (one line), not full dump, unless asked.
+Optional one-line count of open/ready in Russian; files stay English.

@@ -141,4 +141,5 @@ Ideas → **agent-todos**. Active build → this skill. Promote todo → run whe
 4. Merge to main = **you** when run green.  
 5. Workers never `git push` / merge main.  
 6. Max 3 parallel write lanes.  
-7. Done = report + owns check + done_when (+ codex if required).
+7. Done = report + owns check + done_when (+ codex if required).  
+8. **English only** for all run/todo/docs files; chat with human may be Russian (`LANGUAGE.md`).
