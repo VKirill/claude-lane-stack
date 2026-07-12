@@ -28,12 +28,12 @@ skips the full run ceremony and ships in minutes.
 | Tier   | Trigger                            | Reviewer |
 |--------|------------------------------------|----------|
 | none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (terra, medium) |
+| medium | risk medium                        | codex-reviewer (sol, medium) |
 | strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) |
 
-Optional budget alternative for the medium tier: opencode-reviewer
-(openrouter/z-ai/glm-5.2). Medium FAIL -> writer fixes or PM escalates
-to the strong tier.
+Medium review is mechanical only (bugs, style, dependencies, obvious logic);
+auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
+fixes or PM escalates to the strong tier; never ignore a FAIL.
 
 ## End-state of every run
 

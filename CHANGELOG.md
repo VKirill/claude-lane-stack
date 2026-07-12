@@ -3,15 +3,7 @@
 ## Unreleased
 
 ### Added
-- **Medium review tier moved to Codex Terra**: the default reviewer for
-  `risk: medium` is now `codex-reviewer` (`gpt-5.6-terra` + `medium`),
-  replacing the previous default of pinned `opencode-reviewer`
-  (`openrouter/z-ai/glm-5.2`). `opencode-reviewer` is retained as an
-  OPTIONAL budget alternative for the medium tier when Codex
-  capacity/limits are exhausted. See `docs/ROUTING.md`,
-  `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`.
-- **Review effort split**: `codex-reviewer` strong tier now defaults to sol `high` (was `xhigh`), escalating to `xhigh` only for critical paths (auth/pay/schema/migrations/security/crypto/concurrency) — no proven bug-recall delta over `high` for review, and `xhigh` is the costliest quadrant.
-- **Tiered review policy**: none for micro/low, pinned `opencode-reviewer` (`openrouter/z-ai/glm-5.2`) for medium, and unchanged Codex Sol xhigh for high-risk/ship; micro commits now include `[micro:<slug>]`.
+- **Tiered review policy**: `none` for micro/low, `codex-reviewer` (`gpt-5.6-sol` + `medium`) for `risk: medium`, and `codex-reviewer` (`gpt-5.6-sol` + `high`, escalating to `xhigh` for critical paths) for high-risk/ship; micro commits now include `[micro:<slug>]`. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`.
 - **Micro path tier** (score 0–2): skips PLAN/worktree/board/heartbeat/reviewer for trivial ≤2-file changes; adds `verify` field (`none`|`smoke`|`tests`) to the task YAML contract. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `docs/FILE-CONTRACT.md`.
 - **Run-scoped warm AGY/Grok sessions**: `lane-session` resumes native conversations across related tasks, preserves up to three parallel slots, rotates after seven successful tasks by default (hard max ten), and invalidates failed/stale sessions.
 - AGY preflight smoke is cached by CLI version and agent-definition hash instead of spending a model call before every task.

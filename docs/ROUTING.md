@@ -9,8 +9,7 @@
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
 | Fast write | AGY Flash High | Gemini Flash High |
 | Main write | Grok 4.5 | — |
-| Medium review | Codex Terra | gpt-5.6-terra + medium |
-| Medium review (optional budget) | opencode | openrouter/z-ai/glm-5.2 (pinned) |
+| Medium review | Codex Sol | gpt-5.6-sol + medium |
 | Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `high` (xhigh critical paths) |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
@@ -25,14 +24,14 @@
 | **Terra** `gpt-5.6-terra` | Default **scoped write**, medium features, onboard, docs refresh | Dropping effort to `low` on agent loops |
 | **Luna** `gpt-5.6-luna` | Trivia: changelog line, PR one-liner, triage | Multi-step agent write/review (falls apart) |
 
-**Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh. Strong review = sol high; escalate to xhigh when the diff touches auth/pay/schema/migrations/security/crypto/concurrency (critical paths). Medium review = terra medium.
+**Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh. Strong review = sol high; escalate to xhigh when the diff touches auth/pay/schema/migrations/security/crypto/concurrency (critical paths). Medium review = sol medium.
 
 ## Code routing (full stack: AGY + Grok + Codex)
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
 | `risk: low` UI/wiring | agy-frontend / agy-coder | Flash High |
-| `risk: medium` | grok + codex-review terra medium | Grok 4.5 + gpt-5.6-terra medium |
+| `risk: medium` | grok + codex-review sol medium | Grok 4.5 + gpt-5.6-sol medium |
 | `risk: high` auth/pay/schema | grok + **codex-review Sol xhigh** | dual |
 | Empty-diff AGY | switch grok | — |
 
@@ -41,14 +40,12 @@
 | Tier   | Trigger                            | Reviewer |
 |--------|------------------------------------|----------|
 | none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (terra, medium) |
+| medium | risk medium                        | codex-reviewer (sol, medium) |
 | strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) |
 
 Medium review is mechanical only (bugs, style, dependencies, obvious logic);
 auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
-fixes or PM escalates to the strong tier; never ignore a FAIL. Optional
-budget alternative for the medium tier: opencode-reviewer
-(openrouter/z-ai/glm-5.2).
+fixes or PM escalates to the strong tier; never ignore a FAIL.
 
 ## Profile `claude-codex` (only Claude + Codex)
 
@@ -57,7 +54,7 @@ budget alternative for the medium tier: opencode-reviewer
 | fast_write | codex-implementer | **terra** | high |
 | main_write (medium) | codex-implementer | **terra** | xhigh |
 | main_write (high / high_risk_paths) | codex-implementer | **sol** | xhigh |
-| review (medium) | codex-reviewer | **terra** | medium |
+| review (medium) | codex-reviewer | **sol** | medium |
 | review / ship | codex-reviewer | **sol** | high (xhigh critical paths) |
 | onboard (fast) | codex-onboarder | **terra** | high |
 | onboard (deep / full default) | codex-onboarder | **sol** | high |
@@ -72,7 +69,7 @@ See `profiles/claude-codex.yaml`.
 ## Profile `claude-only` (no Codex)
 
 | Stage | Model |
-|-------|--------|
+|-------|-------|
 | PM | Fable / Opus |
 | low write | Claude Sonnet worker |
 | medium/high write | Claude Opus worker |
