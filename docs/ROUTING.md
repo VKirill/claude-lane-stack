@@ -9,7 +9,7 @@
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
 | Fast write | AGY Flash High | Gemini Flash High |
 | Main write | Grok 4.5 | — |
-| Cheap review (medium) | opencode | opencode-go/glm-5.2 (pinned) |
+| Cheap review (medium) | opencode | openrouter/z-ai/glm-5.2 (pinned) |
 | Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `xhigh` |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |

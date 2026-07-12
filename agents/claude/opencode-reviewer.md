@@ -9,7 +9,8 @@ tools: Bash, Read, Grep, Glob
 
 ## Model (fixed)
 
-**`opencode-go/glm-5.2`**. Pinned; never substitute an endpoint or model.
+**`openrouter/z-ai/glm-5.2`**. Pinned; never substitute an endpoint or model.
+Preferred future route: `zai-coding-plan/glm-5.2` (active subscription) once the opencode provider bug (silent empty output) is fixed.
 
 ## Inputs
 
@@ -39,7 +40,7 @@ PROMPT="$ARTIFACT_DIR/opencode-review-prompt.txt"
 } > "$PROMPT"
 
 lane-bg --dir "$ARTIFACT_DIR" --label opencode-review -- \
-  opencode run -m opencode-go/glm-5.2 "$(cat "$PROMPT")"
+  opencode run -m openrouter/z-ai/glm-5.2 "$(cat "$PROMPT")"
 
 # Poll: lane-wait --dir "$ARTIFACT_DIR" --once
 ```

@@ -93,7 +93,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
-| opencode-reviewer | medium mechanical review: `opencode-go/glm-5.2` (pinned) |
+| opencode-reviewer | medium mechanical review: `openrouter/z-ai/glm-5.2` (pinned) |
 | codex-reviewer | always **sol** xhigh |
 
 ## Loop
