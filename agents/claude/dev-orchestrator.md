@@ -93,8 +93,8 @@ serial, rotates after seven successful tasks, and is never shared with review.
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
-| opencode-reviewer | medium mechanical review: `openrouter/z-ai/glm-5.2` (pinned) |
-| codex-reviewer | **sol** high; xhigh critical paths (auth/pay/schema/migrations/security/crypto/concurrency) |
+| opencode-reviewer | optional budget medium review: `openrouter/z-ai/glm-5.2` (pinned) |
+| codex-reviewer | medium: **terra** medium; strong: **sol** high, xhigh critical paths (auth/pay/schema/migrations/security/crypto/concurrency) |
 
 ## Loop
 
@@ -111,7 +111,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 | risk | write lane | review lane |
 |------|------------|-------------|
 | low / UI | agy | — |
-| medium | grok | opencode-reviewer |
+| medium | grok | codex-reviewer (terra medium) |
 | high / high_risk_paths / ship | grok | codex-reviewer (Sol high; xhigh critical paths) |
 
 ## Autonomy

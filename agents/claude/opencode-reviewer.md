@@ -1,6 +1,6 @@
 ---
 name: opencode-reviewer
-description: "Cheap mechanical review gate for medium-risk tasks. Pinned glm-5.2. Read-only. File artifacts."
+description: "OPTIONAL budget alternative (not default). Cheap mechanical review gate for medium-risk tasks. Pinned glm-5.2. Read-only. File artifacts."
 model: sonnet
 tools: Bash, Read, Grep, Glob
 ---
@@ -21,6 +21,10 @@ Preferred future route: `zai-coding-plan/glm-5.2` (active subscription) once the
 Cheap mechanical review for `risk: medium`: bugs, style, dependencies, and
 obvious logic only. It is never the sole gate for auth/pay/schema/security;
 those diffs go to `codex-reviewer`.
+
+This is the OPTIONAL fallback for the medium tier when Codex
+capacity/limits are exhausted. The default medium reviewer is
+`codex-reviewer` (terra, medium).
 
 ## Run — MUST be background (Claude Bash kills ~2 min foreground)
 

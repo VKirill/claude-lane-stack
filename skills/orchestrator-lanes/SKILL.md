@@ -87,7 +87,8 @@ Write report.md to ARTIFACT_DIR.
 | agy-coder | agy-implementer → lane-coder |
 | agy-frontend | agy-implementer → lane-frontend |
 | grok | grok-implementer |
-| opencode-review | opencode-reviewer |
+| codex-review-medium | codex-reviewer (terra medium) |
+| opencode-review (optional budget) | opencode-reviewer |
 | codex-review | codex-reviewer |
 
 ### Background rule (prevents 2-minute kills)
@@ -112,15 +113,17 @@ After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `r
 4. Weak/empty/partial → other write lane or fix prompt.  
 5. Review tier:
 
-| Tier   | Trigger                                   | Reviewer |
-|--------|-------------------------------------------|----------|
-| none   | micro path / risk low                     | verify field + check-owns-paths only |
-| cheap  | risk medium                               | opencode-reviewer (glm-5.2, pinned) |
-| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol high; xhigh critical paths) |
+| Tier   | Trigger                            | Reviewer |
+|--------|------------------------------------|----------|
+| none   | micro path / risk low              | verify field + check-owns-paths only |
+| medium | risk medium                        | codex-reviewer (terra, medium) |
+| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) |
 
-Cheap review is mechanical only (bugs, style, dependencies, obvious logic);
-auth/pay/schema/security always uses `codex-reviewer`. Cheap FAIL → writer fixes
-or PM escalates to `codex-reviewer`; never ignore a FAIL.
+Medium review is mechanical only (bugs, style, dependencies, obvious logic);
+auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
+fixes or PM escalates to the strong tier; never ignore a FAIL. Optional
+budget alternative for the medium tier: opencode-reviewer
+(openrouter/z-ai/glm-5.2).
 
 Batch reviews: collect finished lanes, review in one dedicated pass — do not approve streaming output.
 
