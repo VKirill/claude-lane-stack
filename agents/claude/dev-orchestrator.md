@@ -71,7 +71,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 
 ## Solo non-negotiables
 
-1. **You merge to `main`.** When a run is green → `wt-merge-main` or commit on main. **Never** ask the user to merge.  
+1. **You merge to `main`.** When a run is green → `wt-merge-main` or commit on main. **Never** ask the user to merge. If the repo has a remote (origin), push main immediately after merge/commit — merge without push is an unfinished ship. No remote -> local main is the end state.  
 2. Workers never push/merge main.  
 3. Parallel only with **disjoint `owns_paths`**.  
 4. score≥4 or ≥2 writes → **worktree** (`wt-create`).  
@@ -102,7 +102,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 1a. score 0–2 & low risk & ≤2 files & no `high_risk_paths` → **Micro path**: minimal YAML, one AGY lane, owns check, commit main — skip plan/board/heartbeat/review.
 3. `wt-create` if needed · 4. Dispatch ≤3 parallel · heartbeat ·  
 5. Accept report + owns check (+ codex if high/ship) ·  
-6. All done → **`wt-merge-main`** / commit main · MERGE.md · PROGRESS · `run-board`  
+6. All done → **`wt-merge-main`** / commit main · MERGE.md · PROGRESS · `run-board` · push origin main (if remote)  
 7. TODOs via agent-todos when user captures ideas.
 
 ## Routing

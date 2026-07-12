@@ -2,11 +2,11 @@
 
 You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 
-**Related:** [LANE-EXEC.md](LANE-EXEC.md) (background lanes) · [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md) · [LANGUAGE.md](LANGUAGE.md) · [ROUTING.md](ROUTING.md)
+**Related:** [LANE-EXEC.md](LANE-EXEC.md) · [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md) · [LANGUAGE.md](LANGUAGE.md) · [ROUTING.md](ROUTING.md)
 
 ## Non-negotiables
 
-1. **Orchestrator owns `main`.** Workers never push/merge to main. PM merges when the run is green.  
+1. **Orchestrator owns `main`.** Workers never push/merge to main. PM merges when the run is green. If the repo has a remote (origin), PM pushes main immediately after merge/commit — merge without push is an unfinished ship. No remote -> local main is the end state.  
 2. **You never merge.** If PM asks you to merge, PM is wrong — fix the skill.  
 3. **Parallel only with ownership.** Disjoint `owns_paths` or serial.  
 4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.  
@@ -39,6 +39,7 @@ fixes or PM escalates to the strong tier; never ignore a FAIL.
 
 ```
 main  ←  contains the feature (merged by PM)
+origin/main  <-  in sync (pushed by PM when remote exists)
 .worktrees/<slug>  ←  gone
 .agents/runs/<slug>/MERGE.md  ←  how/when merged
 PROGRESS.md  ←  Now/Next updated

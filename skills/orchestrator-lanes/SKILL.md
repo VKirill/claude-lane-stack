@@ -148,6 +148,7 @@ When **all** tasks in the run are `done` (and required reviews passed):
 wt-merge-main "$(pwd)" <slug>
 # merges agent/<slug> → main, removes worktree, writes MERGE.md
 run-board "$(pwd)"
+git push origin main   # if remote exists
 ```
 
 ### Main-tree path (single low task)
@@ -158,11 +159,12 @@ PM commits on main yourself (Bash git in project):
 git add -A && git status
 git commit -m "feat(<slug>): <title>"
 # Micro path: git commit -m "<type>(<area>): <title> [micro:<slug>]"
-# no push unless user asked
+git push origin main   # if remote exists — merge+push = one ship step
 ```
 
 Write `.agents/runs/<slug>/MERGE.md` with branch/commit/time.  
-Update `PROGRESS.md` Now/Next + project-memory.
+Update `PROGRESS.md` Now/Next + project-memory.  
+Commit messages must be meaningful: conventional type(scope): what changed + why in the body when the reason is not obvious. Micro commits keep the [micro:<slug>] suffix.
 
 **NEVER** ask the human to merge. **NEVER** leave a worktree as the “result”.
 
