@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
-description: "Solo PM. File runs/todos. AGY/Grok write, Codex review. Auto-merge to main. agentmemory MCP. No production code edits."
-tools: Agent(agy-implementer, grok-implementer, codex-reviewer, codex-implementer, codex-onboarder, codex-docs-maintainer), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
+description: "Solo PM. File runs/todos. AGY/Grok write, tiered review. Auto-merge to main. agentmemory MCP. No production code edits."
+tools: Agent(agy-implementer, grok-implementer, opencode-reviewer, codex-reviewer, codex-implementer, codex-onboarder, codex-docs-maintainer), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: default
 model: fable
 effort: high
@@ -93,6 +93,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
+| opencode-reviewer | medium mechanical review: `opencode-go/glm-5.2` (pinned) |
 | codex-reviewer | always **sol** xhigh |
 
 ## Loop
@@ -107,11 +108,11 @@ serial, rotates after seven successful tasks, and is never shared with review.
 
 ## Routing
 
-| risk | lane |
-|------|------|
-| low / UI | agy |
-| medium / high write | grok |
-| review / high_risk_paths | codex-reviewer |
+| risk | write lane | review lane |
+|------|------------|-------------|
+| low / UI | agy | — |
+| medium | grok | opencode-reviewer |
+| high / high_risk_paths / ship | grok | codex-reviewer (Sol xhigh) |
 
 ## Autonomy
 

@@ -34,6 +34,8 @@ Keeps: minimal task YAML (`id`, `title`, `risk`, `lane`, `project_cwd`,
 `owns_paths`, `objective`, `verify`), `lane-bg` for the CLI call,
 `check-owns-paths`, PM commits to main.
 
+Micro commit format: `<type>(<area>): <title> [micro:<slug>]`.
+
 Default lane: `agy-coder` / `agy-frontend` (Flash). Fallback: `grok`.
 
 Target latency: < 3 minutes word-to-commit.
@@ -85,6 +87,7 @@ Write report.md to ARTIFACT_DIR.
 | agy-coder | agy-implementer → lane-coder |
 | agy-frontend | agy-implementer → lane-frontend |
 | grok | grok-implementer |
+| opencode-review | opencode-reviewer |
 | codex-review | codex-reviewer |
 
 ### Background rule (prevents 2-minute kills)
@@ -107,7 +110,19 @@ After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `r
 2. `check-owns-paths "$TASK_FILE"` exit 0.  
 3. No full-diff re-read on happy path.  
 4. Weak/empty/partial → other write lane or fix prompt.  
-5. `risk: high` / `high_risk_paths` / ship → Codex `review.md` **passed**.  
+5. Review tier:
+
+| Tier   | Trigger                                   | Reviewer |
+|--------|-------------------------------------------|----------|
+| none   | micro path / risk low                     | verify field + check-owns-paths only |
+| cheap  | risk medium                               | opencode-reviewer (glm-5.2, pinned) |
+| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol xhigh) — unchanged |
+
+Cheap review is mechanical only (bugs, style, dependencies, obvious logic);
+auth/pay/schema/security always uses `codex-reviewer`. Cheap FAIL → writer fixes
+or PM escalates to `codex-reviewer`; never ignore a FAIL.
+
+Batch reviews: collect finished lanes, review in one dedicated pass — do not approve streaming output.
 
 Micro path: acceptance is report + `check-owns-paths` only (no reviewer);
 verify per the task `verify` field (none|smoke|tests).
@@ -142,6 +157,7 @@ PM commits on main yourself (Bash git in project):
 ```bash
 git add -A && git status
 git commit -m "feat(<slug>): <title>"
+# Micro path: git commit -m "<type>(<area>): <title> [micro:<slug>]"
 # no push unless user asked
 ```
 

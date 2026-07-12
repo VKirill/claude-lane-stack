@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **Tiered review policy**: none for micro/low, pinned `opencode-reviewer` (`opencode-go/glm-5.2`) for medium, and unchanged Codex Sol xhigh for high-risk/ship; micro commits now include `[micro:<slug>]`.
 - **Micro path tier** (score 0–2): skips PLAN/worktree/board/heartbeat/reviewer for trivial ≤2-file changes; adds `verify` field (`none`|`smoke`|`tests`) to the task YAML contract. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `docs/FILE-CONTRACT.md`.
 - **Run-scoped warm AGY/Grok sessions**: `lane-session` resumes native conversations across related tasks, preserves up to three parallel slots, rotates after seven successful tasks by default (hard max ten), and invalidates failed/stale sessions.
 - AGY preflight smoke is cached by CLI version and agent-definition hash instead of spending a model call before every task.
