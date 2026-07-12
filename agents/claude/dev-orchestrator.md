@@ -94,7 +94,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
 | opencode-reviewer | medium mechanical review: `openrouter/z-ai/glm-5.2` (pinned) |
-| codex-reviewer | always **sol** xhigh |
+| codex-reviewer | **sol** high; xhigh critical paths (auth/pay/schema/migrations/security/crypto/concurrency) |
 
 ## Loop
 
@@ -112,7 +112,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 |------|------------|-------------|
 | low / UI | agy | — |
 | medium | grok | opencode-reviewer |
-| high / high_risk_paths / ship | grok | codex-reviewer (Sol xhigh) |
+| high / high_risk_paths / ship | grok | codex-reviewer (Sol high; xhigh critical paths) |
 
 ## Autonomy
 

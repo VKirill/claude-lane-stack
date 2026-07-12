@@ -10,7 +10,7 @@
 | Fast write | AGY Flash High | Gemini Flash High |
 | Main write | Grok 4.5 | — |
 | Cheap review (medium) | opencode | openrouter/z-ai/glm-5.2 (pinned) |
-| Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `xhigh` |
+| Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `high` (xhigh critical paths) |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
 | Onboard **deep** (default on full) | Codex **Sol** | `gpt-5.6-sol` + `high` |
@@ -24,7 +24,7 @@
 | **Terra** `gpt-5.6-terra` | Default **scoped write**, medium features, onboard, docs refresh | Dropping effort to `low` on agent loops |
 | **Luna** `gpt-5.6-luna` | Trivia: changelog line, PR one-liner, triage | Multi-step agent write/review (falls apart) |
 
-**Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh.
+**Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh. Strong review = sol high; escalate to xhigh when the diff touches auth/pay/schema/migrations/security/crypto/concurrency (critical paths).
 
 ## Code routing (full stack: AGY + Grok + Codex)
 
@@ -41,7 +41,7 @@
 |--------|-------------------------------------------|----------|
 | none   | micro path / risk low                     | verify field + check-owns-paths only |
 | cheap  | risk medium                               | opencode-reviewer (glm-5.2, pinned) |
-| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol xhigh) — unchanged |
+| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol high; xhigh critical paths) |
 
 Cheap review is mechanical only (bugs, style, dependencies, obvious logic);
 auth/pay/schema/security always uses `codex-reviewer`. Cheap FAIL → writer fixes
@@ -54,7 +54,7 @@ or PM escalates to `codex-reviewer`; never ignore a FAIL.
 | fast_write | codex-implementer | **terra** | high |
 | main_write (medium) | codex-implementer | **terra** | xhigh |
 | main_write (high / high_risk_paths) | codex-implementer | **sol** | xhigh |
-| review / ship | codex-reviewer | **sol** | xhigh |
+| review / ship | codex-reviewer | **sol** | high (xhigh critical paths) |
 | onboard (fast) | codex-onboarder | **terra** | high |
 | onboard (deep / full default) | codex-onboarder | **sol** | high |
 | docs-maintain | codex-docs-maintainer | **terra** | high |

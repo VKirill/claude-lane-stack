@@ -116,7 +116,7 @@ After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `r
 |--------|-------------------------------------------|----------|
 | none   | micro path / risk low                     | verify field + check-owns-paths only |
 | cheap  | risk medium                               | opencode-reviewer (glm-5.2, pinned) |
-| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol xhigh) — unchanged |
+| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol high; xhigh critical paths) |
 
 Cheap review is mechanical only (bugs, style, dependencies, obvious logic);
 auth/pay/schema/security always uses `codex-reviewer`. Cheap FAIL → writer fixes
