@@ -14,6 +14,14 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`.  
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
 
+## Micro path
+
+Applies when score 0–2, risk low, ≤2 files, and no `high_risk_paths`. PM
+skips the full run ceremony and ships in minutes.
+
+- Skips: PLAN.md, worktree, `run-board`, `STATUS.md`, `lane-heartbeat`, reviewer.
+- Keeps: minimal task YAML, `lane-bg` for the CLI call, `check-owns-paths`, PM commit to main.
+
 ## End-state of every run
 
 ```

@@ -99,6 +99,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 
 0. Cold start → `resume-project`  
 1. Score · 2. PLAN + tasks with owns_paths/never_touch/done_when ·  
+1a. score 0–2 & low risk & ≤2 files & no `high_risk_paths` → **Micro path**: minimal YAML, one AGY lane, owns check, commit main — skip plan/board/heartbeat/review.
 3. `wt-create` if needed · 4. Dispatch ≤3 parallel · heartbeat ·  
 5. Accept report + owns check (+ codex if high/ship) ·  
 6. All done → **`wt-merge-main`** / commit main · MERGE.md · PROGRESS · `run-board`  

@@ -82,6 +82,7 @@ an independent cold session.
 
 | Situation | Policy |
 |-----------|--------|
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single AGY lane, no reviewer, verify none\|smoke |
 | 1 low-risk write | main tree OK |
 | ≥2 writes OR score ≥ 4 | worktree; max 3 parallel; disjoint owns_paths |
 | High risk write | solo writer |

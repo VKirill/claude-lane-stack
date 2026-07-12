@@ -17,10 +17,26 @@ You are the **only** person who merges to `main`. Human never merges.
 
 | Score | Path |
 |------:|------|
-| 0–6 | Express: 1 task, dispatch, verify, **commit/merge main** |
+| 0–2 | Micro: 1 task, no plan/board/heartbeat/review, **commit main** |
+| 3–6 | Express: 1 task, dispatch, verify, **commit/merge main** |
 | 7–8 | Brief: 2–4 tasks, PLAN.md, worktree if ≥2 writes |
 | 9–10 | Full: SPEC + DAG + worktree |
 | 11+ | Split feature; ask user |
+
+### Micro path (score 0–2)
+
+Trigger: score 0–2 **and** risk low **and** ≤2 files **and** no
+`high_risk_paths` (auth/pay/schema/migrations/security).
+
+Skips: PLAN.md, worktree, run-board, STATUS.md, lane-heartbeat, reviewer.
+
+Keeps: minimal task YAML (`id`, `title`, `risk`, `lane`, `project_cwd`,
+`owns_paths`, `objective`, `verify`), `lane-bg` for the CLI call,
+`check-owns-paths`, PM commits to main.
+
+Default lane: `agy-coder` / `agy-frontend` (Flash). Fallback: `grok`.
+
+Target latency: < 3 minutes word-to-commit.
 
 ## Phase 1 — Files
 
@@ -92,6 +108,9 @@ After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `r
 3. No full-diff re-read on happy path.  
 4. Weak/empty/partial → other write lane or fix prompt.  
 5. `risk: high` / `high_risk_paths` / ship → Codex `review.md` **passed**.  
+
+Micro path: acceptance is report + `check-owns-paths` only (no reviewer);
+verify per the task `verify` field (none|smoke|tests).
 
 Mark `status: done` only if 1–2 (and 5 if required).
 

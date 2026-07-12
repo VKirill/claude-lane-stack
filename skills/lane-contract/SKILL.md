@@ -31,4 +31,14 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 
 ## Minimal fields
 
-`id`, `title`, `risk`, `lane`, `status`, `project_cwd`, `owns_paths` (or `files`), `objective`, `verification`/`done_when`, `acceptance`.
+`id`, `title`, `risk`, `lane`, `status`, `project_cwd`, `owns_paths` (or `files`), `objective`, `verify`, `verification`/`done_when`, `acceptance`.
+
+## `verify` levels
+
+| Level | Meaning |
+|-------|---------|
+| none | No tests/build evidence needed (visual or trivial change) |
+| smoke | Build passes / page renders / command runs once |
+| tests | Real test run evidence required in report |
+
+PM chooses `verify` at scoring time; `done_when` must match it.

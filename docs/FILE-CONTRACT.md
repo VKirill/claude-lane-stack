@@ -61,6 +61,7 @@ id: "001"
 title: "Gate loading on initial load only"
 risk: low                    # low | medium | high
 lane: agy-frontend           # agy-coder | agy-frontend | grok | codex-review
+verify: smoke                # none | smoke | tests — see table below
 status: pending              # pending | running | review | done | blocked | stalled
 project_cwd: "/absolute/path/to/repo-or-worktree"
 # Ownership — required for write lanes
@@ -91,6 +92,14 @@ depends_on: []
 heartbeat_sec: 120           # stall if no heartbeat longer than this (default 300)
 high_risk_paths: false       # true → dual review (codex required even if risk medium)
 ```
+
+### `verify` levels
+
+| Level | Meaning |
+|-------|---------|
+| none | No tests/build evidence needed (visual or trivial change) |
+| smoke | Build passes / page renders / command runs once |
+| tests | Real test run evidence required in report |
 
 ### Ownership rules
 
