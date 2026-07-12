@@ -46,11 +46,13 @@ lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
     -- lane-session run --provider grok --run-dir "$RUN_DIR" \
       --task-id "$SESSION_TASK_ID" --role grok --cwd "$PROJECT_CWD" \
       --prompt-file "$SPEC" --output "$FINAL" --model grok-4.5 \
-      --reasoning-effort high
+      --reasoning-effort low
 
 # Poll short:
 #   lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = still running; 0 = done
 ```
+
+Effort escalation: default `low` (operator choice, speed). If the lane returns a weak/empty/partial diff, re-dispatch once with `--reasoning-effort high` before switching lanes.
 
 | Level | Default | Meaning |
 |-------|---------|---------|
