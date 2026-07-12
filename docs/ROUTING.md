@@ -9,6 +9,7 @@
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
 | Fast write | AGY Flash High | Gemini Flash High |
 | Main write | Grok 4.5 | — |
+| Cheap review (medium) | opencode | opencode-go/glm-5.2 (pinned) |
 | Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `xhigh` |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
@@ -30,10 +31,21 @@
 | Signal | Lane | Model notes |
 |--------|------|-------------|
 | `risk: low` UI/wiring | agy-frontend / agy-coder | Flash High |
-| `risk: medium` | grok | Grok 4.5 |
+| `risk: medium` | grok + opencode-reviewer | Grok 4.5 + glm-5.2 pinned |
 | `risk: high` auth/pay/schema | grok + **codex-review Sol xhigh** | dual |
 | Empty-diff AGY | switch grok | — |
-| Ship / SPEC review | codex-reviewer | Sol xhigh |
+
+## Review tiers
+
+| Tier   | Trigger                                   | Reviewer |
+|--------|-------------------------------------------|----------|
+| none   | micro path / risk low                     | verify field + check-owns-paths only |
+| cheap  | risk medium                               | opencode-reviewer (glm-5.2, pinned) |
+| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol xhigh) — unchanged |
+
+Cheap review is mechanical only (bugs, style, dependencies, obvious logic);
+auth/pay/schema/security always uses `codex-reviewer`. Cheap FAIL → writer fixes
+or PM escalates to `codex-reviewer`; never ignore a FAIL.
 
 ## Profile `claude-codex` (only Claude + Codex)
 

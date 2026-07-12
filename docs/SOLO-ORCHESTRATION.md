@@ -21,6 +21,15 @@ skips the full run ceremony and ships in minutes.
 
 - Skips: PLAN.md, worktree, `run-board`, `STATUS.md`, `lane-heartbeat`, reviewer.
 - Keeps: minimal task YAML, `lane-bg` for the CLI call, `check-owns-paths`, PM commit to main.
+- Commit: `<type>(<area>): <title> [micro:<slug>]`.
+
+## Review tiers
+
+| Tier   | Trigger                                   | Reviewer |
+|--------|-------------------------------------------|----------|
+| none   | micro path / risk low                     | verify field + check-owns-paths only |
+| cheap  | risk medium                               | opencode-reviewer (glm-5.2, pinned) |
+| strong | risk high / high_risk_paths / ship        | codex-reviewer (sol xhigh) — unchanged |
 
 ## End-state of every run
 
