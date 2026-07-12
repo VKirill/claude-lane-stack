@@ -8,6 +8,7 @@ Key facts:
 - Merging to `main` is always done by the orchestrator, never the human.
 - **Onboard 2.0**: dual scenario `minimal|full` + dual depth `fast|deep` (full defaults to deep forensic). Commands: `/project-onboard`, `/project-onboard deep`, shell `project-onboard`.
 - **Long lanes**: Claude foreground Bash dies ~2 minutes — use `lane-bg` + `lane-wait` around `lane-exec` (activity-aware idle/max). See docs/LANE-EXEC.md.
+- **Warm AGY/Grok sessions**: `lane-session` resumes run-scoped conversations, leases up to three parallel slots, and rotates after seven successful tasks by default. Review stays independent.
 - **Language**: durable files English; chat with human may be Russian (docs/LANGUAGE.md).
 - **Codex models**: GPT-5.6 Sol (review/deep/high-risk), Terra (scoped write/docs), Luna (trivia only). No 5.5.
 - Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0

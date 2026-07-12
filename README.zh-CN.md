@@ -40,6 +40,7 @@
 | 🧭 **Onboard 2.0** | 自动 **minimal / full** 场景 + **fast / deep** 深度（成熟仓库默认 deep 取证分析） |
 | 🔬 Deep 清单 | 入口、关键流、wiki↔code 对照、真实测试、部署与密钥面（只写环境变量名） |
 | 🏃 **lane-bg / lane-wait** | Claude 前台 Bash ~2 分钟会被杀掉；长任务必须后台 + 轮询 |
+| 🔥 **lane-session** | AGY/Grok 按 run 续用会话，并支持最多 3 个并行槽位 |
 | ⏱️ **lane-exec** | 按活动重置 idle，硬上限 max（用于已 detach 的进程） |
 | 🧠 模型 | 仅 GPT-**5.6** Sol / Terra / Luna（无 5.5）；文件英文，聊天可用本地语言 |
 | 🚀 命令 | `/project-onboard` · `/project-onboard deep` · `project-onboard . --deep` |

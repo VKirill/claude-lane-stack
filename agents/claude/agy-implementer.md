@@ -57,13 +57,28 @@ if [[ -f "$SRC" ]] && grep -qE 'call_mcp_tool|inheritMcp:\s*true' "$SRC"; then
   sed -i '/call_mcp_tool/d;/inheritMcp:/d' "$SRC"
 fi
 [[ -f "$SRC" ]] && cp -a "$SRC" "$DST"
-# smoke: must NOT crash immediately (30s budget)
+# Cache the model-backed smoke by CLI version + canonical agent definition.
+# A stable agent is checked once, not once per task.
+AGY_VERSION="$(agy --version 2>/dev/null | head -1)"
+AGENT_HASH="$(sha256sum "$SRC" | awk '{print $1}')"
+SMOKE_KEY="$(printf '%s\n%s\n%s\n' "$AGY_VERSION" "$AGENT" "$AGENT_HASH" | sha256sum | awk '{print $1}')"
+SMOKE_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/claude-lane-stack/agy-smoke/$SMOKE_KEY.ok"
 SMOKE_OUT="$ARTIFACT_DIR/agy-smoke.out"
-if timeout 35 agy --print "TASK_FILE=$TASK_FILE. Reply OK only. Do not explore." \
-  --agent "$AGENT" --mode accept-edits --print-timeout 25s \
-  --dangerously-skip-permissions --add-dir "$PROJECT_CWD" \
-  >"$SMOKE_OUT" 2>&1; then
-  true
+if [[ ! -f "$SMOKE_CACHE" ]]; then
+  set +e
+  timeout 35 agy --print "TASK_FILE=$TASK_FILE. Reply OK only. Do not explore." \
+    --agent "$AGENT" --mode accept-edits --print-timeout 25s \
+    --dangerously-skip-permissions --add-dir "$PROJECT_CWD" \
+    >"$SMOKE_OUT" 2>&1
+  smoke_ec=$?
+  set -e
+  if [[ "$smoke_ec" -eq 0 ]] && ! grep -q 'terminated due to error' "$SMOKE_OUT"; then
+    mkdir -p "$(dirname "$SMOKE_CACHE")"
+    printf 'version=%s\nagent=%s\nchecked_at=%s\n' \
+      "$AGY_VERSION" "$AGENT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$SMOKE_CACHE"
+  fi
+else
+  printf 'AGY_SMOKE cache=hit key=%s\n' "$SMOKE_KEY" > "$SMOKE_OUT"
 fi
 if grep -q 'terminated due to error' "$SMOKE_OUT"; then
   {
@@ -102,6 +117,8 @@ cd "$PROJECT_CWD"
 SPEC="$ARTIFACT_DIR/agy-spec.txt"
 FINAL="$ARTIFACT_DIR/lane-final.log"
 # write prompt into $SPEC: task YAML + TASK_FILE/ARTIFACT_DIR/owns_paths/never_touch + verify
+RUN_DIR="${RUN_DIR:-$(dirname "$(dirname "$TASK_FILE")")}"
+SESSION_TASK_ID="${TASK_ID:-$(basename "$TASK_FILE" | sed 's/-.*//; s/\..*//')}"
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 
@@ -110,10 +127,10 @@ lane-bg --dir "$ARTIFACT_DIR" --label "agy-${AGENT:-lane-coder}" -- \
   lane-exec --idle 600 --max 5400 --label "agy-${AGENT:-lane-coder}" \
     ${HB:+--heartbeat "$HB"} \
     --log "$ARTIFACT_DIR/lane-exec.log" \
-    -- bash -c 'agy --print "$(cat "$0")" --agent "$1" --model "Gemini 3.5 Flash (High)" \
-        --mode accept-edits --print-timeout 90m --dangerously-skip-permissions \
-        --add-dir "$2" > "$3" 2>&1; echo AGY_EXIT=$? >> "$3"' \
-      "$SPEC" "${AGENT:-lane-coder}" "$PROJECT_CWD" "$FINAL"
+    -- lane-session run --provider agy --run-dir "$RUN_DIR" \
+      --task-id "$SESSION_TASK_ID" --role "${AGENT:-lane-coder}" \
+      --cwd "$PROJECT_CWD" --prompt-file "$SPEC" --output "$FINAL" \
+      --model "Gemini 3.5 Flash (High)"
 
 # 2) Poll with SHORT Bash only (each call < 30s). Repeat until done.
 # Prefer host run_in_background for step 1 if available; still poll with --once.
@@ -146,5 +163,9 @@ git diff --stat
 check-owns-paths "$TASK_FILE" --cwd "$PROJECT_CWD" || true
 # empty diff → STATUS partial; ensure report.md; heartbeat done
 ```
+
+`lane-session` keeps up to three run-scoped conversations and resumes the warmest
+available slot. One slot handles one task at a time; it rotates after seven
+successful tasks (hard maximum ten). State: `RUN_DIR/sessions.json`.
 
 Return path to `report.md` + STATUS. Never merge main. Never invent tools.

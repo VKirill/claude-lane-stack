@@ -1,0 +1,640 @@
+#!/usr/bin/env python3
+"""Run AGY or Grok with run-scoped warm-session affinity.
+
+Each run keeps a small pool of resumable writer sessions in sessions.json.
+One task owns one pool slot at a time; parallel tasks spill into other slots.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import re
+import select
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import IO
+
+
+STATE_VERSION = 1
+HARD_MAX_TASKS = 10
+HARD_MAX_POOL = 3
+SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+UUID_DB = re.compile(
+    r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.db$"
+)
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def load_state(path: Path) -> dict:
+    if not path.exists():
+        return {"version": STATE_VERSION, "sessions": {}, "history": []}
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"cannot read session state {path}: {exc}") from exc
+    if state.get("version") != STATE_VERSION:
+        raise RuntimeError(
+            f"unsupported session state version {state.get('version')!r} in {path}"
+        )
+    state.setdefault("sessions", {})
+    state.setdefault("history", [])
+    return state
+
+
+def save_state(path: Path, state: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp, path)
+
+
+def lock_file(path: Path, *, nonblocking: bool = False) -> IO[str] | None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+", encoding="utf-8")
+    flags = fcntl.LOCK_EX | (fcntl.LOCK_NB if nonblocking else 0)
+    try:
+        fcntl.flock(handle.fileno(), flags)
+    except BlockingIOError:
+        handle.close()
+        return None
+    return handle
+
+
+def unlock_file(handle: IO[str]) -> None:
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    handle.close()
+
+
+def runtime_lock_dir(run_dir: Path) -> Path:
+    digest = hashlib.sha256(str(run_dir.resolve()).encode("utf-8")).hexdigest()[:20]
+    runtime_root = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+    path = runtime_root / "claude-lane-stack" / "session-locks" / digest
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.chmod(0o700)
+    except OSError:
+        pass
+    return path
+
+
+def rotation_reason(record: dict | None, *, cwd: str, model: str, max_tasks: int) -> str | None:
+    if not record:
+        return None
+    if record.get("invalid"):
+        return record.get("invalid_reason") or "invalid"
+    if record.get("status") == "running":
+        return "stale_running"
+    if not record.get("session_id"):
+        return "missing_session_id"
+    if record.get("cwd") != cwd:
+        return "cwd_changed"
+    if record.get("model") != model:
+        return "model_changed"
+    success_count = int(record.get("success_count", len(record.get("tasks", []))))
+    if success_count >= max_tasks:
+        return "task_limit"
+    return None
+
+
+@dataclass
+class Lease:
+    key: str
+    slot: int
+    handle: IO[str]
+    record: dict
+    is_new: bool
+
+
+class LaneInterrupted(Exception):
+    def __init__(self, signum: int) -> None:
+        super().__init__(f"interrupted by signal {signum}")
+        self.signum = signum
+
+
+def acquire_lease(
+    *,
+    run_dir: Path,
+    provider: str,
+    role: str,
+    cwd: str,
+    model: str,
+    task_id: str,
+    pool_size: int,
+    max_tasks: int,
+) -> Lease:
+    state_path = run_dir / "sessions.json"
+    locks_dir = runtime_lock_dir(run_dir)
+    state_lock_path = locks_dir / "state.lock"
+    last_wait_notice = 0.0
+
+    while True:
+        state_lock = lock_file(state_lock_path)
+        assert state_lock is not None
+        state = load_state(state_path)
+        run_identity = str(run_dir.resolve())
+        stored_run = state.get("run_dir")
+        if stored_run is not None and stored_run != run_identity:
+            for old_record in state["sessions"].values():
+                archived = dict(old_record)
+                archived["rotation_reason"] = "run_dir_changed"
+                archived["rotated_at"] = utc_now()
+                state["history"].append(archived)
+            state["sessions"] = {}
+        state["run_dir"] = run_identity
+
+        warm: list[tuple[str, int]] = []
+        cold: list[int] = []
+        for slot in range(pool_size):
+            key = f"{provider}:{role}:{slot}"
+            record = state["sessions"].get(key)
+            if record and rotation_reason(
+                record, cwd=cwd, model=model, max_tasks=max_tasks
+            ) is None:
+                warm.append((record.get("updated_at", ""), slot))
+            else:
+                cold.append(slot)
+        ordered_slots = [slot for _, slot in sorted(warm, reverse=True)] + cold
+
+        selected_handle: IO[str] | None = None
+        selected_slot = -1
+        for slot in ordered_slots:
+            handle = lock_file(
+                locks_dir / f"{provider}-{role}-{slot}.lock", nonblocking=True
+            )
+            if handle is not None:
+                selected_handle = handle
+                selected_slot = slot
+                break
+
+        if selected_handle is None:
+            unlock_file(state_lock)
+            now = time.monotonic()
+            if now - last_wait_notice >= 10:
+                print(
+                    f"LANE_SESSION waiting provider={provider} role={role} "
+                    f"pool={pool_size}",
+                    flush=True,
+                )
+                last_wait_notice = now
+            time.sleep(0.2)
+            continue
+
+        key = f"{provider}:{role}:{selected_slot}"
+        old = state["sessions"].get(key)
+        reason = rotation_reason(old, cwd=cwd, model=model, max_tasks=max_tasks)
+        is_new = old is None or reason is not None
+        if old is not None and reason is not None:
+            archived = dict(old)
+            archived["rotation_reason"] = reason
+            archived["rotated_at"] = utc_now()
+            state["history"].append(archived)
+
+        if is_new:
+            generation = int((old or {}).get("generation", 0)) + 1
+            record = {
+                "provider": provider,
+                "role": role,
+                "slot": selected_slot,
+                "generation": generation,
+                "session_id": str(uuid.uuid4()) if provider == "grok" else None,
+                "cwd": cwd,
+                "model": model,
+                "tasks": [],
+                "success_count": 0,
+                "created_at": utc_now(),
+                "updated_at": utc_now(),
+                "status": "starting",
+                "invalid": False,
+            }
+        else:
+            record = dict(old)
+
+        record["status"] = "running"
+        record["current_task"] = task_id
+        record["updated_at"] = utc_now()
+        state["sessions"][key] = record
+        state["defaults"] = {"pool_size": pool_size, "max_tasks": max_tasks}
+        save_state(state_path, state)
+        unlock_file(state_lock)
+        return Lease(key, selected_slot, selected_handle, record, is_new)
+
+
+def proc_descendants(root_pid: int) -> set[int]:
+    parents: dict[int, int] = {}
+    proc = Path("/proc")
+    try:
+        entries = list(proc.iterdir())
+    except OSError:
+        return {root_pid}
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text(encoding="utf-8")
+            after_name = stat.rsplit(")", 1)[1].strip().split()
+            parents[int(entry.name)] = int(after_name[1])
+        except (OSError, ValueError, IndexError):
+            continue
+
+    found = {root_pid}
+    changed = True
+    while changed:
+        changed = False
+        for pid, parent in parents.items():
+            if parent in found and pid not in found:
+                found.add(pid)
+                changed = True
+    return found
+
+
+def open_conversation_id(root_pid: int, conversations_dir: Path) -> str | None:
+    try:
+        base = conversations_dir.resolve()
+    except OSError:
+        base = conversations_dir
+    for pid in proc_descendants(root_pid):
+        fd_dir = Path("/proc") / str(pid) / "fd"
+        try:
+            fds = list(fd_dir.iterdir())
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                target = Path(os.readlink(fd))
+                resolved_parent = target.parent.resolve()
+            except OSError:
+                continue
+            match = UUID_DB.match(target.name)
+            if resolved_parent == base and match:
+                return match.group(1).lower()
+    return None
+
+
+def provider_command(args: argparse.Namespace, lease: Lease) -> list[str]:
+    binary = args.binary or shutil.which(args.provider)
+    if not binary:
+        raise RuntimeError(f"{args.provider} binary not found")
+
+    if args.provider == "grok":
+        command = [
+            binary,
+            "--no-auto-update",
+            "--prompt-file",
+            str(args.prompt_file),
+            "--model",
+            args.model,
+            "--reasoning-effort",
+            args.reasoning_effort,
+            "--permission-mode",
+            "acceptEdits",
+            "--output-format",
+            "plain",
+            "--cwd",
+            str(args.cwd),
+        ]
+        session_id = lease.record["session_id"]
+        if lease.is_new:
+            command[1:1] = ["--session-id", session_id]
+        else:
+            command[1:1] = ["--resume", session_id]
+        return command
+
+    prompt = args.prompt_file.read_text(encoding="utf-8")
+    command = [
+        binary,
+        "--print",
+        prompt,
+        "--agent",
+        args.role,
+        "--model",
+        args.model,
+        "--mode",
+        "accept-edits",
+        "--print-timeout",
+        args.print_timeout,
+        "--dangerously-skip-permissions",
+        "--add-dir",
+        str(args.cwd),
+    ]
+    if not lease.is_new and lease.record.get("session_id"):
+        command[1:1] = ["--conversation", lease.record["session_id"]]
+    return command
+
+
+def terminate_provider(process: subprocess.Popen[bytes] | None) -> None:
+    if process is None or process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait(timeout=3)
+
+
+def stream_provider(
+    process: subprocess.Popen[bytes],
+    output: IO[bytes],
+    *,
+    provider: str,
+    capture_agy: bool,
+    conversations_dir: Path,
+) -> tuple[int, str | None]:
+    assert process.stdout is not None
+    fd = process.stdout.fileno()
+    captured: str | None = None
+
+    while True:
+        ready, _, _ = select.select([fd], [], [], 0.1)
+        if ready:
+            chunk = os.read(fd, 65536)
+            if chunk:
+                output.write(chunk)
+                output.flush()
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+            elif process.poll() is not None:
+                break
+        if provider == "agy" and capture_agy and captured is None:
+            captured = open_conversation_id(process.pid, conversations_dir)
+        if process.poll() is not None:
+            while True:
+                ready, _, _ = select.select([fd], [], [], 0)
+                if not ready:
+                    break
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    break
+                output.write(chunk)
+                output.flush()
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+            break
+    return process.wait(), captured
+
+
+def finish_lease(
+    *,
+    run_dir: Path,
+    lease: Lease,
+    task_id: str,
+    exit_code: int,
+    captured_session_id: str | None,
+) -> dict:
+    state_path = run_dir / "sessions.json"
+    state_lock = lock_file(runtime_lock_dir(run_dir) / "state.lock")
+    assert state_lock is not None
+    state = load_state(state_path)
+    record = dict(state["sessions"].get(lease.key, lease.record))
+    record.pop("current_task", None)
+    record["updated_at"] = utc_now()
+
+    if exit_code == 0 and captured_session_id:
+        record["session_id"] = captured_session_id
+    if exit_code == 0 and record.get("session_id"):
+        record["success_count"] = int(
+            record.get("success_count", len(record.get("tasks", [])))
+        ) + 1
+        if task_id not in record["tasks"]:
+            record["tasks"].append(task_id)
+        record["status"] = "idle"
+        record["invalid"] = False
+        record.pop("invalid_reason", None)
+    elif exit_code == 0:
+        record["status"] = "capture_failed"
+        record["invalid"] = True
+        record["invalid_reason"] = "conversation_capture_failed"
+    else:
+        record["status"] = "failed"
+        record["invalid"] = True
+        record["invalid_reason"] = f"provider_exit_{exit_code}"
+
+    state["sessions"][lease.key] = record
+    save_state(state_path, state)
+    unlock_file(state_lock)
+    return record
+
+
+def run_provider(args: argparse.Namespace) -> int:
+    run_dir = args.run_dir.resolve()
+    cwd = args.cwd.resolve()
+    if not cwd.is_dir():
+        raise RuntimeError(f"cwd is not a directory: {cwd}")
+    if not args.prompt_file.is_file():
+        raise RuntimeError(f"prompt file not found: {args.prompt_file}")
+
+    lease = acquire_lease(
+        run_dir=run_dir,
+        provider=args.provider,
+        role=args.role,
+        cwd=str(cwd),
+        model=args.model,
+        task_id=args.task_id,
+        pool_size=args.pool_size,
+        max_tasks=args.max_tasks,
+    )
+    completed = False
+    captured: str | None = lease.record.get("session_id")
+    process: subprocess.Popen[bytes] | None = None
+    old_handlers: dict[int, signal.Handlers] = {}
+
+    def handle_signal(signum: int, _frame: object) -> None:
+        raise LaneInterrupted(signum)
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        old_handlers[signum] = signal.getsignal(signum)
+        signal.signal(signum, handle_signal)
+    try:
+        command = provider_command(args, lease)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        conversations_dir = Path(
+            os.environ.get(
+                "AGY_CONVERSATIONS_DIR",
+                str(Path.home() / ".gemini" / "antigravity-cli" / "conversations"),
+            )
+        )
+
+        print(
+            f"LANE_SESSION start provider={args.provider} role={args.role} "
+            f"slot={lease.slot} mode={'new' if lease.is_new else 'resume'} "
+            f"task={args.task_id}",
+            flush=True,
+        )
+        with args.output.open("wb") as output:
+            process = subprocess.Popen(
+                command,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            exit_code, detected = stream_provider(
+                process,
+                output,
+                provider=args.provider,
+                capture_agy=(
+                    lease.is_new
+                    and captured is None
+                    and os.environ.get("LANE_SESSION_DISABLE_PROC_CAPTURE") != "1"
+                ),
+                conversations_dir=conversations_dir,
+            )
+            if detected:
+                captured = detected
+            trailer = (
+                f"\n{args.provider.upper()}_EXIT={exit_code} "
+                f"WARM_SESSION={captured or 'unavailable'} SLOT={lease.slot}\n"
+            )
+            output.write(trailer.encode("utf-8"))
+
+        record = finish_lease(
+            run_dir=run_dir,
+            lease=lease,
+            task_id=args.task_id,
+            exit_code=exit_code,
+            captured_session_id=captured,
+        )
+        completed = True
+        print(
+            f"LANE_SESSION done provider={args.provider} slot={lease.slot} "
+            f"task={args.task_id} exit={exit_code} status={record['status']} "
+            f"turns={record['success_count']}",
+            flush=True,
+        )
+        return exit_code
+    except LaneInterrupted as exc:
+        terminate_provider(process)
+        exit_code = 128 + exc.signum
+        finish_lease(
+            run_dir=run_dir,
+            lease=lease,
+            task_id=args.task_id,
+            exit_code=exit_code,
+            captured_session_id=captured,
+        )
+        completed = True
+        print(
+            f"LANE_SESSION interrupted provider={args.provider} slot={lease.slot} "
+            f"task={args.task_id} signal={exc.signum}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return exit_code
+    except BaseException:
+        terminate_provider(process)
+        if not completed:
+            try:
+                finish_lease(
+                    run_dir=run_dir,
+                    lease=lease,
+                    task_id=args.task_id,
+                    exit_code=125,
+                    captured_session_id=captured,
+                )
+            except Exception as state_exc:
+                print(
+                    f"lane-session: failed to invalidate session: {state_exc}",
+                    file=sys.stderr,
+                )
+        raise
+    finally:
+        for signum, old_handler in old_handlers.items():
+            signal.signal(signum, old_handler)
+        unlock_file(lease.handle)
+
+
+def positive_bounded(value: str, *, maximum: int, name: str) -> int:
+    parsed = int(value)
+    if parsed < 1 or parsed > maximum:
+        raise argparse.ArgumentTypeError(f"{name} must be between 1 and {maximum}")
+    return parsed
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run AGY/Grok in a warm, run-scoped session pool"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    run = sub.add_parser("run", help="acquire a session slot and run one task")
+    run.add_argument("--provider", required=True, choices=("agy", "grok"))
+    run.add_argument("--run-dir", required=True, type=Path)
+    run.add_argument("--task-id", required=True)
+    run.add_argument("--role", required=True)
+    run.add_argument("--cwd", required=True, type=Path)
+    run.add_argument("--prompt-file", required=True, type=Path)
+    run.add_argument("--output", required=True, type=Path)
+    run.add_argument("--binary", help="provider binary override (primarily for tests)")
+    run.add_argument("--model", required=True)
+    run.add_argument("--reasoning-effort", default="high")
+    run.add_argument("--print-timeout", default="90m")
+    run.add_argument(
+        "--pool-size",
+        type=lambda value: positive_bounded(
+            value, maximum=HARD_MAX_POOL, name="pool-size"
+        ),
+        default=positive_bounded(
+            os.environ.get("LANE_SESSION_POOL_SIZE", "3"),
+            maximum=HARD_MAX_POOL,
+            name="pool-size",
+        ),
+    )
+    run.add_argument(
+        "--max-tasks",
+        type=lambda value: positive_bounded(
+            value, maximum=HARD_MAX_TASKS, name="max-tasks"
+        ),
+        default=positive_bounded(
+            os.environ.get("LANE_SESSION_MAX_TASKS", "7"),
+            maximum=HARD_MAX_TASKS,
+            name="max-tasks",
+        ),
+    )
+
+    status = sub.add_parser("status", help="print run session state")
+    status.add_argument("--run-dir", required=True, type=Path)
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.command == "status":
+        state_path = args.run_dir.resolve() / "sessions.json"
+        print(json.dumps(load_state(state_path), indent=2, sort_keys=True))
+        return 0
+
+    if not SAFE_NAME.fullmatch(args.role):
+        parser.error("--role may contain only letters, numbers, dot, underscore, hyphen")
+    if not SAFE_NAME.fullmatch(args.task_id):
+        parser.error("--task-id may contain only letters, numbers, dot, underscore, hyphen")
+    try:
+        return run_provider(args)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        print(f"lane-session: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

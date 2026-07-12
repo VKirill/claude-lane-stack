@@ -34,6 +34,8 @@ export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
 FINAL="$ARTIFACT_DIR/lane-final.log"
 # SPEC = writer.md + TASK_FILE
+RUN_DIR="${RUN_DIR:-$(dirname "$(dirname "$TASK_FILE")")}"
+SESSION_TASK_ID="${TASK_ID:-$(basename "$TASK_FILE" | sed 's/-.*//; s/\..*//')}"
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 
@@ -41,10 +43,10 @@ lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
   lane-exec --idle 900 --max 7200 --label grok \
     ${HB:+--heartbeat "$HB"} \
     --log "$ARTIFACT_DIR/lane-exec.log" \
-    -- bash -c 'grok --prompt-file "$0" -m grok-4.5 --reasoning-effort high \
-        --permission-mode acceptEdits --output-format plain --cwd "$1" > "$2" 2>&1; \
-        echo GROK_EXIT=$? >> "$2"' \
-      "$SPEC" "$PROJECT_CWD" "$FINAL"
+    -- lane-session run --provider grok --run-dir "$RUN_DIR" \
+      --task-id "$SESSION_TASK_ID" --role grok --cwd "$PROJECT_CWD" \
+      --prompt-file "$SPEC" --output "$FINAL" --model grok-4.5 \
+      --reasoning-effort high
 
 # Poll short:
 #   lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = still running; 0 = done
@@ -62,6 +64,11 @@ lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
 2. Empty diff → STATUS partial.  
 3. `check-owns-paths`  
 4. Heartbeat done if RUN_SLUG set.
+
+`lane-session` assigns the first task a Grok session UUID, resumes that UUID for
+later tasks in the same run, and spills concurrent work into a pool of up to
+three sessions. A session rotates after seven successful tasks (hard max ten).
+State: `RUN_DIR/sessions.json`.
 
 No self-implement. **Never merge/push main.**  
 **Do** detach the lane (`lane-bg`); **do not** leave a 90m foreground Bash.

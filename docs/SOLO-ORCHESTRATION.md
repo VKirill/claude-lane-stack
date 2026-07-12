@@ -10,7 +10,7 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 2. **You never merge.** If PM asks you to merge, PM is wrong — fix the skill.  
 3. **Parallel only with ownership.** Disjoint `owns_paths` or serial.  
 4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.  
-5. **Fresh worker context.** Each task = new Agent spawn. PM handoffs when context fat.  
+5. **Bounded warm writer context.** Each task gets a fresh Claude supervisor spawn, while AGY/Grok resume only the session pool owned by that exact run. Rotate after seven successful tasks; review stays fresh.
 6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`.  
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
 
@@ -31,6 +31,7 @@ PROGRESS.md  ←  Now/Next updated
 | `resume-project` | cold start / new session |
 | `wt-create <repo> <slug>` | start isolated run |
 | `lane-heartbeat …` | worker or supervisor pulse |
+| `lane-session status --run-dir …` | inspect run-owned AGY/Grok session IDs and rotations |
 | `run-board <repo>` | refresh BOARD.md |
 | `lane-stall-check <repo>` | find zombies |
 | `check-owns-paths <task.yaml>` | after write lane |

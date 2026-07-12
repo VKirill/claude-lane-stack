@@ -40,6 +40,7 @@
 | 🧭 **Onboard 2.0** | **minimal / full** 시나리오 + **fast / deep** 깊이 (성숙 레포는 deep) |
 | 🔬 Deep | 엔트리포인트, 플로우, wiki↔코드, 실제 테스트, 배포, 시크릿 이름만 |
 | 🏃 **lane-bg / lane-wait** | Claude foreground Bash ~2분 종료 → 긴 레인은 detach 필수 |
+| 🔥 **lane-session** | AGY/Grok이 run별 대화를 이어가며 최대 3개 슬롯으로 병렬 실행 |
 | ⏱️ **lane-exec** | 활동 기반 idle + 절대 max (detach 프로세스) |
 | 🧠 모델 | GPT-**5.6** Sol / Terra / Luna 만 (5.5 없음). 파일은 영어 |
 | 🚀 명령 | `/project-onboard` · `/project-onboard deep` |

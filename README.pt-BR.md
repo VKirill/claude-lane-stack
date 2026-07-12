@@ -40,6 +40,7 @@ e **faz o merge do código pronto na `main`**. Sem cinco chats. Sem merges manua
 | 🧭 **Onboard 2.0** | Cenários **minimal / full** + profundidade **fast / deep** (full → deep) |
 | 🔬 Deep | Entrypoints, fluxos, wiki↔código, testes reais, deploy, segredos (só nomes) |
 | 🏃 **lane-bg / lane-wait** | Bash em foreground do Claude morre ~2 min → lanes longas vão detach |
+| 🔥 **lane-session** | AGY/Grok retomam a conversa do run; até 3 slots paralelos |
 | ⏱️ **lane-exec** | idle por atividade + max absoluto no processo detached |
 | 🧠 Modelos | Só GPT-**5.6** Sol / Terra / Luna (sem 5.5). Arquivos em inglês |
 | 🚀 Comandos | `/project-onboard` · `/project-onboard deep` |

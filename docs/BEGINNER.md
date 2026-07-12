@@ -209,6 +209,10 @@ Long silence? Workers can stall — the stack has tooling for exactly this.
 > [!IMPORTANT]
 > If a write lane **dies after ~2 minutes**, that is usually **Claude killing foreground Bash**, not a bug in your code. Upgrade to **v1.1.0+** so implementers use `lane-bg` + `lane-wait`, then start a **fresh** PM session. Details: [LANE-EXEC.md](LANE-EXEC.md).
 
+Within one run, AGY/Grok tasks also reuse warm conversations through
+`lane-session`. Related sequential tasks keep context; truly parallel tasks use
+separate pool slots. The default session lifetime is seven successful tasks.
+
 | Say to the PM | What happens |
 |---------------|--------------|
 | *«It's stuck, check the workers»* | PM runs `lane-stall-check`, finds silent workers |

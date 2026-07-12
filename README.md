@@ -187,7 +187,9 @@ Long AGY / Grok / Codex jobs **must** detach:
 # 1) Start detached (returns immediately)
 lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
   lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
-  agy --print "..." --agent lane-frontend --print-timeout 90m ...
+  lane-session run --provider agy --run-dir "$RUN_DIR" --task-id "$TASK_ID" \
+    --role lane-frontend --cwd "$PROJECT_CWD" --prompt-file "$SPEC" \
+    --output "$ARTIFACT_DIR/lane-final.log" --model "Gemini 3.5 Flash (High)"
 
 # 2) Poll with short Bash (safe)
 lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = running, 0 = done
@@ -198,8 +200,16 @@ lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = running, 0 = done
 | **`lane-bg`** | nohup detach — job survives Bash death |
 | **`lane-wait`** | short status polls |
 | **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
+| **`lane-session`** | resumes run-scoped AGY/Grok context; three-slot parallel pool |
 
 Implementers and `dev-orchestrator` are instructed to use this pattern. Details: [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
+
+AGY and Grok no longer relearn the repository on every task in a run. The first
+task creates a conversation; later related tasks resume it. A busy conversation
+is never shared concurrently—parallel tasks lease another slot (up to three).
+Sessions rotate after seven successful tasks by default, on failure, or when the
+worktree/model changes. Codex review stays independent and does not reuse writer
+context.
 
 ---
 
@@ -268,6 +278,7 @@ Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 | Command | What it is |
 |---------|------------|
 | `run-board` | Job scoreboard |
+| `lane-session status --run-dir .agents/runs/<slug>` | Inspect that run's AGY/Grok session pool |
 | `wt-create` / `wt-merge-main` | Worktree + **merge into `main`** |
 | `check-owns-paths` | Did the worker stay in its file list? |
 | `lane-bg` / `lane-wait` | Detach long lane + poll status |
@@ -308,7 +319,7 @@ More: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING
 ```text
 claude-lane-stack/
 ├── agents/        # claude PM + agy / grok / codex lanes (implementers, onboard, review)
-├── bin/           # agents-doctor, project-onboard, lane-bg, lane-wait, lane-exec,
+├── bin/           # agents-doctor, project-onboard, lane-bg, lane-wait, lane-exec, lane-session,
 │                  # wt-*, run-board, docs-maintain-*, …
 ├── skills/        # orchestration, contracts, memory, onboard, antigravity, …
 ├── profiles/      # full → claude-only

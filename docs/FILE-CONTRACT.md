@@ -29,6 +29,7 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
     STATUS.md             # this run board
     MERGE.md              # set by PM after auto-merge to main
     worktree.json         # { branch, path, base } if isolated
+    sessions.json         # AGY/Grok warm-session pool + rotation history
     tasks/
       001-short-title.yaml
     artifacts/
@@ -44,6 +45,12 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
 ```
 
 Long CLI lanes **must** start with `lane-bg` and poll via `lane-wait --once` — Claude kills foreground Bash ~2 minutes. See [LANE-EXEC.md](LANE-EXEC.md).
+
+AGY/Grok write lanes run through `lane-session`. Sessions are scoped to this
+run, role, worktree, and model. One slot accepts one task at a time; concurrent
+tasks spill into a pool of at most three slots. A slot rotates after seven
+successful tasks (configurable up to a hard maximum of ten), after a provider
+failure, or when cwd/model changes. Review lanes never reuse writer sessions.
 
 `<slug>` = kebab-case feature, e.g. `fix-subscription-panel-flicker`.
 
@@ -98,7 +105,7 @@ high_risk_paths: false       # true → dual review (codex required even if risk
 1. Create run dir + PLAN + tasks with **disjoint** `owns_paths`.  
 2. If score ≥ 4 **or** ≥2 write tasks → `wt-create` worktree; all tasks share that `project_cwd`.  
 3. If single low-risk task → may use main working tree (still PM commits).  
-4. Dispatch ≤3 parallel write lanes only when owns_paths disjoint.  
+4. Dispatch ≤3 parallel write lanes only when owns_paths disjoint; `lane-session` leases a separate warm slot to each concurrent AGY/Grok task.
 5. Lanes heartbeat via `lane-heartbeat`; PM may run `lane-stall-check`.  
 6. Accept strong `report.md` + `check-owns-paths` clean + `done_when` evidence.  
 7. `risk: high` or `high_risk_paths` or ship → Codex `review.md` must pass.  

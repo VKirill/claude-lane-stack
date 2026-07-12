@@ -15,9 +15,10 @@ jobs:
           python-version: "3.12"
       - name: Compile hooks and doctor
         run: |
-          python3 -m py_compile hooks/*.py bin/agents-doctor bin/check-owns-paths bin/lane-stall-check bin/lane-heartbeat bin/run-board 2>/dev/null || \
-          python3 -m py_compile hooks/*.py
+          python3 -m py_compile hooks/*.py bin/agents-doctor bin/check-owns-paths bin/lane-stall-check bin/lane-heartbeat bin/lane-session bin/run-board
           python3 bin/agents-doctor --json || true
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
       - name: Shell scripts syntax
         run: |
           bash -n install.sh

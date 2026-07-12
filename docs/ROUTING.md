@@ -73,6 +73,11 @@ lane-wait --dir "$ARTIFACT_DIR" --once
 
 See [LANE-EXEC.md](LANE-EXEC.md). PM waits on the **Agent** tool, not a 90m Bash call.
 
+AGY/Grok write tasks within the same run use `lane-session` affinity. The
+warmest free conversation is resumed, while concurrent tasks lease separate
+slots (maximum three). Default rotation: seven successful tasks; review remains
+an independent cold session.
+
 ## Parallelism (solo)
 
 | Situation | Policy |

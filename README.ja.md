@@ -40,6 +40,7 @@
 | 🧭 **Onboard 2.0** | **minimal / full** シナリオ + **fast / deep** 深度を自動判定（成熟リポは deep） |
 | 🔬 Deep | エントリポイント・フロー・wiki↔コード差分・実テスト・デプロイ・シークレット名のみ |
 | 🏃 **lane-bg / lane-wait** | Claude の foreground Bash は約2分で殺される → 長時間レーンは必ず detach |
+| 🔥 **lane-session** | AGY/Grok は run ごとの会話を再開し、最大3スロットで並列実行 |
 | ⏱️ **lane-exec** | 活動ベース idle + 絶対 max（detach 後の子プロセス向け） |
 | 🧠 モデル | GPT-**5.6** Sol / Terra / Luna のみ（5.5 なし）。ファイルは英語 |
 | 🚀 コマンド | `/project-onboard` · `/project-onboard deep` |

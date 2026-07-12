@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Run-scoped warm AGY/Grok sessions**: `lane-session` resumes native conversations across related tasks, preserves up to three parallel slots, rotates after seven successful tasks by default (hard max ten), and invalidates failed/stale sessions.
+- AGY preflight smoke is cached by CLI version and agent-definition hash instead of spending a model call before every task.
+
+### Fixed
+- Provider output is streamed through `lane-exec` for correct idle detection; interrupted lanes terminate the complete provider process group before releasing a session slot.
+
 ## 1.1.0 — 2026-07-11
 
 Deep onboard, dual scenarios, activity-aware lanes, and Claude Bash background survival.
@@ -45,4 +54,3 @@ Deep onboard, dual scenarios, activity-aware lanes, and Claude Bash background s
 
 ## 0.1.0
 - Initial public package (file contracts, solo merge, beginner guides).
-

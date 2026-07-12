@@ -40,6 +40,7 @@ und **mergt fertigen Code nach `main`**. Keine fünf Chats. Keine manuellen Merg
 | 🧭 **Onboard 2.0** | **minimal / full** + Tiefe **fast / deep** (full → deep forensisch) |
 | 🔬 Deep | Entrypoints, Flows, Wiki↔Code, echte Tests, Deploy, Secrets (nur Namen) |
 | 🏃 **lane-bg / lane-wait** | Claude killt Foreground-Bash ~2 Min → lange Lanes immer detach |
+| 🔥 **lane-session** | AGY/Grok setzen pro Run dieselbe Conversation fort; bis zu 3 parallele Slots |
 | ⏱️ **lane-exec** | Aktivitäts-Idle + hartes Max auf dem detached Prozess |
 | 🧠 Modelle | Nur GPT-**5.6** Sol / Terra / Luna (kein 5.5). Dateien Englisch |
 | 🚀 Befehle | `/project-onboard` · `/project-onboard deep` |

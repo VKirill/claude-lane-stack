@@ -58,10 +58,13 @@ Claude’s Bash tool kills **foreground** commands around ~2 minutes.
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 
-# 1) Detach (returns immediately)
+# 1) Detach (returns immediately); AGY/Grok keep run-scoped warm context.
 lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
   lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
-  agy --print "..." --agent lane-frontend --print-timeout 90m ...
+  lane-session run --provider agy --run-dir "$RUN_DIR" \
+    --task-id "$TASK_ID" --role lane-frontend --cwd "$PROJECT_CWD" \
+    --prompt-file "$SPEC" --output "$ARTIFACT_DIR/lane-final.log" \
+    --model "Gemini 3.5 Flash (High)"
 
 # 2) Poll with short calls (each < 30s)
 lane-wait --dir "$ARTIFACT_DIR" --once
@@ -74,8 +77,39 @@ lane-wait --dir "$ARTIFACT_DIR" --once
 | `artifacts/N/lane-bg.exit` | exit code when finished |
 | `artifacts/N/lane-bg.supervisor.log` | combined stdout/stderr of the job |
 | `artifacts/N/lane-exec.log` | activity-aware wrapper log |
+| `sessions.json` | current AGY/Grok session IDs, slot ownership, successful-turn counts, rotation history |
 
 Optional: host `run_in_background=true` on the `lane-bg` Bash call — still prefer `lane-bg` so the job survives agent restarts.
+
+## Warm session affinity (AGY / Grok)
+
+`lane-session` removes the cognitive cold start without giving up safe
+parallelism:
+
+- the first Grok task gets a preassigned UUID; later tasks use `--resume`;
+- Grok headless calls use `--prompt-file` and `--no-auto-update`, keeping task
+  contents out of process argv while avoiding background update checks;
+- the first AGY task's open conversation DB is detected and later tasks use
+  `--conversation`;
+- the warmest free slot is preferred; a busy slot is never used concurrently;
+- up to three slots may exist per provider/role, matching the PM parallel cap;
+- default rotation is seven successful tasks; `LANE_SESSION_MAX_TASKS` may set
+  1–10 and `LANE_SESSION_POOL_SIZE` may set 1–3; retries count as successful
+  turns even when they reuse the same task ID;
+- provider failure, stale interrupted state, cwd change, or model change forces
+  a fresh session;
+- session IDs are stored under the exact absolute run directory, so two runs in
+  the same repository/cwd never resume each other's conversations; neither
+  provider uses its ambiguous global `--continue` mode;
+- locks live under the runtime temp directory, not inside the repository.
+- SIGINT/SIGTERM invalidates the lease and terminates the provider's full
+  process group before another task may reuse that slot.
+
+Inspect a run without modifying it:
+
+```bash
+lane-session status --run-dir .agents/runs/<slug>
+```
 
 ## Heartbeat (optional)
 

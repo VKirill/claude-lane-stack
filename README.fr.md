@@ -40,6 +40,7 @@ et **fusionne le code terminé vers `main`**. Fini les cinq chats. Fini les fusi
 | 🧭 **Onboard 2.0** | Scénarios **minimal / full** + profondeur **fast / deep** (full → deep) |
 | 🔬 Deep | Entrypoints, flux, wiki↔code, vrais tests, deploy, secrets (noms seuls) |
 | 🏃 **lane-bg / lane-wait** | Bash foreground Claude meurt ~2 min → les lanes longues se détachent |
+| 🔥 **lane-session** | AGY/Grok reprennent la conversation du run ; jusqu’à 3 slots parallèles |
 | ⏱️ **lane-exec** | idle activité + max absolu sur le processus détaché |
 | 🧠 Modèles | GPT-**5.6** Sol / Terra / Luna uniquement (pas de 5.5). Fichiers en anglais |
 | 🚀 Commandes | `/project-onboard` · `/project-onboard deep` |

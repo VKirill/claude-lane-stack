@@ -182,7 +182,9 @@ Claude Code **убивает foreground Bash ~за 2 минуты**. Это ли
 ```bash
 lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
   lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
-  agy --print "..." --agent lane-frontend --print-timeout 90m ...
+  lane-session run --provider agy --run-dir "$RUN_DIR" --task-id "$TASK_ID" \
+    --role lane-frontend --cwd "$PROJECT_CWD" --prompt-file "$SPEC" \
+    --output "$ARTIFACT_DIR/lane-final.log" --model "Gemini 3.5 Flash (High)"
 
 lane-wait --dir "$ARTIFACT_DIR" --once   # 2 = running, 0 = done
 ```
@@ -192,8 +194,15 @@ lane-wait --dir "$ARTIFACT_DIR" --once   # 2 = running, 0 = done
 | **`lane-bg`** | nohup — работа переживает смерть Bash |
 | **`lane-wait`** | короткие poll |
 | **`lane-exec`** | idle/max на **отцепленном** процессе |
+| **`lane-session`** | продолжает контекст AGY/Grok внутри run; пул до трёх сессий |
 
 Implementers и `dev-orchestrator` уже проинструктированы. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
+
+AGY и Grok больше не изучают репозиторий заново перед каждой задачей одного run.
+Первая задача создаёт conversation, следующие связанные задачи продолжают её.
+Занятая conversation не используется одновременно: параллельная задача получает
+другой слот (до трёх). По умолчанию сессия ротируется после семи успешных задач,
+после ошибки или при смене worktree/модели. Codex-review остаётся независимым.
 
 После обновления стека — **новая сессия** PM / свежий spawn implementer.
 
@@ -256,6 +265,7 @@ review: codex-reviewer
 | Команда | Зачем |
 |---------|--------|
 | `run-board` | Табло задач |
+| `lane-session status --run-dir .agents/runs/<slug>` | Сессии AGY/Grok только этого run |
 | `wt-create` / `wt-merge-main` | Worktree + **merge в main** |
 | `check-owns-paths` | Не вышел ли воркер за owns |
 | `lane-bg` / `lane-wait` | Фон + poll |
@@ -294,7 +304,7 @@ agents-doctor --apply .
 ```text
 claude-lane-stack/
 ├── agents/        # PM + agy / grok / codex (implementers, onboard, review)
-├── bin/           # agents-doctor, project-onboard, lane-bg, lane-wait, lane-exec, …
+├── bin/           # agents-doctor, project-onboard, lane-bg, lane-wait, lane-exec, lane-session, …
 ├── skills/        # orchestration, contracts, memory, onboard, …
 ├── profiles/      # full → claude-only
 ├── hooks/         # guards + session ledger

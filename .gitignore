@@ -9,3 +9,4 @@ metamcp.env
 .agents/
 PROGRESS.md
 LESSONS.md
+.claude/
