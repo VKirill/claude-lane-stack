@@ -29,11 +29,11 @@ et **fusionne le code terminé vers `main`**. Fini les cinq chats. Fini les fusi
 - [Démarrage rapide](#-démarrage-rapide-3-commandes) · [Fiches de tâche](#-fiches-de-tâche--comment-les-workers-restent-dans-leur-voie) · [Tu ne fusionnes jamais](#-tu-ne-fusionnes-jamais--cest-le-pm-qui-le-fait)
 - [Aide-mémoire](#-aide-mémoire-des-commandes) · [Profils](#-profils-de-capacité) · [FAQ](#-faq) · [Docs](#-carte-de-la-documentation)
 
-<!-- v1.1.0-whats-new -->
+<!-- v1.2.0-whats-new -->
 
 ---
 
-## 🆕 Nouveautés v1.1.0 (état actuel)
+## 🆕 Nouveautés v1.2.0 (état actuel)
 
 | Capacité | Contenu |
 |----------|---------|
@@ -45,7 +45,7 @@ et **fusionne le code terminé vers `main`**. Fini les cinq chats. Fini les fusi
 | 🧠 Modèles | GPT-**5.6** Sol / Terra / Luna uniquement (pas de 5.5). Fichiers en anglais |
 | 🚀 Commandes | `/project-onboard` · `/project-onboard deep` |
 
-[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.2.0)
 
 
 ---

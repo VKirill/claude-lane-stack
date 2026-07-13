@@ -29,11 +29,11 @@ y **fusiona el código terminado en `main`**. Sin cinco chats. Sin merges manual
 - [Inicio rápido](#-inicio-rápido-3-comandos) · [Tarjetas de tarea](#-tarjetas-de-tarea-cómo-cada-worker-se-mantiene-en-su-carril) · [Tú nunca haces merge](#-tú-nunca-haces-merge--lo-hace-el-pm)
 - [Referencia rápida](#-referencia-rápida-de-comandos) · [Perfiles](#-perfiles-de-capacidad) · [Preguntas frecuentes](#-preguntas-frecuentes) · [Docs](#-mapa-de-documentación)
 
-<!-- v1.1.0-whats-new -->
+<!-- v1.2.0-whats-new -->
 
 ---
 
-## 🆕 Novedades v1.1.0 (estado actual)
+## 🆕 Novedades v1.2.0 (estado actual)
 
 | Capacidad | Qué hace |
 |-----------|----------|
@@ -45,7 +45,7 @@ y **fusiona el código terminado en `main`**. Sin cinco chats. Sin merges manual
 | 🧠 Modelos | Solo GPT-**5.6** Sol / Terra / Luna (sin 5.5). Archivos en inglés |
 | 🚀 Comandos | `/project-onboard` · `/project-onboard deep` |
 
-[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.2.0)
 
 
 ---

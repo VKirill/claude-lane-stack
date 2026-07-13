@@ -70,7 +70,7 @@ else
 fi
 
 echo ""
-echo "Done. (v1.1.0+) Start PM:"
+echo "Done. (v1.2.0+) Start PM:"
 echo "  export PATH=\"\$HOME/.agents/bin:\$PATH\""
 echo "  claude --agent dev-orchestrator"
 echo "Onboard:  /project-onboard   or   project-onboard . [--deep|--fast]"

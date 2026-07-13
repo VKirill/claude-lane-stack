@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-07-13
+
+Nightly-only review, micro path, Lane Board dashboard, warm sessions.
 
 ### Added
 - **Diff-scoped review SPEC**: `BASE_REF` is required and the supervisor constructs `SPEC` from the task's changed paths, so reviewers inspect only the scoped diff and direct dependencies, never repo-wide context. See `agents/claude/codex-reviewer.md`, `agents/codex/reviewer.md`.
@@ -10,6 +12,8 @@
 - **Run-scoped warm AGY/Grok sessions**: `lane-session` resumes native conversations across related tasks, preserves up to three parallel slots, rotates after seven successful tasks by default (hard max ten), and invalidates failed/stale sessions.
 - AGY preflight smoke is cached by CLI version and agent-definition hash instead of spending a model call before every task.
 - **Push-on-merge and meaningful commits**: PM pushes `main` right after merge when a remote exists; commit messages must be meaningful with conventional type(scope) and explanation in body. See `agents/claude/dev-orchestrator.md`, `skills/orchestrator-lanes/SKILL.md`, `docs/SOLO-ORCHESTRATION.md`.
+- **Lane Board** (`board/`): from-scratch read-only dashboard — zero-dependency Node stdlib server + vanilla JS dark UI; projects overview with needs-attention strip, kanban with status-based scope=recent, todos view with full idea bodies, runs timeline, night-review history, Cmd+K search, SSE live refresh; `bin/lane-board` launcher.
+- **Nightly review automation**: `bin/night-review` (per-repo batch review of the day's merged work -> REVIEW-<date>.md with per-run verdicts + Morning fix plan) and `bin/night-review-all` (auto-discovers lane-stack repos, reviews only those active in the last 24h; cron example included); `resume-project` surfaces the newest REVIEW report at session start.
 
 ### Changed
 - **Pre-merge review gate removed by default**: solo, no-user-facing context — all review now runs in the nightly `night-review` batch (`none`/`nightly` tiers only); synchronous pre-merge review becomes opt-in per project via `gate: pre-merge` in PROGRESS.md Pointers or a task YAML. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`, `agents/claude/dev-orchestrator.md`, `agents/claude/codex-reviewer.md`.

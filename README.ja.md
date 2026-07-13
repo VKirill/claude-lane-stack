@@ -29,11 +29,11 @@
 - クイックスタート · タスクカード · あなたはマージしない
 - チートシート · プロファイル · FAQ · ドキュメント
 
-<!-- v1.1.0-whats-new -->
+<!-- v1.2.0-whats-new -->
 
 ---
 
-## 🆕 v1.1.0 の現状（重要）
+## 🆕 v1.2.0 の現状（重要）
 
 | 機能 | 内容 |
 |------|------|
@@ -45,7 +45,7 @@
 | 🧠 モデル | GPT-**5.6** Sol / Terra / Luna のみ（5.5 なし）。ファイルは英語 |
 | 🚀 コマンド | `/project-onboard` · `/project-onboard deep` |
 
-[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.2.0)
 
 
 ---

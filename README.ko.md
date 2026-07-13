@@ -29,11 +29,11 @@
 - 빠른 시작 · 태스크 카드 · 머지는 당신이 하지 않아요
 - 치트 시트 · 프로파일 · FAQ · 문서
 
-<!-- v1.1.0-whats-new -->
+<!-- v1.2.0-whats-new -->
 
 ---
 
-## 🆕 v1.1.0 현재 기능 요약
+## 🆕 v1.2.0 현재 기능 요약
 
 | 기능 | 설명 |
 |------|------|
@@ -45,7 +45,7 @@
 | 🧠 모델 | GPT-**5.6** Sol / Terra / Luna 만 (5.5 없음). 파일은 영어 |
 | 🚀 명령 | `/project-onboard` · `/project-onboard deep` |
 
-[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.1.0)
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.2.0)
 
 
 ---
