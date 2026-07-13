@@ -46,4 +46,3 @@ echo CODEX_EXIT=$? >> "$ARTIFACT_DIR/lane-final.log"
 ```
 
 Write `ARTIFACT_DIR/review.md` (REVIEW REPORT, pass|fail). No product edits.
-*** Delete File: /home/ubuntu/tools/claude-lane-stack/agents/claude/dev-orchestrator.md
