@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { discoverProjects } from './lib/discover.mjs';
+import { readAllReviews, readTaskDetail, readTodoBody, readTodos } from './lib/parsers.mjs';
+import { searchAcrossProjects } from './lib/search.mjs';
 import { buildProjectSnapshot, buildProjectSummaries, projectDetail } from './lib/snapshot.mjs';
 import { createProjectWatcher } from './lib/watch.mjs';
 
@@ -123,6 +125,60 @@ export function createLaneBoardServer({ roots = defaultRoots(), discoveryDepth =
       return;
     }
 
+    if ((method === 'GET' || method === 'HEAD') && pathname === '/api/search') {
+      const projects = await findProjects();
+      const snapshots = await Promise.all(projects.map((project) => buildProjectSnapshot(project)));
+      sendJson(response, 200, { results: searchAcrossProjects(snapshots, requestUrl.searchParams.get('q')) }, method);
+      return;
+    }
+
+    const todoMatch = pathname.match(/^\/api\/projects\/([^/]+)\/todos\/([^/]+)$/);
+    if ((method === 'GET' || method === 'HEAD') && todoMatch) {
+      const projects = await findProjects();
+      const project = projects.find((candidate) => candidate.id === todoMatch[1]);
+      if (!project) {
+        sendJson(response, 404, { error: 'not found' }, method);
+        return;
+      }
+      const body = await readTodoBody(project.path, todoMatch[2]);
+      if (body === null) {
+        sendJson(response, 404, { error: 'not found' }, method);
+        return;
+      }
+      const meta = (await readTodos(project.path)).find((todo) => todo.id === todoMatch[2]) ?? { id: todoMatch[2] };
+      sendJson(response, 200, { meta, body }, method);
+      return;
+    }
+
+    const taskMatch = pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/([^/]+)$/);
+    if ((method === 'GET' || method === 'HEAD') && taskMatch) {
+      const projects = await findProjects();
+      const project = projects.find((candidate) => candidate.id === taskMatch[1]);
+      if (!project) {
+        sendJson(response, 404, { error: 'not found' }, method);
+        return;
+      }
+      const detail = await readTaskDetail(project.path, taskMatch[2], taskMatch[3]);
+      if (detail === null) {
+        sendJson(response, 404, { error: 'not found' }, method);
+        return;
+      }
+      sendJson(response, 200, detail, method);
+      return;
+    }
+
+    const reviewsMatch = pathname.match(/^\/api\/projects\/([^/]+)\/reviews$/);
+    if ((method === 'GET' || method === 'HEAD') && reviewsMatch) {
+      const projects = await findProjects();
+      const project = projects.find((candidate) => candidate.id === reviewsMatch[1]);
+      if (!project) {
+        sendJson(response, 404, { error: 'not found' }, method);
+        return;
+      }
+      sendJson(response, 200, { reviews: await readAllReviews(project.path) }, method);
+      return;
+    }
+
     const projectMatch = pathname.match(/^\/api\/projects\/([^/]+)$/);
     if ((method === 'GET' || method === 'HEAD') && projectMatch) {
       const projects = await findProjects();
@@ -131,7 +187,8 @@ export function createLaneBoardServer({ roots = defaultRoots(), discoveryDepth =
         sendJson(response, 404, { error: 'not found' }, method);
         return;
       }
-      sendJson(response, 200, projectDetail(await buildProjectSnapshot(project)), method);
+      const scope = requestUrl.searchParams.get('scope') === 'all' ? 'all' : 'recent';
+      sendJson(response, 200, projectDetail(await buildProjectSnapshot(project, { scope })), method);
       return;
     }
 

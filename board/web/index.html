@@ -1,27 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lane Board</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <header class="top-bar">
-    <div class="top-bar-left">
-      <span class="logo">LANE BOARD</span>
-      <span class="tag">read-only · file source</span>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Read-only orchestration board">
+    <title>Lane Board</title>
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/views.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <div class="app-shell" id="app-shell">
+      <aside class="sidebar" aria-label="Projects">
+        <div class="sidebar__brand"><span aria-hidden="true">LB</span><span class="sidebar__label">Lane Board</span></div>
+        <nav class="sidebar__projects" id="project-nav" aria-label="Projects"></nav>
+      </aside>
+      <section class="app-area">
+        <header class="topbar">
+          <button class="search-trigger" id="search-trigger" type="button" aria-haspopup="dialog" aria-label="Search all tasks and todos">
+            <span aria-hidden="true">⌕</span><span>Search</span><kbd>⌘K</kbd>
+          </button>
+          <div class="topbar__meta">
+            <span class="connection" id="connection-status" role="status"><span class="connection__dot" aria-hidden="true"></span><span class="connection__label">Connecting</span></span>
+            <span class="source-tag">read-only · file source</span>
+          </div>
+        </header>
+        <main class="view" id="main-content" tabindex="-1"></main>
+      </section>
     </div>
-    <div class="top-bar-right">
-      <span id="project-count" class="counter">0 projects</span>
-      <span id="sse-status" class="status-indicator sse-connecting">SSE: CONNECTING</span>
-    </div>
-  </header>
-
-  <main id="app-content" class="content-container">
-    <!-- Views will be dynamically injected here via app.js -->
-  </main>
-  
-  <script src="app.js"></script>
-</body>
+    <div id="overlay-root" aria-live="polite"></div>
+    <script type="module" src="js/main.js"></script>
+  </body>
 </html>

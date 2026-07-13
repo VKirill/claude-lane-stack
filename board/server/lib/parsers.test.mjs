@@ -4,8 +4,11 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  parseMerge,
   parseProgress,
   parseReview,
+  parseTaskDetail,
+  readAllReviews,
   readLatestReview,
   readTasks,
   readTodos,
@@ -138,4 +141,71 @@ test('parses real review verdict format, findings, plans, and empty review input
   const projectWithoutReview = await fixtureDirectory('lane-board-no-review-');
   await mkdir(path.join(projectWithoutReview, '.agents', 'session-log'), { recursive: true });
   assert.equal(await readLatestReview(projectWithoutReview), null);
+});
+
+test('reads every review newest first and skips an empty malformed review', async () => {
+  const project = await fixtureDirectory('lane-board-all-reviews-');
+  const reviewsDirectory = path.join(project, '.agents', 'session-log');
+  await mkdir(reviewsDirectory, { recursive: true });
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-10.md'), 'run/old — VERDICT: passed\n');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-12.md'), '');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-13.md'), 'run/new — VERDICT: failed\n');
+
+  const reviews = await readAllReviews(project);
+
+  assert.deepEqual(reviews.map((review) => review.date), ['2026-07-13', '2026-07-10']);
+  assert.deepEqual(reviews[0].verdicts, [{ scope: 'run/new', verdict: 'failed' }]);
+});
+
+test('parses merge receipts with merge commits preferred over feature commits', () => {
+  assert.deepEqual(parseMerge([
+    '# MERGE — receipt-email-ux',
+    '- feat commit: a1290b354',
+    '- merge commit on main: a8562efa1',
+    '- when: 2026-07-12 ~10:35 UTC',
+  ].join('\n')), { date: '2026-07-12', commit: 'a8562efa1' });
+  assert.deepEqual(parseMerge('hotfix closed (no source change, dist rebuild only)\n'), { date: null, commit: null });
+});
+
+test('parses a task detail scalar mix, block objectives, and only the done_when list', () => {
+  const detail = parseTaskDetail([
+    'id: "008"',
+    'title: Proxy status passthrough',
+    'status: BLOCKED',
+    'risk: medium',
+    'model: gpt-5.6-terra',
+    'objective: |',
+    '  Keep the first line.',
+    '    Keep this nested indentation.',
+    'done_when:',
+    '  - "node --test board/server/lib/*.test.mjs"',
+    '  - curl -s /healthz',
+    'owns_paths:',
+    '  - board/server/**',
+    'verify: tests',
+  ].join('\n'));
+
+  assert.deepEqual(detail, {
+    id: '008',
+    title: 'Proxy status passthrough',
+    status: 'blocked',
+    risk: 'medium',
+    model: 'gpt-5.6-terra',
+    objective: 'Keep the first line.\n  Keep this nested indentation.',
+    done_when: ['node --test board/server/lib/*.test.mjs', 'curl -s /healthz'],
+    verify: 'tests',
+  });
+
+  assert.deepEqual(parseTaskDetail([
+    'id: 009',
+    'objective: >',
+    '  Folded syntax remains readable.',
+    '  The endpoint keeps line breaks.',
+    'done_when:',
+    '  - done',
+  ].join('\n')), {
+    id: '009',
+    objective: 'Folded syntax remains readable.\nThe endpoint keeps line breaks.',
+    done_when: ['done'],
+  });
 });

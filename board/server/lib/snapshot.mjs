@@ -1,6 +1,7 @@
 import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  readMerge,
   readLatestReview,
   readProgress,
   readTasks,
@@ -30,6 +31,15 @@ async function directories(directory) {
   }
 }
 
+async function entries(directory) {
+  try {
+    return await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code !== 'ENOENT') warn(`could not read ${directory}`, error);
+    return null;
+  }
+}
+
 async function exists(target) {
   try {
     await lstat(target);
@@ -40,6 +50,62 @@ async function exists(target) {
   }
 }
 
+/** Return the newest mtime in a run tree, or null when the root is unreadable. */
+export async function runLastActivity(runPath) {
+  const rootEntries = await entries(runPath);
+  if (rootEntries === null) return null;
+
+  let newest = null;
+  async function visit(target, knownEntries) {
+    let info;
+    try {
+      info = await lstat(target);
+    } catch (error) {
+      if (error.code !== 'ENOENT') warn(`could not inspect ${target}`, error);
+      return;
+    }
+    if (Number.isFinite(info.mtimeMs)) newest = newest === null ? info.mtimeMs : Math.max(newest, info.mtimeMs);
+    if (!info.isDirectory()) return;
+
+    const childEntries = knownEntries ?? await entries(target);
+    if (childEntries === null) return;
+    for (const entry of childEntries) await visit(path.join(target, entry.name));
+  }
+
+  await visit(runPath, rootEntries);
+  return newest === null ? null : new Date(newest).toISOString();
+}
+
+function activityMs(run) {
+  const timestamp = Date.parse(run?.lastActivity ?? '');
+  return Number.isFinite(timestamp) ? timestamp : -Infinity;
+}
+
+const ACTIVE_TASK_STATUSES = new Set(['pending', 'running', 'blocked', 'stalled']);
+
+/** A run is active while at least one of its tasks is not yet done. */
+function isActiveRun(run) {
+  return (run?.tasks ?? []).some((task) => ACTIVE_TASK_STATUSES.has(task.status));
+}
+
+const DONE_RUN_LIMIT = 3;
+
+/** Recent = every active run, plus the most recently modified fully-done runs. */
+export function selectRecentRuns(runsWithActivity) {
+  const sorted = (Array.isArray(runsWithActivity) ? runsWithActivity : [])
+    .map((run, index) => ({ run, index, activity: activityMs(run), active: isActiveRun(run) }))
+    .sort((left, right) => right.activity - left.activity || left.index - right.index);
+  let doneKept = 0;
+  return sorted
+    .filter((entry) => {
+      if (entry.active) return true;
+      if (doneKept >= DONE_RUN_LIMIT) return false;
+      doneKept += 1;
+      return true;
+    })
+    .map(({ run }) => run);
+}
+
 export async function readRuns(projectPath) {
   const runsDirectory = path.join(projectPath, '.agents', 'runs');
   const runs = [];
@@ -47,11 +113,12 @@ export async function readRuns(projectPath) {
     const runPath = path.join(runsDirectory, entry.name);
     const tasksDirectory = path.join(runPath, 'tasks');
     const hasTasksDirectory = await exists(tasksDirectory);
-    const merged = await exists(path.join(runPath, 'MERGE.md'));
+    const merged = await readMerge(runPath);
     if (!hasTasksDirectory && !merged) continue;
 
     runs.push({
       slug: entry.name,
+      lastActivity: await runLastActivity(runPath),
       merged,
       tasks: hasTasksDirectory ? await readTasks(tasksDirectory, entry.name) : [],
     });
@@ -59,14 +126,14 @@ export async function readRuns(projectPath) {
   return runs;
 }
 
-export async function buildProjectSnapshot(project) {
+export async function buildProjectSnapshot(project, { scope = 'all' } = {}) {
   const [progress, runs, todos, review] = await Promise.all([
     readProgress(project.path),
     readRuns(project.path),
     readTodos(project.path),
     readLatestReview(project.path),
   ]);
-  return { project, progress, runs, todos, review };
+  return { project, progress, runs: scope === 'recent' ? selectRecentRuns(runs) : runs, todos, review };
 }
 
 export function projectSummary(snapshot) {
@@ -104,6 +171,7 @@ export function projectDetail(snapshot) {
     progress: snapshot.progress,
     runs: snapshot.runs.map((run) => ({
       slug: run.slug,
+      lastActivity: run.lastActivity,
       merged: run.merged,
       tasks: run.tasks.map(({ id, title, status, risk, lane, verify }) => ({ id, title, status, risk, lane, verify })),
     })),

@@ -20,6 +20,10 @@ function scalar(value) {
   return trimmed.replace(/\s+#.*$/, '').trim() || null;
 }
 
+function safePathSegment(value) {
+  return typeof value === 'string' && value !== '.' && value !== '..' && path.basename(value) === value;
+}
+
 export function normalizeTaskStatus(status) {
   const normalized = String(status ?? '').trim().toLowerCase();
   return TASK_STATUSES.has(normalized) ? normalized : 'pending';
@@ -207,6 +211,148 @@ export async function readTodos(projectPath) {
   return fallbackTodos(path.join(todosDirectory, 'items'));
 }
 
+export async function readTodoBody(projectPath, todoId) {
+  if (!safePathSegment(todoId)) return null;
+
+  const itemsDirectory = path.join(projectPath, '.agents', 'todos', 'items');
+  const candidates = [
+    path.join(itemsDirectory, `${todoId}.md`),
+    path.join(itemsDirectory, todoId, 'README.md'),
+  ];
+  for (const filePath of candidates) {
+    try {
+      return await readFile(filePath, 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
+    }
+  }
+  return null;
+}
+
+export function parseMerge(source) {
+  const result = { date: null, commit: null };
+  if (typeof source !== 'string') return result;
+
+  result.date = source.match(/\b\d{4}-\d{2}-\d{2}\b/)?.[0] ?? null;
+  const normalized = source.replace(/\*\*/g, '');
+  const mergeCommit = normalized.match(/\bmerge\s+commit(?:\s+on\s+main)?\b(?:\s*:\s*|\s+)(`?[a-f0-9]{7,40}`?)/i);
+  const genericCommit = normalized.match(/\b(?:feat(?:ure)?\s+)?commit\b(?:\s*:\s*|\s+)(`?[a-f0-9]{7,40}`?)/i);
+  result.commit = (mergeCommit ?? genericCommit)?.[1]?.replace(/`/g, '') ?? null;
+  return result;
+}
+
+export async function readMerge(runPath) {
+  const filePath = path.join(runPath, 'MERGE.md');
+  try {
+    return parseMerge(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return null;
+    warn(`could not read ${filePath}`, error);
+    return { date: null, commit: null };
+  }
+}
+
+function stripCommonIndentation(lines) {
+  const indents = lines
+    .filter((line) => /\S/.test(line))
+    .map((line) => line.match(/^\s*/)[0].length);
+  const indentation = indents.length > 0 ? Math.min(...indents) : 0;
+  return lines.map((line) => line.slice(Math.min(indentation, line.length))).join('\n').trimEnd();
+}
+
+/** Parse the richer task-detail subset without changing the task-list parser. */
+export function parseTaskDetail(source) {
+  const detail = { objective: '', done_when: [] };
+  if (typeof source !== 'string') return detail;
+
+  let block = null;
+  const finishBlock = () => {
+    if (!block) return;
+    if (block.kind === 'objective') detail.objective = stripCommonIndentation(block.lines);
+    block = null;
+  };
+
+  for (const line of source.split(/\r?\n/)) {
+    const field = line.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/);
+    if (field) {
+      finishBlock();
+      const key = field[1];
+      const value = field[2];
+      if (value === '|' || value === '>') {
+        block = { kind: key === 'objective' ? 'objective' : 'skip', lines: [] };
+        continue;
+      }
+      if (!value && key === 'done_when') {
+        block = { kind: 'done_when', lines: [] };
+        continue;
+      }
+      const parsed = scalar(value);
+      if (parsed !== null) detail[key] = key === 'status' ? normalizeTaskStatus(parsed) : parsed;
+      continue;
+    }
+
+    if (!block) continue;
+    if (block.kind === 'done_when') {
+      const item = line.match(/^\s*-\s+(.+?)\s*$/);
+      if (item) {
+        const value = scalar(item[1]);
+        if (value !== null) detail.done_when.push(value);
+      }
+      continue;
+    }
+    if (block.kind === 'objective') block.lines.push(line);
+  }
+  finishBlock();
+  return detail;
+}
+
+async function readTaskSource(tasksDirectory, taskId) {
+  const exactPath = path.join(tasksDirectory, `${taskId}.yaml`);
+  try {
+    return await readFile(exactPath, 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${exactPath}`, error);
+  }
+
+  const entries = await readDirectory(tasksDirectory);
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isFile() || !entry.name.startsWith(taskId) || !entry.name.endsWith('.yaml')) continue;
+    const filePath = path.join(tasksDirectory, entry.name);
+    try {
+      return await readFile(filePath, 'utf8');
+    } catch (error) {
+      warn(`could not read ${filePath}`, error);
+    }
+  }
+  return null;
+}
+
+async function readTaskReport(runPath, taskId) {
+  const artifactsDirectory = path.join(runPath, 'artifacts');
+  const entries = await readDirectory(artifactsDirectory);
+  const exact = entries.find((entry) => entry.isDirectory() && entry.name === taskId);
+  const artifact = exact ?? entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(taskId))
+    .sort((left, right) => right.name.localeCompare(left.name))[0];
+  if (!artifact) return null;
+
+  const filePath = path.join(artifactsDirectory, artifact.name, 'report.md');
+  try {
+    return (await readFile(filePath, 'utf8')).split(/\r?\n/).slice(0, 60).join('\n');
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
+    return null;
+  }
+}
+
+export async function readTaskDetail(projectPath, run, taskId) {
+  if (!safePathSegment(run) || !safePathSegment(taskId)) return null;
+  const runPath = path.join(projectPath, '.agents', 'runs', run);
+  const source = await readTaskSource(path.join(runPath, 'tasks'), taskId);
+  if (source === null) return null;
+  return { ...parseTaskDetail(source), report: await readTaskReport(runPath, taskId) };
+}
+
 export function parseReview(source, date) {
   const review = { date, verdicts: [], findings: [], fixPlan: [] };
   if (typeof source !== 'string') return review;
@@ -261,4 +407,30 @@ export async function readLatestReview(projectPath) {
     }
   }
   return null;
+}
+
+export async function readAllReviews(projectPath) {
+  const directory = path.join(projectPath, '.agents', 'session-log');
+  const entries = await readDirectory(directory);
+  const reviewFiles = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => ({ entry, match: entry.name.match(/^REVIEW-(\d{4}-\d{2}-\d{2})\.md$/) }))
+    .filter(({ match }) => match)
+    .sort((left, right) => right.match[1].localeCompare(left.match[1]));
+  const reviews = [];
+
+  for (const { entry, match } of reviewFiles) {
+    const filePath = path.join(directory, entry.name);
+    try {
+      const source = await readFile(filePath, 'utf8');
+      if (!source.trim()) {
+        warn(`skipping empty review ${filePath}`);
+        continue;
+      }
+      reviews.push(parseReview(source, match[1]));
+    } catch (error) {
+      warn(`could not read ${filePath}`, error);
+    }
+  }
+  return reviews;
 }
