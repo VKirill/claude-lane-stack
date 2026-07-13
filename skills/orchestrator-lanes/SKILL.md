@@ -115,8 +115,12 @@ After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `r
 | Tier   | Trigger                            | Reviewer |
 |--------|------------------------------------|----------|
 | none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (sol, medium) |
-| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) |
+| medium | risk medium                        | codex-reviewer (sol, medium) — nightly batch, off critical path |
+| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) — synchronous, pre-merge |
+
+Medium-tier acceptance is report + `check-owns-paths` + verify, then merge;
+review is deferred to the nightly `night-review` batch, and findings become
+morning fix tasks. Strong tier stays synchronous before merge.
 
 Medium review is mechanical only (bugs, style, dependencies, obvious logic);
 auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
@@ -161,6 +165,8 @@ git commit -m "feat(<slug>): <title>"
 # Micro path: git commit -m "<type>(<area>): <title> [micro:<slug>]"
 git push origin main   # if remote exists — merge+push = one ship step
 ```
+
+medium runs enter the nightly review queue (night-review)
 
 Write `.agents/runs/<slug>/MERGE.md` with branch/commit/time.  
 Update `PROGRESS.md` Now/Next + project-memory.  

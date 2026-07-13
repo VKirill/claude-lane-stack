@@ -14,6 +14,8 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`.  
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
 
+Daytime: micro/medium ship fast. Night: `night-review` batch. Morning: fix tasks from `REVIEW-<date>.md`.
+
 ## Micro path
 
 Applies when score 0–2, risk low, ≤2 files, and no `high_risk_paths`. PM
@@ -28,8 +30,12 @@ skips the full run ceremony and ships in minutes.
 | Tier   | Trigger                            | Reviewer |
 |--------|------------------------------------|----------|
 | none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (sol, medium) |
-| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) |
+| medium | risk medium                        | codex-reviewer (sol, medium) — nightly batch, off critical path |
+| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) — synchronous, pre-merge |
+
+Medium runs merge after report + `check-owns-paths` + verify; review runs in
+the nightly `night-review` batch, and findings become morning fix tasks.
+Strong tier stays synchronous before merge.
 
 Medium review is mechanical only (bugs, style, dependencies, obvious logic);
 auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer

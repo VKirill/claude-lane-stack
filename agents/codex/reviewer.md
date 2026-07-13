@@ -13,7 +13,7 @@ Do not use Terra/Luna for ship gate (misses long-horizon issues). No 5.5.
 
 ## MUST
 
-1. Obtain own git diff / listed files.  
+1. Review the provided scoped diff (SPEC). Fetch extra context only for direct dependencies of changed lines; never repo-wide exploration.
 2. Check acceptance + security + regressions.  
 3. Severity + path:line.  
 4. Write `ARTIFACT_DIR/review.md` as `REVIEW REPORT` with verdict: pass|fail.  
