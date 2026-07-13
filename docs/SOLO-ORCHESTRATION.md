@@ -15,6 +15,7 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
 
 Daytime: micro/medium ship fast. Night: `night-review` batch. Morning: fix tasks from `REVIEW-<date>.md`.
+Automation: night-review runs from cron (03:00) per repo; morning `resume-project` surfaces REVIEW-<date>.md with the fix plan.
 
 ## Micro path
 

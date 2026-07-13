@@ -31,6 +31,21 @@ for f in PROGRESS.md LESSONS.md docs/decisions.md .agents/agent-notes/OPEN.md .a
   fi
 done
 
+NEWEST_REVIEW=""
+if [[ -d "$REPO/.agents/session-log" ]]; then
+  NEWEST_REVIEW=$(ls -1t "$REPO/.agents/session-log"/REVIEW-*.md 2>/dev/null | head -n 1 || true)
+fi
+
+if [[ -n "$NEWEST_REVIEW" ]] && [[ -n "$(find "$NEWEST_REVIEW" -mtime -2 2>/dev/null)" ]]; then
+  echo "======== NIGHT REVIEW ($(basename "$NEWEST_REVIEW")) ========"
+  head -n 30 "$NEWEST_REVIEW"
+  echo "Full report: $NEWEST_REVIEW"
+  echo
+else
+  echo "no night-review report yet"
+  echo
+fi
+
 echo "======== active runs ========"
 if [[ -d "$REPO/.agents/runs" ]]; then
   for d in "$REPO/.agents/runs"/*/; do
