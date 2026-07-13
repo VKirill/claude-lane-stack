@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: lane-board
+
+Start the Lane Board read-only file dashboard.
+
+Environment:
+  HOST  Bind address (default: 127.0.0.1)
+  PORT  Listen port (default: 4311)
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec env HOST="${HOST:-127.0.0.1}" PORT="${PORT:-4311}" node "$REPO_ROOT/board/server/server.mjs"

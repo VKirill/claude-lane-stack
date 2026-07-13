@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lane Board</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="top-bar-left">
+      <span class="logo">LANE BOARD</span>
+      <span class="tag">read-only · file source</span>
+    </div>
+    <div class="top-bar-right">
+      <span id="project-count" class="counter">0 projects</span>
+      <span id="sse-status" class="status-indicator sse-connecting">SSE: CONNECTING</span>
+    </div>
+  </header>
+
+  <main id="app-content" class="content-container">
+    <!-- Views will be dynamically injected here via app.js -->
+  </main>
+  
+  <script src="app.js"></script>
+</body>
+</html>
