@@ -11,6 +11,9 @@
 - AGY preflight smoke is cached by CLI version and agent-definition hash instead of spending a model call before every task.
 - **Push-on-merge and meaningful commits**: PM pushes `main` right after merge when a remote exists; commit messages must be meaningful with conventional type(scope) and explanation in body. See `agents/claude/dev-orchestrator.md`, `skills/orchestrator-lanes/SKILL.md`, `docs/SOLO-ORCHESTRATION.md`.
 
+### Changed
+- **Pre-merge review gate removed by default**: solo, no-user-facing context — all review now runs in the nightly `night-review` batch (`none`/`nightly` tiers only); synchronous pre-merge review becomes opt-in per project via `gate: pre-merge` in PROGRESS.md Pointers or a task YAML. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`, `agents/claude/dev-orchestrator.md`, `agents/claude/codex-reviewer.md`.
+
 ### Fixed
 - Provider output is streamed through `lane-exec` for correct idle detection; interrupted lanes terminate the complete provider process group before releasing a session slot.
 

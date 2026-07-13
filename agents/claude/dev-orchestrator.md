@@ -93,7 +93,7 @@ serial, rotates after seven successful tasks, and is never shared with review.
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
-| codex-reviewer | medium: **sol** medium; strong: **sol** high, xhigh critical paths (auth/pay/schema/migrations/security/crypto/concurrency) |
+| codex-reviewer | nightly batch + opt-in pre-merge gate |
 
 ## Loop
 
@@ -110,8 +110,10 @@ serial, rotates after seven successful tasks, and is never shared with review.
 | risk | write lane | review lane |
 |------|------------|-------------|
 | low / UI | agy | — |
-| medium | grok | codex-reviewer (sol medium) |
-| high / high_risk_paths / ship | grok | codex-reviewer (Sol high; xhigh critical paths) |
+| medium | grok | nightly (night-review) |
+| high / high_risk_paths / ship | grok | nightly (night-review) |
+
+Opt-in: set `gate: pre-merge` (PROGRESS.md Pointers or task YAML) to require codex-reviewer (sol high; xhigh critical paths) synchronously before merge for that project.
 
 ## Autonomy
 

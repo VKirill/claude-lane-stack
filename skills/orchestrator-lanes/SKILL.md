@@ -110,28 +110,27 @@ After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `r
 2. `check-owns-paths "$TASK_FILE"` exit 0.  
 3. No full-diff re-read on happy path.  
 4. Weak/empty/partial → other write lane or fix prompt.  
-5. Review tier:
+5. Gate (opt-in): pre-merge review is off by default; see the gate note below.
 
-| Tier   | Trigger                            | Reviewer |
-|--------|------------------------------------|----------|
-| none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (sol, medium) — nightly batch, off critical path |
-| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) — synchronous, pre-merge |
+Acceptance for **all** tiers is report + `check-owns-paths` + verify, then merge.
 
-Medium-tier acceptance is report + `check-owns-paths` + verify, then merge;
-review is deferred to the nightly `night-review` batch, and findings become
-morning fix tasks. Strong tier stays synchronous before merge.
+| Tier    | Trigger                            | Review |
+|---------|-------------------------------------|--------|
+| none    | micro path / risk low               | verify field + check-owns-paths only |
+| nightly | everything else (medium/high/ship)  | night-review batch (sol): verdicts + Morning fix plan; FAIL -> morning fix task, never ignored |
 
-Medium review is mechanical only (bugs, style, dependencies, obvious logic);
-auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
-fixes or PM escalates to the strong tier; never ignore a FAIL.
+Pre-merge gate is OFF by default (solo, no-user products). When a project
+serves real users or money, re-enable per project: add `gate: pre-merge` to
+PROGRESS.md Pointers (or set `gate: pre-merge` in a task YAML) — then
+codex-reviewer (sol high; xhigh for auth/pay/schema/migrations/security)
+must pass BEFORE merge for high-risk work in that project.
 
 Batch reviews: collect finished lanes, review in one dedicated pass — do not approve streaming output.
 
 Micro path: acceptance is report + `check-owns-paths` only (no reviewer);
 verify per the task `verify` field (none|smoke|tests).
 
-Mark `status: done` only if 1–2 (and 5 if required).
+Mark `status: done` only if 1–4 (and 5 if `gate: pre-merge` applies for this run).
 
 ## Phase 5 — Stall recovery
 

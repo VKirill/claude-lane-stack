@@ -28,19 +28,16 @@ skips the full run ceremony and ships in minutes.
 
 ## Review tiers
 
-| Tier   | Trigger                            | Reviewer |
-|--------|------------------------------------|----------|
-| none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (sol, medium) — nightly batch, off critical path |
-| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) — synchronous, pre-merge |
+| Tier    | Trigger                            | Review |
+|---------|-------------------------------------|--------|
+| none    | micro path / risk low               | verify field + check-owns-paths only |
+| nightly | everything else (medium/high/ship)  | night-review batch (sol): verdicts + Morning fix plan; FAIL -> morning fix task, never ignored |
 
-Medium runs merge after report + `check-owns-paths` + verify; review runs in
-the nightly `night-review` batch, and findings become morning fix tasks.
-Strong tier stays synchronous before merge.
-
-Medium review is mechanical only (bugs, style, dependencies, obvious logic);
-auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
-fixes or PM escalates to the strong tier; never ignore a FAIL.
+Pre-merge gate is OFF by default (solo, no-user products). When a project
+serves real users or money, re-enable per project: add `gate: pre-merge` to
+PROGRESS.md Pointers (or set `gate: pre-merge` in a task YAML) — then
+codex-reviewer (sol high; xhigh for auth/pay/schema/migrations/security)
+must pass BEFORE merge for high-risk work in that project.
 
 ## End-state of every run
 

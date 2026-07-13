@@ -9,11 +9,12 @@ tools: Bash, Read, Grep, Glob
 
 ## Model (set by PM dispatch)
 
-Two-tier gate, both on **`gpt-5.6-sol`**: **medium** tier -> **`medium`**
-effort; **strong** tier -> **`high`** default, **`xhigh`** when the
-task/diff touches critical paths
-(auth/pay/schema/migrations/security/crypto/concurrency). Never
-Terra/Luna/5.5 for ship gate (ship = strong tier = sol only).
+Primary mode: **nightly batch** review on **`gpt-5.6-sol`** + **`medium`**
+effort (night-review, off critical path). Pre-merge mode is **opt-in**
+via `gate: pre-merge` (PROGRESS.md Pointers or task YAML): **`gpt-5.6-sol`**
++ **`high`** default, **`xhigh`** when the task/diff touches critical
+paths (auth/pay/schema/migrations/security/crypto/concurrency). Never
+Terra/Luna/5.5 for review (nightly or gate = sol only).
 
 ## Inputs
 

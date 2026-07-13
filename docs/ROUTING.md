@@ -10,7 +10,7 @@
 | Fast write | AGY Flash High | Gemini Flash High |
 | Main write | Grok 4.5 | — |
 | Medium review | Codex Sol | gpt-5.6-sol + medium (nightly batch) |
-| Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `high` (xhigh critical paths) |
+| Nightly review | Codex Sol | sol medium (batch); pre-merge gate opt-in per project |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
 | Onboard **deep** (default on full) | Codex **Sol** | `gpt-5.6-sol` + `high` |
@@ -24,7 +24,7 @@
 | **Terra** `gpt-5.6-terra` | Default **scoped write**, medium features, onboard, docs refresh | Dropping effort to `low` on agent loops |
 | **Luna** `gpt-5.6-luna` | Trivia: changelog line, PR one-liner, triage | Multi-step agent write/review (falls apart) |
 
-**Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh. Strong review = sol high; escalate to xhigh when the diff touches auth/pay/schema/migrations/security/crypto/concurrency (critical paths). Medium review = sol medium.
+**Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh. Nightly review = sol medium (batch). Gate review (opt-in, pre-merge) = sol high; escalate to xhigh when the diff touches auth/pay/schema/migrations/security/crypto/concurrency (critical paths).
 
 ## Code routing (full stack: AGY + Grok + Codex)
 
@@ -32,24 +32,21 @@
 |--------|------|-------------|
 | `risk: low` UI/wiring | agy-frontend / agy-coder | Flash High |
 | `risk: medium` | grok + codex-review sol medium | Grok 4.5 + gpt-5.6-sol medium |
-| `risk: high` auth/pay/schema | grok + **codex-review Sol xhigh** | dual |
+| `risk: high` auth/pay/schema | grok + codex-review Sol xhigh | nightly (gate opt-in for pre-merge) |
 | Empty-diff AGY | switch grok | — |
 
 ## Review tiers
 
-| Tier   | Trigger                            | Reviewer |
-|--------|------------------------------------|----------|
-| none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (sol, medium) — nightly batch, off critical path |
-| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) — synchronous, pre-merge |
+| Tier    | Trigger                            | Review |
+|---------|-------------------------------------|--------|
+| none    | micro path / risk low               | verify field + check-owns-paths only |
+| nightly | everything else (medium/high/ship)  | night-review batch (sol): verdicts + Morning fix plan; FAIL -> morning fix task, never ignored |
 
-Medium runs merge after report + `check-owns-paths` + verify; review runs in
-the nightly `night-review` batch, and findings become morning fix tasks.
-Strong tier stays synchronous before merge.
-
-Medium review is mechanical only (bugs, style, dependencies, obvious logic);
-auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
-fixes or PM escalates to the strong tier; never ignore a FAIL.
+Pre-merge gate is OFF by default (solo, no-user products). When a project
+serves real users or money, re-enable per project: add `gate: pre-merge` to
+PROGRESS.md Pointers (or set `gate: pre-merge` in a task YAML) — then
+codex-reviewer (sol high; xhigh for auth/pay/schema/migrations/security)
+must pass BEFORE merge for high-risk work in that project.
 
 ## Profile `claude-codex` (only Claude + Codex)
 
