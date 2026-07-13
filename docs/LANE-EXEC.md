@@ -90,6 +90,15 @@ For an unattended run, start it through `lane-bg`:
 lane-bg --dir "$ART" --label night-review -- night-review "$(pwd)"
 ```
 
+### night-review-all
+
+`night-review-all` auto-discovers projects under `~/apps`, `~/sites`, and `~/tools` using the same lane-stack markers as `docs-maintain-all`. It reviews only repositories active in the last 24 hours (recent commits on the current branch or today's session-log directory).
+
+Cron example:
+```text
+0 3 * * * $HOME/.agents/bin/night-review-all >> $HOME/.agents/logs/night-review.log 2>&1
+```
+
 ## Warm session affinity (AGY / Grok)
 
 `lane-session` removes the cognitive cold start without giving up safe
