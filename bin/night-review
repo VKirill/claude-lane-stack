@@ -1,0 +1,263 @@
+#!/usr/bin/env bash
+# Batch-review today's merged runs and micro commits in one read-only Codex pass.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: night-review <repo-root> [--since <ref>] [--dry-run]
+
+Review today's merged runs and micro commits with one Codex pass.
+For unattended runs, start via lane-bg.
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -lt 1 ]]; then
+  usage >&2
+  exit 2
+fi
+
+ROOT="$1"
+shift
+ROOT="$(cd "$ROOT" && pwd)"
+
+SINCE_REF=""
+DRY_RUN=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --since)
+      [[ $# -ge 2 ]] || { echo "night-review: --since needs a ref" >&2; exit 2; }
+      SINCE_REF="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "night-review: unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null
+
+DAY="$(date +%Y-%m-%d)"
+OUT_DIR="$ROOT/.agents/session-log"
+MARKER="$OUT_DIR/.night-review-last"
+
+if [[ -n "$SINCE_REF" ]]; then
+  LOG_ARGS=("${SINCE_REF}..HEAD")
+  RANGE="${SINCE_REF}..HEAD"
+elif [[ -s "$MARKER" ]]; then
+  SINCE_REF="$(<"$MARKER")"
+  LOG_ARGS=("${SINCE_REF}..HEAD")
+  RANGE="${SINCE_REF}..HEAD"
+else
+  LOG_ARGS=("--since=${DAY} 00:00:00")
+  RANGE="midnight ${DAY}..HEAD"
+fi
+
+SPEC="$(mktemp)"
+REVIEW="$(mktemp)"
+trap 'rm -f "$SPEC" "$REVIEW"' EXIT
+
+declare -a MERGE_SLUGS=()
+for MERGE_FILE in "$ROOT"/.agents/runs/*/MERGE.md; do
+  [[ -f "$MERGE_FILE" ]] || continue
+  [[ "$(date -r "$MERGE_FILE" +%Y-%m-%d)" == "$DAY" ]] || continue
+  MERGE_SLUGS+=("$(basename "$(dirname "$MERGE_FILE")")")
+done
+
+declare -a ALL_COMMITS=()
+declare -a OTHER_COMMITS=()
+declare -a MICRO_SLUGS=()
+declare -A MICRO_COMMITS=()
+declare -A COVERED_COMMITS=()
+
+while IFS=$'\t' read -r COMMIT SUBJECT; do
+  [[ -n "$COMMIT" ]] || continue
+  ALL_COMMITS+=("$COMMIT")
+  if [[ "$SUBJECT" =~ \[micro:([a-zA-Z0-9._-]+)\] ]]; then
+    SLUG="${BASH_REMATCH[1]}"
+    if [[ -z "${MICRO_COMMITS[$SLUG]:-}" ]]; then
+      MICRO_SLUGS+=("$SLUG")
+    fi
+    MICRO_COMMITS[$SLUG]="${MICRO_COMMITS[$SLUG]:-}${COMMIT} "
+    COVERED_COMMITS[$COMMIT]=micro
+  fi
+done < <(git -C "$ROOT" log --format='%H%x09%s' "${LOG_ARGS[@]}")
+
+merge_commit() {
+  local merge_file="$ROOT/.agents/runs/$1/MERGE.md"
+  grep -Eo '[0-9a-fA-F]{7,40}' "$merge_file" | head -1 || true
+}
+
+task_file_for_slug() {
+  local slug="$1"
+  local direct="$ROOT/.agents/runs/$slug/tasks"
+  local task_file
+  if [[ -d "$direct" ]]; then
+    task_file="$(find "$direct" -type f -name '*.yaml' -print -quit)"
+    if [[ -n "$task_file" ]]; then
+      echo "$task_file"
+      return
+    fi
+  fi
+  find "$ROOT/.agents/runs" -path '*/tasks/*.yaml' -type f -exec grep -lF -- "$slug" {} + 2>/dev/null | head -1 || true
+}
+
+emit_task_context() {
+  local slug="$1"
+  local task_file title
+  task_file="$(task_file_for_slug "$slug")"
+  [[ -n "$task_file" ]] || return
+
+  title="$(sed -nE 's/^title:[[:space:]]*"?([^"\r]*)"?.*/\1/p' "$task_file" | head -1)"
+  echo "### Task: ${title:-$(basename "$task_file")}"
+  echo "Objective:"
+  if grep -qE '^objective:[[:space:]]*[>|]' "$task_file"; then
+    awk '
+      /^objective:[[:space:]]*[>|]/ { capture=1; next }
+      capture && /^[^[:space:]]/ { exit }
+      capture { sub(/^[[:space:]]+/, ""); print }
+    ' "$task_file"
+  else
+    sed -nE 's/^objective:[[:space:]]*//p' "$task_file" | head -1
+  fi
+  echo
+}
+
+emit_commit_diff() {
+  local commit="$1"
+  echo "#### Commit $(git -C "$ROOT" rev-parse --short "$commit")"
+  echo '```diff'
+  if git -C "$ROOT" rev-parse --verify "${commit}^" >/dev/null 2>&1; then
+    git -C "$ROOT" diff --no-ext-diff "${commit}^" "$commit" --
+  else
+    git -C "$ROOT" show --format= --no-ext-diff "$commit" --
+  fi
+  echo '```'
+  echo
+}
+
+for SLUG in "${MERGE_SLUGS[@]}"; do
+  COMMIT="$(merge_commit "$SLUG")"
+  if [[ -n "$COMMIT" ]] && git -C "$ROOT" rev-parse --verify "${COMMIT}^{commit}" >/dev/null 2>&1; then
+    while IFS= read -r COVERED; do
+      COVERED_COMMITS[$COVERED]=merge
+    done < <(git -C "$ROOT" rev-list "${COMMIT}^1..${COMMIT}")
+  fi
+done
+
+for COMMIT in "${ALL_COMMITS[@]}"; do
+  [[ -n "${COVERED_COMMITS[$COMMIT]:-}" ]] || OTHER_COMMITS+=("$COMMIT")
+done
+
+if [[ ${#MERGE_SLUGS[@]} -eq 0 && ${#MICRO_SLUGS[@]} -eq 0 && ${#OTHER_COMMITS[@]} -eq 0 ]]; then
+  echo "nothing to review"
+  exit 0
+fi
+
+{
+  echo "# Night review"
+  echo
+  echo "Review ONLY the diff below. Fetch extra context only for direct dependencies of changed lines. No repo-wide exploration."
+  echo
+  echo "Repository: $ROOT"
+  echo "Range: $RANGE"
+  echo
+
+  for SLUG in "${MERGE_SLUGS[@]}"; do
+    echo "## Run: $SLUG"
+    echo
+    emit_task_context "$SLUG"
+    COMMIT="$(merge_commit "$SLUG")"
+    if [[ -n "$COMMIT" ]] && git -C "$ROOT" rev-parse --verify "${COMMIT}^{commit}" >/dev/null 2>&1; then
+      emit_commit_diff "$COMMIT"
+    else
+      echo "_Merge commit unavailable; no diff collected._"
+      echo
+    fi
+  done
+
+  for SLUG in "${MICRO_SLUGS[@]}"; do
+    echo "## Micro run: $SLUG"
+    echo
+    emit_task_context "$SLUG"
+    for COMMIT in ${MICRO_COMMITS[$SLUG]}; do
+      emit_commit_diff "$COMMIT"
+    done
+  done
+
+  if [[ ${#OTHER_COMMITS[@]} -gt 0 ]]; then
+    echo "## Other commits"
+    echo
+    for COMMIT in "${OTHER_COMMITS[@]}"; do
+      emit_commit_diff "$COMMIT"
+    done
+  fi
+
+  echo "Return exactly these lines after the review:"
+  for SLUG in "${MERGE_SLUGS[@]}" "${MICRO_SLUGS[@]}"; do
+    echo "VERDICT run/$SLUG: passed|failed"
+  done
+  if [[ ${#OTHER_COMMITS[@]} -gt 0 ]]; then
+    echo "VERDICT commits: passed|failed"
+  fi
+  echo "P0: path:line — finding"
+  echo "P1: path:line — finding"
+  echo "FIX area: fix — from run/slug"
+} > "$SPEC"
+
+if [[ "$DRY_RUN" == true ]]; then
+  cat "$SPEC"
+  exit 0
+fi
+
+codex exec --model gpt-5.6-sol -c model_reasoning_effort=medium \
+  --sandbox read-only --skip-git-repo-check --cd "$ROOT" \
+  --output-last-message "$REVIEW" - < "$SPEC"
+
+mkdir -p "$OUT_DIR"
+REPORT="$OUT_DIR/REVIEW-${DAY}.md"
+{
+  echo "# Night review — ${DAY}"
+  echo
+  echo "Repo: \`$ROOT\`"
+  echo "Range: \`$RANGE\`"
+  echo "Generated: $(date -Iseconds)"
+  echo
+  echo "## Verdicts"
+  echo
+  for SLUG in "${MERGE_SLUGS[@]}" "${MICRO_SLUGS[@]}"; do
+    VERDICT=passed
+    if grep -Eiq "^VERDICT[[:space:]]+run/${SLUG}:[[:space:]]*failed" "$REVIEW"; then VERDICT=failed; fi
+    echo "run/$SLUG — VERDICT: $VERDICT"
+  done
+  if [[ ${#OTHER_COMMITS[@]} -gt 0 ]]; then
+    VERDICT=passed
+    if grep -Eiq '^VERDICT[[:space:]]+commits:[[:space:]]*failed' "$REVIEW"; then VERDICT=failed; fi
+    echo "commits — VERDICT: $VERDICT"
+  fi
+  echo
+  echo "## P0/P1 findings"
+  echo
+  grep -E '^[[:space:]]*P[01]:[[:space:]]*[^[:space:]]+:[0-9]+' "$REVIEW" || echo "_No P0/P1 findings._"
+  echo
+  echo "## Morning fix plan"
+  echo
+  grep -E '^[[:space:]]*FIX ' "$REVIEW" | sed -E 's/^[[:space:]]*FIX /- [ ] /' || echo "_No fixes proposed._"
+} > "$REPORT"
+
+git -C "$ROOT" rev-parse HEAD > "$MARKER"
+echo "wrote $REPORT"

@@ -81,6 +81,15 @@ lane-wait --dir "$ARTIFACT_DIR" --once
 
 Optional: host `run_in_background=true` on the `lane-bg` Bash call — still prefer `lane-bg` so the job survives agent restarts.
 
+## night-review
+
+`night-review <repo-root>` batches today's merged runs and micro commits into one read-only Codex review.
+For an unattended run, start it through `lane-bg`:
+
+```bash
+lane-bg --dir "$ART" --label night-review -- night-review "$(pwd)"
+```
+
 ## Warm session affinity (AGY / Grok)
 
 `lane-session` removes the cognitive cold start without giving up safe

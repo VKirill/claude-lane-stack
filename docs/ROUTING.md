@@ -9,7 +9,7 @@
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
 | Fast write | AGY Flash High | Gemini Flash High |
 | Main write | Grok 4.5 | — |
-| Medium review | Codex Sol | gpt-5.6-sol + medium |
+| Medium review | Codex Sol | gpt-5.6-sol + medium (nightly batch) |
 | Gate / ship review | Codex **Sol** | `gpt-5.6-sol` + `high` (xhigh critical paths) |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
@@ -40,8 +40,12 @@
 | Tier   | Trigger                            | Reviewer |
 |--------|------------------------------------|----------|
 | none   | micro path / risk low              | verify field + check-owns-paths only |
-| medium | risk medium                        | codex-reviewer (sol, medium) |
-| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) |
+| medium | risk medium                        | codex-reviewer (sol, medium) — nightly batch, off critical path |
+| strong | risk high / high_risk_paths / ship | codex-reviewer (sol high; xhigh critical paths) — synchronous, pre-merge |
+
+Medium runs merge after report + `check-owns-paths` + verify; review runs in
+the nightly `night-review` batch, and findings become morning fix tasks.
+Strong tier stays synchronous before merge.
 
 Medium review is mechanical only (bugs, style, dependencies, obvious logic);
 auth/pay/schema/security always uses the strong tier. Medium FAIL -> writer
