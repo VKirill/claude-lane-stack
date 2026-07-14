@@ -93,3 +93,51 @@ test('a run with no tasks at all counts as fully done, not active', () => {
     { slug: 'e4', lastActivity: null, tasks: [] },
   ]).length, 3);
 });
+
+test('promotes task status to done in merged runs', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-snapshot-merged-'));
+  fixtures.push(root);
+
+  // Set up three runs:
+  // 1. run-merged: has MERGE.md (merged) + task without status field -> should end up 'done'
+  //                 + task with explicit status: blocked -> stays 'blocked'
+  await mkdir(path.join(root, '.agents', 'runs', 'run-merged', 'tasks'), { recursive: true });
+  await writeFile(path.join(root, '.agents', 'runs', 'run-merged', 'tasks', '001.yaml'), [
+    'id: 001', 'title: Task without status',
+  ].join('\n'));
+  await writeFile(path.join(root, '.agents', 'runs', 'run-merged', 'tasks', '002.yaml'), [
+    'id: 002', 'title: Task blocked', 'status: blocked',
+  ].join('\n'));
+  await writeFile(path.join(root, '.agents', 'runs', 'run-merged', 'MERGE.md'), [
+    '# MERGE — run-merged',
+    '- merge commit on main: a8562efa1',
+    '- when: 2026-07-12 ~10:35 UTC',
+  ].join('\n'));
+
+  // 2. run-unmerged: no MERGE.md (unmerged) + task without status field -> stays 'pending'
+  await mkdir(path.join(root, '.agents', 'runs', 'run-unmerged', 'tasks'), { recursive: true });
+  await writeFile(path.join(root, '.agents', 'runs', 'run-unmerged', 'tasks', '003.yaml'), [
+    'id: 003', 'title: Task without status unmerged',
+  ].join('\n'));
+
+  // 3. run-invalid-merge: MERGE.md has no valid commit (e.g. "merged\n") -> stays 'pending'
+  await mkdir(path.join(root, '.agents', 'runs', 'run-invalid-merge', 'tasks'), { recursive: true });
+  await writeFile(path.join(root, '.agents', 'runs', 'run-invalid-merge', 'tasks', '004.yaml'), [
+    'id: 004', 'title: Task without status invalid merge',
+  ].join('\n'));
+  await writeFile(path.join(root, '.agents', 'runs', 'run-invalid-merge', 'MERGE.md'), 'merged\n');
+
+  const snapshot = await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root });
+  const detail = projectDetail(snapshot);
+
+  const runMerged = detail.runs.find((r) => r.slug === 'run-merged');
+  assert.equal(runMerged.tasks.find((t) => t.id === '001').status, 'done');
+  assert.equal(runMerged.tasks.find((t) => t.id === '002').status, 'blocked');
+
+  const runUnmerged = detail.runs.find((r) => r.slug === 'run-unmerged');
+  assert.equal(runUnmerged.tasks.find((t) => t.id === '003').status, 'pending');
+
+  const runInvalidMerge = detail.runs.find((r) => r.slug === 'run-invalid-merge');
+  assert.equal(runInvalidMerge.tasks.find((t) => t.id === '004').status, 'pending');
+});
+

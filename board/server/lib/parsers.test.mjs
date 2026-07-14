@@ -12,6 +12,8 @@ import {
   readLatestReview,
   readTasks,
   readTodos,
+  readTaskDetail,
+  promoteMergedTaskStatus,
 } from './parsers.mjs';
 
 const fixtures = [];
@@ -209,3 +211,56 @@ test('parses a task detail scalar mix, block objectives, and only the done_when 
     done_when: ['done'],
   });
 });
+
+test('readTaskDetail promotes pending task to done if run is merged', async () => {
+  const project = await fixtureDirectory('lane-board-task-detail-merged-');
+  
+  // 1. Task without explicit status: field -> detail.status is undefined (not introduced)
+  const runMergedPath = path.join(project, '.agents', 'runs', 'run-merged');
+  await mkdir(path.join(runMergedPath, 'tasks'), { recursive: true });
+  await writeFile(path.join(runMergedPath, 'tasks', '001.yaml'), [
+    'id: "001"',
+    'title: Merged task no status',
+  ].join('\n'));
+  await writeFile(path.join(runMergedPath, 'MERGE.md'), [
+    '# MERGE — run-merged',
+    '- merge commit on main: a8562efa1',
+    '- when: 2026-07-12 ~10:35 UTC',
+  ].join('\n'));
+
+  const detail1 = await readTaskDetail(project, 'run-merged', '001');
+  assert.equal(detail1.status, undefined);
+
+  // 2. Task with status: pending -> promoted to done
+  await writeFile(path.join(runMergedPath, 'tasks', '002.yaml'), [
+    'id: "002"',
+    'title: Merged task pending',
+    'status: pending',
+  ].join('\n'));
+  
+  const detail2 = await readTaskDetail(project, 'run-merged', '002');
+  assert.equal(detail2.status, 'done');
+
+  // 3. Unmerged run (no MERGE.md) -> task with status: pending -> stays pending
+  const runUnmergedPath = path.join(project, '.agents', 'runs', 'run-unmerged');
+  await mkdir(path.join(runUnmergedPath, 'tasks'), { recursive: true });
+  await writeFile(path.join(runUnmergedPath, 'tasks', '003.yaml'), [
+    'id: "003"',
+    'title: Unmerged task pending',
+    'status: pending',
+  ].join('\n'));
+
+  const detail3 = await readTaskDetail(project, 'run-unmerged', '003');
+  assert.equal(detail3.status, 'pending');
+
+  // 4. Merged run + task with explicit status: blocked -> stays blocked
+  await writeFile(path.join(runMergedPath, 'tasks', '004.yaml'), [
+    'id: "004"',
+    'title: Merged task blocked',
+    'status: blocked',
+  ].join('\n'));
+
+  const detail4 = await readTaskDetail(project, 'run-merged', '004');
+  assert.equal(detail4.status, 'blocked');
+});
+

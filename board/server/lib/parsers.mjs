@@ -29,6 +29,11 @@ export function normalizeTaskStatus(status) {
   return TASK_STATUSES.has(normalized) ? normalized : 'pending';
 }
 
+export function promoteMergedTaskStatus(status, merged) {
+  return status === 'pending' && merged?.commit ? 'done' : status;
+}
+
+
 export function parseTaskYaml(source, { run = '', filePath = 'task YAML' } = {}) {
   if (typeof source !== 'string') {
     warn(`skipping malformed ${filePath}`);
@@ -350,7 +355,12 @@ export async function readTaskDetail(projectPath, run, taskId) {
   const runPath = path.join(projectPath, '.agents', 'runs', run);
   const source = await readTaskSource(path.join(runPath, 'tasks'), taskId);
   if (source === null) return null;
-  return { ...parseTaskDetail(source), report: await readTaskReport(runPath, taskId) };
+  const detail = parseTaskDetail(source);
+  if (detail.status !== undefined) {
+    const merged = await readMerge(runPath);
+    detail.status = promoteMergedTaskStatus(detail.status, merged);
+  }
+  return { ...detail, report: await readTaskReport(runPath, taskId) };
 }
 
 export function parseReview(source, date) {
