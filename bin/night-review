@@ -11,6 +11,138 @@ For unattended runs, start via lane-bg.
 EOF
 }
 
+# Upsert a high-priority todo when the night-review REPORT has failures or P0/P1.
+# Args: <report-path> <day YYYY-MM-DD> <repo-root>
+# Idempotent per day (id = <day>-night-review-fixes). Always returns 0; errors → stderr warning.
+upsert_night_review_todo() {
+  # Disable errexit for this function so night-review never aborts on todo I/O.
+  set +e
+  set +u
+  local report="${1:-}"
+  local day="${2:-}"
+  local root="${3:-}"
+  local index todo_id failed has_problems title row tmp
+
+  if [[ -z "$report" || -z "$day" || -z "$root" ]]; then
+    echo "night-review: warning: upsert_night_review_todo missing args" >&2
+    set -euo pipefail
+    return 0
+  fi
+  if [[ ! -f "$report" ]]; then
+    echo "todo: skipped (no problems)"
+    set -euo pipefail
+    return 0
+  fi
+
+  failed=0
+  has_problems=0
+  failed="$(grep -cE 'VERDICT:[[:space:]]*failed' "$report" 2>/dev/null || true)"
+  [[ -n "$failed" ]] || failed=0
+  if [[ "$failed" -gt 0 ]]; then
+    has_problems=1
+  elif grep -qE '^[[:space:]]*P[01]:' "$report" 2>/dev/null; then
+    has_problems=1
+  fi
+
+  if [[ "$has_problems" -eq 0 ]]; then
+    echo "todo: skipped (no problems)"
+    set -euo pipefail
+    return 0
+  fi
+
+  todo_id="${day}-night-review-fixes"
+  title="Night review ${day}: ${failed} failed run(s), P0/P1 findings — see .agents/session-log/REVIEW-${day}.md"
+  row="| open | high | ${todo_id} | ${title} |"
+  index="${root}/.agents/todos/INDEX.md"
+
+  if ! mkdir -p "$(dirname "$index")"; then
+    echo "night-review: warning: cannot create todos dir" >&2
+    set -euo pipefail
+    return 0
+  fi
+  if [[ ! -f "$index" ]]; then
+    if ! printf '%s\n' \
+      '# TODOs' \
+      '' \
+      '| status | priority | id | title |' \
+      '|--------|----------|-----|--------|' \
+      "$row" \
+      > "$index"; then
+      echo "night-review: warning: cannot write INDEX.md" >&2
+      set -euo pipefail
+      return 0
+    fi
+    echo "todo: upserted ${todo_id}"
+    set -euo pipefail
+    return 0
+  fi
+
+  tmp="$(mktemp)"
+  if [[ -z "$tmp" || ! -f "$tmp" ]]; then
+    echo "night-review: warning: mktemp failed" >&2
+    set -euo pipefail
+    return 0
+  fi
+
+  # Field-split on | so we never rely on awk regex escapes for pipes.
+  # Columns: empty | status | priority | id | title | ...
+  if awk -v id="$todo_id" '
+      BEGIN { FS = "|"; found = 0 }
+      {
+        if (NF >= 5) {
+          idf = $4
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", idf)
+          if (idf == id) found = 1
+        }
+      }
+      END { exit (found ? 0 : 1) }
+    ' "$index"; then
+    awk -v id="$todo_id" -v row="$row" '
+      BEGIN { FS = "|" }
+      {
+        if (NF >= 5) {
+          idf = $4
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", idf)
+          if (idf == id) { print row; next }
+        }
+        print
+      }
+    ' "$index" > "$tmp"
+  else
+    awk -v row="$row" '
+      BEGIN { FS = "|"; inserted = 0 }
+      {
+        print
+        if (!inserted && NF >= 3) {
+          cell = $2
+          gsub(/[[:space:]]/, "", cell)
+          if (cell ~ /^[-:]+$/) {
+            print row
+            inserted = 1
+          }
+        }
+      }
+      END {
+        if (!inserted) print row
+      }
+    ' "$index" > "$tmp"
+  fi
+  if ! mv "$tmp" "$index"; then
+    rm -f "$tmp"
+    echo "night-review: warning: cannot update INDEX.md" >&2
+    set -euo pipefail
+    return 0
+  fi
+  echo "todo: upserted ${todo_id}"
+  set -euo pipefail
+  return 0
+}
+
+# Library mode: source this file with NIGHT_REVIEW_LIB=1 to load helpers only.
+if [[ "${NIGHT_REVIEW_LIB:-}" == "1" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -258,6 +390,11 @@ REPORT="$OUT_DIR/REVIEW-${DAY}.md"
   echo
   grep -E '^[[:space:]]*FIX ' "$REVIEW" | sed -E 's/^[[:space:]]*FIX /- [ ] /' || echo "_No fixes proposed._"
 } > "$REPORT"
+
+# Upsert backlog todo from report findings; never fail the night-review run.
+if ! upsert_night_review_todo "$REPORT" "$DAY" "$ROOT"; then
+  echo "night-review: warning: todo upsert failed (continuing)" >&2
+fi
 
 git -C "$ROOT" rev-parse HEAD > "$MARKER"
 echo "wrote $REPORT"
