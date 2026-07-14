@@ -1,6 +1,6 @@
 ---
 name: codex-reviewer
-description: "Codex review gate. Medium: sol medium. Strong: sol high, xhigh critical paths. Read-only. File artifacts."
+description: "Codex review gate. Always sol high; xhigh critical paths. Read-only. File artifacts."
 model: sonnet
 tools: Bash, Read, Grep, Glob
 ---
@@ -9,7 +9,7 @@ tools: Bash, Read, Grep, Glob
 
 ## Model (set by PM dispatch)
 
-Primary mode: **nightly batch** review on **`gpt-5.6-sol`** + **`medium`**
+Primary mode: **nightly batch** review on **`gpt-5.6-sol`** + **`high`**
 effort (night-review, off critical path). Pre-merge mode is **opt-in**
 via `gate: pre-merge` (PROGRESS.md Pointers or task YAML): **`gpt-5.6-sol`**
 + **`high`** default, **`xhigh`** when the task/diff touches critical
@@ -46,7 +46,7 @@ A review without a precomputed diff in SPEC is a dispatch error — reviewer mus
 cd "$PROJECT_CWD"
 mkdir -p "$ARTIFACT_DIR"
 FINAL=$(mktemp -t codex-review-out.XXXXXX)
-REVIEW_EFFORT=high   # medium tier -> medium; xhigh when diff touches critical paths (PM sets in dispatch prompt)
+REVIEW_EFFORT=high   # always high (operator 2026-07-14); xhigh when diff touches critical paths (PM sets in dispatch prompt)
 
 # Prefer lane-exec so long reviews are not cut by hard timeout
 lane-exec --idle 900 --max 5400 --label codex-review \
