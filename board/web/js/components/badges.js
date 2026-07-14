@@ -19,7 +19,8 @@ export function priorityBadge(priority) {
 }
 
 export function riskBadge(risk) {
-  return badge(`risk:${String(risk || "unknown")}`, "neutral");
+  const value = normal(risk, "low");
+  return badge(`risk:${String(risk || "unknown")}`, value);
 }
 
 export function verifyBadge(value) {
