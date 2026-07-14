@@ -138,7 +138,22 @@ export async function renderBoard({ root, route, isCurrent, rerender }) {
     const heading = element("div", "");
     heading.append(element("h1", "", project.name || project.projectName || projectName(route.projectId)), element("p", "", "Task board · recent work is the default scope."));
     header.append(heading, tabs(route.projectId, "board"));
-    page.append(header, filterBar(route.projectId, project, rerender));
+    page.append(header);
+    if (project.review) {
+      const review = project.review;
+      const verdicts = Array.isArray(review.verdicts) ? review.verdicts : [];
+      const failedCount = verdicts.filter((v) => v.verdict === "failed").length;
+      if (failedCount >= 1) {
+        const findingsCount = Array.isArray(review.findings) ? review.findings.length : 0;
+        const banner = element("div", "review-banner");
+        const textSpan = element("span", "review-banner__text", `Night review ${review.date}: ${failedCount} failed run(s) — ${findingsCount} findings`);
+        const link = element("a", "review-banner__link", "View review");
+        link.href = projectHash(route.projectId, "reviews");
+        banner.append(textSpan, link);
+        page.append(banner);
+      }
+    }
+    page.append(filterBar(route.projectId, project, rerender));
     const filters = getBoardFilters(route.projectId);
     const visible = tasksFrom(project).filter((task) => matches(task, filters));
     const board = element("section", "board");
