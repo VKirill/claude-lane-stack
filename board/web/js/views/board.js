@@ -90,14 +90,20 @@ function matches(task, filters) {
 }
 
 function taskCard(projectId, task) {
-  const card = button("", "task-card");
+  const status = taskStatus(task);
+  const card = button("", `task-card task-card--${status}`);
   const run = String(task.run || "");
-  card.append(element("span", "task-card__title", taskTitle(task)));
+  const titleSpan = element("span", "task-card__title", taskTitle(task));
+  titleSpan.setAttribute("title", taskTitle(task));
+  card.append(titleSpan);
   const meta = element("span", "task-card__meta");
-  if (run) meta.append(element("span", "task-card__run", run));
+  const idText = run ? `${taskId(task)} / ${run}` : taskId(task);
+  const idChip = element("span", "task-card__id-chip", idText);
+  idChip.setAttribute("title", idText);
+  meta.append(idChip);
   if (task.risk) meta.append(riskBadge(task.risk));
   if (task.verify) meta.append(verifyBadge(task.verify));
-  if (task.lane) meta.append(element("span", "task-card__run", task.lane));
+  if (task.lane) meta.append(element("span", "task-card__lane", task.lane));
   card.append(meta);
   card.addEventListener("click", () => openTaskDrawer(projectId, run, taskId(task)));
   return card;
