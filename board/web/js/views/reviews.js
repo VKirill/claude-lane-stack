@@ -37,7 +37,7 @@ function asList(value) {
 }
 
 function priorityOf(finding) {
-  const value = String(typeof finding === "string" ? finding : finding && finding.priority || "").toUpperCase();
+  const value = String(typeof finding === "string" ? finding : finding && (finding.level ?? finding.priority) || "").toUpperCase();
   return value.match(/\bP[01]\b/)?.[0] || value;
 }
 
