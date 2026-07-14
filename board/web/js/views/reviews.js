@@ -19,6 +19,17 @@ function tabs(projectId) {
   return nav;
 }
 
+function verdictLabel(v) {
+  if (v && typeof v === "object") {
+    return v.scope ? `${v.scope}: ${v.verdict || ""}` : (v.verdict || "");
+  }
+  return String(v || "");
+}
+
+function verdictValue(v) {
+  return (v && typeof v === "object") ? (v.verdict || "") : String(v || "");
+}
+
 function asList(value) {
   if (Array.isArray(value)) return value;
   if (typeof value === "string") return value.split("\n").filter(Boolean);
@@ -38,7 +49,9 @@ function reviewCard(review) {
   const card = element("article", "review-card");
   const header = element("div", "review-card__meta");
   header.append(element("h2", "", review.date || "Undated review"));
-  asList(review.verdicts).forEach((verdict) => header.append(badge(verdict, /fail|blocked/i.test(String(verdict)) ? "blocked" : "neutral")));
+  asList(review.verdicts).forEach((verdict) => {
+    header.append(badge(verdictLabel(verdict), /fail|blocked/i.test(verdictValue(verdict)) ? "blocked" : "neutral"));
+  });
   card.append(header);
   const important = asList(review.findings).filter((finding) => ["P0", "P1"].includes(priorityOf(finding)));
   if (important.length > 0) {
