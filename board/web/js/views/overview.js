@@ -24,8 +24,19 @@ function reviewVerdicts(review) {
   return Array.isArray(verdicts) ? verdicts : verdicts ? [verdicts] : [];
 }
 
+function verdictLabel(v) {
+  if (v && typeof v === "object") {
+    return v.scope ? `${v.scope}: ${v.verdict || ""}` : (v.verdict || "");
+  }
+  return String(v || "");
+}
+
+function verdictValue(v) {
+  return (v && typeof v === "object") ? (v.verdict || "") : String(v || "");
+}
+
 function hasFailedReview(reviews) {
-  return reviews.some((review) => reviewVerdicts(review).some((verdict) => /fail|blocked/i.test(String(verdict))));
+  return reviews.some((review) => reviewVerdicts(review).some((verdict) => /fail|blocked/i.test(verdictValue(verdict))));
 }
 
 function isP0(finding) {
@@ -63,7 +74,9 @@ function projectCard(project, projectData, reviews) {
   const latest = reviews[0];
   if (latest) {
     const verdict = reviewVerdicts(latest)[0] || "review";
-    head.append(badge(verdict, /fail|blocked/i.test(String(verdict)) ? "blocked" : "neutral"));
+    const label = verdictLabel(verdict);
+    const value = verdictValue(verdict);
+    head.append(badge(label, /fail|blocked/i.test(value) ? "blocked" : "neutral"));
   }
   const stats = element("div", "project-card__stats");
   [
@@ -106,8 +119,8 @@ export async function renderOverview({ root, isCurrent }) {
         attention.push({ kind: "blocked", project: name, text: task.title || task.id || "Blocked task" });
       });
       reviews.forEach((review) => {
-        reviewVerdicts(review).filter((verdict) => /fail|blocked/i.test(String(verdict))).forEach((verdict) => {
-          attention.push({ kind: "blocked", project: name, text: `Review verdict: ${verdict}` });
+        reviewVerdicts(review).filter((verdict) => /fail|blocked/i.test(verdictValue(verdict))).forEach((verdict) => {
+          attention.push({ kind: "blocked", project: name, text: `Review verdict: ${verdictLabel(verdict)}` });
         });
         (Array.isArray(review.findings) ? review.findings : []).filter(isP0).forEach((finding) => {
           const level = (typeof finding === "string" ? (finding.match(/(^|\b)(P0|P1)\b/i)?.[0] ?? "P0") : finding.level || "P0").toUpperCase();
