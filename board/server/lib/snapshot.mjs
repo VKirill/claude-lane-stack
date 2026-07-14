@@ -6,6 +6,7 @@ import {
   readProgress,
   readTasks,
   readTodos,
+  promoteMergedTaskStatus,
 } from './parsers.mjs';
 
 export const EMPTY_TASK_COUNTS = Object.freeze({
@@ -116,11 +117,17 @@ export async function readRuns(projectPath) {
     const merged = await readMerge(runPath);
     if (!hasTasksDirectory && !merged) continue;
 
+    const tasks = hasTasksDirectory ? await readTasks(tasksDirectory, entry.name) : [];
+    const promotedTasks = tasks.map((task) => ({
+      ...task,
+      status: promoteMergedTaskStatus(task.status, merged),
+    }));
+
     runs.push({
       slug: entry.name,
       lastActivity: await runLastActivity(runPath),
       merged,
-      tasks: hasTasksDirectory ? await readTasks(tasksDirectory, entry.name) : [],
+      tasks: promotedTasks,
     });
   }
   return runs;
