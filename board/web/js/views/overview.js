@@ -29,7 +29,8 @@ function hasFailedReview(reviews) {
 }
 
 function isP0(finding) {
-  return /(^|\b)p0\b/i.test(typeof finding === "string" ? finding : `${finding && finding.priority || ""} ${finding && finding.title || ""}`);
+  const str = typeof finding === "string" ? finding : `${finding && (finding.level ?? finding.priority) || ""} ${finding && (finding.text ?? finding.title) || ""}`;
+  return /(^|\b)P[01]\b/i.test(str);
 }
 
 function attentionStrip(items) {
@@ -109,7 +110,10 @@ export async function renderOverview({ root, isCurrent }) {
           attention.push({ kind: "blocked", project: name, text: `Review verdict: ${verdict}` });
         });
         (Array.isArray(review.findings) ? review.findings : []).filter(isP0).forEach((finding) => {
-          attention.push({ kind: "blocked", project: name, text: typeof finding === "string" ? finding : finding.title || "P0 finding" });
+          const level = (typeof finding === "string" ? (finding.match(/(^|\b)(P0|P1)\b/i)?.[0] ?? "P0") : finding.level || "P0").toUpperCase();
+          const rawText = typeof finding === "string" ? finding : finding.text || finding.title || `${level} finding`;
+          const cleanText = rawText.replace(new RegExp(`^\\s*${level}:?\\s*`, "i"), "");
+          attention.push({ kind: "blocked", project: name, text: `${level}: ${cleanText}` });
         });
       });
     });
