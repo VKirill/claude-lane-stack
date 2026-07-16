@@ -29,11 +29,11 @@
 - 빠른 시작 · 태스크 카드 · 머지는 당신이 하지 않아요
 - 치트 시트 · 프로파일 · FAQ · 문서
 
-<!-- v1.2.0-whats-new -->
+<!-- v1.3.0-whats-new -->
 
 ---
 
-## 🆕 v1.2.0 현재 기능 요약
+## 🆕 v1.3.0 현재 기능 요약
 
 | 기능 | 설명 |
 |------|------|
@@ -41,11 +41,12 @@
 | 🔬 Deep | 엔트리포인트, 플로우, wiki↔코드, 실제 테스트, 배포, 시크릿 이름만 |
 | 🏃 **lane-bg / lane-wait** | Claude foreground Bash ~2분 종료 → 긴 레인은 detach 필수 |
 | 🔥 **lane-session** | AGY/Grok이 run별 대화를 이어가며 최대 3개 슬롯으로 병렬 실행 |
+| ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | 활동 기반 idle + 절대 max (detach 프로세스) |
 | 🧠 모델 | GPT-**5.6** Sol / Terra / Luna 만 (5.5 없음). 파일은 영어 |
 | 🚀 명령 | `/project-onboard` · `/project-onboard deep` |
 
-[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.2.0)
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
 
 
 ---

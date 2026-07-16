@@ -69,6 +69,11 @@ lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
 # 2) Poll with short calls (each < 30s)
 lane-wait --dir "$ARTIFACT_DIR" --once
 # exit 0 = done, 2 = still running, 3 = not started, 124 = max-wait (loop mode)
+
+# Multi-task progressive (PM): scan all artifacts under a run
+lane-poll --run-dir "$RUN_DIR"
+# finish_ready>0 → those CLIs finished; dispatch MODE=finish + accept NOW
+# do not wait for other still-running siblings
 ```
 
 | File | Meaning |
@@ -80,6 +85,18 @@ lane-wait --dir "$ARTIFACT_DIR" --once
 | `sessions.json` | current AGY/Grok session IDs, slot ownership, successful-turn counts, rotation history |
 
 Optional: host `run_in_background=true` on the `lane-bg` Bash call — still prefer `lane-bg` so the job survives agent restarts.
+
+## Progressive accept (multi-task)
+
+When ≥2 write tasks share a run, implementers use **`MODE=start`** (detach only)
+and **`MODE=finish`** (report after CLI done). PM owns the poll loop via
+**`lane-poll`**, accepts each task as soon as it is finish_ready, frees the slot,
+and may start the next ready task. Cap remains **3 concurrent** writers;
+total tasks may be larger via pipeline refill.
+
+**Forbidden join-wait:** spawning N Agents that each poll-until-done in one PM
+turn — the host joins all Agent tool calls, so you only continue after the
+slowest.
 
 ## night-review
 

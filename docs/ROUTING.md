@@ -85,7 +85,8 @@ lane-bg --dir "$ARTIFACT_DIR" -- … lane-exec … -- agy|grok|codex …
 lane-wait --dir "$ARTIFACT_DIR" --once
 ```
 
-See [LANE-EXEC.md](LANE-EXEC.md). PM waits on the **Agent** tool, not a 90m Bash call.
+See [LANE-EXEC.md](LANE-EXEC.md). PM never runs 90m Bash; multi-task uses
+**progressive accept** (`MODE=start` → `lane-poll` → `MODE=finish` per task).
 
 AGY/Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
@@ -96,11 +97,15 @@ an independent cold session.
 
 | Situation | Policy |
 |-----------|--------|
-| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single AGY lane, no reviewer, verify none\|smoke |
-| 1 low-risk write | main tree OK |
-| ≥2 writes OR score ≥ 4 | worktree; max 3 parallel; disjoint owns_paths |
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single AGY lane `MODE=full`, no reviewer, verify none\|smoke |
+| 1 low-risk write | main tree OK; `MODE=full` OK |
+| ≥2 writes OR score ≥ 4 | worktree; max 3 **concurrent** slots; progressive accept; disjoint owns_paths |
 | High risk write | solo writer |
 | Human never merges | PM → `wt-merge-main` |
+
+**Progressive accept:** when task A finishes while B still runs, accept A
+immediately, free its slot, start the next ready task. Never wait for the
+slowest sibling before accepting finished ones.
 
 ## Instruction design
 

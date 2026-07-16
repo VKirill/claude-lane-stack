@@ -212,6 +212,8 @@ Long silence? Workers can stall — the stack has tooling for exactly this.
 Within one run, AGY/Grok tasks also reuse warm conversations through
 `lane-session`. Related sequential tasks keep context; truly parallel tasks use
 separate pool slots. The default session lifetime is seven successful tasks.
+Multi-task runs **accept each task as it finishes** (`lane-poll` + implementer
+`MODE=start`/`finish`) — the PM does not wait for the slowest sibling.
 
 | Say to the PM | What happens |
 |---------------|--------------|

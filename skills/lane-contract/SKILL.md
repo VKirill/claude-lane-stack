@@ -14,9 +14,11 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 2. Paste code excerpts into `interfaces` / `objective`.  
 3. Pass `PROJECT_CWD`, `TASK_FILE`, `ARTIFACT_DIR` (absolute).  
 4. Ensure parallel tasks have **disjoint** owns_paths.  
-5. After lane: `check-owns-paths`; then accept report evidence.  
+5. After **each** lane finishes: `check-owns-paths`; accept report evidence **immediately**
+   (progressive — do not wait for other concurrent tasks).  
 6. When run complete: **merge to main** (`wt-merge-main` or commit) — human never merges.  
-7. No task CLI / orchestrator MCP for queue.
+7. No task CLI / orchestrator MCP for queue.  
+8. Multi-task: implementer `MODE=start` then `MODE=finish`; PM uses `lane-poll`.
 
 ## Lane must
 

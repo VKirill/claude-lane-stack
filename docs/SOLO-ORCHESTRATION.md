@@ -12,7 +12,9 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.  
 5. **Bounded warm writer context.** Each task gets a fresh Claude supervisor spawn, while AGY/Grok resume only the session pool owned by that exact run. Rotate after seven successful tasks; review stays fresh.
 6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`.  
-7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
+7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.  
+8. **Progressive accept.** Multi-task runs accept each task when *it* finishes
+   (`lane-poll` + `MODE=finish`) — never join-wait the slowest concurrent lane.
 
 Daytime: micro/medium ship fast. Night: `night-review` batch. Morning: fix tasks from `REVIEW-<date>.md`.
 Automation: night-review runs from cron (03:00) per repo; morning `resume-project` surfaces REVIEW-<date>.md with the fix plan.
@@ -60,6 +62,7 @@ PROGRESS.md  ←  Now/Next updated
 | `lane-session status --run-dir …` | inspect run-owned AGY/Grok session IDs and rotations |
 | `run-board <repo>` | refresh BOARD.md |
 | `lane-stall-check <repo>` | find zombies |
+| `lane-poll --run-dir <run>` | multi-task progressive: which lanes are finish_ready |
 | `check-owns-paths <task.yaml>` | after write lane |
 | `wt-merge-main <repo> <slug>` | ship to main (PM only) |
 | `night-audit <repo>` | overnight audit file |

@@ -114,9 +114,12 @@ high_risk_paths: false       # true → dual review (codex required even if risk
 1. Create run dir + PLAN + tasks with **disjoint** `owns_paths`.  
 2. If score ≥ 4 **or** ≥2 write tasks → `wt-create` worktree; all tasks share that `project_cwd`.  
 3. If single low-risk task → may use main working tree (still PM commits).  
-4. Dispatch ≤3 parallel write lanes only when owns_paths disjoint; `lane-session` leases a separate warm slot to each concurrent AGY/Grok task.
+4. Dispatch ≤3 **concurrent** write slots when owns_paths disjoint; pipeline more
+   tasks with progressive accept (`MODE=start` / `lane-poll` / `MODE=finish`).
+   `lane-session` leases a separate warm slot to each concurrent AGY/Grok task.
 5. Lanes heartbeat via `lane-heartbeat`; PM may run `lane-stall-check`.  
-6. Accept strong `report.md` + `check-owns-paths` clean + `done_when` evidence.  
+6. Accept each task **as soon as** it has strong `report.md` + `check-owns-paths`
+   clean + `done_when` evidence — do not batch-wait for the slowest concurrent task.  
 7. `risk: high` or `high_risk_paths` or ship → Codex `review.md` must pass.  
 8. When **all** tasks done → PM **auto-merges to main** (`wt-merge-main` or commit on main) → write `MERGE.md` → update `BOARD.md` + `PROGRESS.md`.  
 9. Human is never asked to merge.

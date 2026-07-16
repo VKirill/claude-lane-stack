@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 — 2026-07-16
+
+Progressive accept: no more join-wait on multi-task waves.
+
+### Added
+- **`lane-poll`**: multi-artifact poll for a run (`finish_ready` = CLI done, no report yet). PM uses it to accept tasks as they complete.
+- **Implementer MODE** (`start` | `finish` | `full`) on agy/grok/codex implementers: multi-task fire-and-return start, then finish for report; `full` remains for micro/single-task.
+
+### Changed
+- **Progressive accept is mandatory for ≥2 write tasks**: never wait for the slowest concurrent lane before accepting finished ones; free slots and pipeline the next ready task (still ≤3 concurrent). See `skills/orchestrator-lanes/SKILL.md`, `agents/claude/dev-orchestrator.md`, `docs/LANE-EXEC.md`, `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `docs/FILE-CONTRACT.md`.
+
 ## 1.2.0 — 2026-07-13
 
 Nightly-only review, micro path, Lane Board dashboard, warm sessions.

@@ -52,6 +52,9 @@ Instructions: `~/.agents/codex/instructions/writer-emergency.md` (writer).
 
 **Do not** block foreground Bash on full `codex exec`. Use `lane-bg` + poll `lane-wait --once`.
 
+`MODE: start | finish | full` (default `full`). Multi-task → `start` then `finish`
+for progressive accept. `MODE=start` must **not** poll.
+
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
@@ -61,18 +64,28 @@ OUT_MSG="$ARTIFACT_DIR/codex-last-message.txt"
 # write SPEC = instructions + TASK_FILE contents + paths
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
+MODE="${MODE:-full}"
 
-lane-bg --dir "$ARTIFACT_DIR" --label "codex-${CODEX_MODEL}" -- \
-  lane-exec --idle 900 --max 7200 --label "codex-${CODEX_MODEL}" \
-    ${HB:+--heartbeat "$HB"} \
-    --log "$ARTIFACT_DIR/lane-exec.log" \
-    -- bash -c 'codex exec --model "$0" -c model_reasoning_effort="$1" \
-        --sandbox workspace-write --skip-git-repo-check --full-auto \
-        --cd "$2" --output-last-message "$3" - < "$4" > "$5" 2>&1; \
-        echo CODEX_EXIT=$? CODEX_MODEL=$0 >> "$5"' \
-      "$CODEX_MODEL" "$CODEX_REASONING" "$PROJECT_CWD" "$OUT_MSG" "$SPEC" "$FINAL"
+if [[ "$MODE" != "finish" ]]; then
+  lane-bg --dir "$ARTIFACT_DIR" --label "codex-${CODEX_MODEL}" -- \
+    lane-exec --idle 900 --max 7200 --label "codex-${CODEX_MODEL}" \
+      ${HB:+--heartbeat "$HB"} \
+      --log "$ARTIFACT_DIR/lane-exec.log" \
+      -- bash -c 'codex exec --model "$0" -c model_reasoning_effort="$1" \
+          --sandbox workspace-write --skip-git-repo-check --full-auto \
+          --cd "$2" --output-last-message "$3" - < "$4" > "$5" 2>&1; \
+          echo CODEX_EXIT=$? CODEX_MODEL=$0 >> "$5"' \
+        "$CODEX_MODEL" "$CODEX_REASONING" "$PROJECT_CWD" "$OUT_MSG" "$SPEC" "$FINAL"
+fi
 
-# Poll: lane-wait --dir "$ARTIFACT_DIR" --once  (repeat until status=done)
+if [[ "$MODE" == "start" ]]; then
+  printf 'started_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$ARTIFACT_DIR/started.marker"
+  echo "STATUS: started"
+  exit 0
+fi
+
+# MODE=full: poll lane-wait --once until done, then Post.
+# MODE=finish: CLI already done → Post only.
 ```
 
 | Level | Default | Meaning |

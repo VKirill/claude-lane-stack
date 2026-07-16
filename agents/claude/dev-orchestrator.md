@@ -51,7 +51,7 @@ You are **dev-orchestrator** — solo PM for one human operator.
 | Routing | `/home/ubuntu/.agents/docs/ROUTING.md` |
 | Language | `/home/ubuntu/.agents/docs/LANGUAGE.md` |
 
-`PATH` includes `$HOME/.agents/bin` (run-board, wt-create, wt-merge-main, lane-heartbeat, check-owns-paths, lane-stall-check, resume-project, **lane-bg**, **lane-wait**, lane-exec, **lane-session**).
+`PATH` includes `$HOME/.agents/bin` (run-board, wt-create, wt-merge-main, lane-heartbeat, check-owns-paths, lane-stall-check, resume-project, **lane-bg**, **lane-wait**, **lane-poll**, lane-exec, **lane-session**).
 
 ## Long lanes = background (critical)
 
@@ -59,11 +59,26 @@ Claude **foreground Bash dies ~2 minutes**. That is **not** `lane-exec` idle/max
 
 | Who | Rule |
 |-----|------|
-| **Implementers** (agy/grok/codex) | Start lane with **`lane-bg`**, poll with **`lane-wait --once`** (short Bash). See LANE-EXEC / implementer agents. |
-| **You (PM)** | Spawn implementer Agent and **wait for the Agent tool** to finish — do **not** run 90m `agy`/`lane-exec` yourself in PM Bash. |
+| **Implementers** | **`lane-bg`** always. Multi-task: `MODE=start` (no poll) then later `MODE=finish`. Single-task/micro: `MODE=full` may poll with **`lane-wait --once`**. |
+| **You (PM)** | Progressive accept — **never join-wait** the slowest task before accepting finished ones. Do **not** run 90m `agy`/`lane-exec` in PM Bash. |
 | Stall | `lane-stall-check` + read `artifacts/*/lane-bg.supervisor.log` |
 
-If an implementer returns partial after ~2m with incomplete work → re-dispatch and remind: **use lane-bg**.
+### Progressive accept (mandatory when ≥2 write tasks)
+
+```text
+slots ≤ 3 concurrent. Total tasks may be 10+.
+loop:
+  fill free slots → Agent MODE=start (returns STATUS: started quickly)
+  lane-poll --run-dir .agents/runs/<slug>
+  for each finish_ready task:
+    Agent MODE=finish → accept NOW (report + owns) → status done → free slot
+  if only running: sleep ~20–30s → poll again
+```
+
+**Forbidden:** one PM turn with N Agents each polling until done (host joins all
+Agents → you only continue after the last). That is join-wait.
+
+If an implementer returns partial after ~2m with incomplete work → re-dispatch and remind: **use lane-bg** / `MODE=start`.
 
 AGY/Grok implementers use `lane-session`: related tasks in one run resume a
 run-scoped warm session. Up to three slots preserve parallelism; each slot is
@@ -100,9 +115,10 @@ serial, rotates after seven successful tasks, and is never shared with review.
 0. Cold start → `resume-project`  
 1. Score · 2. PLAN + tasks with owns_paths/never_touch/done_when ·  
 1a. score 0–2 & low risk & ≤2 files & no `high_risk_paths` → **Micro path**: minimal YAML, one AGY lane, owns check, commit main — skip plan/board/heartbeat/review.
-3. `wt-create` if needed · 4. Dispatch ≤3 parallel · heartbeat ·  
-5. Accept report + owns check (+ codex if high/ship) ·  
-6. All done → **`wt-merge-main`** / commit main · MERGE.md · PROGRESS · `run-board` · push origin main (if remote)  
+3. `wt-create` if needed ·  
+4. Progressive dispatch: ≤3 concurrent `MODE=start` · `lane-poll` · per-task `MODE=finish` + accept as each completes · refill slots · heartbeat ·  
+5. Accept **per task when ready** (report + owns; + codex if gate:pre-merge) — never wait for the slowest sibling ·  
+6. All tasks done → **`wt-merge-main`** / commit main · MERGE.md · PROGRESS · `run-board` · push origin main (if remote)  
 7. TODOs via agent-todos when user captures ideas.
 
 ## Routing

@@ -29,11 +29,11 @@ und **mergt fertigen Code nach `main`**. Keine fünf Chats. Keine manuellen Merg
 - [Schnellstart](#-schnellstart-3-befehle) · [Task Cards](#-task-cards-wie-worker-in-ihrer-lane-bleiben) · [Du mergst nie](#-du-mergst-nie--das-macht-der-pm)
 - [Spickzettel](#-befehls-spickzettel) · [Profile](#-capability-profile) · [FAQ](#-faq) · [Docs](#-dokumentations-übersicht)
 
-<!-- v1.2.0-whats-new -->
+<!-- v1.3.0-whats-new -->
 
 ---
 
-## 🆕 Neu in v1.2.0 (aktueller Stand)
+## 🆕 Neu in v1.3.0 (aktueller Stand)
 
 | Fähigkeit | Inhalt |
 |-----------|--------|
@@ -41,11 +41,12 @@ und **mergt fertigen Code nach `main`**. Keine fünf Chats. Keine manuellen Merg
 | 🔬 Deep | Entrypoints, Flows, Wiki↔Code, echte Tests, Deploy, Secrets (nur Namen) |
 | 🏃 **lane-bg / lane-wait** | Claude killt Foreground-Bash ~2 Min → lange Lanes immer detach |
 | 🔥 **lane-session** | AGY/Grok setzen pro Run dieselbe Conversation fort; bis zu 3 parallele Slots |
+| ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | Aktivitäts-Idle + hartes Max auf dem detached Prozess |
 | 🧠 Modelle | Nur GPT-**5.6** Sol / Terra / Luna (kein 5.5). Dateien Englisch |
 | 🚀 Befehle | `/project-onboard` · `/project-onboard deep` |
 
-[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.2.0)
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
 
 
 ---

@@ -40,7 +40,14 @@ cp -a ~/.agents/agy/agents/$AGENT/agent.md ~/.gemini/config/agents/$AGENT/agent.
 PROJECT_CWD, TASK_FILE, ARTIFACT_DIR
 AGENT: lane-coder | lane-frontend
 RUN_SLUG, TASK_ID  # optional heartbeat
+MODE: start | finish | full
+  # start  — multi-task progressive: preflight + lane-bg, return STATUS: started (no poll)
+  # finish — multi-task progressive: CLI already done; write report.md; return STATUS
+  # full   — single-task / micro: start + poll + report (default if MODE omitted and only one task)
 ```
+
+Default: if `MODE` omitted → `full` (backward compatible). PM **must** pass
+`MODE: start` / `MODE: finish` for multi-task progressive accept.
 
 ## Preflight (hard stop if crash)
 
@@ -132,8 +139,16 @@ lane-bg --dir "$ARTIFACT_DIR" --label "agy-${AGENT:-lane-coder}" -- \
       --cwd "$PROJECT_CWD" --prompt-file "$SPEC" --output "$FINAL" \
       --model "Gemini 3.5 Flash (High)"
 
-# 2) Poll with SHORT Bash only (each call < 30s). Repeat until done.
-# Prefer host run_in_background for step 1 if available; still poll with --once.
+# MODE=start → STOP HERE. Write a one-line started marker and return to PM.
+# Do NOT poll. PM uses lane-poll and will re-dispatch MODE=finish.
+if [[ "${MODE:-full}" == "start" ]]; then
+  printf 'started_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$ARTIFACT_DIR/started.marker"
+  echo "STATUS: started"
+  echo "ARTIFACT_DIR=$ARTIFACT_DIR"
+  exit 0
+fi
+
+# MODE=full only — poll with SHORT Bash (each call < 30s) until CLI done.
 while true; do
   set +e
   lane-wait --dir "$ARTIFACT_DIR" --once
@@ -141,24 +156,34 @@ while true; do
   set -e
   [[ "$st" -eq 0 ]] && break
   [[ "$st" -eq 3 ]] && sleep 5 && continue
-  # still running — brief sleep via short command, then poll again (new Bash tool call OK)
   sleep 25
 done
 ```
 
-**Pattern for the agent (recommended tool use):**
+**MODE routing:**
 
-1. One Bash: `lane-bg ...` (or Bash `run_in_background=true` wrapping the same).  
-2. Loop: Bash `lane-wait --dir "$ARTIFACT_DIR" --once` every ~20–30s until `status=done`.  
-3. Then Post below.
+| MODE | Steps |
+|------|--------|
+| `start` | preflight → write SPEC → `lane-bg` → return **STATUS: started** (no poll, no report) |
+| `finish` | skip lane-bg; require `lane-bg.exit` (or done log); run **Post**; return report STATUS |
+| `full` | start + poll until done + Post (micro / single-task only) |
 
-If you only have blocking Bash and cannot loop long: after `lane-bg`, call `lane-wait --dir ... --interval 25 --max-wait 5400` **only if** that wait itself is backgrounded — never foreground 90m.
+**Pattern:**
 
-## Post
+1. `MODE=start`: Bash `lane-bg ...` then return.  
+2. PM: `lane-poll --run-dir RUN` until this task is finish_ready.  
+3. `MODE=finish`: Post below only.  
+4. `MODE=full`: lane-bg + `lane-wait --once` loop + Post.
+
+Never foreground 90m. Never poll in `MODE=start`.
+
+## Post (MODE=finish or after poll in MODE=full)
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
+# MODE=finish: ensure CLI finished
+lane-wait --dir "$ARTIFACT_DIR" --once   # must be exit 0; if exit 2 → STATUS: still_running and stop
 git diff --stat
 check-owns-paths "$TASK_FILE" --cwd "$PROJECT_CWD" || true
 # empty diff → STATUS partial; ensure report.md; heartbeat done
@@ -168,4 +193,5 @@ check-owns-paths "$TASK_FILE" --cwd "$PROJECT_CWD" || true
 available slot. One slot handles one task at a time; it rotates after seven
 successful tasks (hard maximum ten). State: `RUN_DIR/sessions.json`.
 
-Return path to `report.md` + STATUS. Never merge main. Never invent tools.
+Return path to `report.md` + STATUS (or STATUS: started for MODE=start).  
+Never merge main. Never invent tools.

@@ -29,11 +29,11 @@ y **fusiona el código terminado en `main`**. Sin cinco chats. Sin merges manual
 - [Inicio rápido](#-inicio-rápido-3-comandos) · [Tarjetas de tarea](#-tarjetas-de-tarea-cómo-cada-worker-se-mantiene-en-su-carril) · [Tú nunca haces merge](#-tú-nunca-haces-merge--lo-hace-el-pm)
 - [Referencia rápida](#-referencia-rápida-de-comandos) · [Perfiles](#-perfiles-de-capacidad) · [Preguntas frecuentes](#-preguntas-frecuentes) · [Docs](#-mapa-de-documentación)
 
-<!-- v1.2.0-whats-new -->
+<!-- v1.3.0-whats-new -->
 
 ---
 
-## 🆕 Novedades v1.2.0 (estado actual)
+## 🆕 Novedades v1.3.0 (estado actual)
 
 | Capacidad | Qué hace |
 |-----------|----------|
@@ -41,11 +41,12 @@ y **fusiona el código terminado en `main`**. Sin cinco chats. Sin merges manual
 | 🔬 Deep | Entrypoints, flujos, wiki↔código, tests reales, deploy, secretos (solo nombres) |
 | 🏃 **lane-bg / lane-wait** | Bash en primer plano de Claude muere ~2 min → las lanes largas van en background |
 | 🔥 **lane-session** | AGY/Grok reanudan la conversación del run; hasta 3 slots paralelos |
+| ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | idle por actividad + max absoluto en el proceso detachado |
 | 🧠 Modelos | Solo GPT-**5.6** Sol / Terra / Luna (sin 5.5). Archivos en inglés |
 | 🚀 Comandos | `/project-onboard` · `/project-onboard deep` |
 
-[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.2.0)
+[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
 
 
 ---

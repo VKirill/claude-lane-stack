@@ -66,20 +66,58 @@ wt-create /abs/repo <slug>
 # → prints WORKTREE_PATH=... BRANCH=agent/<slug>
 ```
 
-## Phase 3 — Dispatch (≤3 parallel)
+## Phase 3 — Dispatch (≤3 concurrent slots, progressive)
 
-One message, ≤3 Agents, **disjoint owns_paths**. High-risk solo.
+**Max 3 concurrent write lanes** (slot cap). Total tasks in a run may be 2–10+ —
+**pipeline** them: free a slot as soon as a task finishes, start the next ready
+task. High-risk write = solo (1 slot). Parallel only with **disjoint owns_paths**.
+
+### Anti-pattern (forbidden join-wait)
+
+**Do not** spawn N implementers that each poll-until-done in one PM turn when
+N>1. Claude Agent tool **joins all Agents in a turn** — you would only continue
+after the **slowest** task, and could not accept earlier finishers.
+
+```text
+# BAD (join-wait): 3 Agents, each MODE=full / poll loop → PM blocked until last
+Agent(agy) + Agent(grok) + Agent(agy)   # waits for max(t1,t2,t3)
+```
+
+### Progressive protocol (required when ≥2 write tasks)
+
+| MODE | Who | What |
+|------|-----|------|
+| `start` | implementer | preflight + `lane-bg` + return **STATUS: started** (do **not** poll) |
+| `finish` | implementer | after CLI done: write `report.md`, owns/verify notes, return complete/partial |
+| `full` | implementer | start+poll+report in one Agent — **only** micro / single-task express |
+
+PM loop (repeat until all tasks `done` or blocked):
+
+```text
+1) Fill free slots (running < 3, ready DAG tasks, disjoint owns):
+   Agent MODE=start  → mark task status: running
+2) Short Bash (safe):
+   lane-poll --run-dir .agents/runs/<slug>
+   # exit 0 + finish_ready>0 → some CLI finished without report yet
+   # exit 2 → still running, nothing finish-ready
+3) For EACH finish_ready task (independently — do not wait for others):
+   Agent MODE=finish → accept (Phase 4) immediately → status: done
+   free slot → may start next ready task in same turn or next poll cycle
+4) If only running: sleep ~20–30s (short Bash) → lane-poll again
+5) Periodically: lane-stall-check ; run-board
+```
 
 ```text
 You are grok-implementer.
+MODE: start          # or finish | full
 PROJECT_CWD: <worktree or repo>
 TASK_FILE: .../tasks/001-….yaml
 ARTIFACT_DIR: .../artifacts/001
+RUN_DIR: .../runs/<slug>
 Load karpathy-guidelines. Read TASK_FILE. Own only owns_paths. Never merge to main.
-MUST: start the CLI via lane-bg (never long foreground Bash — host kills ~2m).
-Poll with lane-wait --dir ARTIFACT_DIR --once until done.
-Heartbeat: lane-heartbeat --repo PROJECT_CWD --run <slug> --task 001 --status running
-Write report.md to ARTIFACT_DIR.
+MODE=start → lane-bg only, return STATUS: started (no poll loop).
+MODE=finish → CLI must already be done; write report.md; return STATUS.
+Heartbeat: lane-heartbeat --repo PROJECT_CWD --run <slug> --task 001 --status running|done
 ```
 
 | `lane` | Agent |
@@ -93,18 +131,25 @@ Write report.md to ARTIFACT_DIR.
 ### Background rule (prevents 2-minute kills)
 
 ```bash
-# implementer starts (returns immediately):
+# MODE=start — implementer (returns immediately after detach):
 lane-bg --dir "$ARTIFACT_DIR" --label grok -- lane-exec ... -- grok ...
 
-# implementer or PM checks (short Bash, safe):
-lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = running, 0 = done
+# PM progressive poll (short Bash, multi-task):
+lane-poll --run-dir "$RUN_DIR"          # finish_ready tasks → MODE=finish + accept now
+lane-wait --dir "$ARTIFACT_DIR" --once  # single-dir; exit 2 = running, 0 = done
 ```
 
-Docs: `~/.agents/docs/LANE-EXEC.md`. Bins: `lane-bg`, `lane-wait`, `lane-exec`.
+Docs: `~/.agents/docs/LANE-EXEC.md`. Bins: `lane-bg`, `lane-wait`, **`lane-poll`**, `lane-exec`.
 
-After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `run-board`.
+After each start: task `status: running`, `STATUS.md`, `lane-heartbeat`, `run-board`.
+After each accept: task `status: done`, free slot, unlock `depends_on` dependents.
 
-## Phase 4 — Accept (Delegated Trust + ownership)
+## Phase 4 — Accept (per-task, as soon as ready)
+
+**Progressive accept is mandatory for multi-task runs.** When task A finishes
+while B and C still run: accept A **now**, mark done, free its slot, start the
+next ready task if any. **Never** defer accept until the last concurrent task
+completes.
 
 1. `report.md` STATUS complete + real VERIFIED / done_when evidence.  
 2. `check-owns-paths "$TASK_FILE"` exit 0.  
@@ -112,7 +157,9 @@ After dispatch: update task `status: running`, `STATUS.md`, `lane-heartbeat`, `r
 4. Weak/empty/partial → other write lane or fix prompt.  
 5. Gate (opt-in): pre-merge review is off by default; see the gate note below.
 
-Acceptance for **all** tiers is report + `check-owns-paths` + verify, then merge.
+Acceptance for **all** tiers is report + `check-owns-paths` + verify.
+Merge to main only when **all** tasks in the run are `done` (Phase 6) — but
+individual tasks become `done` as they finish, not as a batch.
 
 | Tier    | Trigger                            | Review |
 |---------|-------------------------------------|--------|
@@ -125,10 +172,11 @@ PROGRESS.md Pointers (or set `gate: pre-merge` in a task YAML) — then
 codex-reviewer (sol high; xhigh for auth/pay/schema/migrations/security)
 must pass BEFORE merge for high-risk work in that project.
 
-Batch reviews: collect finished lanes, review in one dedicated pass — do not approve streaming output.
+Nightly/batch **reviews** may still group finished work later. That is not
+join-wait on write accept — write accept stays per-task progressive.
 
-Micro path: acceptance is report + `check-owns-paths` only (no reviewer);
-verify per the task `verify` field (none|smoke|tests).
+Micro path: single task `MODE=full` OK; acceptance is report + `check-owns-paths`
+only (no reviewer); verify per the task `verify` field (none|smoke|tests).
 
 Mark `status: done` only if 1–4 (and 5 if `gate: pre-merge` applies for this run).
 
@@ -196,6 +244,7 @@ Ideas → **agent-todos**. Active build → this skill. Promote todo → run whe
 3. Parallel = disjoint owns_paths only.  
 4. Merge to main = **you** when run green.  
 5. Workers never `git push` / merge main.  
-6. Max 3 parallel write lanes.  
+6. Max 3 **concurrent** write slots; pipeline more tasks via progressive accept.  
 7. Done = report + owns check + done_when (+ codex if required).  
-8. **English only** for all run/todo/docs files; chat with human may be Russian (`LANGUAGE.md`).
+8. **English only** for all run/todo/docs files; chat with human may be Russian (`LANGUAGE.md`).  
+9. **Progressive accept** when ≥2 writes: MODE=start / lane-poll / MODE=finish per task — never join-wait the slowest before accepting finished ones.

@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# Progressive multi-lane poll for a run (or explicit artifact dirs).
+# Short invocation — safe under Claude Bash (~2m FG kill).
+#
+# Usage:
+#   lane-poll --run-dir .agents/runs/<slug> [--once]
+#   lane-poll --dirs artifacts/001,artifacts/002 [--once]
+#   lane-poll --run-dir ... --json
+#
+# Prints one line per task artifact:
+#   TASK_ID status=running|done|unknown|pending report=yes|no exit=N pid=N dir=PATH
+#
+# Exit codes:
+#   0  at least one lane is done (CLI finished) and still needs finish/accept
+#      (done + no report), OR --summary-only and nothing running
+#   2  all started lanes still running (or mix running + already accepted)
+#   3  nothing started yet / no artifact dirs found
+#   1  usage error
+set -euo pipefail
+
+RUN_DIR=""
+DIRS_CSV=""
+ONCE=1
+JSON=0
+SUMMARY_ONLY=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --run-dir) RUN_DIR="$2"; shift 2 ;;
+    --dirs) DIRS_CSV="$2"; shift 2 ;;
+    --once) ONCE=1; shift ;;
+    --json) JSON=1; shift ;;
+    --summary-only) SUMMARY_ONLY=1; shift ;;
+    -h|--help)
+      cat <<'EOF'
+Usage:
+  lane-poll --run-dir RUN_DIR [--json]
+  lane-poll --dirs DIR1,DIR2[,...] [--json]
+
+Poll all lane-bg artifact dirs. Prefer --run-dir for progressive accept.
+
+Exit: 0 = ≥1 done needing finish (done, no report.md)
+      2 = work still running (no finish-ready)
+      3 = nothing started
+      1 = bad args
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+collect_dirs() {
+  local d
+  if [[ -n "$DIRS_CSV" ]]; then
+    IFS=',' read -r -a parts <<< "$DIRS_CSV"
+    for d in "${parts[@]}"; do
+      d="${d// /}"
+      [[ -n "$d" ]] && printf '%s\n' "$d"
+    done
+    return
+  fi
+  if [[ -n "$RUN_DIR" ]]; then
+    local art="$RUN_DIR/artifacts"
+    if [[ ! -d "$art" ]]; then
+      return
+    fi
+    # Prefer numeric / id-like dirs; skip hidden
+    find "$art" -mindepth 1 -maxdepth 1 -type d ! -name '.*' | sort
+    return
+  fi
+  echo "need --run-dir or --dirs" >&2
+  exit 1
+}
+
+mapfile -t DIRS < <(collect_dirs || true)
+
+if [[ ${#DIRS[@]} -eq 0 ]]; then
+  echo "LANE_POLL count=0 started=0 running=0 done=0 finish_ready=0"
+  exit 3
+fi
+
+started=0
+running=0
+done_n=0
+finish_ready=0
+unknown=0
+lines=()
+
+for DIR in "${DIRS[@]}"; do
+  [[ -d "$DIR" ]] || continue
+  tid="$(basename "$DIR")"
+  pid_file="$DIR/lane-bg.pid"
+  exit_file="$DIR/lane-bg.exit"
+  sup_log="$DIR/lane-bg.supervisor.log"
+  report="$DIR/report.md"
+  report_flag=no
+  [[ -f "$report" ]] && report_flag=yes
+
+  status="pending"
+  ec=""
+  pid=""
+  [[ -f "$pid_file" ]] && pid="$(cat "$pid_file" 2>/dev/null || true)"
+
+  if [[ -f "$exit_file" ]]; then
+    status="done"
+    ec="$(cat "$exit_file" 2>/dev/null || echo '?')"
+    started=$((started + 1))
+    done_n=$((done_n + 1))
+    if [[ "$report_flag" == "no" ]]; then
+      finish_ready=$((finish_ready + 1))
+    fi
+  elif [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+    status="running"
+    started=$((started + 1))
+    running=$((running + 1))
+  elif [[ -f "$sup_log" ]] && grep -q '\[lane-bg\] exit=' "$sup_log" 2>/dev/null; then
+    status="done"
+    started=$((started + 1))
+    done_n=$((done_n + 1))
+    if [[ "$report_flag" == "no" ]]; then
+      finish_ready=$((finish_ready + 1))
+    fi
+  elif [[ -f "$pid_file" ]] || [[ -f "$sup_log" ]]; then
+    status="unknown"
+    started=$((started + 1))
+    unknown=$((unknown + 1))
+  else
+    status="pending"
+  fi
+
+  line="task=$tid status=$status report=$report_flag exit=${ec:-} pid=${pid:-} dir=$DIR"
+  lines+=("$line")
+done
+
+if [[ "$JSON" -eq 1 ]]; then
+  # Minimal JSON without jq dependency
+  echo -n '{"started":'"$started"',"running":'"$running"',"done":'"$done_n"',"finish_ready":'"$finish_ready"',"unknown":'"$unknown"',"tasks":['
+  first=1
+  for line in "${lines[@]}"; do
+    tid=""; st=""; rep=""; ec=""; pid=""; dir=""
+    for kv in $line; do
+      case "$kv" in
+        task=*) tid="${kv#task=}" ;;
+        status=*) st="${kv#status=}" ;;
+        report=*) rep="${kv#report=}" ;;
+        exit=*) ec="${kv#exit=}" ;;
+        pid=*) pid="${kv#pid=}" ;;
+        dir=*) dir="${kv#dir=}" ;;
+      esac
+    done
+    [[ $first -eq 1 ]] || echo -n ','
+    first=0
+    printf '{"id":"%s","status":"%s","report":"%s","exit":"%s","pid":"%s","dir":"%s"}' \
+      "$tid" "$st" "$rep" "$ec" "$pid" "$dir"
+  done
+  echo ']}'
+else
+  echo "LANE_POLL count=${#lines[@]} started=$started running=$running done=$done_n finish_ready=$finish_ready unknown=$unknown"
+  for line in "${lines[@]}"; do
+    echo "$line"
+  done
+  if [[ "$finish_ready" -gt 0 ]]; then
+    echo "HINT: finish_ready=$finish_ready — dispatch MODE=finish for those tasks, accept immediately, free slots"
+  elif [[ "$running" -gt 0 ]]; then
+    echo "HINT: still running — short sleep then poll again; do NOT wait for slowest before accepting finished ones"
+  fi
+fi
+
+if [[ "$SUMMARY_ONLY" -eq 1 ]]; then
+  [[ "$running" -eq 0 && "$finish_ready" -eq 0 ]] && exit 0
+  [[ "$finish_ready" -gt 0 ]] && exit 0
+  [[ "$running" -gt 0 ]] && exit 2
+  exit 3
+fi
+
+if [[ "$finish_ready" -gt 0 ]]; then
+  exit 0
+fi
+if [[ "$running" -gt 0 || "$unknown" -gt 0 ]]; then
+  exit 2
+fi
+if [[ "$started" -eq 0 ]]; then
+  exit 3
+fi
+# all done and already have reports — nothing finish-ready
+exit 0
