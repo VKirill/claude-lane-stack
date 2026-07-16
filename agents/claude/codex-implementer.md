@@ -26,7 +26,8 @@ CODEX_REASONING="${CODEX_REASONING:-xhigh}"
 
 ## Inputs
 
-`PROJECT_CWD`, `TASK_FILE`, `ARTIFACT_DIR`, optional `RUN_SLUG`, `TASK_ID`, `CODEX_MODEL`, `CODEX_REASONING`
+`PROJECT_CWD`, `TASK_FILE`, `ARTIFACT_DIR`, optional `RUN_SLUG`, `TASK_ID`,
+`MODE: start|finish|full`, `CODEX_MODEL`, `CODEX_REASONING`
 
 ## Preflight
 
@@ -34,6 +35,17 @@ CODEX_REASONING="${CODEX_REASONING:-xhigh}"
 export PATH="$HOME/.agents/bin:$PATH"
 test -d "$PROJECT_CWD" && test -f "$TASK_FILE" || exit 1
 mkdir -p "$ARTIFACT_DIR"
+MODE="${MODE:-full}"
+RUN_DIR="${RUN_DIR:-$(dirname "$(dirname "$TASK_FILE")")}"
+SESSION_TASK_ID="${TASK_ID:-$(basename "$TASK_FILE" | sed 's/-.*//; s/\..*//')}"
+if ! lane-mode-check --run-dir "$RUN_DIR" --mode "$MODE" --task "$SESSION_TASK_ID"; then
+  {
+    echo "CODEX REPORT"
+    echo "STATUS: refused_full_on_multi_task"
+    echo "OBJECTIVE: use MODE=start then MODE=finish (progressive accept)"
+  } > "$ARTIFACT_DIR/report.md"
+  exit 0
+fi
 command -v codex && codex --version
 # parse risk from yaml if high → CODEX_MODEL=gpt-5.6-sol
 if grep -qE 'risk:\s*high|high_risk_paths:\s*true' "$TASK_FILE"; then

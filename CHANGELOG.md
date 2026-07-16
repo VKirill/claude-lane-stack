@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1 — 2026-07-16
+
+Hardening progressive accept: anti-join guard + detached heartbeats.
+
+### Added
+- **`lane-mode-check`**: refuses `MODE=full` when a run has ≥2 task cards (exit 2 / `refused_full_on_multi_task`). Implementers call it in preflight. Override: `LANE_ALLOW_FULL=1`.
+- **`lane-exec` auto-heartbeat**: with `--heartbeat path`, writes `heartbeat.json` on real activity (stdout/CPU, throttled) so `lane-stall-check` works after `MODE=start`.
+- **`tests/test_progressive_accept.sh`**: fixtures for mode-check, progressive poll accept-while-sibling-runs, and heartbeat write.
+
+### Changed
+- agy/grok/codex implementers + orchestrator-lanes / dev-orchestrator / LANE-EXEC docs document the hard guard and detached heartbeat.
+
 ## 1.3.0 — 2026-07-16
 
 Progressive accept: no more join-wait on multi-task waves.

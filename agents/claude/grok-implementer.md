@@ -28,6 +28,17 @@ export PATH="$HOME/.agents/bin:$PATH"
 test -d "$PROJECT_CWD" && test -f "$TASK_FILE" || exit 1
 mkdir -p "$ARTIFACT_DIR"
 cd "$PROJECT_CWD"
+MODE="${MODE:-full}"
+RUN_DIR="${RUN_DIR:-$(dirname "$(dirname "$TASK_FILE")")}"
+SESSION_TASK_ID="${TASK_ID:-$(basename "$TASK_FILE" | sed 's/-.*//; s/\..*//')}"
+if ! lane-mode-check --run-dir "$RUN_DIR" --mode "$MODE" --task "$SESSION_TASK_ID"; then
+  {
+    echo "GROK REPORT"
+    echo "STATUS: refused_full_on_multi_task"
+    echo "OBJECTIVE: use MODE=start then MODE=finish (progressive accept)"
+  } > "$ARTIFACT_DIR/report.md"
+  exit 0
+fi
 command -v grok && grok --version
 if [[ -n "${RUN_SLUG:-}" ]]; then
   lane-heartbeat --repo "$PROJECT_CWD" --run "$RUN_SLUG" --task "${TASK_ID:-001}" --status running --note "grok start" || true

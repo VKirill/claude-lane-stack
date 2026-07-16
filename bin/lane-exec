@@ -19,11 +19,13 @@ Examples
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -44,7 +46,15 @@ def main() -> int:
     ap.add_argument(
         "--heartbeat",
         default="",
-        help="optional file path; mtime updates count as activity",
+        help="optional heartbeat.json path; mtime counts as activity; "
+        "lane-exec also WRITES this file on real activity (stdout/CPU) "
+        "so stall-check works after MODE=start (Claude supervisor gone)",
+    )
+    ap.add_argument(
+        "--heartbeat-interval",
+        type=int,
+        default=30,
+        help="min seconds between auto-written heartbeats (default 30)",
     )
     ap.add_argument(
         "--log",
@@ -109,10 +119,49 @@ def main() -> int:
     start = time.monotonic()
     last_activity = start
     last_hb_mtime = hb_path.stat().st_mtime if hb_path and hb_path.exists() else 0.0
+    last_hb_write = 0.0
+    hb_interval = max(5, int(args.heartbeat_interval))
     grace_logged = False
     buf = b""
+    # Track externally-written heartbeats so our own writes don't count as
+    # "foreign activity" for idle reset (we already reset on real activity).
+    self_hb_write = False
 
     log_line(f"start pid={proc.pid} idle={idle_s}s max={max_s}s cmd={' '.join(cmd[:6])}...")
+
+    def write_heartbeat(note: str = "lane-exec activity") -> None:
+        """Persist liveness for stall-check after MODE=start (no Claude poller).
+
+        Only call when real activity just happened — never on a fixed timer alone,
+        or idle detection would never fire.
+        """
+        nonlocal last_hb_mtime, last_hb_write, self_hb_write
+        if not hb_path:
+            return
+        now_m = time.monotonic()
+        if last_hb_write and (now_m - last_hb_write) < hb_interval:
+            return
+        try:
+            hb_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "status": "running",
+                "note": note,
+                "label": args.label,
+                "pid": proc.pid,
+                "source": "lane-exec",
+            }
+            self_hb_write = True
+            hb_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            last_hb_write = now_m
+            try:
+                last_hb_mtime = hb_path.stat().st_mtime
+            except OSError:
+                pass
+            finally:
+                self_hb_write = False
+        except OSError as e:
+            log_line(f"heartbeat write failed: {e}")
 
     def kill_tree(sig: int = signal.SIGTERM) -> None:
         try:
@@ -122,6 +171,9 @@ def main() -> int:
                 proc.send_signal(sig)
             except ProcessLookupError:
                 pass
+
+    # Initial pulse so stall-check sees the lane immediately after detach
+    write_heartbeat("lane-exec start")
 
     rc = None
     try:
@@ -144,11 +196,11 @@ def main() -> int:
                 log_line(f"GRACE: {elapsed:.0f}s / max {max_s}s still running")
                 grace_logged = True
 
-            # heartbeat file activity
-            if hb_path and hb_path.exists():
+            # external heartbeat file activity (e.g. lane-heartbeat CLI)
+            if hb_path and hb_path.exists() and not self_hb_write:
                 try:
                     m = hb_path.stat().st_mtime
-                    if m > last_hb_mtime:
+                    if m > last_hb_mtime + 1e-6:
                         last_hb_mtime = m
                         last_activity = now
                 except OSError:
@@ -165,6 +217,7 @@ def main() -> int:
                 if cpu_ticks > main._last_cpu:  # type: ignore
                     main._last_cpu = cpu_ticks  # type: ignore
                     last_activity = now
+                    write_heartbeat("lane-exec cpu")
             except (OSError, IndexError, ValueError):
                 pass
 
@@ -188,6 +241,7 @@ def main() -> int:
                     chunk = b""
                 if chunk:
                     last_activity = time.monotonic()
+                    write_heartbeat("lane-exec stdout")
                     sys.stdout.buffer.write(chunk)
                     sys.stdout.buffer.flush()
                     if log_f:

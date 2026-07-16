@@ -139,10 +139,18 @@ lane-poll --run-dir "$RUN_DIR"          # finish_ready tasks → MODE=finish + a
 lane-wait --dir "$ARTIFACT_DIR" --once  # single-dir; exit 2 = running, 0 = done
 ```
 
-Docs: `~/.agents/docs/LANE-EXEC.md`. Bins: `lane-bg`, `lane-wait`, **`lane-poll`**, `lane-exec`.
+Docs: `~/.agents/docs/LANE-EXEC.md`. Bins: `lane-bg`, `lane-wait`, **`lane-poll`**, **`lane-mode-check`**, `lane-exec`.
+
+**Hard anti-join:** implementers call `lane-mode-check` — multi-task runs **refuse**
+`MODE=full` (exit 2 / STATUS `refused_full_on_multi_task`). PM must re-dispatch
+`MODE=start`. Override only for tests: `LANE_ALLOW_FULL=1`.
 
 After each start: task `status: running`, `STATUS.md`, `lane-heartbeat`, `run-board`.
 After each accept: task `status: done`, free slot, unlock `depends_on` dependents.
+
+**Detached heartbeat:** `lane-exec --heartbeat ARTIFACT/heartbeat.json` auto-writes
+on real activity (stdout/CPU) so `lane-stall-check` stays green after MODE=start
+(Claude supervisor is gone).
 
 ## Phase 4 — Accept (per-task, as soon as ready)
 

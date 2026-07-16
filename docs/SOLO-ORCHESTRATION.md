@@ -63,6 +63,7 @@ PROGRESS.md  ←  Now/Next updated
 | `run-board <repo>` | refresh BOARD.md |
 | `lane-stall-check <repo>` | find zombies |
 | `lane-poll --run-dir <run>` | multi-task progressive: which lanes are finish_ready |
+| `lane-mode-check --run-dir <run> --mode …` | refuse MODE=full on multi-task (anti join-wait) |
 | `check-owns-paths <task.yaml>` | after write lane |
 | `wt-merge-main <repo> <slug>` | ship to main (PM only) |
 | `night-audit <repo>` | overnight audit file |

@@ -49,12 +49,28 @@ MODE: start | finish | full
 Default: if `MODE` omitted → `full` (backward compatible). PM **must** pass
 `MODE: start` / `MODE: finish` for multi-task progressive accept.
 
+**Hard guard:** before run, call `lane-mode-check --run-dir RUN_DIR --mode MODE --task TASK_ID`.
+Exit 2 = multi-task run refused `MODE=full` (join-wait). Return STATUS refused; do not poll.
+
 ## Preflight (hard stop if crash)
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 test -d "$PROJECT_CWD" && test -f "$TASK_FILE" || exit 1
 mkdir -p "$ARTIFACT_DIR"
+MODE="${MODE:-full}"
+RUN_DIR="${RUN_DIR:-$(dirname "$(dirname "$TASK_FILE")")}"
+SESSION_TASK_ID="${TASK_ID:-$(basename "$TASK_FILE" | sed 's/-.*//; s/\..*//')}"
+# Anti join-wait: multi-task runs must not MODE=full
+if ! lane-mode-check --run-dir "$RUN_DIR" --mode "$MODE" --task "$SESSION_TASK_ID"; then
+  {
+    echo "AGY REPORT"
+    echo "STATUS: refused_full_on_multi_task"
+    echo "OBJECTIVE: use MODE=start then MODE=finish (progressive accept)"
+    echo "GAPS: MODE=full forbidden when run has ≥2 task cards"
+  } > "$ARTIFACT_DIR/report.md"
+  exit 0
+fi
 AGENT="${AGENT:-lane-coder}"
 SRC="$HOME/.agents/agy/agents/$AGENT/agent.md"
 DST="$HOME/.gemini/config/agents/$AGENT/agent.md"

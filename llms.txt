@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-> Multi-agent orchestration for Claude Code (v1.3.0): you talk to one AI project manager (`dev-orchestrator`), it dispatches optional worker lanes (AGY / Grok / Codex) through file-based YAML task contracts in `.agents/runs/`, accepts each task as it finishes (progressive accept via `lane-poll` + MODE=start/finish — no join-wait), verifies with an independent review lane (Codex Sol), and auto-merges finished code to git `main` via `wt-merge-main`. Built for solo developers. No required database or cloud service — plain files + plain git. MIT license.
+> Multi-agent orchestration for Claude Code (v1.3.1): you talk to one AI project manager (`dev-orchestrator`), it dispatches optional worker lanes (AGY / Grok / Codex) through file-based YAML task contracts in `.agents/runs/`, accepts each task as it finishes (progressive accept via `lane-poll` + MODE=start/finish — no join-wait), verifies with an independent review lane (Codex Sol), and auto-merges finished code to git `main` via `wt-merge-main`. Built for solo developers. No required database or cloud service — plain files + plain git. MIT license.
 
 Key facts:
 - Only Claude Code is required; workers optional and auto-detected by `agents-doctor` (profiles: full → claude-only).
@@ -11,7 +11,7 @@ Key facts:
 - **Warm AGY/Grok sessions**: `lane-session` resumes run-scoped conversations, leases up to three parallel slots, and rotates after seven successful tasks by default. Review stays independent.
 - **Language**: durable files English; chat with human may be Russian (docs/LANGUAGE.md).
 - **Codex models**: GPT-5.6 Sol (review/deep/high-risk), Terra (scoped write/docs), Luna (trivia only). No 5.5.
-- Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0
+- Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1
 
 ## Docs
 

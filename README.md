@@ -4,14 +4,14 @@
 
 # 🏭 Claude Lane Stack
 
-### A small AI coding factory for one person · **v1.3.0**
+### A small AI coding factory for one person · **v1.3.1**
 
 **Multi-agent orchestration for Claude Code** — you talk to one AI project manager,
 it dispatches optional workers (AGY / Grok / Codex), reviews their output
 and **merges finished code to `main`**. No five chats. No manual merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Start%20here-Beginner%20guide-brightgreen)](docs/BEGINNER.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -116,7 +116,7 @@ flowchart LR
 ```bash
 # 1️⃣  Install the stack — once per computer
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.3.0   # or: main
+cd claude-lane-stack && git checkout v1.3.1   # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"        # or open a new terminal
 
@@ -139,7 +139,7 @@ Then in chat:
 > [!IMPORTANT]
 > `/resume-project` is a *"welcome back"* command — **not** an installation step.
 
-📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.3.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)**
+📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.3.1](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1)**
 
 ---
 
@@ -428,7 +428,7 @@ Each CLI talks only to its own vendor. No extra servers. Don't put secrets in ta
 | 📝 Ideas backlog | [docs/TODOS.md](docs/TODOS.md) |<!-- guardian: allow — link to existing docs/TODOS.md file, not a new TODO marker -->
 | 🔌 MCP (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Release v1.3.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0) |
+| 🚀 Release v1.3.1 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1) |
 | 🤝 Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | 🔐 Security | [SECURITY.md](SECURITY.md) |
 

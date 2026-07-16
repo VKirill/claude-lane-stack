@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Anti join-wait guard: refuse MODE=full on multi-task progressive runs.
+
+Usage:
+  lane-mode-check --run-dir .agents/runs/<slug> --mode start|finish|full [--task 001]
+
+Exit:
+  0  ok (mode allowed for this run)
+  2  refuse — multi-task run must not use MODE=full (join-wait risk)
+  1  bad args / missing run-dir
+
+Override (tests / emergency only): LANE_ALLOW_FULL=1
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+from pathlib import Path
+
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None  # type: ignore
+
+ACTIVE = {"pending", "running", "stalled", "review", "blocked", "partial", "?"}
+DONE = {"done", "cancelled", "skipped", "merged"}
+
+
+def parse_status(text: str) -> str:
+    m = re.search(r"^status:\s*[\"']?([\w-]+)", text, re.M)
+    return (m.group(1) if m else "?").strip().lower()
+
+
+def load_tasks(run_dir: Path) -> list[tuple[str, str, Path]]:
+    tasks_dir = run_dir / "tasks"
+    if not tasks_dir.is_dir():
+        return []
+    out: list[tuple[str, str, Path]] = []
+    for path in sorted(tasks_dir.glob("*.yaml")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        tid = path.stem.split("-")[0]
+        status = parse_status(text)
+        if yaml:
+            try:
+                data = yaml.safe_load(text) or {}
+                if isinstance(data, dict):
+                    tid = str(data.get("id") or tid)
+                    status = str(data.get("status") or status).lower()
+            except Exception:
+                pass
+        out.append((tid, status, path))
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Guard MODE=full on multi-task runs")
+    ap.add_argument("--run-dir", required=True, help="path to .agents/runs/<slug>")
+    ap.add_argument(
+        "--mode",
+        default="full",
+        choices=["start", "finish", "full"],
+        help="implementer MODE (default full)",
+    )
+    ap.add_argument("--task", default="", help="optional task id for messages")
+    args = ap.parse_args()
+
+    run_dir = Path(args.run_dir).resolve()
+    mode = args.mode.lower()
+    task = args.task or "?"
+
+    if not run_dir.is_dir():
+        print(f"LANE_MODE_CHECK error=no_run_dir path={run_dir}", file=sys.stderr)
+        return 1
+
+    if os.environ.get("LANE_ALLOW_FULL", "").strip() in ("1", "true", "yes"):
+        print(f"LANE_MODE_CHECK ok=override mode={mode} task={task} LANE_ALLOW_FULL=1")
+        return 0
+
+    tasks = load_tasks(run_dir)
+    # Count tasks that are not finished — multi-card runs need progressive MODE
+    active = [(tid, st) for tid, st, _ in tasks if st not in DONE]
+    n_all = len(tasks)
+    n_active = len(active)
+
+    # finish/start always allowed
+    if mode in ("start", "finish"):
+        print(
+            f"LANE_MODE_CHECK ok mode={mode} task={task} "
+            f"tasks={n_all} active={n_active}"
+        )
+        return 0
+
+    # MODE=full: only when at most one task card exists in the run
+    # (micro / single-task express). If multiple cards, join-wait risk.
+    if n_all <= 1:
+        print(
+            f"LANE_MODE_CHECK ok mode=full task={task} "
+            f"tasks={n_all} (single-task allowed)"
+        )
+        return 0
+
+    print(
+        f"LANE_MODE_CHECK REFUSE mode=full task={task} tasks={n_all} active={n_active}",
+        file=sys.stderr,
+    )
+    print(
+        "REASON: multi-task run must use MODE=start then MODE=finish "
+        "(progressive accept). MODE=full poll-until-done with parallel Agents "
+        "causes join-wait on the slowest task.",
+        file=sys.stderr,
+    )
+    print(
+        "FIX: re-dispatch with MODE=start (or MODE=finish if CLI already done). "
+        "Emergency override: LANE_ALLOW_FULL=1",
+        file=sys.stderr,
+    )
+    print(f"STATUS: refused_full_on_multi_task")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

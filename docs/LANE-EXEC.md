@@ -98,6 +98,16 @@ total tasks may be larger via pipeline refill.
 turn — the host joins all Agent tool calls, so you only continue after the
 slowest.
 
+**Hard guard:** `lane-mode-check --run-dir RUN --mode full` exits **2** when the
+run has ≥2 task cards. Implementers call it in preflight and refuse with
+`STATUS: refused_full_on_multi_task`. Override (tests only): `LANE_ALLOW_FULL=1`.
+
+**Detached heartbeat:** pass `--heartbeat ARTIFACT_DIR/heartbeat.json` to
+`lane-exec`. On real activity (stdout / CPU) it rewrites the file (throttled)
+so `lane-stall-check` works after `MODE=start` when the Claude supervisor is
+gone. Idle kill still uses *real* activity — heartbeat is not written on a
+timer alone.
+
 ## night-review
 
 `night-review <repo-root>` batches today's merged runs and micro commits into one read-only Codex review.
