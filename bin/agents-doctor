@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Detect Claude + optional write/review CLIs; write routing profile.
 
-PM is always Claude. Auxiliary lanes: AGY, Grok, Codex (optional).
+PM is always Claude. Write programmer is Grok only.
+Review/onboard/docs may use Codex. Claude-only fallback if neither present.
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from pathlib import Path
 
 PROFILES = {
     "full": {
-        "fast_write": "agy",
+        "fast_write": "grok",
         "main_write": "grok",
         "review": "codex",
         "emergency_write": "codex",
@@ -26,35 +27,17 @@ PROFILES = {
         "review": "codex",
         "emergency_write": "codex",
     },
-    "claude-agy": {
-        "fast_write": "agy",
-        "main_write": "agy",
-        "review": "claude-reviewer",
-        "emergency_write": "agy",
-    },
     "claude-grok": {
         "fast_write": "grok",
         "main_write": "grok",
         "review": "claude-reviewer",
         "emergency_write": "grok",
     },
-    "claude-agy-codex": {
-        "fast_write": "agy",
-        "main_write": "agy",
-        "review": "codex",
-        "emergency_write": "codex",
-    },
     "claude-grok-codex": {
         "fast_write": "grok",
         "main_write": "grok",
         "review": "codex",
         "emergency_write": "codex",
-    },
-    "claude-agy-grok": {
-        "fast_write": "agy",
-        "main_write": "grok",
-        "review": "claude-reviewer",
-        "emergency_write": "grok",
     },
     "claude-only": {
         "fast_write": "claude-worker",
@@ -65,7 +48,6 @@ PROFILES = {
 }
 
 AGENT_MAP = {
-    "agy": "agy-implementer",
     "grok": "grok-implementer",
     "codex": "codex-implementer",
     "claude-worker": "general-purpose",
@@ -96,13 +78,6 @@ def detect() -> dict:
         "version": run_version(["claude", "--version"]) if p else None,
         "required": True,
     }
-    p = which("agy") or which("antigravity")
-    tools["agy"] = {
-        "present": bool(p),
-        "path": p,
-        "version": run_version([p, "--version"]) if p else None,
-        "required": False,
-    }
     p = which("grok")
     tools["grok"] = {
         "present": bool(p),
@@ -122,30 +97,22 @@ def detect() -> dict:
 
 def pick_profile(tools: dict) -> tuple[str, dict, list[str]]:
     notes: list[str] = []
-    has = {k: tools[k]["present"] for k in ("claude", "agy", "grok", "codex")}
+    has = {k: tools[k]["present"] for k in ("claude", "grok", "codex")}
     if not has["claude"]:
         notes.append("Claude Code missing — install required for PM")
         return "none", {}, notes
 
-    if has["agy"] and has["grok"] and has["codex"]:
+    if has["grok"] and has["codex"]:
         name = "full"
-    elif has["agy"] and has["grok"]:
-        name = "claude-agy-grok"
-        notes.append("Codex missing → review falls back to Claude reviewer")
-    elif has["agy"] and has["codex"]:
-        name = "claude-agy-codex"
-    elif has["grok"] and has["codex"]:
-        name = "claude-grok-codex"
-    elif has["codex"]:
-        name = "claude-codex"
-        notes.append("Only Codex auxiliary — write + review via Codex")
-    elif has["agy"]:
-        name = "claude-agy"
     elif has["grok"]:
         name = "claude-grok"
+        notes.append("Codex missing → review falls back to Claude reviewer")
+    elif has["codex"]:
+        name = "claude-codex"
+        notes.append("Grok missing — write + review via Codex")
     else:
         name = "claude-only"
-        notes.append("No AGY/Grok/Codex — Claude subagents only")
+        notes.append("No Grok/Codex — Claude subagents only")
 
     return name, dict(PROFILES[name]), notes
 

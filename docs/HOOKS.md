@@ -9,9 +9,9 @@ Deterministic guards that catch agents mid-flight. Shared logic lives in
 |--------|------|------|
 | `guard_shell.py` | PreToolUse (shell) | `--no-verify`, force-push, DROP/TRUNCATE, DELETE without WHERE, reckless `rm -rf` |
 | `guard_code_quality.py` | PostToolUse (edit) | `any`, Prisma `$queryRawUnsafe`, `@ts-ignore`, eval, hardcoded secrets |
-| `lib_payload.py` | — | Normalize stdin JSON for Claude / Codex / Grok / AGY |
+| `lib_payload.py` | — | Normalize stdin JSON for Claude / Codex / Grok |
 
-Set `AGENT_HOOK_CLIENT=claude|codex|grok|agy` so deny payload matches the host.
+Set `AGENT_HOOK_CLIENT=claude|codex|grok` so deny payload matches the host.
 
 Escape hatch for code quality: `// guardian: allow <reason>` on the same line.
 
@@ -58,7 +58,7 @@ Matcher notes: Codex PreToolUse often matches **Bash/shell**; file edits via `ap
 
 **Installed:** `~/.grok/hooks/agent-guards.json`
 
-Deny format: `{"decision":"deny","reason":"..."}` exit 2.  
+Deny format: `{"decision":"deny","reason":"..."}` exit 2. 
 Fail-open on crash/timeout — hooks must return explicit deny.
 
 Matchers map Claude names → Grok (`Bash`→`run_terminal_command`, `Edit`→`search_replace`).
@@ -67,38 +67,15 @@ Check UI: `/hooks` after restart.
 
 ---
 
-## Antigravity (AGY)
-
-| Piece | Path |
-|-------|------|
-| Global | `~/.gemini/antigravity-cli/hooks.json` |
-| Project / plugin | `hooks.json` in customization root / plugin |
-| Docs | antigravity-cli builtin `docs/hooks.md` |
-
-**Installed:**
-
-- `agent-guard-shell` → PreToolUse `run_command`
-- `agent-guard-code` → PostToolUse `replace_file_content|…|write_to_file`
-- Broken `code-guidelines-gate` (missing validate-tool-call.cjs) → **disabled**
-
-Deny format: `{"decision":"deny","reason":"..."}`  
-PostToolUse: `{}` (+ stderr for quality notes).
-
-Tool names: `run_command`, `write_to_file`, `replace_file_content`, `multi_replace_file_content`.
-
-Restart `agy` session after editing hooks.json.
-
----
-
 ## What each CLI can / cannot block
 
-| Capability | Claude | Codex | Grok | AGY |
-|------------|--------|-------|------|-----|
-| Block dangerous shell | ✅ | ✅ | ✅ | ✅ |
-| Block force-push / no-verify | ✅ | ✅ | ✅ | ✅ |
-| Post-edit `any` / Prisma unsafe | ✅ (block feedback) | ✅ | soft (message) | soft (stderr) |
-| PM no production Write | ✅ orchestrator guard | ❌ (not PM host) | ❌ | ❌ (lane writer) |
-| Fail-open on hook crash | yes | yes | yes | yes |
+| Capability | Claude | Codex | Grok |
+|------------|--------|-------|------|
+| Block dangerous shell | ✅ | ✅ | ✅ |
+| Block force-push / no-verify | ✅ | ✅ | ✅ |
+| Post-edit `any` / Prisma unsafe | ✅ (block feedback) | ✅ | soft (message) |
+| PM no production Write | ✅ orchestrator guard | ❌ (not PM host) | ❌ |
+| Fail-open on hook crash | yes | yes | yes |
 
 ---
 
@@ -109,8 +86,7 @@ Restart `agy` session after editing hooks.json.
    - Claude: `settings.json` Pre/PostToolUse
    - Codex: `~/.codex/hooks.json`
    - Grok: `~/.grok/hooks/*.json`
-   - AGY: `~/.gemini/antigravity-cli/hooks.json`
-3. Keep scripts **fast** (<2–5s). Fail-open except explicit deny.
+  3. Keep scripts **fast** (<2–5s). Fail-open except explicit deny.
 4. Document here.
 
 ---
@@ -156,7 +132,6 @@ Community names (X / blogs 2026):
 | Claude | `settings.json` PostToolUse + Stop + SessionEnd |
 | Codex | `~/.codex/hooks.json` (+ selfystudio project) |
 | Grok | `~/.grok/hooks/agent-guards.json` |
-| AGY | `~/.gemini/antigravity-cli/hooks.json` |
 
 ### Night audit recipe
 
@@ -175,6 +150,6 @@ Session ledger is the automatic cross-CLI layer; run reports are richer for inte
 
 ## Project memory pack
 
-See [PROJECT-MEMORY.md](./PROJECT-MEMORY.md). Init: `~/.agents/bin/project-memory-init .`  
-Night: `~/.agents/bin/night-audit .`  
+See [PROJECT-MEMORY.md](./PROJECT-MEMORY.md). Init: `~/.agents/bin/project-memory-init .` 
+Night: `~/.agents/bin/night-audit .` 
 Skill: `project-memory`.

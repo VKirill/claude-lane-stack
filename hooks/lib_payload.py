@@ -1,4 +1,4 @@
-"""Normalize hook stdin payloads across Claude / Codex / Grok / AGY."""
+"""Normalize hook stdin payloads across Claude / Codex / Grok."""
 from __future__ import annotations
 import json, os, sys
 from typing import Any
@@ -14,11 +14,11 @@ def read_payload() -> dict[str, Any]:
 
 def detect_client(p: dict) -> str:
     env = os.environ.get("AGENT_HOOK_CLIENT", "").lower()
-    if env in ("claude", "codex", "grok", "agy"):
+    if env in ("claude", "codex", "grok", ""):
         return env
     # Heuristics
     if "toolCall" in p and isinstance(p.get("toolCall"), dict):
-        return "agy"
+        return ""
     if p.get("hookEventName") in ("pre_tool_use", "post_tool_use") or "toolName" in p:
         return "grok"
     if "agent_type" in p or "tool_name" in p:
@@ -50,7 +50,7 @@ def shell_command(p: dict) -> str:
         v = ti.get(k)
         if isinstance(v, str) and v.strip():
             return v
-    # AGY sometimes nests
+    #  sometimes nests
     for k in ("command", "cmd"):
         v = p.get(k)
         if isinstance(v, str):
@@ -82,7 +82,7 @@ def is_edit_tool(name: str) -> bool:
     }
 
 def emit_allow(client: str) -> None:
-    if client == "agy":
+    if client == "":
         print(json.dumps({"decision": "allow"}))
     elif client == "grok":
         print(json.dumps({"decision": "allow"}))
@@ -90,7 +90,7 @@ def emit_allow(client: str) -> None:
     sys.exit(0)
 
 def emit_deny(client: str, reason: str) -> None:
-    if client == "agy":
+    if client == "":
         print(json.dumps({"decision": "deny", "reason": reason}, ensure_ascii=False))
         sys.exit(0)
     if client == "grok":
@@ -116,7 +116,7 @@ def emit_post_block(client: str, reason: str) -> None:
         # PostToolUse can't block on Grok; still print for UI/log
         print(json.dumps({"decision": "allow", "reason": reason, "systemMessage": reason}, ensure_ascii=False))
     else:
-        # AGY PostToolUse expects {}
+        #  PostToolUse expects {}
         print("{}")
         # Also write to stderr so agent sees it
         print(reason, file=sys.stderr)

@@ -1,6 +1,6 @@
 # Lean MCP profile
 
-## Active global (agy / gemini / .agents)
+## Active global ( / gemini / .agents)
 
 | ON | Role |
 |----|------|

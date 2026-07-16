@@ -2,11 +2,12 @@
 
 **PM is always Claude Code** (`dev-orchestrator`, Fable/Opus).
 
+**Write programmer is Grok only.**
+
 | Profile | Aux CLIs | Write | Review |
 |---------|----------|-------|--------|
-| `full` | AGY + Grok + Codex | AGY + Grok | Codex **sol** xhigh |
-| `claude-codex` | Codex only | **terra** (sol if high risk) | **sol** xhigh |
-| `claude-agy` | AGY | AGY | Claude reviewer |
+| `full` | Grok + Codex | **Grok** | Codex **sol** |
+| `claude-codex` | Codex only | **terra** (sol if high risk) | **sol** |
 | `claude-grok` | Grok | Grok | Claude reviewer |
 | `claude-only` | — | Claude Sonnet/Opus workers | Claude |
 

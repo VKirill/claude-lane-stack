@@ -6,13 +6,13 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 
 ## Non-negotiables
 
-1. **Orchestrator owns `main`.** Workers never push/merge to main. PM merges when the run is green. If the repo has a remote (origin), PM pushes main immediately after merge/commit — merge without push is an unfinished ship. No remote -> local main is the end state.  
-2. **You never merge.** If PM asks you to merge, PM is wrong — fix the skill.  
-3. **Parallel only with ownership.** Disjoint `owns_paths` or serial.  
-4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.  
-5. **Bounded warm writer context.** Each task gets a fresh Claude supervisor spawn, while AGY/Grok resume only the session pool owned by that exact run. Rotate after seven successful tasks; review stays fresh.
-6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`.  
-7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.  
+1. **Orchestrator owns `main`.** Workers never push/merge to main. PM merges when the run is green. If the repo has a remote (origin), PM pushes main immediately after merge/commit — merge without push is an unfinished ship. No remote -> local main is the end state. 
+2. **You never merge.** If PM asks you to merge, PM is wrong — fix the skill. 
+3. **Parallel only with ownership.** Disjoint `owns_paths` or serial. 
+4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree. 
+5. **Bounded warm writer context.** Each task gets a fresh Claude supervisor spawn, while Grok resume only the session pool owned by that exact run. Rotate after seven successful tasks; review stays fresh.
+6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`. 
+7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane. 
 8. **Progressive accept.** Multi-task runs accept each task when *it* finishes
    (`lane-poll` + `MODE=finish`) — never join-wait the slowest concurrent lane.
 
@@ -44,11 +44,11 @@ must pass BEFORE merge for high-risk work in that project.
 ## End-state of every run
 
 ```
-main  ←  contains the feature (merged by PM)
-origin/main  <-  in sync (pushed by PM when remote exists)
-.worktrees/<slug>  ←  gone
-.agents/runs/<slug>/MERGE.md  ←  how/when merged
-PROGRESS.md  ←  Now/Next updated
+main ← contains the feature (merged by PM)
+origin/main <- in sync (pushed by PM when remote exists)
+.worktrees/<slug> ← gone
+.agents/runs/<slug>/MERGE.md ← how/when merged
+PROGRESS.md ← Now/Next updated
 ```
 
 ## Commands PM uses
@@ -59,7 +59,7 @@ PROGRESS.md  ←  Now/Next updated
 | `resume-project` | cold start / new session |
 | `wt-create <repo> <slug>` | start isolated run |
 | `lane-heartbeat …` | worker or supervisor pulse |
-| `lane-session status --run-dir …` | inspect run-owned AGY/Grok session IDs and rotations |
+| `lane-session status --run-dir …` | inspect run-owned Grok session IDs and rotations |
 | `run-board <repo>` | refresh BOARD.md |
 | `lane-stall-check <repo>` | find zombies |
 | `lane-poll --run-dir <run>` | multi-task progressive: which lanes are finish_ready |
@@ -70,9 +70,9 @@ PROGRESS.md  ←  Now/Next updated
 
 ## Human UX
 
-- Talk only to **dev-orchestrator**.  
-- Say what you want; do not manage branches.  
-- Cold start: `/resume-project` or «продолжи» → PM reads BOARD + PROGRESS.  
+- Talk only to **dev-orchestrator**. 
+- Say what you want; do not manage branches. 
+- Cold start: `/resume-project` or «продолжи» → PM reads BOARD + PROGRESS. 
 - If something stuck >5 min: «проверь stall» → PM runs stall-check + re-dispatch.
 
 ## Language

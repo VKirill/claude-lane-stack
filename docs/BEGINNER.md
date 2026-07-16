@@ -13,14 +13,14 @@
 |---------------|-----------------|
 | 🧑‍💼 You own a workshop | You — the human |
 | 📋 You hire a **project manager** | Claude Code agent `dev-orchestrator` |
-| 👷 The PM hires builders and inspectors | Other AI tools: AGY, Grok, Codex |
+| 👷 The PM hires builders and inspectors | Other AI tools:, Grok, Codex |
 | 🗂️ Work lives on **task cards**, not shouting | Files in `.agents/runs/` |
 | 📦 Finished goods go to the warehouse | Git branch **`main`** |
 
 ```mermaid
 flowchart LR
     You(["🧑 You<br/>plain language"]) --> PM["🤖 PM<br/>dev-orchestrator"]
-    PM --> W1["⚡ AGY<br/>fast writes"]
+    PM --> W1["🔧 Grok — write"]
     PM --> W2["🔧 Grok<br/>heavy writes"]
     PM --> W3["🔍 Codex<br/>review"]
     W1 --> PM
@@ -33,7 +33,7 @@ flowchart LR
 You do **not** run five chats and you do **not** merge branches by hand.
 
 > [!NOTE]
-> Only **Claude Code is required**. AGY, Grok and Codex are optional workers — the stack detects what you have and adapts.
+> Only **Claude Code is required**., Grok and Codex are optional workers — the stack detects what you have and adapts.
 
 ---
 
@@ -56,7 +56,7 @@ Plus two situations you'll meet later: [coming back after a break](#-coming-back
 *Once per computer.*
 
 > [!IMPORTANT]
-> Prerequisite: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is installed and you've logged in at least once. Codex / AGY / Grok are **optional** — skip them freely.
+> Prerequisite: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is installed and you've logged in at least once. Codex / Grok are **optional** — skip them freely.
 
 ```bash
 # 1. Download the stack
@@ -71,7 +71,7 @@ export PATH="$HOME/.agents/bin:$PATH"
 ```
 
 > [!TIP]
-> Add the `export PATH=...` line to your `~/.bashrc` (or `~/.zshrc`) once — then every new terminal just works.
+> Add the `export PATH=..` line to your `~/.bashrc` (or `~/.zshrc`) once — then every new terminal just works.
 
 **Station 1 checklist — done when:**
 
@@ -133,7 +133,7 @@ Deep mode walks entrypoints, flows, wiki↔code mismatches, and real verify comm
 
 | Profile | You have installed | Who writes code | Who reviews |
 |---------|-------------------|-----------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex Sol |
+| `full` | Grok + Codex | Grok | Codex Sol |
 | `claude-codex` | Codex only | Codex Terra/Sol | Codex Sol |
 | `claude-only` | Just Claude Code | Claude subagents | Claude subagents |
 
@@ -209,7 +209,7 @@ Long silence? Workers can stall — the stack has tooling for exactly this.
 > [!IMPORTANT]
 > If a write lane **dies after ~2 minutes**, that is usually **Claude killing foreground Bash**, not a bug in your code. Upgrade to **v1.1.0+** so implementers use `lane-bg` + `lane-wait`, then start a **fresh** PM session. Details: [LANE-EXEC.md](LANE-EXEC.md).
 
-Within one run, AGY/Grok tasks also reuse warm conversations through
+Within one run, Grok tasks also reuse warm conversations through
 `lane-session`. Related sequential tasks keep context; truly parallel tasks use
 separate pool slots. The default session lifetime is seven successful tasks.
 Multi-task runs **accept each task as it finishes** (`lane-poll` + implementer
@@ -249,9 +249,8 @@ Still weird? Ask the PM directly: *«explain what you're doing right now in simp
 |------|----------------|---------------|
 | **Agent** | An AI that can read/write code with tools | Always — they do the work |
 | **PM / orchestrator** | The "boss" agent (`dev-orchestrator`) | You talk mostly to this one |
-| **Lane** | A worker type: fast write / heavy write / review | Setup picks AGY vs Grok vs Codex |
+| **Lane** | A worker type: fast write / heavy write / review | Setup picks  vs Grok vs Codex |
 | **Claude Code** | Anthropic's terminal coding app | **Required** — hosts the PM |
-| **AGY** | Google Antigravity CLI | Optional fast-write worker |
 | **Grok** | xAI CLI | Optional heavy-write worker |
 | **Codex** | OpenAI CLI | Optional reviewer + onboarding |
 | **Task card / contract** | Small YAML file: goal, allowed files, checks | PM writes them; workers obey them |
@@ -270,7 +269,7 @@ Still weird? Ask the PM directly: *«explain what you're doing right now in simp
 ## ❓ FAQ
 
 <details>
-<summary><b>Do I need AGY + Grok + Codex all installed?</b></summary>
+<summary><b>Do I need Grok + Codex all installed?</b></summary>
 
 No. Only **Claude Code** is required. `agents-doctor` detects what exists and writes a matching profile — the factory shrinks or grows to fit.
 
@@ -307,7 +306,7 @@ Plain Claude Code is one worker in one chat. Lane Stack adds a **manager layer**
 <details>
 <summary><b>Is my code sent anywhere unusual?</b></summary>
 
-Each CLI (Claude/AGY/Grok/Codex) talks to its own vendor exactly as it would standalone. The stack adds no extra servers. Secrets don't belong in task files — see [SECURITY.md](../SECURITY.md).
+Each CLI (Claude/Grok / Codex) talks to its own vendor exactly as it would standalone. The stack adds no extra servers. Secrets don't belong in task files — see [SECURITY.md](./SECURITY.md).
 
 </details>
 
@@ -317,7 +316,7 @@ Each CLI (Claude/AGY/Grok/Codex) talks to its own vendor exactly as it would sta
 
 | You want | Read |
 |----------|------|
-| The front page with the big picture | [README](../README.md) |
+| The front page with the big picture | [README](./README.md) |
 | Rules of solo orchestration (why you never merge) | [SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md) |
 | What's inside a task card | [FILE-CONTRACT.md](FILE-CONTRACT.md) |
 | Who writes and who reviews | [ROUTING.md](ROUTING.md) |

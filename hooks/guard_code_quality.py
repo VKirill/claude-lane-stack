@@ -4,7 +4,7 @@ from __future__ import annotations
 import re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib_payload import (  # type: ignore
+from lib_payload import ( # type: ignore
     read_payload, detect_client, tool_name, file_path, is_edit_tool, emit_post_block,
 )
 
@@ -12,8 +12,8 @@ def main() -> None:
     p = read_payload()
     client = detect_client(p)
     name = tool_name(p)
-    if name and not is_edit_tool(name) and client != "agy":
-        # AGY post may not send tool name the same way — still try path
+    if name and not is_edit_tool(name) and client != "":
+        #  post may not send tool name the same way — still try path
         pass
     path = file_path(p)
     if not path or not Path(path).is_file():
@@ -69,7 +69,7 @@ def main() -> None:
     add(f"Possible hardcoded secret in {path}", secrets)
 
     if not warnings:
-        if client == "agy":
+        if client == "":
             print("{}")
         sys.exit(0)
 

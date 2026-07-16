@@ -7,7 +7,7 @@
 ### 一个人的小型 AI 编码工厂
 
 **面向 Claude Code 的多智能体编排** —— 你只跟一个担任项目经理的 AI 智能体对话，
-它负责派发可选的工人（AGY / Grok / Codex）、评审它们的产出，
+它负责派发可选的工人（Grok / Codex）、评审它们的产出，
 并**把完成的代码合并到 `main`**。不用开五个聊天窗口，也不用手动合并。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -40,14 +40,13 @@
 | 🧭 **Onboard 2.0** | 自动 **minimal / full** 场景 + **fast / deep** 深度（成熟仓库默认 deep 取证分析） |
 | 🔬 Deep 清单 | 入口、关键流、wiki↔code 对照、真实测试、部署与密钥面（只写环境变量名） |
 | 🏃 **lane-bg / lane-wait** | Claude 前台 Bash ~2 分钟会被杀掉；长任务必须后台 + 轮询 |
-| 🔥 **lane-session** | AGY/Grok 按 run 续用会话，并支持最多 3 个并行槽位 |
+| 🔥 **lane-session** | Grok 按 run 续用会话，并支持最多 3 个并行槽位 |
 | ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | 按活动重置 idle，硬上限 max（用于已 detach 的进程） |
 | 🧠 模型 | 仅 GPT-**5.6** Sol / Terra / Luna（无 5.5）；文件英文，聊天可用本地语言 |
 | 🚀 命令 | `/project-onboard` · `/project-onboard deep` · `project-onboard . --deep` |
 
 文档：[ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [ROUTING.md](docs/ROUTING.md) · [发布说明](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
-
 
 ---
 
@@ -98,7 +97,6 @@ flowchart LR
         B["规划 → 任务卡<br/>.agents/runs/"]
     end
     subgraph lanes ["👷 工人车道（可选）"]
-        C["⚡ AGY —— 快速写入"]
         D["🔧 Grok —— 重度写入"]
         E["🔍 Codex —— 评审关卡"]
     end
@@ -113,7 +111,7 @@ flowchart LR
 |------|-----|--------------|
 | 👑 主人 | **你** | 用任何语言说出你*想要什么* |
 | 🤖 项目经理 | Claude Code 智能体 `dev-orchestrator` | 规划、派发、验证、**合并** |
-| ⚡🔧 写入车道 | AGY、Grok *（可选）* | 落实任务卡 |
+| ⚡🔧 写入车道 | 、Grok *（可选）* | 落实任务卡 |
 | 🔍 评审车道 | Codex *（可选）* | 独立的质量关卡 |
 | 🗂️ 任务卡 | `.agents/runs/` 里的 YAML 文件 | 车间现场 —— 完全可查看 |
 | 📦 正式代码 | Git 分支 **`main`** | 每一个成功任务的归宿 |
@@ -129,7 +127,7 @@ flowchart LR
 # 1️⃣  安装整套工具 —— 每台电脑一次
 git clone https://github.com/VKirill/claude-lane-stack.git
 cd claude-lane-stack && ./install.sh
-export PATH="$HOME/.agents/bin:$PATH"        # 或者打开一个新终端
+export PATH="$HOME/.agents/bin:$PATH" # 或者打开一个新终端
 
 # 2️⃣  在你的项目里 —— 检测可用的工人，每个仓库一次
 cd /path/to/your-project
@@ -160,13 +158,13 @@ claude --agent dev-orchestrator
 ```yaml
 task: add-dark-mode
 goal: 设置页上的深色主题开关
-owns_paths:            # 🔒 这个工人唯一可以改动的文件
+owns_paths: # 🔒 这个工人唯一可以改动的文件
   - src/settings/**
   - src/theme.css
 verify:
   - npm test
   - npm run lint
-lane: agy-implementer  # 谁来执行
+lane: grok-implementer # 谁来执行
 review: codex-reviewer # 谁来把关合并
 ```
 
@@ -229,15 +227,15 @@ review: codex-reviewer # 谁来把关合并
 
 | 档案 | 你拥有 | 写入车道 | 评审车道 |
 |---------|----------|------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
-| `claude-agy` | AGY | AGY | Claude |
+| `full` | Grok + Codex | Grok | Codex |
+| `claude-` |  |  | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex | Codex |
 | `claude-only` | 只有 Claude Code | Claude 子智能体 | Claude 子智能体 |
 
 ```bash
-agents-doctor            # 显示检测报告
-agents-doctor --apply .  # 把档案保存进项目
+agents-doctor # 显示检测报告
+agents-doctor --apply . # 把档案保存进项目
 ```
 
 更多：[profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
@@ -248,24 +246,24 @@ agents-doctor --apply .  # 把档案保存进项目
 
 ```text
 claude-lane-stack/
-├── agents/        # 智能体定义：claude PM + agy / grok / codex 车道
-├── bin/           # 11 个 CLI 工具：agents-doctor、run-board、wt-merge-main……
-├── skills/        # 11 个技能：编排、契约、项目记忆、上手引导
-├── profiles/      # 5 个路由档案（full → claude-only）
-├── hooks/         # 安全钩子：shell 守卫、代码质量守卫、会话账本
-├── templates/     # PROGRESS / LESSONS / decisions / session-log 模板
-├── docs/          # 新手指南 + 深入文档（见下表 ↓）
-└── install.sh     # 把所有东西放进 ~/.agents
+├── agents/ # 智能体定义：claude PM + grok/codex 车道
+├── bin/ # 11 个 CLI 工具：agents-doctor、run-board、wt-merge-main……
+├── skills/ # 11 个技能：编排、契约、项目记忆、上手引导
+├── profiles/ # 5 个路由档案（full → claude-only）
+├── hooks/ # 安全钩子：shell 守卫、代码质量守卫、会话账本
+├── templates/ # PROGRESS / LESSONS / decisions / session-log 模板
+├── docs/ # 新手指南 + 深入文档（见下表 ↓）
+└── install.sh # 把所有东西放进 ~/.agents
 ```
 
 上手引导之后，在**你的**项目里：
 
 ```text
 your-app/
-├── CLAUDE.md          # 简短的、始终生效的项目规则
-├── AGENTS.md          # 给其他工具的“去读 CLAUDE.md”指针
-├── .agents/runs/      # 🏭 车间现场 —— 任务卡、报告、合并记录
-└── docs/plans/        # 🧠 策略文档（不是车间现场）
+├── CLAUDE.md # 简短的、始终生效的项目规则
+├── AGENTS.md # 给其他工具的“去读 CLAUDE.md”指针
+├── .agents/runs/ # 🏭 车间现场 —— 任务卡、报告、合并记录
+└── docs/plans/ # 🧠 策略文档（不是车间现场）
 ```
 
 ---
@@ -273,7 +271,7 @@ your-app/
 ## ❓ 常见问题
 
 <details>
-<summary><b>AGY、Grok 和 Codex 我全都得装吗？</b></summary>
+<summary><b>、Grok 和 Codex 我全都得装吗？</b></summary>
 
 不用 —— **只有 Claude Code 是必需的**。其余全是可选的工人。`agents-doctor` 会检测你的配置，PM 随之适配，一直可以退到 `claude-only` 模式。
 

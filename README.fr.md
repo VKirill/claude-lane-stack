@@ -7,7 +7,7 @@
 ### Une petite usine de code IA pour une seule personne
 
 **Orchestration multi-agents pour Claude Code** — tu parles à un seul chef de projet qui orchestre tes agents IA,
-il dépêche des workers optionnels (AGY / Grok / Codex), relit leur travail
+il dépêche des workers optionnels (Grok / Codex), relit leur travail
 et **fusionne le code terminé vers `main`**. Fini les cinq chats. Fini les fusions manuelles.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -40,14 +40,13 @@ et **fusionne le code terminé vers `main`**. Fini les cinq chats. Fini les fusi
 | 🧭 **Onboard 2.0** | Scénarios **minimal / full** + profondeur **fast / deep** (full → deep) |
 | 🔬 Deep | Entrypoints, flux, wiki↔code, vrais tests, deploy, secrets (noms seuls) |
 | 🏃 **lane-bg / lane-wait** | Bash foreground Claude meurt ~2 min → les lanes longues se détachent |
-| 🔥 **lane-session** | AGY/Grok reprennent la conversation du run ; jusqu’à 3 slots parallèles |
+| 🔥 **lane-session** | Grok reprennent la conversation du run ; jusqu’à 3 slots parallèles |
 | ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | idle activité + max absolu sur le processus détaché |
 | 🧠 Modèles | GPT-**5.6** Sol / Terra / Luna uniquement (pas de 5.5). Fichiers en anglais |
 | 🚀 Commandes | `/project-onboard` · `/project-onboard deep` |
 
 [ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
-
 
 ---
 
@@ -98,7 +97,6 @@ flowchart LR
         B["Plan → fiches de tâche<br/>.agents/runs/"]
     end
     subgraph lanes ["👷 Voies de workers (optionnel)"]
-        C["⚡ AGY — écritures rapides"]
         D["🔧 Grok — écritures lourdes"]
         E["🔍 Codex — contrôle de revue"]
     end
@@ -113,7 +111,7 @@ flowchart LR
 |------|-----|--------------|
 | 👑 Propriétaire | **Toi** | Dis *ce que* tu veux, dans n'importe quelle langue |
 | 🤖 Chef de projet | Agent Claude Code `dev-orchestrator` | Planifie, dépêche, vérifie, **fusionne** |
-| ⚡🔧 Voies d'écriture | AGY, Grok *(optionnel)* | Implémentent les fiches de tâche |
+| ⚡🔧 Voies d'écriture |, Grok *(optionnel)* | Implémentent les fiches de tâche |
 | 🔍 Voie de revue | Codex *(optionnel)* | Contrôle qualité indépendant |
 | 🗂️ Fiches de tâche | Fichiers YAML dans `.agents/runs/` | L'atelier — entièrement inspectable |
 | 📦 Code officiel | Branche Git **`main`** | Là où finit chaque tâche réussie |
@@ -129,7 +127,7 @@ flowchart LR
 # 1️⃣  Installe le stack — une fois par ordinateur
 git clone https://github.com/VKirill/claude-lane-stack.git
 cd claude-lane-stack && ./install.sh
-export PATH="$HOME/.agents/bin:$PATH"        # ou ouvre un nouveau terminal
+export PATH="$HOME/.agents/bin:$PATH" # ou ouvre un nouveau terminal
 
 # 2️⃣  Dans TON projet — détecte les workers disponibles, une fois par dépôt
 cd /path/to/your-project
@@ -160,13 +158,13 @@ Chaque tâche est un petit **contrat YAML** dans `.agents/runs/` — créé par 
 ```yaml
 task: add-dark-mode
 goal: Bascule de thème sombre sur la page des réglages
-owns_paths:            # 🔒 les SEULS fichiers que ce worker peut toucher
+owns_paths: # 🔒 les SEULS fichiers que ce worker peut toucher
   - src/settings/**
   - src/theme.css
 verify:
   - npm test
   - npm run lint
-lane: agy-implementer  # qui exécute
+lane: grok-implementer # qui exécute
 review: codex-reviewer # qui contrôle la fusion
 ```
 
@@ -229,15 +227,15 @@ Règles de l'orchestration solo : [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHEST
 
 | Profil | Ce que tu as | Voie d'écriture | Voie de revue |
 |---------|----------|------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
-| `claude-agy` | AGY | AGY | Claude |
+| `full` | Grok + Codex | Grok | Codex |
+| `claude-` |  |  | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex | Codex |
 | `claude-only` | juste Claude Code | Sous-agents Claude | Sous-agents Claude |
 
 ```bash
-agents-doctor            # affiche le rapport de détection
-agents-doctor --apply .  # enregistre le profil dans le projet
+agents-doctor # affiche le rapport de détection
+agents-doctor --apply . # enregistre le profil dans le projet
 ```
 
 Plus : [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
@@ -248,24 +246,24 @@ Plus : [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTIN
 
 ```text
 claude-lane-stack/
-├── agents/        # définitions d'agents : PM claude + voies agy / grok / codex
-├── bin/           # 11 outils CLI : agents-doctor, run-board, wt-merge-main, …
-├── skills/        # 11 skills : orchestration, contrats, mémoire de projet, onboarding
-├── profiles/      # 5 profils de routage (full → claude-only)
-├── hooks/         # hooks de sécurité : garde shell, garde qualité de code, registre de session
-├── templates/     # modèles PROGRESS / LESSONS / decisions / session-log
-├── docs/          # guide du débutant + plongées en profondeur (ce tableau ↓)
-└── install.sh     # met tout dans ~/.agents
+├── agents/ # définitions d'agents : PM claude + voies grok/codex
+├── bin/ # 11 outils CLI : agents-doctor, run-board, wt-merge-main, …
+├── skills/ # 11 skills : orchestration, contrats, mémoire de projet, onboarding
+├── profiles/ # 5 profils de routage (full → claude-only)
+├── hooks/ # hooks de sécurité : garde shell, garde qualité de code, registre de session
+├── templates/ # modèles PROGRESS / LESSONS / decisions / session-log
+├── docs/ # guide du débutant + plongées en profondeur (ce tableau ↓)
+└── install.sh # met tout dans ~/.agents
 ```
 
 Et dans **ton** projet après l'onboarding :
 
 ```text
 your-app/
-├── CLAUDE.md          # règles de projet courtes, toujours actives
-├── AGENTS.md          # pointeur « lis CLAUDE.md » pour les autres outils
-├── .agents/runs/      # 🏭 l'atelier — fiches de tâche, rapports, notes de fusion
-└── docs/plans/        # 🧠 documents de stratégie (pas l'atelier)
+├── CLAUDE.md # règles de projet courtes, toujours actives
+├── AGENTS.md # pointeur « lis CLAUDE.md » pour les autres outils
+├── .agents/runs/ # 🏭 l'atelier — fiches de tâche, rapports, notes de fusion
+└── docs/plans/ # 🧠 documents de stratégie (pas l'atelier)
 ```
 
 ---
@@ -273,7 +271,7 @@ your-app/
 ## ❓ FAQ
 
 <details>
-<summary><b>Dois-je installer AGY, Grok et Codex, tous les trois ?</b></summary>
+<summary><b>Dois-je installer, Grok et Codex, tous les trois ?</b></summary>
 
 Non — **seul Claude Code est requis**. Tout le reste est un worker optionnel. `agents-doctor` détecte ta configuration et le PM s'adapte, jusqu'au mode `claude-only`.
 

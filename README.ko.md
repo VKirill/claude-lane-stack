@@ -7,7 +7,7 @@
 ### 혼자 쓰는 작은 AI 코딩 공장
 
 **Claude Code를 위한 멀티 에이전트 오케스트레이션** — 당신은 하나의 AI 에이전트, 즉 프로젝트 매니저와 대화하고,
-매니저가 선택적 워커(AGY / Grok / Codex)에게 일을 나눠주고, 결과물을 리뷰한 뒤
+매니저가 선택적 워커(Grok / Codex)에게 일을 나눠주고, 결과물을 리뷰한 뒤
 **완성된 코드를 `main`에 머지해요**. 다섯 개의 채팅도, 수동 머지도 없어요.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -40,14 +40,13 @@
 | 🧭 **Onboard 2.0** | **minimal / full** 시나리오 + **fast / deep** 깊이 (성숙 레포는 deep) |
 | 🔬 Deep | 엔트리포인트, 플로우, wiki↔코드, 실제 테스트, 배포, 시크릿 이름만 |
 | 🏃 **lane-bg / lane-wait** | Claude foreground Bash ~2분 종료 → 긴 레인은 detach 필수 |
-| 🔥 **lane-session** | AGY/Grok이 run별 대화를 이어가며 최대 3개 슬롯으로 병렬 실행 |
+| 🔥 **lane-session** | Grok이 run별 대화를 이어가며 최대 3개 슬롯으로 병렬 실행 |
 | ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | 활동 기반 idle + 절대 max (detach 프로세스) |
 | 🧠 모델 | GPT-**5.6** Sol / Terra / Luna 만 (5.5 없음). 파일은 영어 |
 | 🚀 명령 | `/project-onboard` · `/project-onboard deep` |
 
 [ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
-
 
 ---
 
@@ -98,7 +97,6 @@ flowchart LR
         B["계획 → 태스크 카드<br/>.agents/runs/"]
     end
     subgraph lanes ["👷 워커 레인 (선택)"]
-        C["⚡ AGY — 빠른 쓰기"]
         D["🔧 Grok — 무거운 쓰기"]
         E["🔍 Codex — 리뷰 게이트"]
     end
@@ -113,7 +111,7 @@ flowchart LR
 |------|-----|--------------|
 | 👑 오너 | **당신** | *무엇을* 원하는지 말해요 — 어떤 언어로든 |
 | 🤖 프로젝트 매니저 | Claude Code 에이전트 `dev-orchestrator` | 계획하고, 배정하고, 검증하고, **머지해요** |
-| ⚡🔧 쓰기 레인 | AGY, Grok *(선택)* | 태스크 카드를 구현해요 |
+| ⚡🔧 쓰기 레인 |, Grok *(선택)* | 태스크 카드를 구현해요 |
 | 🔍 리뷰 레인 | Codex *(선택)* | 독립적인 품질 게이트 |
 | 🗂️ 태스크 카드 | `.agents/runs/`의 YAML 파일 | 공장 작업장 — 전부 열어볼 수 있어요 |
 | 📦 공식 코드 | Git 브랜치 **`main`** | 모든 성공한 작업이 끝나는 곳 |
@@ -129,7 +127,7 @@ flowchart LR
 # 1️⃣  스택 설치 — 컴퓨터당 한 번
 git clone https://github.com/VKirill/claude-lane-stack.git
 cd claude-lane-stack && ./install.sh
-export PATH="$HOME/.agents/bin:$PATH"        # 또는 새 터미널을 열어요
+export PATH="$HOME/.agents/bin:$PATH" # 또는 새 터미널을 열어요
 
 # 2️⃣  당신의 프로젝트에서 — 사용 가능한 워커를 감지, 저장소당 한 번
 cd /path/to/your-project
@@ -160,13 +158,13 @@ claude --agent dev-orchestrator
 ```yaml
 task: add-dark-mode
 goal: 설정 페이지의 다크 테마 토글
-owns_paths:            # 🔒 이 워커가 건드릴 수 있는 유일한 파일들
+owns_paths: # 🔒 이 워커가 건드릴 수 있는 유일한 파일들
   - src/settings/**
   - src/theme.css
 verify:
   - npm test
   - npm run lint
-lane: agy-implementer  # 누가 실행하는가
+lane: grok-implementer # 누가 실행하는가
 review: codex-reviewer # 누가 머지를 통과시키는가
 ```
 
@@ -229,15 +227,15 @@ review: codex-reviewer # 누가 머지를 통과시키는가
 
 | 프로파일 | 가진 것 | 쓰기 레인 | 리뷰 레인 |
 |---------|----------|------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
-| `claude-agy` | AGY | AGY | Claude |
+| `full` | Grok + Codex | Grok | Codex |
+| `claude-` |  |  | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex | Codex |
 | `claude-only` | Claude Code만 | Claude 서브에이전트 | Claude 서브에이전트 |
 
 ```bash
-agents-doctor            # 감지 리포트 표시
-agents-doctor --apply .  # 프로파일을 프로젝트에 저장
+agents-doctor # 감지 리포트 표시
+agents-doctor --apply . # 프로파일을 프로젝트에 저장
 ```
 
 더 보기: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
@@ -248,24 +246,24 @@ agents-doctor --apply .  # 프로파일을 프로젝트에 저장
 
 ```text
 claude-lane-stack/
-├── agents/        # 에이전트 정의: claude PM + agy / grok / codex 레인
-├── bin/           # CLI 도구 11개: agents-doctor, run-board, wt-merge-main, …
-├── skills/        # 스킬 11개: 오케스트레이션, 계약, 프로젝트 메모리, 온보딩
-├── profiles/      # 라우팅 프로파일 5개 (full → claude-only)
-├── hooks/         # 안전 훅: shell guard, code-quality guard, session ledger
-├── templates/     # PROGRESS / LESSONS / decisions / session-log 템플릿
-├── docs/          # 초보자 가이드 + 심화 설명 (아래 표 ↓)
-└── install.sh     # 모든 것을 ~/.agents에 넣어요
+├── agents/ # 에이전트 정의: claude PM + grok/codex 레인
+├── bin/ # CLI 도구 11개: agents-doctor, run-board, wt-merge-main, …
+├── skills/ # 스킬 11개: 오케스트레이션, 계약, 프로젝트 메모리, 온보딩
+├── profiles/ # 라우팅 프로파일 5개 (full → claude-only)
+├── hooks/ # 안전 훅: shell guard, code-quality guard, session ledger
+├── templates/ # PROGRESS / LESSONS / decisions / session-log 템플릿
+├── docs/ # 초보자 가이드 + 심화 설명 (아래 표 ↓)
+└── install.sh # 모든 것을 ~/.agents에 넣어요
 ```
 
 그리고 온보딩 후 **당신의** 프로젝트 안에는:
 
 ```text
 your-app/
-├── CLAUDE.md          # 짧고 항상 켜져 있는 프로젝트 규칙
-├── AGENTS.md          # 다른 도구를 위한 "CLAUDE.md를 읽어라" 포인터
-├── .agents/runs/      # 🏭 공장 작업장 — 태스크 카드, 리포트, 머지 노트
-└── docs/plans/        # 🧠 전략 문서 (공장 작업장이 아님)
+├── CLAUDE.md # 짧고 항상 켜져 있는 프로젝트 규칙
+├── AGENTS.md # 다른 도구를 위한 "CLAUDE.md를 읽어라" 포인터
+├── .agents/runs/ # 🏭 공장 작업장 — 태스크 카드, 리포트, 머지 노트
+└── docs/plans/ # 🧠 전략 문서 (공장 작업장이 아님)
 ```
 
 ---
@@ -273,7 +271,7 @@ your-app/
 ## ❓ FAQ
 
 <details>
-<summary><b>AGY, Grok, Codex를 모두 설치해야 하나요?</b></summary>
+<summary><b>, Grok, Codex를 모두 설치해야 하나요?</b></summary>
 
 아니요 — **Claude Code만 필수예요**. 나머지는 전부 선택적 워커예요. `agents-doctor`가 당신의 구성을 감지하고, PM이 `claude-only` 모드까지 알아서 맞춰요.
 

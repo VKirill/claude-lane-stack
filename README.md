@@ -7,7 +7,7 @@
 ### A small AI coding factory for one person · **v1.3.1**
 
 **Multi-agent orchestration for Claude Code** — you talk to one AI project manager,
-it dispatches optional workers (AGY / Grok / Codex), reviews their output
+it dispatches optional workers (Grok / Codex), reviews their output
 and **merges finished code to `main`**. No five chats. No manual merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -16,7 +16,7 @@ and **merges finished code to `main`**. No five chats. No manual merges.
 [![Beginner guide](https://img.shields.io/badge/Start%20here-Beginner%20guide-brightgreen)](docs/BEGINNER.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
 
-🌍 **README:** [Русский](README.ru.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [한국어](README.ko.md) · [Português](README.pt-BR.md)  
+🌍 **README:** [Русский](README.ru.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [한국어](README.ko.md) · [Português](README.pt-BR.md) 
 🐣 **Beginner guide:** [EN](docs/BEGINNER.md) · [RU](docs/BEGINNER.ru.md) · [中文](docs/BEGINNER.zh-CN.md) · [日本語](docs/BEGINNER.ja.md) · [ES](docs/BEGINNER.es.md) · [DE](docs/BEGINNER.de.md) · [FR](docs/BEGINNER.fr.md) · [KO](docs/BEGINNER.ko.md) · [PT](docs/BEGINNER.pt-BR.md)
 
 </div>
@@ -46,7 +46,7 @@ Working with AI coding tools usually looks like this: five chat windows, copy-pa
 | You merge branches manually | The PM merges to **`main`** after checks pass |
 | Next morning: "what were we doing?" | `/resume-project` — Now / Blocked / Next in seconds |
 | Onboard is a thin CLAUDE stub | **Deep forensic passport** on mature repos |
-| Long AGY/Grok runs die at ~2 min | **`lane-bg` + `lane-wait`** — detach + poll |
+| Long Grok runs die at ~2 min | **`lane-bg` + `lane-wait`** — detach + poll |
 | Parallel tasks wait for the slowest | **Progressive accept** — `lane-poll` + `MODE=start/finish` |
 
 No task database. No required cloud service. **Plain files + plain git** — everything is inspectable in your repo.
@@ -82,7 +82,6 @@ flowchart LR
         B["Plan → task cards<br/>.agents/runs/"]
     end
     subgraph lanes ["👷 Worker lanes (optional)"]
-        C["⚡ AGY — fast writes"]
         D["🔧 Grok — heavy writes"]
         E["🔍 Codex — review gate"]
     end
@@ -97,7 +96,7 @@ flowchart LR
 |------|-----|--------------|
 | 👑 Owner | **You** | Say *what* you want (chat may be any language) |
 | 🤖 Project manager | Claude Code agent `dev-orchestrator` | Plans, dispatches, verifies, **merges** |
-| ⚡🔧 Write lanes | AGY, Grok *(optional)* | Implement task cards (detached via `lane-bg`) |
+| ⚡🔧 Write lanes |, Grok *(optional)* | Implement task cards (detached via `lane-bg`) |
 | 🔍 Review / write / onboard | Codex *(optional)* | Review gate, emergency write, **project passport** |
 | 🗂️ Task cards | YAML in `.agents/runs/` | Factory floor — fully inspectable |
 | 📦 Official code | Git branch **`main`** | Where every successful job ends |
@@ -116,9 +115,9 @@ flowchart LR
 ```bash
 # 1️⃣  Install the stack — once per computer
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.3.1   # or: main
+cd claude-lane-stack && git checkout v1.3.1 # or: main
 ./install.sh
-export PATH="$HOME/.agents/bin:$PATH"        # or open a new terminal
+export PATH="$HOME/.agents/bin:$PATH" # or open a new terminal
 
 # 2️⃣  In YOUR project — detect available workers, once per repo
 cd /path/to/your-project
@@ -163,16 +162,16 @@ First-time setup is not a thin stub. **`project-onboard` + Codex** build a real 
 | Report | passport filled | MODULES_READ · FLOWS · WIKI_MISMATCHES · VERIFY |
 
 ```bash
-project-onboard .                 # auto scenario + depth
-project-onboard . --deep          # force forensic
+project-onboard . # auto scenario + depth
+project-onboard . --deep # force forensic
 project-onboard . --minimal --fast
 ```
 
 Writes:
 
-- `.agents/onboard.scenario.yaml` — `scenario` + `depth` + score  
-- `.agents/runs/_onboard/artifacts/001/deep-scan.md` — evidence pack for Codex  
-- Prefer **pointers** to existing wiki (`gotchas.md`) over UPPERCASE duplicates  
+- `.agents/onboard.scenario.yaml` — `scenario` + `depth` + score 
+- `.agents/runs/_onboard/artifacts/001/deep-scan.md` — evidence pack for Codex 
+- Prefer **pointers** to existing wiki (`gotchas.md`) over UPPERCASE duplicates 
 
 Full guide: [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md)
 
@@ -182,18 +181,18 @@ Full guide: [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md)
 
 Claude Code **kills foreground Bash around ~2 minutes**. That is a **host** limit, not `lane-exec`.
 
-Long AGY / Grok / Codex jobs **must** detach:
+Long Grok / Codex jobs **must** detach:
 
 ```bash
 # 1) Start detached (returns immediately)
-lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
-  lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
-  lane-session run --provider agy --run-dir "$RUN_DIR" --task-id "$TASK_ID" \
-    --role lane-frontend --cwd "$PROJECT_CWD" --prompt-file "$SPEC" \
-    --output "$ARTIFACT_DIR/lane-final.log" --model "Gemini 3.5 Flash (High)"
+lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
+  lane-exec --idle 900 --max 7200 --log "$ARTIFACT_DIR/lane-exec.log" -- \
+  lane-session run --provider grok --run-dir "$RUN_DIR" --task-id "$TASK_ID" \
+    --role grok --cwd "$PROJECT_CWD" --prompt-file "$SPEC" \
+    --output "$ARTIFACT_DIR/lane-final.log"
 
 # 2) Poll with short Bash (safe)
-lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = running, 0 = done
+lane-wait --dir "$ARTIFACT_DIR" --once # exit 2 = running, 0 = done
 ```
 
 | Tool | Role |
@@ -201,11 +200,11 @@ lane-wait --dir "$ARTIFACT_DIR" --once   # exit 2 = running, 0 = done
 | **`lane-bg`** | nohup detach — job survives Bash death |
 | **`lane-wait`** | short status polls |
 | **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
-| **`lane-session`** | resumes run-scoped AGY/Grok context; three-slot parallel pool |
+| **`lane-session`** | resumes run-scoped Grok context; three-slot parallel pool |
 
 Implementers and `dev-orchestrator` are instructed to use this pattern. Details: [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
 
-AGY and Grok no longer relearn the repository on every task in a run. The first
+ and Grok no longer relearn the repository on every task in a run. The first
 task creates a conversation; later related tasks resume it. A busy conversation
 is never shared concurrently—parallel tasks lease another slot (up to three).
 Sessions rotate after seven successful tasks by default, on failure, or when the
@@ -214,14 +213,13 @@ context.
 
 ---
 
-
 ## ⚡ Progressive accept — no join-wait
 
 Multi-task runs no longer wait for the **slowest** concurrent lane before accepting finished ones.
 
-1. Implementer **`MODE=start`** → `lane-bg` only, returns immediately  
-2. PM **`lane-poll --run-dir …`** → see which tasks are `finish_ready`  
-3. Implementer **`MODE=finish`** → write `report.md` → **accept now** → free slot  
+1. Implementer **`MODE=start`** → `lane-bg` only, returns immediately 
+2. PM **`lane-poll --run-dir …`** → see which tasks are `finish_ready` 
+3. Implementer **`MODE=finish`** → write `report.md` → **accept now** → free slot 
 4. Pipeline the next ready task (still ≤3 concurrent writers)
 
 Single-task / micro still uses **`MODE=full`**. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md) · [skills/orchestrator-lanes](skills/orchestrator-lanes/SKILL.md).
@@ -237,19 +235,19 @@ Every job is a small **YAML contract** in `.agents/runs/` — created by the PM,
 ```yaml
 task: add-dark-mode
 goal: Dark theme toggle on the settings page
-owns_paths:            # 🔒 the ONLY files this worker may touch
+owns_paths: # 🔒 the ONLY files this worker may touch
   - src/settings/**
   - src/theme.css
 verify:
   - npm test
   - npm run lint
-lane: agy-implementer  # who executes
+lane: grok             # only write programmer
 review: codex-reviewer # who gates the merge
 ```
 
-- 🔒 `owns_paths` — parallel workers **can't collide**: `check-owns-paths` fails the task if a worker strays  
-- ✅ `verify` — merge is blocked until checks pass  
-- 📜 Cards stay in git history — audit trail of what every agent did  
+- 🔒 `owns_paths` — parallel workers **can't collide**: `check-owns-paths` fails the task if a worker strays 
+- ✅ `verify` — merge is blocked until checks pass 
+- 📜 Cards stay in git history — audit trail of what every agent did 
 
 Details: [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md)
 
@@ -291,7 +289,7 @@ Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 | Command | What it is |
 |---------|------------|
 | `run-board` | Job scoreboard |
-| `lane-session status --run-dir .agents/runs/<slug>` | Inspect that run's AGY/Grok session pool |
+| `lane-session status --run-dir .agents/runs/<slug>` | Inspect that run's Grok session pool |
 | `wt-create` / `wt-merge-main` | Worktree + **merge into `main`** |
 | `check-owns-paths` | Did the worker stay in its file list? |
 | `lane-bg` / `lane-wait` / **`lane-poll`** | Detach long lane + single/multi poll (progressive accept) |
@@ -312,15 +310,15 @@ Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 
 | Profile | You have | Write lane | Review lane |
 |---------|----------|------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex Sol |
-| `claude-agy` | AGY | AGY | Claude |
+| `full` | Grok + Codex | Grok | Codex Sol |
+| `claude-` |  |  | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |
 | `claude-only` | Claude Code only | Claude subagents | Claude subagents |
 
 ```bash
-agents-doctor            # report
-agents-doctor --apply .  # save into project
+agents-doctor # report
+agents-doctor --apply . # save into project
 ```
 
 More: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
@@ -331,29 +329,29 @@ More: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING
 
 ```text
 claude-lane-stack/
-├── agents/        # claude PM + agy / grok / codex lanes (implementers, onboard, review)
-├── bin/           # agents-doctor, project-onboard, lane-bg, lane-wait, lane-poll, lane-exec, lane-session,
-│                  # wt-*, run-board, docs-maintain-*, …
-├── skills/        # orchestration, contracts, memory, onboard, antigravity, …
-├── profiles/      # full → claude-only
-├── hooks/         # shell guard, code-quality, session ledger
-├── templates/     # ARCHITECTURE, GOTCHAS, TESTING, deployment, README anamnesis, …
-├── docs/          # beginner + deep dives (table below)
-└── install.sh     # → ~/.agents
+├── agents/ # claude PM + grok/codex lanes (implementers, onboard, review)
+├── bin/ # agents-doctor, project-onboard, lane-bg, lane-wait, lane-poll, lane-exec, lane-session,
+│ # wt-*, run-board, docs-maintain-*, …
+├── skills/ # orchestration, contracts, memory, onboard,, …
+├── profiles/ # full → claude-only
+├── hooks/ # shell guard, code-quality, session ledger
+├── templates/ # ARCHITECTURE, GOTCHAS, TESTING, deployment, README anamnesis, …
+├── docs/ # beginner + deep dives (table below)
+└── install.sh # → ~/.agents
 ```
 
 Inside **your** project after onboard:
 
 ```text
 your-app/
-├── CLAUDE.md                      # always-on rules (≤200 lines body)
-├── AGENTS.md                      # pointer → CLAUDE.md
-├── PROGRESS.md / LESSONS.md       # living memory
+├── CLAUDE.md # always-on rules (≤200 lines body)
+├── AGENTS.md # pointer → CLAUDE.md
+├── PROGRESS.md / LESSONS.md # living memory
 ├── .agents/
-│   ├── onboard.scenario.yaml      # scenario + depth + score
-│   ├── routing.profile.yaml       # agents-doctor
-│   └── runs/                      # 🏭 factory floor
-└── docs/                          # architecture, gotchas, deployment, plans/…
+│ ├── onboard.scenario.yaml # scenario + depth + score
+│ ├── routing.profile.yaml # agents-doctor
+│ └── runs/ # 🏭 factory floor
+└── docs/ # architecture, gotchas, deployment, plans/…
 ```
 
 ---
@@ -361,7 +359,7 @@ your-app/
 ## ❓ FAQ
 
 <details>
-<summary><b>Do I need AGY, Grok and Codex all installed?</b></summary>
+<summary><b>Do I need, Grok and Codex all installed?</b></summary>
 
 No — **only Claude Code is required**. Everything else is optional. `agents-doctor` adapts down to `claude-only`.
 
@@ -375,7 +373,7 @@ Plain Claude is one worker in one chat. Lane Stack adds **management**: task car
 </details>
 
 <details>
-<summary><b>My AGY run dies after ~2 minutes — is that lane-exec?</b></summary>
+<summary><b>My run dies after ~2 minutes — is that lane-exec?</b></summary>
 
 Usually **no**. Claude kills **foreground Bash** ~2 min. Fix: implementers must use **`lane-bg`** + **`lane-wait`**. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md). After upgrading, start a **fresh** dev-orchestrator session.
 

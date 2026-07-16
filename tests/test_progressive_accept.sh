@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Progressive accept + anti-join + detached heartbeat fixtures.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/." && pwd)"
 export PATH="$ROOT/bin:$PATH"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -14,7 +14,7 @@ cat > "$RUN/tasks/001-a.yaml" <<'Y'
 id: "001"
 title: task a
 status: pending
-lane: agy-coder
+lane: grok
 Y
 cat > "$RUN/tasks/002-b.yaml" <<'Y'
 id: "002"

@@ -1,7 +1,7 @@
 id: "001"
 title: "Example task — edit only listed paths"
 risk: low
-lane: agy-coder
+lane: grok
 status: pending
 project_cwd: "/abs/path/to/repo-or-worktree"
 owns_paths:

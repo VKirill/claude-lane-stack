@@ -13,14 +13,14 @@
 |---------------|-----------------|
 | 🧑‍💼 Você é dono de uma oficina | Você — o humano |
 | 📋 Você contrata um **gerente de projeto** | Agente do Claude Code `dev-orchestrator` |
-| 👷 O PM contrata construtores e inspetores | Outras ferramentas de IA: AGY, Grok, Codex |
+| 👷 O PM contrata construtores e inspetores | Outras ferramentas de IA:, Grok, Codex |
 | 🗂️ O trabalho vive em **cartões de tarefa**, não em gritaria | Arquivos em `.agents/runs/` |
 | 📦 Os produtos acabados vão para o depósito | Branch git **`main`** |
 
 ```mermaid
 flowchart LR
     You(["🧑 Você<br/>linguagem simples"]) --> PM["🤖 PM<br/>dev-orchestrator"]
-    PM --> W1["⚡ AGY<br/>escritas rápidas"]
+    PM --> W1["🔧 Grok — write"]
     PM --> W2["🔧 Grok<br/>escritas pesadas"]
     PM --> W3["🔍 Codex<br/>revisão"]
     W1 --> PM
@@ -33,7 +33,7 @@ flowchart LR
 Você **não** roda cinco chats e **não** mergeia branches na mão.
 
 > [!NOTE]
-> Só o **Claude Code é obrigatório**. AGY, Grok e Codex são workers opcionais — o stack detecta o que você tem e se adapta.
+> Só o **Claude Code é obrigatório**., Grok e Codex são workers opcionais — o stack detecta o que você tem e se adapta.
 
 ---
 
@@ -56,7 +56,7 @@ Além disso, duas situações que você vai encontrar mais tarde: [voltando depo
 *Uma vez por computador.*
 
 > [!IMPORTANT]
-> Pré-requisito: o [Claude Code](https://docs.anthropic.com/en/docs/claude-code) está instalado e você fez login pelo menos uma vez. Codex / AGY / Grok são **opcionais** — pode pular sem problema.
+> Pré-requisito: o [Claude Code](https://docs.anthropic.com/en/docs/claude-code) está instalado e você fez login pelo menos uma vez. Codex / Grok são **opcionais** — pode pular sem problema.
 
 ```bash
 # 1. Baixe o stack
@@ -71,7 +71,7 @@ export PATH="$HOME/.agents/bin:$PATH"
 ```
 
 > [!TIP]
-> Adicione a linha `export PATH=...` ao seu `~/.bashrc` (ou `~/.zshrc`) uma vez — aí todo novo terminal já funciona.
+> Adicione a linha `export PATH=..` ao seu `~/.bashrc` (ou `~/.zshrc`) uma vez — aí todo novo terminal já funciona.
 
 **Checklist da Estação 1 — concluída quando:**
 
@@ -124,7 +124,7 @@ O Codex (ou o próprio Claude, se o Codex não estiver presente) escreve o "pass
 
 | Perfil | O que você tem instalado | Quem escreve o código | Quem revisa |
 |---------|-------------------|-----------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
+| `full` | Grok + Codex | Grok | Codex |
 | `claude-codex` | só o Codex | Codex | Codex |
 | `claude-only` | só o Claude Code | Subagentes Claude | Subagentes Claude |
 
@@ -233,9 +233,8 @@ Ainda estranho? Pergunte direto ao PM: *«explique em palavras simples o que voc
 |------|----------------|---------------|
 | **Agente** | Uma IA que consegue ler/escrever código com ferramentas | Sempre — são eles que fazem o trabalho |
 | **PM / orquestrador** | O agente "chefe" (`dev-orchestrator`) | É com ele que você mais fala |
-| **Pista (lane)** | Um tipo de worker: escrita rápida / escrita pesada / revisão | A configuração escolhe AGY vs Grok vs Codex |
+| **Pista (lane)** | Um tipo de worker: escrita rápida / escrita pesada / revisão | A configuração escolhe  vs Grok vs Codex |
 | **Claude Code** | O app de código no terminal da Anthropic | **Obrigatório** — hospeda o PM |
-| **AGY** | CLI Google Antigravity | Worker opcional de escrita rápida |
 | **Grok** | CLI da xAI | Worker opcional de escrita pesada |
 | **Codex** | CLI da OpenAI | Revisor + onboarding opcional |
 | **Cartão de tarefa / contrato** | Pequeno arquivo YAML: objetivo, arquivos permitidos, verificações | O PM os escreve; os workers os obedecem |
@@ -254,7 +253,7 @@ Ainda estranho? Pergunte direto ao PM: *«explique em palavras simples o que voc
 ## ❓ FAQ
 
 <details>
-<summary><b>Preciso ter AGY + Grok + Codex todos instalados?</b></summary>
+<summary><b>Preciso ter Grok + Codex todos instalados?</b></summary>
 
 Não. Só o **Claude Code** é obrigatório. O `agents-doctor` detecta o que existe e escreve um perfil correspondente — a fábrica encolhe ou cresce para se ajustar.
 
@@ -291,7 +290,7 @@ O Claude Code puro é um worker em um chat. O Lane Stack adiciona uma **camada d
 <details>
 <summary><b>Meu código é enviado para algum lugar incomum?</b></summary>
 
-Cada CLI (Claude/AGY/Grok/Codex) conversa com o próprio fornecedor exatamente como faria sozinha. O stack não adiciona nenhum servidor extra. Segredos não devem ficar em arquivos de tarefa — veja [SECURITY.md](../SECURITY.md).
+Cada CLI (Claude/Grok / Codex) conversa com o próprio fornecedor exatamente como faria sozinha. O stack não adiciona nenhum servidor extra. Segredos não devem ficar em arquivos de tarefa — veja [SECURITY.md](./SECURITY.md).
 
 </details>
 
@@ -301,7 +300,7 @@ Cada CLI (Claude/AGY/Grok/Codex) conversa com o próprio fornecedor exatamente c
 
 | Você quer | Leia |
 |----------|------|
-| A página inicial com a visão geral | [README](../README.pt-BR.md) |
+| A página inicial com a visão geral | [README](./README.pt-BR.md) |
 | Regras da orquestração solo (por que você nunca faz merge) | [SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md) |
 | O que tem dentro de um cartão de tarefa | [FILE-CONTRACT.md](FILE-CONTRACT.md) |
 | Quem escreve e quem revisa | [ROUTING.md](ROUTING.md) |

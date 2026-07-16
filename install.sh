@@ -7,10 +7,10 @@ DEST="${HOME}/.agents"
 CLAUDE="${HOME}/.claude"
 
 echo "==> Claude Lane Stack install"
-echo "    from: $STACK_ROOT"
-echo "    to:   $DEST"
+echo " from: $STACK_ROOT"
+echo " to: $DEST"
 
-mkdir -p "$DEST"/{bin,docs,hooks,templates,skills,agy/agents,grok/instructions,codex/instructions}
+mkdir -p "$DEST"/{bin,docs,hooks,templates,skills,/agents,grok/instructions,codex/instructions}
 mkdir -p "$CLAUDE"/{agents,skills,commands}
 
 # bins
@@ -30,7 +30,7 @@ for d in "$STACK_ROOT"/skills/*/; do
 done
 
 # platform agents
-rsync -a "$STACK_ROOT"/agents/agy/ "$DEST/agy/agents/"
+rsync -a "$STACK_ROOT"/agents// "$DEST//agents/"
 rsync -a "$STACK_ROOT"/agents/grok/ "$DEST/grok/instructions/"
 rsync -a "$STACK_ROOT"/agents/codex/ "$DEST/codex/instructions/"
 
@@ -40,20 +40,20 @@ if [[ -d "$STACK_ROOT/agents/claude/commands" ]]; then
   cp -a "$STACK_ROOT"/agents/claude/commands/* "$CLAUDE/commands/" 2>/dev/null || true
 fi
 
-# AGY discovery (optional)
+#  discovery (optional)
 if [[ -d "$HOME/.gemini/config/agents" ]]; then
   for a in lane-coder lane-frontend lane-reviewer consult; do
-    if [[ -d "$DEST/agy/agents/$a" ]]; then
-      ln -sfn "$DEST/agy/agents/$a" "$HOME/.gemini/config/agents/$a"
+    if [[ -d "$DEST//agents/$a" ]]; then
+      ln -sfn "$DEST//agents/$a" "$HOME/.gemini/config/agents/$a"
     fi
   done
-  echo "    linked AGY agents → ~/.gemini/config/agents"
+  echo " linked agents → ~/.gemini/config/agents"
 fi
 
 # PATH
 if ! grep -q '\.agents/bin' "$HOME/.bashrc" 2>/dev/null; then
   echo 'export PATH="$HOME/.agents/bin:$PATH"' >> "$HOME/.bashrc"
-  echo "    appended PATH to ~/.bashrc"
+  echo " appended PATH to ~/.bashrc"
 fi
 export PATH="$HOME/.agents/bin:$PATH"
 
@@ -66,18 +66,18 @@ echo "==> Running agents-doctor in current directory (if git repo)"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   agents-doctor --apply . || true
 else
-  echo "    (skip doctor — not in a git repo; run: agents-doctor --apply /path/to/project)"
+  echo " (skip doctor — not in a git repo; run: agents-doctor --apply /path/to/project)"
 fi
 
 echo ""
 echo "Done. (v1.3.1+) Start PM:"
-echo "  export PATH=\"\$HOME/.agents/bin:\$PATH\""
-echo "  claude --agent dev-orchestrator"
-echo "Onboard:  /project-onboard   or   project-onboard . [--deep|--fast]"
-echo "Cold start: /resume-project   or   resume-project ."
+echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
+echo " claude --agent dev-orchestrator"
+echo "Onboard: /project-onboard or project-onboard . [--deep|--fast]"
+echo "Cold start: /resume-project or resume-project ."
 echo "Long lanes: lane-bg + lane-wait (never long foreground Bash)"
 echo "Multi-task: progressive accept via lane-poll + MODE=start/finish"
 echo "Anti-join: lane-mode-check refuses MODE=full on multi-task runs"
-echo "Warm lanes: lane-session resumes run-scoped AGY/Grok conversations"
+echo "Warm lanes: lane-session resumes run-scoped Grok conversations"
 echo "Beginner: docs/BEGINNER.md · RU: docs/BEGINNER.ru.md"
-echo "Docs: $DEST/docs/  (ONBOARD-SCENARIOS, LANE-EXEC, ROUTING, LANGUAGE)"
+echo "Docs: $DEST/docs/ (ONBOARD-SCENARIOS, LANE-EXEC, ROUTING, LANGUAGE)"

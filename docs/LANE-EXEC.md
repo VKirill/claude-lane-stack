@@ -1,4 +1,4 @@
-# lane-exec — activity-aware timeouts for AGY / Grok / Codex
+# lane-exec — activity-aware timeouts for Grok / Codex
 
 ## Problem
 
@@ -21,11 +21,11 @@ Any new output **or** CPU tick on the child **resets idle**.
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 
-lane-exec --idle 600 --max 5400 --label agy-frontend \
+lane-exec --idle 600 --max 5400 --label grok \
   --log "$ARTIFACT_DIR/lane-exec.log" \
   --heartbeat "$ARTIFACT_DIR/heartbeat.json" \
-  -- agy --print "..." --agent lane-frontend \
-       --print-timeout 90m \   # must be ≥ max so agy does not self-kill
+  --  --print ".." --agent lane-frontend \
+       --print-timeout 90m \   # must be ≥ max so  does not self-kill
        --mode accept-edits --dangerously-skip-permissions \
        --add-dir "$PROJECT_CWD"
 ```
@@ -36,21 +36,21 @@ Exit `124` = idle or max timeout (same convention as GNU `timeout`).
 
 | Lane | idle | max |
 |------|------|-----|
-| AGY | 10m | 90m |
+|  | 10m | 90m |
 | Grok | 15m | 2h |
 | Codex write | 15m | 2h |
 | Codex review | 15m | 90m |
 
 ## What supervisors must NOT do
 
-- `timeout 570 agy ...` for production runs  
-- `--print-timeout 9m` while max wall is longer (agy will die first)  
-- Kill and re-dispatch after a single 124 without reading `lane-exec.log`  
-- **Long foreground Claude Bash** wrapping `lane-exec` / `agy` / `grok` / `codex` — host kills ~**2 minutes** (this is the #1 false “timeout”)
+- `timeout 570.` for production runs 
+- `--print-timeout 9m` while max wall is longer ( will die first) 
+- Kill and re-dispatch after a single 124 without reading `lane-exec.log` 
+- **Long foreground Claude Bash** wrapping `lane-exec` / `grok` / `codex` — host kills ~**2 minutes** (this is the #1 false “timeout”)
 
 ## Background + poll (required under Claude Code)
 
-Claude’s Bash tool kills **foreground** commands around ~2 minutes.  
+Claude’s Bash tool kills **foreground** commands around ~2 minutes. 
 `lane-exec` idle/max only apply to the **child** process. If Bash is killed first, the whole tree dies.
 
 **Always:**
@@ -58,10 +58,10 @@ Claude’s Bash tool kills **foreground** commands around ~2 minutes.
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 
-# 1) Detach (returns immediately); AGY/Grok keep run-scoped warm context.
-lane-bg --dir "$ARTIFACT_DIR" --label agy-frontend -- \
+# 1) Detach (returns immediately); Grok keep run-scoped warm context.
+lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
   lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
-  lane-session run --provider agy --run-dir "$RUN_DIR" \
+  lane-session run --provider grok --run-dir "$RUN_DIR" \
     --task-id "$TASK_ID" --role lane-frontend --cwd "$PROJECT_CWD" \
     --prompt-file "$SPEC" --output "$ARTIFACT_DIR/lane-final.log" \
     --model "Gemini 3.5 Flash (High)"
@@ -82,7 +82,7 @@ lane-poll --run-dir "$RUN_DIR"
 | `artifacts/N/lane-bg.exit` | exit code when finished |
 | `artifacts/N/lane-bg.supervisor.log` | combined stdout/stderr of the job |
 | `artifacts/N/lane-exec.log` | activity-aware wrapper log |
-| `sessions.json` | current AGY/Grok session IDs, slot ownership, successful-turn counts, rotation history |
+| `sessions.json` | current Grok session IDs, slot ownership, successful-turn counts, rotation history |
 
 Optional: host `run_in_background=true` on the `lane-bg` Bash call — still prefer `lane-bg` so the job survives agent restarts.
 
@@ -126,7 +126,7 @@ Cron example:
 0 3 * * * $HOME/.agents/bin/night-review-all >> $HOME/.agents/logs/night-review.log 2>&1
 ```
 
-## Warm session affinity (AGY / Grok)
+## Warm session affinity (Grok)
 
 `lane-session` removes the cognitive cold start without giving up safe
 parallelism:
@@ -134,7 +134,7 @@ parallelism:
 - the first Grok task gets a preassigned UUID; later tasks use `--resume`;
 - Grok headless calls use `--prompt-file` and `--no-auto-update`, keeping task
   contents out of process argv while avoiding background update checks;
-- the first AGY task's open conversation DB is detected and later tasks use
+- the first task's open conversation DB is detected and later tasks use
   `--conversation`;
 - the warmest free slot is preferred; a busy slot is never used concurrently;
 - up to three slots may exist per provider/role, matching the PM parallel cap;

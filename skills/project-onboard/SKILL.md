@@ -15,7 +15,7 @@ description: Primary project onboarding for Claude Lane Stack. Dual scenario (mi
 | PM / slash | `/project-onboard` or natural language |
 | Fallback | shell `project-onboard` only (seeds; no deep fill) |
 
-Do **not** use AGY or Grok. Do **not** have Fable hand-write the full CLAUDE — dispatch `codex-onboarder`.
+Do **not** use Grok. Do **not** have Fable hand-write the full CLAUDE — dispatch `codex-onboarder`.
 
 ## Dual axes
 
@@ -36,14 +36,14 @@ Do **not** use AGY or Grok. Do **not** have Fable hand-write the full CLAUDE —
 | Report | DEPTH: fast | MODULES_READ ≥8, FLOWS_TRACED, WIKI_MISMATCHES, VERIFY |
 
 ```bash
-project-onboard .                 # auto scenario + depth
-project-onboard . --deep          # force forensic
-project-onboard . --fast          # passport only
+project-onboard . # auto scenario + depth
+project-onboard . --deep # force forensic
+project-onboard . --fast # passport only
 project-onboard . --full --deep
 ONBOARD_DEPTH=deep project-onboard .
 ```
 
-Auto-written: `.agents/onboard.scenario.yaml` (`scenario` + **`depth`**)  
+Auto-written: `.agents/onboard.scenario.yaml` (`scenario` + **`depth`**) 
 and `.agents/runs/_onboard/artifacts/001/deep-scan.md` (tree, entrypoints, large files, git status).
 
 ## MUST (PM)
@@ -54,7 +54,7 @@ and `.agents/runs/_onboard/artifacts/001/deep-scan.md` (tree, entrypoints, large
 Agent → codex-onboarder
 PROJECT_CWD: /abs/repo
 ARTIFACT_DIR: /abs/repo/.agents/runs/_onboard/artifacts/001
-ONBOARD_DEPTH: deep    # omit to use auto from scenario.yaml
+ONBOARD_DEPTH: deep # omit to use auto from scenario.yaml
 ```
 
 2. After agent finishes, reply in **Russian**: scenario, **depth**, files, verify result, wiki mismatches, gaps, next step.
@@ -79,8 +79,8 @@ Cold-start passport that agents can trust. Deep mode is **forensic**: code first
 
 ## CLAUDE.md
 
-- ≤150–200 lines body (before gitnexus footer).  
-- EN rules; pointers to docs.  
+- ≤150–200 lines body (before gitnexus footer). 
+- EN rules; pointers to docs. 
 - Lane Stack + karpathy.
 
 ## AGENTS.md
@@ -89,9 +89,9 @@ Pointer only — do not duplicate CLAUDE.
 
 ## After checklist
 
-- [ ] scenario + depth in yaml  
-- [ ] deep-scan.md exists  
-- [ ] CLAUDE real (not “Edit me”)  
-- [ ] report STATUS + DEPTH  
-- [ ] deep: MODULES_READ / FLOWS / WIKI_MISMATCHES / VERIFY filled  
-- [ ] agents-doctor / routing if available  
+- [ ] scenario + depth in yaml 
+- [ ] deep-scan.md exists 
+- [ ] CLAUDE real (not “Edit me”) 
+- [ ] report STATUS + DEPTH 
+- [ ] deep: MODULES_READ / FLOWS / WIKI_MISMATCHES / VERIFY filled 
+- [ ] agents-doctor / routing if available 

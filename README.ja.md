@@ -7,7 +7,7 @@
 ### 一人のための小さな AI コーディング工場
 
 **Claude Code のためのマルチエージェント・オーケストレーション** — 複数の AIエージェントを束ね、あなたは1人の AI プロジェクトマネージャーと話すだけ。
-マネージャーが任意のワーカー（AGY / Grok / Codex）に作業を割り振り、その成果をレビューして
+マネージャーが任意のワーカー（Grok / Codex）に作業を割り振り、その成果をレビューして
 **完成したコードを `main` にマージ**します。5つのチャットは不要。手動マージも不要。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -40,14 +40,13 @@
 | 🧭 **Onboard 2.0** | **minimal / full** シナリオ + **fast / deep** 深度を自動判定（成熟リポは deep） |
 | 🔬 Deep | エントリポイント・フロー・wiki↔コード差分・実テスト・デプロイ・シークレット名のみ |
 | 🏃 **lane-bg / lane-wait** | Claude の foreground Bash は約2分で殺される → 長時間レーンは必ず detach |
-| 🔥 **lane-session** | AGY/Grok は run ごとの会話を再開し、最大3スロットで並列実行 |
+| 🔥 **lane-session** | Grok は run ごとの会話を再開し、最大3スロットで並列実行 |
 | ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | 活動ベース idle + 絶対 max（detach 後の子プロセス向け） |
 | 🧠 モデル | GPT-**5.6** Sol / Terra / Luna のみ（5.5 なし）。ファイルは英語 |
 | 🚀 コマンド | `/project-onboard` · `/project-onboard deep` |
 
 [ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
-
 
 ---
 
@@ -98,7 +97,6 @@ flowchart LR
         B["計画 → タスクカード<br/>.agents/runs/"]
     end
     subgraph lanes ["👷 ワーカーレーン（任意）"]
-        C["⚡ AGY — 高速書き込み"]
         D["🔧 Grok — 重い書き込み"]
         E["🔍 Codex — レビュー検問"]
     end
@@ -113,7 +111,7 @@ flowchart LR
 |------|-----|--------------|
 | 👑 オーナー | **あなた** | *何を*望むかを、どんな言語でも伝える |
 | 🤖 プロジェクトマネージャー | Claude Code エージェント `dev-orchestrator` | 計画・割り振り・検証・**マージ** |
-| ⚡🔧 書き込みレーン | AGY, Grok *(任意)* | タスクカードを実装する |
+| ⚡🔧 書き込みレーン |, Grok *(任意)* | タスクカードを実装する |
 | 🔍 レビューレーン | Codex *(任意)* | 独立した品質ゲート |
 | 🗂️ タスクカード | `.agents/runs/` 内の YAML ファイル | 工場のフロア — 完全に確認可能 |
 | 📦 公式コード | Git ブランチ **`main`** | すべての成功したジョブが行き着く先 |
@@ -129,7 +127,7 @@ flowchart LR
 # 1️⃣  スタックをインストール — コンピュータごとに一度
 git clone https://github.com/VKirill/claude-lane-stack.git
 cd claude-lane-stack && ./install.sh
-export PATH="$HOME/.agents/bin:$PATH"        # または新しいターミナルを開く
+export PATH="$HOME/.agents/bin:$PATH" # または新しいターミナルを開く
 
 # 2️⃣  あなたのプロジェクトで — 利用可能なワーカーを検出、リポジトリごとに一度
 cd /path/to/your-project
@@ -160,13 +158,13 @@ claude --agent dev-orchestrator
 ```yaml
 task: add-dark-mode
 goal: 設定ページのダークテーマ切り替えトグル
-owns_paths:            # 🔒 このワーカーが触れてよい唯一のファイル
+owns_paths: # 🔒 このワーカーが触れてよい唯一のファイル
   - src/settings/**
   - src/theme.css
 verify:
   - npm test
   - npm run lint
-lane: agy-implementer  # 誰が実行するか
+lane: grok-implementer # 誰が実行するか
 review: codex-reviewer # 誰がマージを検問するか
 ```
 
@@ -229,15 +227,15 @@ review: codex-reviewer # 誰がマージを検問するか
 
 | プロファイル | あなたが持っているもの | 書き込みレーン | レビューレーン |
 |---------|----------|------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
-| `claude-agy` | AGY | AGY | Claude |
+| `full` | Grok + Codex | Grok | Codex |
+| `claude-` |  |  | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex | Codex |
 | `claude-only` | Claude Code のみ | Claude サブエージェント | Claude サブエージェント |
 
 ```bash
-agents-doctor            # 検出レポートを表示
-agents-doctor --apply .  # プロファイルをプロジェクトに保存
+agents-doctor # 検出レポートを表示
+agents-doctor --apply . # プロファイルをプロジェクトに保存
 ```
 
 さらに詳しく：[profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
@@ -248,24 +246,24 @@ agents-doctor --apply .  # プロファイルをプロジェクトに保存
 
 ```text
 claude-lane-stack/
-├── agents/        # エージェント定義：claude PM + agy / grok / codex レーン
-├── bin/           # 11個の CLI ツール：agents-doctor, run-board, wt-merge-main, …
-├── skills/        # 11個のスキル：オーケストレーション、契約、プロジェクトメモリ、オンボーディング
-├── profiles/      # 5つのルーティングプロファイル（full → claude-only）
-├── hooks/         # 安全フック：シェルガード、コード品質ガード、セッション台帳
-├── templates/     # PROGRESS / LESSONS / decisions / session-log テンプレート
-├── docs/          # 初心者ガイド + 詳細解説（下の表 ↓）
-└── install.sh     # すべてを ~/.agents に配置
+├── agents/ # エージェント定義：claude PM + grok/codex レーン
+├── bin/ # 11個の CLI ツール：agents-doctor, run-board, wt-merge-main, …
+├── skills/ # 11個のスキル：オーケストレーション、契約、プロジェクトメモリ、オンボーディング
+├── profiles/ # 5つのルーティングプロファイル（full → claude-only）
+├── hooks/ # 安全フック：シェルガード、コード品質ガード、セッション台帳
+├── templates/ # PROGRESS / LESSONS / decisions / session-log テンプレート
+├── docs/ # 初心者ガイド + 詳細解説（下の表 ↓）
+└── install.sh # すべてを ~/.agents に配置
 ```
 
 そしてオンボーディング後の**あなたの**プロジェクトの中：
 
 ```text
 your-app/
-├── CLAUDE.md          # 常時オンの短いプロジェクトルール
-├── AGENTS.md          # 他ツール向けの「CLAUDE.md を読め」ポインタ
-├── .agents/runs/      # 🏭 工場のフロア — タスクカード、レポート、マージノート
-└── docs/plans/        # 🧠 戦略ドキュメント（工場のフロアではない）
+├── CLAUDE.md # 常時オンの短いプロジェクトルール
+├── AGENTS.md # 他ツール向けの「CLAUDE.md を読め」ポインタ
+├── .agents/runs/ # 🏭 工場のフロア — タスクカード、レポート、マージノート
+└── docs/plans/ # 🧠 戦略ドキュメント（工場のフロアではない）
 ```
 
 ---
@@ -273,7 +271,7 @@ your-app/
 ## ❓ FAQ
 
 <details>
-<summary><b>AGY、Grok、Codex をすべてインストールする必要がありますか？</b></summary>
+<summary><b>、Grok、Codex をすべてインストールする必要がありますか？</b></summary>
 
 いいえ — **必須なのは Claude Code だけ**です。それ以外はすべて任意のワーカーです。`agents-doctor` があなたの環境を検出し、PM が適応します。`claude-only` モードまで対応します。
 

@@ -7,7 +7,7 @@
 ### Eine kleine KI-Coding-Fabrik für eine Person
 
 **Multi-Agenten-Orchestrierung für Claude Code** — statt fünf KI-Agenten einzeln zu steuern, sprichst du mit einem KI-Projektmanager,
-er verteilt optionale Worker (AGY / Grok / Codex), prüft deren Output
+er verteilt optionale Worker (Grok / Codex), prüft deren Output
 und **mergt fertigen Code nach `main`**. Keine fünf Chats. Keine manuellen Merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -40,14 +40,13 @@ und **mergt fertigen Code nach `main`**. Keine fünf Chats. Keine manuellen Merg
 | 🧭 **Onboard 2.0** | **minimal / full** + Tiefe **fast / deep** (full → deep forensisch) |
 | 🔬 Deep | Entrypoints, Flows, Wiki↔Code, echte Tests, Deploy, Secrets (nur Namen) |
 | 🏃 **lane-bg / lane-wait** | Claude killt Foreground-Bash ~2 Min → lange Lanes immer detach |
-| 🔥 **lane-session** | AGY/Grok setzen pro Run dieselbe Conversation fort; bis zu 3 parallele Slots |
+| 🔥 **lane-session** | Grok setzen pro Run dieselbe Conversation fort; bis zu 3 parallele Slots |
 | ⚡ **lane-poll / progressive** | Accept each task as it finishes — no join-wait on the slowest |
 | ⏱️ **lane-exec** | Aktivitäts-Idle + hartes Max auf dem detached Prozess |
 | 🧠 Modelle | Nur GPT-**5.6** Sol / Terra / Luna (kein 5.5). Dateien Englisch |
 | 🚀 Befehle | `/project-onboard` · `/project-onboard deep` |
 
 [ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md) · [LANE-EXEC.md](docs/LANE-EXEC.md) · [Release](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.0)
-
 
 ---
 
@@ -98,7 +97,6 @@ flowchart LR
         B["Plan → Task Cards<br/>.agents/runs/"]
     end
     subgraph lanes ["👷 Worker-Lanes (optional)"]
-        C["⚡ AGY — schnelles Schreiben"]
         D["🔧 Grok — schweres Schreiben"]
         E["🔍 Codex — Review-Gate"]
     end
@@ -113,7 +111,7 @@ flowchart LR
 |------|-----|--------------|
 | 👑 Eigentümer | **Du** | Sagst, *was* du willst — in jeder Sprache |
 | 🤖 Projektmanager | Claude-Code-Agent `dev-orchestrator` | Plant, verteilt, verifiziert, **mergt** |
-| ⚡🔧 Write-Lanes | AGY, Grok *(optional)* | Setzen Task Cards um |
+| ⚡🔧 Write-Lanes |, Grok *(optional)* | Setzen Task Cards um |
 | 🔍 Review-Lane | Codex *(optional)* | Unabhängiges Qualitäts-Gate |
 | 🗂️ Task Cards | YAML-Dateien in `.agents/runs/` | Die Werkshalle — vollständig einsehbar |
 | 📦 Offizieller Code | Git-Branch **`main`** | Wo jeder erfolgreiche Job endet |
@@ -129,7 +127,7 @@ flowchart LR
 # 1️⃣  Stack installieren — einmal pro Computer
 git clone https://github.com/VKirill/claude-lane-stack.git
 cd claude-lane-stack && ./install.sh
-export PATH="$HOME/.agents/bin:$PATH"        # oder ein neues Terminal öffnen
+export PATH="$HOME/.agents/bin:$PATH" # oder ein neues Terminal öffnen
 
 # 2️⃣  In DEINEM Projekt — verfügbare Worker erkennen, einmal pro Repo
 cd /path/to/your-project
@@ -160,13 +158,13 @@ Jeder Job ist ein kleiner **YAML-Vertrag** in `.agents/runs/` — vom PM erstell
 ```yaml
 task: add-dark-mode
 goal: Dark-Mode-Umschalter auf der Einstellungsseite
-owns_paths:            # 🔒 die EINZIGEN Dateien, die dieser Worker anfassen darf
+owns_paths: # 🔒 die EINZIGEN Dateien, die dieser Worker anfassen darf
   - src/settings/**
   - src/theme.css
 verify:
   - npm test
   - npm run lint
-lane: agy-implementer  # wer ausführt
+lane: grok-implementer # wer ausführt
 review: codex-reviewer # wer den Merge kontrolliert
 ```
 
@@ -229,15 +227,15 @@ Regeln der Solo-Orchestrierung: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRA
 
 | Profil | Du hast | Write-Lane | Review-Lane |
 |---------|----------|------------|-------------|
-| `full` | AGY + Grok + Codex | AGY / Grok | Codex |
-| `claude-agy` | AGY | AGY | Claude |
+| `full` | Grok + Codex | Grok | Codex |
+| `claude-` |  |  | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex | Codex |
 | `claude-only` | nur Claude Code | Claude-Subagenten | Claude-Subagenten |
 
 ```bash
-agents-doctor            # Erkennungsbericht anzeigen
-agents-doctor --apply .  # das Profil im Projekt speichern
+agents-doctor # Erkennungsbericht anzeigen
+agents-doctor --apply . # das Profil im Projekt speichern
 ```
 
 Mehr: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING.md)
@@ -248,24 +246,24 @@ Mehr: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING
 
 ```text
 claude-lane-stack/
-├── agents/        # Agentendefinitionen: claude-PM + agy- / grok- / codex-Lanes
-├── bin/           # 11 CLI-Tools: agents-doctor, run-board, wt-merge-main, …
-├── skills/        # 11 Skills: Orchestrierung, Verträge, Projektgedächtnis, Onboarding
-├── profiles/      # 5 Routing-Profile (full → claude-only)
-├── hooks/         # Sicherheits-Hooks: Shell-Guard, Code-Quality-Guard, Session-Ledger
-├── templates/     # Vorlagen für PROGRESS / LESSONS / decisions / session-log
-├── docs/          # Einsteiger-Guide + Vertiefungen (diese Tabelle ↓)
-└── install.sh     # legt alles in ~/.agents ab
+├── agents/ # Agentendefinitionen: claude-PM + - / grok- / codex-Lanes
+├── bin/ # 11 CLI-Tools: agents-doctor, run-board, wt-merge-main, …
+├── skills/ # 11 Skills: Orchestrierung, Verträge, Projektgedächtnis, Onboarding
+├── profiles/ # 5 Routing-Profile (full → claude-only)
+├── hooks/ # Sicherheits-Hooks: Shell-Guard, Code-Quality-Guard, Session-Ledger
+├── templates/ # Vorlagen für PROGRESS / LESSONS / decisions / session-log
+├── docs/ # Einsteiger-Guide + Vertiefungen (diese Tabelle ↓)
+└── install.sh # legt alles in ~/.agents ab
 ```
 
 Und in **deinem** Projekt nach dem Onboarding:
 
 ```text
 your-app/
-├── CLAUDE.md          # kurze, immer aktive Projektregeln
-├── AGENTS.md          # „read CLAUDE.md“-Verweis für andere Tools
-├── .agents/runs/      # 🏭 Werkshalle — Task Cards, Berichte, Merge-Notizen
-└── docs/plans/        # 🧠 Strategiedokumente (nicht die Werkshalle)
+├── CLAUDE.md # kurze, immer aktive Projektregeln
+├── AGENTS.md # „read CLAUDE.md“-Verweis für andere Tools
+├── .agents/runs/ # 🏭 Werkshalle — Task Cards, Berichte, Merge-Notizen
+└── docs/plans/ # 🧠 Strategiedokumente (nicht die Werkshalle)
 ```
 
 ---
@@ -273,7 +271,7 @@ your-app/
 ## ❓ FAQ
 
 <details>
-<summary><b>Muss ich AGY, Grok und Codex alle installiert haben?</b></summary>
+<summary><b>Muss ich, Grok und Codex alle installiert haben?</b></summary>
 
 Nein — **nur Claude Code ist erforderlich**. Alles andere ist ein optionaler Worker. `agents-doctor` erkennt dein Setup und der PM passt sich an, bis hin zum `claude-only`-Modus.
 

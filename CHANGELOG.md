@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Grok is the only write programmer.** Removed write-lane CLI integrations and
+  docs for the retired fast-write path. `agents-doctor` / profiles / implementer
+  routing use Grok only; Codex remains review and write fallback.
+- **Progressive MODE defaults:** grok/codex implementers use smart MODE when
+  omitted (≥2 task YAML → `start`, single → `full`). PM skill forbids N×
+  `MODE=full` on multi-task runs; dispatch must pass `RUN_DIR` + explicit MODE.
+  Hard rule on multi-full join-wait in `dev-orchestrator` + `orchestrator-lanes`.
+
+
 ## 1.3.1 — 2026-07-16
 
 Hardening progressive accept: anti-join guard + detached heartbeats.
@@ -10,7 +22,7 @@ Hardening progressive accept: anti-join guard + detached heartbeats.
 - **`tests/test_progressive_accept.sh`**: fixtures for mode-check, progressive poll accept-while-sibling-runs, and heartbeat write.
 
 ### Changed
-- agy/grok/codex implementers + orchestrator-lanes / dev-orchestrator / LANE-EXEC docs document the hard guard and detached heartbeat.
+- grok/codex implementers + orchestrator-lanes / dev-orchestrator / LANE-EXEC docs document the hard guard and detached heartbeat.
 
 ## 1.3.0 — 2026-07-16
 
@@ -18,7 +30,7 @@ Progressive accept: no more join-wait on multi-task waves.
 
 ### Added
 - **`lane-poll`**: multi-artifact poll for a run (`finish_ready` = CLI done, no report yet). PM uses it to accept tasks as they complete.
-- **Implementer MODE** (`start` | `finish` | `full`) on agy/grok/codex implementers: multi-task fire-and-return start, then finish for report; `full` remains for micro/single-task.
+- **Implementer MODE** (`start` | `finish` | `full`) on grok/codex implementers: multi-task fire-and-return start, then finish for report; `full` remains for micro/single-task.
 
 ### Changed
 - **Progressive accept is mandatory for ≥2 write tasks**: never wait for the slowest concurrent lane before accepting finished ones; free slots and pipeline the next ready task (still ≤3 concurrent). See `skills/orchestrator-lanes/SKILL.md`, `agents/claude/dev-orchestrator.md`, `docs/LANE-EXEC.md`, `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `docs/FILE-CONTRACT.md`.
@@ -32,8 +44,8 @@ Nightly-only review, micro path, Lane Board dashboard, warm sessions.
 - **Nightly medium-tier review**: Medium changes merge after report + `check-owns-paths` + verify; review runs off the critical path in the nightly `night-review` batch, findings become morning fix tasks, and strong review remains synchronous pre-merge. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`.
 - **Tiered review policy**: `none` for micro/low, `codex-reviewer` (`gpt-5.6-sol` + `medium`) for `risk: medium`, and `codex-reviewer` (`gpt-5.6-sol` + `high`, escalating to `xhigh` for critical paths) for high-risk/ship; micro commits now include `[micro:<slug>]`. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`.
 - **Micro path tier** (score 0–2): skips PLAN/worktree/board/heartbeat/reviewer for trivial ≤2-file changes; adds `verify` field (`none`|`smoke`|`tests`) to the task YAML contract. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `docs/FILE-CONTRACT.md`.
-- **Run-scoped warm AGY/Grok sessions**: `lane-session` resumes native conversations across related tasks, preserves up to three parallel slots, rotates after seven successful tasks by default (hard max ten), and invalidates failed/stale sessions.
-- AGY preflight smoke is cached by CLI version and agent-definition hash instead of spending a model call before every task.
+- **Run-scoped warm Grok sessions**: `lane-session` resumes native conversations across related tasks, preserves up to three parallel slots, rotates after seven successful tasks by default (hard max ten), and invalidates failed/stale sessions.
+- preflight smoke is cached by CLI version and agent-definition hash instead of spending a model call before every task.
 - **Push-on-merge and meaningful commits**: PM pushes `main` right after merge when a remote exists; commit messages must be meaningful with conventional type(scope) and explanation in body. See `agents/claude/dev-orchestrator.md`, `skills/orchestrator-lanes/SKILL.md`, `docs/SOLO-ORCHESTRATION.md`.
 - **Lane Board** (`board/`): from-scratch read-only dashboard — zero-dependency Node stdlib server + vanilla JS dark UI; projects overview with needs-attention strip, kanban with status-based scope=recent, todos view with full idea bodies, runs timeline, night-review history, Cmd+K search, SSE live refresh; `bin/lane-board` launcher.
 - **Nightly review automation**: `bin/night-review` (per-repo batch review of the day's merged work -> REVIEW-<date>.md with per-run verdicts + Morning fix plan) and `bin/night-review-all` (auto-discovers lane-stack repos, reviews only those active in the last 24h; cron example included); `resume-project` surfaces the newest REVIEW report at session start.
@@ -57,7 +69,7 @@ Deep onboard, dual scenarios, activity-aware lanes, and Claude Bash background s
 - **Language policy**: all agent-written files English; chat with human Russian (`docs/LANGUAGE.md`).
 
 ### Fixed
-- **Lane background under Claude Bash**: long `lane-exec`/`agy`/`grok`/`codex` must use **`lane-bg`** + poll **`lane-wait --once`**. Foreground Bash is killed ~2 minutes by the host (not lane-exec idle/max). Implementers + dev-orchestrator + LANE-EXEC updated.
+- **Lane background under Claude Bash**: long `lane-exec`/`grok`/`codex` must use **`lane-bg`** + poll **`lane-wait --once`**. Foreground Bash is killed ~2 minutes by the host (not lane-exec idle/max). Implementers + dev-orchestrator + LANE-EXEC updated.
 - **lane-exec**: activity-aware timeouts (idle resets on stdout/CPU; absolute max). Replaces hard `timeout 570` in implementers so thinking agents are not killed mid-run.
 
 ### Added
@@ -85,7 +97,7 @@ Deep onboard, dual scenarios, activity-aware lanes, and Claude Bash background s
 - Templates: `ARCHITECTURE.md`, `README.anamnesis.md`.
 
 ### Fixed
-- AGY: ban `call_mcp_tool` / `inheritMcp` on lane agents; agy-implementer preflight.
+- : ban `call_mcp_tool` / `inheritMcp` on lane agents; grok-implementer preflight.
 
 ## 0.1.0
 - Initial public package (file contracts, solo merge, beginner guides).

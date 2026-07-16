@@ -5,9 +5,9 @@ description: "File-based TODO/ideas board for humans + agent technical notes. Us
 
 # Agent TODOs (files only)
 
-**Canon layout:** `~/.agents/docs/TODOS.md`  
-**Language:** **all todo files in English** (README, AGENT.md, meta, INDEX). Chat with the user may be Russian — summarize in RU, write EN to disk.  
-See `~/.agents/docs/LANGUAGE.md`.  
+**Canon layout:** `~/.agents/docs/TODOS.md` 
+**Language:** **all todo files in English** (README, AGENT.md, meta, INDEX). Chat with the user may be Russian — summarize in RU, write EN to disk. 
+See `~/.agents/docs/LANGUAGE.md`. 
 **No orchestrator MCP.** No `todo_add` / task CLI for ideas.
 
 ## When to use
@@ -23,16 +23,16 @@ See `~/.agents/docs/LANGUAGE.md`.
 ## Choose root
 
 ```text
-PROJECT_TODO_ROOT = <cwd>/.agents/todos     if project
-GLOBAL_TODO_ROOT  = ~/.agents/todos         else or user says global
+PROJECT_TODO_ROOT = <cwd>/.agents/todos if project
+GLOBAL_TODO_ROOT = ~/.agents/todos else or user says global
 ```
 
 ## Create item
 
-1. Slug: `YYYY-MM-DD-` + kebab 3–6 words from title (**ASCII**).  
-2. Paths: `items/<slug>/README.md`, `AGENT.md`, `meta.yaml`  
-3. Fill **both** README and AGENT in **English**.  
-4. Update `INDEX.md` (English titles).  
+1. Slug: `YYYY-MM-DD-` + kebab 3–6 words from title (**ASCII**). 
+2. Paths: `items/<slug>/README.md`, `AGENT.md`, `meta.yaml` 
+3. Fill **both** README and AGENT in **English**. 
+4. Update `INDEX.md` (English titles). 
 5. Tell user in **Russian** one sentence + path.
 
 ### README.md (human-oriented, **English**)
@@ -50,7 +50,7 @@ GLOBAL_TODO_ROOT  = ~/.agents/todos         else or user says global
 - …
 
 ## Open questions
-- …  # product/business only
+- … # product/business only
 
 ## Done when
 - …
@@ -87,7 +87,7 @@ GLOBAL_TODO_ROOT  = ~/.agents/todos         else or user says global
 
 ## Spawn hint (when promoted to run)
 - risk: low|medium|high
-- lane: agy-frontend | agy-coder | grok | codex
+- lane: grok | -coder | grok | codex
 - seed tasks:
   - [ ] …
 - verification ideas:
@@ -107,7 +107,7 @@ Append **History** in README; merge tech into AGENT.md; bump `updated`; refresh 
 
 ## Capture quality
 
-Human side: re-read in 3 months, know *why* and success criteria.  
+Human side: re-read in 3 months, know *why* and success criteria. 
 Agent side: another session can start a run from AGENT.md alone.
 
 ## Promote to run
@@ -116,12 +116,12 @@ Per FILE-CONTRACT / lane-contract. Task YAML **English**.
 
 ## Anti-patterns
 
-- ❌ Chat-only todos  
-- ❌ One giant TODO.md without folders  
-- ❌ Production code without a run  
-- ❌ Orchestrator MCP / `todo_add`  
-- ❌ Secrets in README/AGENT  
-- ❌ **Russian (or any non-EN) as the durable file language** for todos/runs  
+- ❌ Chat-only todos 
+- ❌ One giant TODO.md without folders 
+- ❌ Production code without a run 
+- ❌ Orchestrator MCP / `todo_add` 
+- ❌ Secrets in README/AGENT 
+- ❌ **Russian (or any non-EN) as the durable file language** for todos/runs 
 
 ## Session start
 

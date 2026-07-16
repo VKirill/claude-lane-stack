@@ -7,8 +7,7 @@
 | Role | Who | Default model |
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
-| Fast write | AGY Flash High | Gemini Flash High |
-| Main write | Grok 4.5 | — |
+| Write (all risks) | **Grok 4.5** only | sole programmer lane |
 | Review (all) | Codex Sol | gpt-5.6-sol + high (nightly batch) |
 | Nightly review | Codex Sol | sol high (batch); pre-merge gate opt-in per project |
 | Fallback write | Codex | see claude-codex table |
@@ -26,14 +25,14 @@
 
 **Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh. Nightly review = sol high (batch, operator 2026-07-14). Gate review (opt-in, pre-merge) = sol high; escalate to xhigh when the diff touches auth/pay/schema/migrations/security/crypto/concurrency (critical paths).
 
-## Code routing (full stack: AGY + Grok + Codex)
+## Code routing (full stack: Grok + Codex)
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
-| `risk: low` UI/wiring | agy-frontend / agy-coder | Flash High |
+| `risk: low` UI/wiring | **grok** | Grok 4.5 medium |
 | `risk: medium` | grok + codex-review sol high | Grok 4.5 medium + gpt-5.6-sol high |
 | `risk: high` auth/pay/schema | grok + codex-review Sol xhigh | nightly (gate opt-in for pre-merge) |
-| Empty-diff AGY | switch grok | — |
+| Empty-diff / stalled Grok | re-dispatch grok once, then **codex-implementer** | — |
 
 ## Review tiers
 
@@ -81,14 +80,14 @@ See `profiles/claude-codex.yaml`.
 Foreground Bash dies ~**2 minutes**. Write lanes **must** detach:
 
 ```bash
-lane-bg --dir "$ARTIFACT_DIR" -- … lane-exec … -- agy|grok|codex …
+lane-bg --dir "$ARTIFACT_DIR" -- … lane-exec … -- grok|codex …
 lane-wait --dir "$ARTIFACT_DIR" --once
 ```
 
 See [LANE-EXEC.md](LANE-EXEC.md). PM never runs 90m Bash; multi-task uses
 **progressive accept** (`MODE=start` → `lane-poll` → `MODE=finish` per task).
 
-AGY/Grok write tasks within the same run use `lane-session` affinity. The
+Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
 slots (maximum three). Default rotation: seven successful tasks; review remains
 an independent cold session.
@@ -97,7 +96,7 @@ an independent cold session.
 
 | Situation | Policy |
 |-----------|--------|
-| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single AGY lane `MODE=full`, no reviewer, verify none\|smoke |
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single **Grok** lane `MODE=full`, no reviewer, verify none\|smoke |
 | 1 low-risk write | main tree OK; `MODE=full` OK |
 | ≥2 writes OR score ≥ 4 | worktree; max 3 **concurrent** slots; progressive accept; disjoint owns_paths |
 | High risk write | solo writer |
@@ -109,8 +108,8 @@ slowest sibling before accepting finished ones.
 
 ## Instruction design
 
-1. MUST ≤ 7 hard rules  
-2. MAY = autonomy inside owns_paths  
-3. NEVER = safety + never_touch + no merge to main  
-4. DONE = report + done_when + owns check  
-5. Model ids live in wrappers / profile YAML — not invent 5.5  
+1. MUST ≤ 7 hard rules 
+2. MAY = autonomy inside owns_paths 
+3. NEVER = safety + never_touch + no merge to main 
+4. DONE = report + done_when + owns check 
+5. Model ids live in wrappers / profile YAML — not invent 5.5 

@@ -418,7 +418,7 @@ write_agents() {
       cat > "$f" <<'EOF'
 # Agents
 
-Read **[CLAUDE.md](./CLAUDE.md)** — single source of project instructions for all coding agents (Claude, Codex, AGY, Grok).
+Read **[CLAUDE.md](./CLAUDE.md)** — single source of project instructions for all coding agents (Claude, Codex, Grok).
 
 Do not duplicate rules here.
 EOF
@@ -431,7 +431,7 @@ EOF
   cat > "$f" <<'EOF'
 # Agents
 
-Read **[CLAUDE.md](./CLAUDE.md)** — single source of project instructions for all coding agents (Claude, Codex, AGY, Grok).
+Read **[CLAUDE.md](./CLAUDE.md)** — single source of project instructions for all coding agents (Claude, Codex, Grok).
 
 Do not duplicate rules here.
 EOF

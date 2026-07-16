@@ -12,11 +12,9 @@ import time
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 LANE_SESSION = ROOT / "bin" / "lane-session"
 LANE_EXEC = ROOT / "bin" / "lane-exec"
-
 
 class LaneSessionTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -57,8 +55,8 @@ class LaneSessionTest(unittest.TestCase):
                 with log.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(args) + "\\n")
 
-                if os.environ.get("FAKE_PROVIDER_KIND") == "agy" and "--conversation" not in args:
-                    conversations = Path(os.environ["AGY_CONVERSATIONS_DIR"])
+                if os.environ.get("FAKE_PROVIDER_KIND") == "" and "--conversation" not in args:
+                    conversations = Path(os.environ["UNUSED_REMOVED"])
                     conversations.mkdir(parents=True, exist_ok=True)
                     db = conversations / f"{uuid.uuid4()}.db"
                     with db.open("a+", encoding="utf-8") as fh:
@@ -107,10 +105,10 @@ class LaneSessionTest(unittest.TestCase):
                 "FAKE_ARGS_LOG": str(self.args_log),
                 "FAKE_PROVIDER_KIND": provider,
                 "FAKE_SLEEP": str(
-                    sleep if sleep is not None else (0.35 if provider == "agy" else 0)
+                    sleep if sleep is not None else (0.35 if provider == "" else 0)
                 ),
                 "FAKE_EXIT": str(exit_code),
-                "AGY_CONVERSATIONS_DIR": str(self.conversations),
+                "UNUSED_REMOVED": str(self.conversations),
             }
         )
         env.update(extra_env or {})
@@ -125,7 +123,7 @@ class LaneSessionTest(unittest.TestCase):
             "--task-id",
             task_id,
             "--role",
-            role or ("lane-frontend" if provider == "agy" else "grok"),
+            role or ("lane-frontend" if provider == "" else "grok"),
             "--cwd",
             str(self.cwd),
             "--prompt-file",
@@ -179,19 +177,6 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(state["history"][0]["tasks"], ["001", "002"])
         self.assertEqual(state["history"][0]["rotation_reason"], "task_limit")
 
-    def test_agy_captures_new_conversation_and_resumes_it(self) -> None:
-        self._run("agy", "001")
-        self._run("agy", "002")
-
-        first, second = self._calls()
-        self.assertNotIn("--conversation", first)
-        session_id = second[second.index("--conversation") + 1]
-        self.assertTrue((self.conversations / f"{session_id}.db").exists())
-
-        state = self._state()
-        active = state["sessions"]["agy:lane-frontend:0"]
-        self.assertEqual(active["session_id"], session_id)
-        self.assertEqual(active["tasks"], ["001", "002"])
 
     def test_parallel_tasks_use_distinct_pool_sessions(self) -> None:
         prompt1 = self.root / "parallel-001.md"
@@ -204,7 +189,7 @@ class LaneSessionTest(unittest.TestCase):
                 "FAKE_ARGS_LOG": str(self.args_log),
                 "FAKE_PROVIDER_KIND": "grok",
                 "FAKE_SLEEP": "0.6",
-                "AGY_CONVERSATIONS_DIR": str(self.conversations),
+                "UNUSED_REMOVED": str(self.conversations),
             }
         )
 
@@ -284,21 +269,6 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(bot_second[bot_second.index("--resume") + 1], bot_id)
         self.assertTrue(all("--continue" not in call for call in self._calls()))
 
-    def test_two_agy_runs_capture_and_resume_distinct_conversations(self) -> None:
-        second_run = self.root / ".agents" / "runs" / "vk-bot"
-        second_run.mkdir(parents=True)
-
-        self._run("agy", "ui-001", run_dir=self.run_dir)
-        self._run("agy", "bot-001", run_dir=second_run)
-        self._run("agy", "ui-002", run_dir=self.run_dir)
-        self._run("agy", "bot-002", run_dir=second_run)
-
-        ui_first, bot_first, ui_second, bot_second = self._calls()
-        self.assertNotIn("--conversation", ui_first)
-        self.assertNotIn("--conversation", bot_first)
-        ui_id = ui_second[ui_second.index("--conversation") + 1]
-        bot_id = bot_second[bot_second.index("--conversation") + 1]
-        self.assertNotEqual(ui_id, bot_id)
 
     def test_copied_session_state_cannot_cross_run_boundary(self) -> None:
         second_run = self.root / ".agents" / "runs" / "copied-run"
@@ -333,26 +303,6 @@ class LaneSessionTest(unittest.TestCase):
         state = self._state()
         self.assertEqual(state["history"][0]["success_count"], 2)
 
-    def test_agy_capture_failure_never_uses_global_directory_diff_fallback(self) -> None:
-        self._run(
-            "agy",
-            "001",
-            extra_env={"LANE_SESSION_DISABLE_PROC_CAPTURE": "1"},
-        )
-        self._run(
-            "agy",
-            "002",
-            extra_env={"LANE_SESSION_DISABLE_PROC_CAPTURE": "1"},
-        )
-
-        first, second = self._calls()
-        self.assertNotIn("--conversation", first)
-        self.assertNotIn("--conversation", second)
-        state = self._state()
-        self.assertEqual(
-            state["history"][0]["rotation_reason"], "conversation_capture_failed"
-        )
-        self.assertEqual(state["sessions"]["agy:lane-frontend:0"]["status"], "capture_failed")
 
     def test_sigterm_stops_provider_and_invalidates_session(self) -> None:
         prompt = self.root / "signal-task.md"
@@ -367,7 +317,7 @@ class LaneSessionTest(unittest.TestCase):
                 "FAKE_SLEEP": "30",
                 "FAKE_PID_FILE": str(provider_pid),
                 "FAKE_CHILD_PID_FILE": str(child_pid_file),
-                "AGY_CONVERSATIONS_DIR": str(self.conversations),
+                "UNUSED_REMOVED": str(self.conversations),
             }
         )
         command = [
@@ -435,7 +385,7 @@ class LaneSessionTest(unittest.TestCase):
                 "FAKE_PROVIDER_KIND": "grok",
                 "FAKE_SLEEP": "6",
                 "FAKE_PULSE": "0.5",
-                "AGY_CONVERSATIONS_DIR": str(self.conversations),
+                "UNUSED_REMOVED": str(self.conversations),
             }
         )
         command = [
@@ -480,7 +430,6 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("provider pulse", result.stdout)
         self.assertNotIn("IDLE timeout", result.stderr)
-
 
 if __name__ == "__main__":
     unittest.main()

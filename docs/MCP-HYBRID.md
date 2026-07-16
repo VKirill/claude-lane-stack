@@ -17,7 +17,6 @@ Hosts see **3** MCP servers. MetaMCP collapses the rest into **4** tools (`@ment
 | **Claude** | `~/.claude.json` | agentmemory, gitnexus, metamcp |
 | **Grok** | `~/.grok/config.toml` | agentmemory, gitnexus, metamcp |
 | **Codex** | `~/.codex/config.toml` | agentmemory, gitnexus, metamcp (+ plugin `github@openai-curated` → GitHub Copilot MCP) |
-| **AGY** | `~/.gemini/config/mcp_config.json` + `~/.gemini/antigravity-cli/mcp_config.json` + `~/.gemini/settings.json` | agentmemory, gitnexus, metamcp |
 | **Mimo** | `~/.config/mimocode/mimocode.json` → `mcp` | agentmemory, gitnexus, metamcp |
 
 ## Behind MetaMCP

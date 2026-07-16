@@ -9,17 +9,22 @@ tools: Bash, Read, Grep, Glob
 
 ## Inputs
 
-`PROJECT_CWD`, `TASK_FILE`, `ARTIFACT_DIR`, optional `RUN_SLUG`, `TASK_ID`,  
-`MODE: start | finish | full` (default `full` if omitted).
+`PROJECT_CWD`, `TASK_FILE`, `ARTIFACT_DIR`, **`RUN_DIR`** (required for multi-task),  
+optional `RUN_SLUG`, `TASK_ID`, `MODE: start | finish | full`.
+
+**MODE default (if omitted):** smart  
+- **≥2 task YAML** in `RUN_DIR/tasks/` → `start` (never silent full on multi)  
+- **1 task** (micro/express) → `full`  
 
 | MODE | Behavior |
 |------|----------|
 | `start` | preflight + `lane-bg` → return **STATUS: started** (no poll, no report) |
 | `finish` | CLI already done → Post / `report.md` → STATUS complete\|partial |
-| `full` | start + poll + Post — micro / single-task only |
+| `full` | start + poll + Post — **only** when run has exactly one task |
 
-Multi-task PM **must** use `start` then later `finish` (progressive accept).  
-Do **not** poll-until-done in `MODE=start` — that reintroduces join-wait.
+Multi-task PM **must** pass `MODE=start` then later `MODE=finish` (progressive accept).  
+Do **not** poll-until-done in `MODE=start` — that reintroduces join-wait.  
+**Never** spawn N× Agents with `MODE=full` in one PM turn.
 
 ## Preflight
 
@@ -28,15 +33,22 @@ export PATH="$HOME/.agents/bin:$PATH"
 test -d "$PROJECT_CWD" && test -f "$TASK_FILE" || exit 1
 mkdir -p "$ARTIFACT_DIR"
 cd "$PROJECT_CWD"
-MODE="${MODE:-full}"
 RUN_DIR="${RUN_DIR:-$(dirname "$(dirname "$TASK_FILE")")}"
 SESSION_TASK_ID="${TASK_ID:-$(basename "$TASK_FILE" | sed 's/-.*//; s/\..*//')}"
+# Smart default: multi-task → start; single-task → full
+if [[ -z "${MODE:-}" ]]; then
+  n=0
+  shopt -s nullglob
+  for _f in "$RUN_DIR"/tasks/*.yaml; do n=$((n + 1)); done
+  if [[ "$n" -ge 2 ]]; then MODE=start; else MODE=full; fi
+fi
 if ! lane-mode-check --run-dir "$RUN_DIR" --mode "$MODE" --task "$SESSION_TASK_ID"; then
   {
     echo "GROK REPORT"
     echo "STATUS: refused_full_on_multi_task"
     echo "OBJECTIVE: use MODE=start then MODE=finish (progressive accept)"
   } > "$ARTIFACT_DIR/report.md"
+  echo "STATUS: refused_full_on_multi_task"
   exit 0
 fi
 command -v grok && grok --version
@@ -59,7 +71,7 @@ RUN_DIR="${RUN_DIR:-$(dirname "$(dirname "$TASK_FILE")")}"
 SESSION_TASK_ID="${TASK_ID:-$(basename "$TASK_FILE" | sed 's/-.*//; s/\..*//')}"
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
-MODE="${MODE:-full}"
+# MODE already set in Preflight (smart default)
 
 if [[ "$MODE" != "finish" ]]; then
   lane-bg --dir "$ARTIFACT_DIR" --label grok -- \

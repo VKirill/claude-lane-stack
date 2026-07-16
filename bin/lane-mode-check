@@ -61,7 +61,7 @@ def main() -> int:
         "--mode",
         default="full",
         choices=["start", "finish", "full"],
-        help="implementer MODE (default full)",
+        help="implementer MODE (implementers smart-default: multi→start, single→full)",
     )
     ap.add_argument("--task", default="", help="optional task id for messages")
     args = ap.parse_args()

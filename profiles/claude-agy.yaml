@@ -1,7 +1,0 @@
-pm: claude
-profile: claude-agy
-lanes:
-  fast_write: agy
-  main_write: agy
-  review: claude-reviewer
-  emergency_write: agy

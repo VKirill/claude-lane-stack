@@ -27,7 +27,7 @@ This page compares Claude Lane Stack with the most-cited alternatives, as honest
 
 | | **Claude Lane Stack** | metaswarm | oh-my-claudecode | Ruflo (ex claude-flow) | claude_code_agent_farm | ccswarm | claude-mpm |
 |---|---|---|---|---|---|---|---|
-| **Orchestrates** | Claude Code (PM) + AGY / Grok / Codex lanes | Claude Code + Gemini CLI + Codex CLI | Claude, Codex, Gemini, Antigravity, Grok, Cursor (tmux panes) | Claude, GPT/Codex, Gemini, Cohere, Ollama | Claude Code only | Claude Code / Codex | Claude only |
+| **Orchestrates** | Claude Code (PM) + Grok / Codex lanes | Claude Code + Gemini CLI + Codex CLI | Claude, Codex, Gemini,, Grok, Cursor (tmux panes) | Claude, GPT/Codex, Gemini, Cohere, Ollama | Claude Code only | Claude Code / Codex | Claude only |
 | **Task / state storage** | Plain YAML file contracts in `.agents/runs/` — no DB, no required MCP | BEADS git-native task database (`bd` CLI) | Files under `.omc/` | Vector DB (AgentDB/HNSW) + MCP server | State files + lock files + tmux | NDJSON audit trail + worktrees | Resume logs + MCP server |
 | **Merges to `main` for you** | ✅ Yes — orchestrator merges via `wt-merge-main` after review + checks | ✅ Yes — PR Shepherd watches CI and merges | ❌ No — git stays manual | Not a stated feature | Partial — commits to a branch, no merge/PR | Partial — auto-commit + PR, merge is yours | ❌ No |
 | **Parallel-safety mechanism** | `owns_paths` file ownership per task card + git worktrees | Task DB coordination | tmux pane separation | Swarm coordination via MCP | Lock files + heartbeats | Git worktree isolation + consensus voting | Session management |
@@ -44,11 +44,11 @@ Most tools in this niche optimize for **scale** — more agents, more panes, mor
 
 1. **The human never touches git.** The end state of every job is verified code on `main`, merged by the orchestrator. Among the tools above, only metaswarm goes equally far — via a CI/PR pipeline; Lane Stack does it locally with worktrees.
 2. **Everything is a readable file.** Task cards, reports, merge notes — plain YAML and markdown inside your repo. No task database to learn, no MCP server to keep alive, nothing hidden. `git log` is the audit trail.
-3. **Writers and reviewers are different vendors.** A task written by AGY or Grok is gated by Codex review — cross-vendor scrutiny catches what self-review misses.
+3. **Writers and reviewers are different vendors.** A task written by or Grok is gated by Codex review — cross-vendor scrutiny catches what self-review misses.
 4. **It shrinks gracefully.** `agents-doctor` detects what's installed and writes a matching profile. Nothing but Claude Code? `claude-only` mode still runs the whole conveyor — slower, but the same discipline.
 5. **A beginner can actually start.** [Plain-language guide](BEGINNER.md) in 9 languages, no orchestration vocabulary required.
 6. **Onboard matches the project.** Dual **minimal|full** scenario + **fast|deep** depth (forensic passport on mature repos) — not one stub for every toy and monorepo. See [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md).
-7. **Long lanes survive Claude Bash.** Host kills foreground Bash ~2 minutes; **`lane-bg` + `lane-wait` + `lane-exec`** keep AGY/Grok/Codex alive. See [LANE-EXEC.md](LANE-EXEC.md).
+7. **Long lanes survive Claude Bash.** Host kills foreground Bash ~2 minutes; **`lane-bg` + `lane-wait` + `lane-exec`** keep Grok / Codex alive. See [LANE-EXEC.md](LANE-EXEC.md).
 
 ## 🤝 When to pick something else
 
@@ -64,6 +64,6 @@ No tool above is a bad choice; they solve different jobs. Lane Stack's job: *a s
 
 <div align="center">
 
-⬅️ Back to [README](../README.md) · New here? Start with the [Beginner guide](BEGINNER.md)
+⬅️ Back to [README](./README.md) · New here? Start with the [Beginner guide](BEGINNER.md)
 
 </div>

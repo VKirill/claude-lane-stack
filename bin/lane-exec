@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a long-lived lane CLI (agy/grok/codex) with activity-based timeouts.
+"""Run a long-lived lane CLI (grok/codex) with activity-based timeouts.
 
 Levels
 ------
@@ -13,7 +13,6 @@ until MAX is hit.
 
 Examples
 --------
-  lane-exec --idle 600 --max 5400 -- agy --print "..." --agent lane-frontend ...
   lane-exec --idle 900 --max 7200 --heartbeat /path/heartbeat.json -- grok ...
 """
 from __future__ import annotations

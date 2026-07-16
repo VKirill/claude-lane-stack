@@ -1,5 +1,5 @@
-# Claude + Codex only (no AGY/Grok). GPT-5.6 family only — no 5.5.
-pm: claude                    # Fable/Opus in dev-orchestrator frontmatter
+# Claude + Codex only (no Grok). GPT-5.6 family only — no 5.5.
+pm: claude # Fable/Opus in dev-orchestrator frontmatter
 profile: claude-codex
 lanes:
   fast_write:
@@ -8,7 +8,7 @@ lanes:
     reasoning: high
   main_write:
     agent: codex-implementer
-    model: gpt-5.6-terra      # override to gpt-5.6-sol + xhigh when risk:high
+    model: gpt-5.6-terra # override to gpt-5.6-sol + xhigh when risk:high
     reasoning: xhigh
   review:
     agent: codex-reviewer
