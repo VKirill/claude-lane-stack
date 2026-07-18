@@ -47,7 +47,7 @@ def main() -> int:
         default="",
         help="optional heartbeat.json path; mtime counts as activity; "
         "lane-exec also WRITES this file on real activity (stdout/CPU) "
-        "so stall-check works after MODE=start (Claude supervisor gone)",
+        "so stall-check works after detached start",
     )
     ap.add_argument(
         "--heartbeat-interval",
@@ -59,6 +59,16 @@ def main() -> int:
         "--log",
         default="",
         help="tee child stdout+stderr to this file (default: only inherit + track)",
+    )
+    ap.add_argument(
+        "--event-log",
+        default="",
+        help="append lifecycle events as JSONL to this path",
+    )
+    ap.add_argument(
+        "--event-task",
+        default="",
+        help="task ID included in lifecycle events",
     )
     ap.add_argument(
         "--label",
@@ -84,6 +94,7 @@ def main() -> int:
     max_s = max(int(args.max), idle_s + 5)
     hb_path = Path(args.heartbeat) if args.heartbeat else None
     log_path = Path(args.log) if args.log else None
+    event_path = Path(args.event_log) if args.event_log else None
 
     log_f = open(log_path, "ab", buffering=0) if log_path else None
 
@@ -93,6 +104,28 @@ def main() -> int:
         sys.stderr.flush()
         if log_f:
             log_f.write(line.encode())
+
+    def emit_event(event_type: str, **fields: object) -> None:
+        """Append one complete lifecycle record without sharing file offsets."""
+        if not event_path:
+            return
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "type": event_type,
+            "task_id": args.event_task,
+            "label": args.label,
+            **fields,
+        }
+        payload = (json.dumps(record, separators=(",", ":")) + "\n").encode()
+        try:
+            event_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(event_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+            try:
+                os.write(fd, payload)
+            finally:
+                os.close(fd)
+        except OSError as e:
+            log_line(f"event log write failed: {e}")
 
     # Line-buffered pipes so idle detection sees activity promptly
     env = os.environ.copy()
@@ -108,6 +141,9 @@ def main() -> int:
         )
     except FileNotFoundError as e:
         print(f"lane-exec: cannot start: {e}", file=sys.stderr)
+        emit_event("exit", exit_code=127, reason="cannot_start")
+        if log_f:
+            log_f.close()
         return 127
 
     assert proc.stdout is not None
@@ -127,9 +163,10 @@ def main() -> int:
     self_hb_write = False
 
     log_line(f"start pid={proc.pid} idle={idle_s}s max={max_s}s cmd={' '.join(cmd[:6])}...")
+    emit_event("start", pid=proc.pid)
 
     def write_heartbeat(note: str = "lane-exec activity") -> None:
-        """Persist liveness for stall-check after MODE=start (no Claude poller).
+        """Persist liveness for stall-check after detached start (no poller).
 
         Only call when real activity just happened — never on a fixed timer alone,
         or idle detection would never fire.
@@ -184,6 +221,7 @@ def main() -> int:
             # absolute max
             if elapsed >= max_s:
                 log_line(f"MAX timeout {max_s}s — killing process group")
+                emit_event("timeout", pid=proc.pid, reason="max")
                 kill_tree(signal.SIGTERM)
                 time.sleep(2)
                 kill_tree(signal.SIGKILL)
@@ -225,6 +263,7 @@ def main() -> int:
                 log_line(
                     f"IDLE timeout {idle_s}s (no output/heartbeat for {idle_for:.0f}s) — killing"
                 )
+                emit_event("timeout", pid=proc.pid, reason="idle")
                 kill_tree(signal.SIGTERM)
                 time.sleep(2)
                 kill_tree(signal.SIGKILL)
@@ -271,16 +310,21 @@ def main() -> int:
             rc = proc.wait()
     except KeyboardInterrupt:
         log_line("SIGINT — killing child")
+        emit_event("interruption", pid=proc.pid, reason="SIGINT")
         kill_tree(signal.SIGTERM)
         time.sleep(1)
         kill_tree(signal.SIGKILL)
         rc = 130
     finally:
-        if log_f:
-            log_f.close()
+        final_rc = int(rc if rc is not None else 1)
+        try:
+            emit_event("exit", pid=proc.pid, exit_code=final_rc)
+            log_line(f"exit code={final_rc} wall={time.monotonic() - start:.0f}s")
+        finally:
+            if log_f:
+                log_f.close()
 
-    log_line(f"exit code={rc} wall={time.monotonic() - start:.0f}s")
-    return int(rc if rc is not None else 1)
+    return final_rc
 
 
 if __name__ == "__main__":

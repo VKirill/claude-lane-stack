@@ -46,8 +46,8 @@ Working with AI coding tools usually looks like this: five chat windows, copy-pa
 | You merge branches manually | The PM merges to **`main`** after checks pass |
 | Next morning: "what were we doing?" | `/resume-project` — Now / Blocked / Next in seconds |
 | Onboard is a thin CLAUDE stub | **Deep forensic passport** on mature repos |
-| Long Grok runs die at ~2 min | **`lane-bg` + `lane-wait`** — detach + poll |
-| Parallel tasks wait for the slowest | **Progressive accept** — `lane-poll` + `MODE=start/finish` |
+| Long Grok runs die at ~2 min | **`lane-ctl` + user-systemd** — detached lifecycle survives host cleanup |
+| Parallel tasks wait for the slowest | **Event-driven accept** — detached Grok + lifecycle events + separate verify pool |
 
 No task database. No required cloud service. **Plain files + plain git** — everything is inspectable in your repo.
 
@@ -181,48 +181,43 @@ Full guide: [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md)
 
 Claude Code **kills foreground Bash around ~2 minutes**. That is a **host** limit, not `lane-exec`.
 
-Long Grok / Codex jobs **must** detach:
+Long Grok jobs start through the typed control plane:
 
 ```bash
-# 1) Start detached (returns immediately)
-lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
-  lane-exec --idle 900 --max 7200 --log "$ARTIFACT_DIR/lane-exec.log" -- \
-  lane-session run --provider grok --run-dir "$RUN_DIR" --task-id "$TASK_ID" \
-    --role grok --cwd "$PROJECT_CWD" --prompt-file "$SPEC" \
-    --output "$ARTIFACT_DIR/lane-final.log"
-
-# 2) Poll with short Bash (safe)
-lane-wait --dir "$ARTIFACT_DIR" --once # exit 2 = running, 0 = done
+lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
+lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
+lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
 ```
 
 | Tool | Role |
 |------|------|
-| **`lane-bg`** | nohup detach — job survives Bash death |
-| **`lane-wait`** | short status polls |
+| **`lane-ctl`** | typed start/status/events/tail/retry/cancel/verify control plane |
+| **`lane-bg`** | low-level transient user-systemd service; explicit nohup fallback |
 | **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
-| **`lane-session`** | resumes run-scoped Grok context; three-slot parallel pool |
+| **`lane-session`** | resumes run-scoped Grok context; provider default 5/max 10 |
 
-Implementers and `dev-orchestrator` are instructed to use this pattern. Details: [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
+The read-only `lane-supervisor` and `dev-orchestrator` use this pattern. Verification has a separate default 2/max 10 pool. Details: [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
 
- and Grok no longer relearn the repository on every task in a run. The first
+Grok no longer relearns the repository on every task in a run. The first
 task creates a conversation; later related tasks resume it. A busy conversation
-is never shared concurrently—parallel tasks lease another slot (up to three).
+is never shared concurrently—parallel tasks lease another slot (five by default,
+configurable from one to ten).
 Sessions rotate after seven successful tasks by default, on failure, or when the
 worktree/model changes. Codex review stays independent and does not reuse writer
 context.
 
 ---
 
-## ⚡ Progressive accept — no join-wait
+## ⚡ Event-driven accept — no join-wait
 
 Multi-task runs no longer wait for the **slowest** concurrent lane before accepting finished ones.
 
-1. Implementer **`MODE=start`** → `lane-bg` only, returns immediately 
-2. PM **`lane-poll --run-dir …`** → see which tasks are `finish_ready` 
-3. Implementer **`MODE=finish`** → write `report.md` → **accept now** → free slot 
-4. Pipeline the next ready task (still ≤3 concurrent writers)
+1. Source-read-only **`lane-supervisor`** calls `lane-ctl start` and returns immediately.
+2. Detached `lane-bg → lane-exec → lane-session → grok` owns process lifetime.
+3. PM reacts to compact lifecycle events, then runs independent verification.
+4. Accept now and refill the next ready task (provider default 5/max 10).
 
-Single-task / micro still uses **`MODE=full`**. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md) · [skills/orchestrator-lanes](skills/orchestrator-lanes/SKILL.md).
+Claude does not spend one live subagent per provider process. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md) · [skills/orchestrator-lanes](skills/orchestrator-lanes/SKILL.md).
 
 ## 📋 Task cards: how workers stay in their lane
 
@@ -292,8 +287,8 @@ Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 | `lane-session status --run-dir .agents/runs/<slug>` | Inspect that run's Grok session pool |
 | `wt-create` / `wt-merge-main` | Worktree + **merge into `main`** |
 | `check-owns-paths` | Did the worker stay in its file list? |
-| `lane-bg` / `lane-wait` / **`lane-poll`** | Detach long lane + single/multi poll (progressive accept) |
-| `lane-exec` | Activity-aware idle/max wrapper |
+| **`lane-ctl`** | Typed detached lifecycle control + independent verify |
+| `lane-bg` / `lane-exec` / `lane-session` | Low-level process lifetime, activity timeouts, and warm provider pool |
 | `lane-heartbeat` / `lane-stall-check` | Alive? Silent? |
 | `project-onboard` | Shell seed + deep-scan (Codex fills) |
 | `docs-maintain-project` | Nightly/daily docs honesty |
@@ -330,7 +325,7 @@ More: [profiles/README.md](profiles/README.md) · [docs/ROUTING.md](docs/ROUTING
 ```text
 claude-lane-stack/
 ├── agents/ # claude PM + grok/codex lanes (implementers, onboard, review)
-├── bin/ # agents-doctor, project-onboard, lane-bg, lane-wait, lane-poll, lane-exec, lane-session,
+├── bin/ # agents-doctor, project-onboard, lane-ctl, lane-bg, lane-exec, lane-session,
 │ # wt-*, run-board, docs-maintain-*, …
 ├── skills/ # orchestration, contracts, memory, onboard,, …
 ├── profiles/ # full → claude-only
@@ -375,7 +370,7 @@ Plain Claude is one worker in one chat. Lane Stack adds **management**: task car
 <details>
 <summary><b>My run dies after ~2 minutes — is that lane-exec?</b></summary>
 
-Usually **no**. Claude kills **foreground Bash** ~2 min. Fix: implementers must use **`lane-bg`** + **`lane-wait`**. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md). After upgrading, start a **fresh** dev-orchestrator session.
+Usually **no**. Claude kills **foreground Bash** and may reap ordinary nohup descendants. Current runs start through **`lane-ctl`**, while `lane-bg` uses a transient user-systemd service. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md). After upgrading, start a **fresh** dev-orchestrator session.
 
 </details>
 

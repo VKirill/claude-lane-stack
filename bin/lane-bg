@@ -34,6 +34,12 @@ PID_FILE="$DIR/lane-bg.pid"
 META="$DIR/lane-bg.meta"
 SUP_LOG="$DIR/lane-bg.supervisor.log"
 CMD_FILE="$DIR/lane-bg.cmd"
+BACKEND="${LANE_BG_BACKEND:-auto}"
+
+case "$BACKEND" in
+  auto|systemd|nohup) ;;
+  *) echo "LANE_BG_BACKEND must be auto, systemd, or nohup" >&2; exit 2 ;;
+esac
 
 # already running?
 if [[ -f "$PID_FILE" ]]; then
@@ -43,6 +49,9 @@ if [[ -f "$PID_FILE" ]]; then
     exit 0
   fi
 fi
+# A completed attempt leaves its PID as history. Remove it before dispatch so
+# the startup wait and caller observe the new supervisor PID, not stale state.
+rm -f "$PID_FILE"
 
 printf '%s\n' "$@" > "$CMD_FILE"
 {
@@ -52,8 +61,7 @@ printf '%s\n' "$@" > "$CMD_FILE"
   echo "cmd=$*"
 } > "$META"
 
-# detach fully from Claude Bash process group
-nohup bash -c '
+WORKER_SCRIPT='
   set +e
   DIR="$1"; shift
   SUP_LOG="$DIR/lane-bg.supervisor.log"
@@ -68,14 +76,49 @@ nohup bash -c '
   # leave pid file for lane-wait to see exit; mark done
   echo "$ec" > "$DIR/lane-bg.exit"
   exit $ec
-' _ "$DIR" "$@" >/dev/null 2>&1 &
+'
 
-# parent nohup returns immediately; child rewrites pid — wait briefly
-sleep 0.3
-if [[ -f "$PID_FILE" ]]; then
-  echo "LANE_BG_STARTED pid=$(cat "$PID_FILE") dir=$DIR label=$LABEL log=$SUP_LOG"
+launch_nohup() {
+  nohup /bin/bash -c "$WORKER_SCRIPT" _ "$DIR" "$@" >/dev/null 2>&1 &
+}
+
+launch_systemd() {
+  command -v systemd-run >/dev/null 2>&1 || return 1
+  systemctl --user show-environment >/dev/null 2>&1 || return 1
+  systemd-run --user --collect --no-block --quiet --expand-environment=no \
+    --property=KillMode=control-group \
+    --working-directory="$(pwd)" \
+    --setenv="HOME=${HOME}" \
+    --setenv="PATH=${PATH}" \
+    /bin/bash -c "$WORKER_SCRIPT" _ "$DIR" "$@"
+}
+
+SELECTED_BACKEND="$BACKEND"
+if [[ "$BACKEND" == "auto" ]]; then
+  if launch_systemd "$@"; then
+    SELECTED_BACKEND="systemd"
+  else
+    SELECTED_BACKEND="nohup"
+    launch_nohup "$@"
+  fi
+elif [[ "$BACKEND" == "systemd" ]]; then
+  if ! launch_systemd "$@"; then
+    echo "lane-bg: user systemd backend unavailable" >&2
+    exit 1
+  fi
 else
-  # fallback: outer nohup pid
-  echo "LANE_BG_STARTED pid=unknown dir=$DIR label=$LABEL log=$SUP_LOG"
+  launch_nohup "$@"
+fi
+echo "backend=$SELECTED_BACKEND" >> "$META"
+
+# The transient service may need a moment to write its authoritative PID.
+for _ in {1..20}; do
+  [[ -f "$PID_FILE" ]] && break
+  sleep 0.05
+done
+if [[ -f "$PID_FILE" ]]; then
+  echo "LANE_BG_STARTED pid=$(cat "$PID_FILE") dir=$DIR label=$LABEL backend=$SELECTED_BACKEND log=$SUP_LOG"
+else
+  echo "LANE_BG_STARTED pid=unknown dir=$DIR label=$LABEL backend=$SELECTED_BACKEND log=$SUP_LOG"
 fi
 exit 0

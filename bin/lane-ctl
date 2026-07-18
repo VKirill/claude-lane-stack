@@ -1,0 +1,1284 @@
+#!/usr/bin/env python3
+"""Typed control plane for detached Grok lanes.
+
+The CLI deliberately exposes lifecycle operations, not a generic command
+runner. Provider launches are assembled here from validated task contracts;
+retries replay the recorded argv vector; verification commands can only come
+from the task YAML.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import IO, Iterator
+
+
+ROOT = Path(__file__).resolve().parents[1]
+LANE_BG = ROOT / "bin" / "lane-bg"
+LANE_EXEC = ROOT / "bin" / "lane-exec"
+LANE_SESSION = ROOT / "bin" / "lane-session"
+WRITER_CONTRACT = ROOT / "agents" / "grok" / "writer.md"
+
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+SAFE_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
+HARD_PROVIDER_POOL = 10
+HARD_VERIFY_POOL = 10
+HARD_MAX_TASKS = 10
+HARD_TAIL_LINES = 1000
+HARD_VERIFY_TIMEOUT = 86400
+MAX_ATTEMPTS = 2
+TAIL_SOURCES = {
+    "supervisor": "lane-bg.supervisor.log",
+    "executor": "lane-exec.log",
+    "provider": "provider.out",
+    "report": "report.md",
+    "verification": "verified.txt",
+}
+
+
+class ContractError(RuntimeError):
+    """A caller supplied a value outside the typed control-plane contract."""
+
+
+class OperationError(RuntimeError):
+    """A validated lifecycle operation failed to execute."""
+
+
+@dataclass(frozen=True)
+class TaskContext:
+    run_dir: Path
+    task_id: str
+    task_file: Path
+    project_cwd: Path
+    artifact_dir: Path
+    task: dict
+    raw_task: str
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def json_bytes(payload: object) -> bytes:
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def atomic_write(path: Path, data: str | bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    if isinstance(data, str):
+        temp.write_text(data, encoding="utf-8")
+    else:
+        temp.write_bytes(data)
+    os.replace(temp, path)
+
+
+def write_json(path: Path, payload: object) -> None:
+    atomic_write(path, json_bytes(payload))
+
+
+def read_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ContractError(f"required state file not found: {path}") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"cannot read JSON state {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ContractError(f"JSON state must be an object: {path}")
+    return value
+
+
+def is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def validate_name(value: str, label: str) -> str:
+    if not SAFE_NAME.fullmatch(value):
+        raise ContractError(
+            f"{label} must contain only letters, numbers, dot, underscore, or hyphen"
+        )
+    return value
+
+
+def validate_run_dir(value: str | Path) -> Path:
+    path = Path(value).expanduser().resolve()
+    if not path.is_dir():
+        raise ContractError(f"RUN_DIR is not a directory: {path}")
+    if path.parent.name != "runs" or path.parent.parent.name != ".agents":
+        raise ContractError(f"RUN_DIR must be .agents/runs/<slug>: {path}")
+    validate_name(path.name, "run slug")
+    return path
+
+
+def artifact_dir_for(run_dir: Path, task_id: str, *, create: bool = False) -> Path:
+    validate_name(task_id, "task id")
+    artifacts_root = (run_dir / "artifacts").resolve(strict=False)
+    if not is_within(artifacts_root, run_dir):
+        raise ContractError("RUN_DIR/artifacts may not escape through a symlink")
+    artifact_dir = (artifacts_root / task_id).resolve(strict=False)
+    if not is_within(artifact_dir, artifacts_root):
+        raise ContractError("artifact path must stay under RUN_DIR/artifacts")
+    if create:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+    return artifact_dir
+
+
+def safe_child_file(root: Path, name: str) -> Path:
+    """Resolve a fixed artifact filename without following an escape symlink."""
+    candidate = root / name
+    resolved = candidate.resolve(strict=False)
+    if not is_within(resolved, root):
+        raise ContractError(f"artifact file may not escape its root: {candidate}")
+    return candidate
+
+
+def load_task_yaml(task_file: Path) -> tuple[dict, str]:
+    try:
+        raw = task_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ContractError(f"cannot read task YAML {task_file}: {exc}") from exc
+    try:
+        import yaml  # type: ignore
+
+        value = yaml.safe_load(raw) or {}
+    except ImportError as exc:
+        raise ContractError("PyYAML is required to read task contracts") from exc
+    except Exception as exc:
+        raise ContractError(f"cannot parse task YAML {task_file}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ContractError(f"task YAML must contain a mapping: {task_file}")
+    return value, raw
+
+
+def validate_task_context(
+    *,
+    run_dir_value: str | Path,
+    task_id: str | None,
+    task_file_value: str | Path,
+    project_cwd_value: str | Path,
+    create_artifact: bool,
+) -> TaskContext:
+    run_dir = validate_run_dir(run_dir_value)
+    tasks_root = (run_dir / "tasks").resolve()
+    if not is_within(tasks_root, run_dir):
+        raise ContractError("RUN_DIR/tasks may not escape through a symlink")
+    task_file = Path(task_file_value).expanduser().resolve()
+    if not task_file.is_file() or not is_within(task_file, tasks_root):
+        raise ContractError("task_file must be a file under RUN_DIR/tasks")
+
+    project_cwd = Path(project_cwd_value).expanduser().resolve()
+    if not project_cwd.is_dir():
+        raise ContractError(f"project_cwd is not a directory: {project_cwd}")
+
+    task, raw_task = load_task_yaml(task_file)
+    yaml_task_id = str(task.get("id", ""))
+    validate_name(yaml_task_id, "task YAML id")
+    effective_task_id = task_id or yaml_task_id
+    validate_name(effective_task_id, "task id")
+    if yaml_task_id != effective_task_id:
+        raise ContractError(
+            f"task id mismatch: selector={effective_task_id!r}, YAML={task.get('id')!r}"
+        )
+    contract_cwd = task.get("project_cwd")
+    if not isinstance(contract_cwd, str) or not contract_cwd:
+        raise ContractError("task YAML must declare project_cwd")
+    if Path(contract_cwd).expanduser().resolve() != project_cwd:
+        raise ContractError("--project-cwd must equal task YAML project_cwd")
+
+    artifact_dir = artifact_dir_for(
+        run_dir, effective_task_id, create=create_artifact
+    )
+    return TaskContext(
+        run_dir=run_dir,
+        task_id=effective_task_id,
+        task_file=task_file,
+        project_cwd=project_cwd,
+        artifact_dir=artifact_dir,
+        task=task,
+        raw_task=raw_task,
+    )
+
+
+def prompt_for(context: TaskContext) -> str:
+    try:
+        writer = WRITER_CONTRACT.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise OperationError(f"cannot read canonical writer contract: {exc}") from exc
+    header = (
+        "\n\n---\n"
+        f"PROJECT_CWD: {context.project_cwd}\n"
+        f"TASK_FILE: {context.task_file}\n"
+        f"ARTIFACT_DIR: {context.artifact_dir}\n"
+        "--- RAW TASK YAML (verbatim) ---\n"
+    )
+    return writer.rstrip() + header + context.raw_task
+
+
+def append_event(run_dir: Path, event_type: str, task_id: str, **fields: object) -> None:
+    event = {"ts": utc_now(), "type": event_type, "task_id": task_id, **fields}
+    event_path = safe_child_file(run_dir, "events.jsonl")
+    event_path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"
+    with event_path.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        handle.write(line)
+        handle.flush()
+        os.fsync(handle.fileno())
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def read_events(run_dir: Path, task_id: str | None = None) -> list[dict]:
+    path = safe_child_file(run_dir, "events.jsonl")
+    if not path.exists():
+        return []
+    events: list[dict] = []
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+            lines = handle.readlines()
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError as exc:
+        raise OperationError(f"cannot read lifecycle events: {exc}") from exc
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise OperationError(
+                f"invalid JSON in {path} at line {line_number}: {exc}"
+            ) from exc
+        if not isinstance(event, dict):
+            raise OperationError(f"non-object lifecycle event at line {line_number}")
+        if task_id is None or event.get("task_id") == task_id:
+            events.append(event)
+    return events
+
+
+def parse_int_file(path: Path) -> int | None:
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+
+
+def pid_start_time(pid: int) -> int | None:
+    try:
+        parts = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
+        return int(parts[21])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def pid_alive(pid: int | None, expected_start: int | None = None) -> bool:
+    if pid is None or pid <= 1:
+        return False
+    try:
+        parts = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
+        if len(parts) < 22 or parts[2] == "Z":
+            return False
+        if expected_start is not None and int(parts[21]) != expected_start:
+            return False
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def read_optional_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def task_status(run_dir: Path, task_id: str) -> dict:
+    artifact = artifact_dir_for(run_dir, task_id)
+    control = read_optional_json(artifact / "control.json") or {}
+    pid = parse_int_file(artifact / "lane-bg.pid")
+    expected_start = control.get("pid_start_time")
+    if not isinstance(expected_start, int):
+        expected_start = None
+    running = pid_alive(pid, expected_start)
+    exit_code = parse_int_file(artifact / "lane-bg.exit")
+
+    task_events = read_events(run_dir, task_id)
+    if exit_code is None:
+        for event in reversed(task_events):
+            if event.get("type") == "exit" and isinstance(event.get("exit_code"), int):
+                exit_code = event["exit_code"]
+                break
+
+    heartbeat_path = artifact / "heartbeat.json"
+    heartbeat_value = read_optional_json(heartbeat_path)
+    heartbeat = {
+        "exists": heartbeat_path.is_file(),
+        "path": str(heartbeat_path),
+        "age_seconds": (
+            max(0.0, time.time() - heartbeat_path.stat().st_mtime)
+            if heartbeat_path.exists()
+            else None
+        ),
+        "value": heartbeat_value,
+    }
+    report_path = artifact / "report.md"
+    verification_path = artifact / "verification.json"
+    verified_path = artifact / "verified.txt"
+    verification = read_optional_json(verification_path)
+    current_attempt = control.get("attempt", 0)
+    verification_matches_attempt = bool(
+        verification and verification.get("attempt") == current_attempt
+    )
+
+    if running:
+        status = "running"
+    elif control.get("cancel_requested_at"):
+        status = "cancelled"
+    elif exit_code == 0:
+        if (
+            verified_path.is_file()
+            and verification_matches_attempt
+            and verification.get("status") == "passed"
+        ):
+            status = "verified"
+        elif verification_matches_attempt and verification.get("status") == "failed":
+            status = "verification_failed"
+        else:
+            status = "awaiting_verification"
+    elif exit_code is not None:
+        status = "failed"
+    elif control:
+        status = "unknown"
+    else:
+        status = "not_started"
+
+    return {
+        "task_id": task_id,
+        "status": status,
+        "pid": pid,
+        "running": running,
+        "exit_code": exit_code,
+        "attempt": current_attempt,
+        "artifact_dir": str(artifact),
+        "heartbeat": heartbeat,
+        "report": {"exists": report_path.is_file(), "path": str(report_path)},
+        "verification": {
+            "exists": verification_path.is_file() and verification_matches_attempt,
+            "verified": verified_path.is_file() and verification_matches_attempt,
+            "path": str(verification_path),
+            "status": (
+                verification.get("status") if verification_matches_attempt else None
+            ),
+        },
+    }
+
+
+def bounded_int(value: str, *, minimum: int, maximum: int, label: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"{label} must be an integer") from exc
+    if parsed < minimum or parsed > maximum:
+        raise argparse.ArgumentTypeError(
+            f"{label} must be between {minimum} and {maximum}"
+        )
+    return parsed
+
+
+def configured_default(name: str, fallback: int, *, maximum: int) -> int:
+    raw = os.environ.get(name, str(fallback))
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ContractError(f"{name} must be an integer") from exc
+    if value < 1 or value > maximum:
+        raise ContractError(f"{name} must be between 1 and {maximum}")
+    return value
+
+
+def resolve_binary(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if os.sep in value:
+        path = Path(value).expanduser().resolve()
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise ContractError(f"--binary must name an executable file: {path}")
+        return str(path)
+    found = shutil.which(value)
+    if not found:
+        raise ContractError(f"--binary not found on PATH: {value}")
+    return str(Path(found).resolve())
+
+
+def validate_model(value: str) -> str:
+    if not SAFE_MODEL.fullmatch(value):
+        raise argparse.ArgumentTypeError("model contains unsupported characters")
+    return value
+
+
+def command_hash(argv: list[str]) -> str:
+    canonical = json.dumps(argv, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def build_launch_argv(context: TaskContext, args: argparse.Namespace) -> list[str]:
+    artifact = context.artifact_dir
+    session_argv = [
+        str(LANE_SESSION),
+        "run",
+        "--provider",
+        "grok",
+        "--run-dir",
+        str(context.run_dir),
+        "--task-id",
+        context.task_id,
+        "--role",
+        "writer",
+        "--cwd",
+        str(context.project_cwd),
+        "--prompt-file",
+        str(artifact / "prompt.md"),
+        "--output",
+        str(artifact / "provider.out"),
+        "--model",
+        args.model,
+        "--reasoning-effort",
+        args.reasoning_effort,
+        "--pool-size",
+        str(args.pool_size),
+        "--max-tasks",
+        str(args.max_tasks),
+    ]
+    binary = resolve_binary(args.binary)
+    if binary:
+        session_argv.extend(["--binary", binary])
+
+    return [
+        str(LANE_BG),
+        "--dir",
+        str(artifact),
+        "--label",
+        context.task_id,
+        "--",
+        str(LANE_EXEC),
+        "--idle",
+        str(args.idle),
+        "--max",
+        str(args.max_runtime),
+        "--heartbeat",
+        str(artifact / "heartbeat.json"),
+        "--log",
+        str(artifact / "lane-exec.log"),
+        "--label",
+        context.task_id,
+        "--event-log",
+        str(context.run_dir / "events.jsonl"),
+        "--event-task",
+        context.task_id,
+        "--",
+        *session_argv,
+    ]
+
+
+def write_control(context: TaskContext, control: dict) -> None:
+    write_json(context.artifact_dir / "control.json", control)
+
+
+def launch(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            argv,
+            cwd=cwd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise OperationError(f"cannot launch detached lane: {exc}") from exc
+
+
+def finish_launch_state(
+    *, artifact: Path, control: dict, result: subprocess.CompletedProcess[str]
+) -> dict:
+    control["launcher_exit_code"] = result.returncode
+    control["launcher_stdout"] = result.stdout
+    control["launcher_stderr"] = result.stderr
+    control["launched_at"] = utc_now()
+    pid = parse_int_file(artifact / "lane-bg.pid")
+    control["pid"] = pid
+    control["pid_start_time"] = pid_start_time(pid) if pid is not None else None
+    control["state"] = "started" if result.returncode == 0 else "launch_failed"
+    write_json(artifact / "control.json", control)
+    return {
+        "task_id": control["task_id"],
+        "status": control["state"],
+        "pid": pid,
+        "attempt": control["attempt"],
+        "artifact_dir": str(artifact),
+    }
+
+
+def cmd_start(args: argparse.Namespace) -> int:
+    context = validate_task_context(
+        run_dir_value=args.run_dir,
+        task_id=args.task_id,
+        task_file_value=args.task_file,
+        project_cwd_value=args.project_cwd,
+        create_artifact=True,
+    )
+    lifecycle_lock = safe_child_file(context.artifact_dir, ".lifecycle.lock")
+    with locked_file(lifecycle_lock):
+        control_path = context.artifact_dir / "control.json"
+        if control_path.exists():
+            raise ContractError("lane already has control.json; use retry")
+        stale_pid = parse_int_file(context.artifact_dir / "lane-bg.pid")
+        if pid_alive(stale_pid):
+            raise ContractError(f"lane already has a running process: pid={stale_pid}")
+
+        for stale in (
+            "lane-bg.exit",
+            "heartbeat.json",
+            "verification.json",
+            "verified.txt",
+        ):
+            safe_child_file(context.artifact_dir, stale).unlink(missing_ok=True)
+        prompt = prompt_for(context)
+        atomic_write(context.artifact_dir / "prompt.md", prompt)
+        argv = build_launch_argv(context, args)
+        control = {
+            "version": 1,
+            "task_id": context.task_id,
+            "task_file": str(context.task_file),
+            "project_cwd": str(context.project_cwd),
+            "artifact_dir": str(context.artifact_dir),
+            "prompt_file": str(context.artifact_dir / "prompt.md"),
+            "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "argv": argv,
+            "argv_sha256": command_hash(argv),
+            "verification_commands": verification_commands(context.task),
+            "attempt": 1,
+            "state": "launching",
+            "created_at": utc_now(),
+        }
+        write_control(context, control)
+        append_event(context.run_dir, "control_start", context.task_id, attempt=1)
+        result = launch(argv, cwd=context.project_cwd)
+        payload = finish_launch_state(
+            artifact=context.artifact_dir, control=control, result=result
+        )
+        if result.returncode != 0:
+            append_event(
+                context.run_dir,
+                "control_start_failed",
+                context.task_id,
+                attempt=1,
+                exit_code=result.returncode,
+            )
+            print(json.dumps(payload, sort_keys=True))
+            return 1
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    run_dir = validate_run_dir(args.run_dir)
+    validate_name(args.task_id, "task id")
+    payload = task_status(run_dir, args.task_id)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(
+            f"task={payload['task_id']} status={payload['status']} "
+            f"pid={payload['pid'] or ''} exit={payload['exit_code'] if payload['exit_code'] is not None else ''} "
+            f"report={'yes' if payload['report']['exists'] else 'no'} "
+            f"verified={'yes' if payload['verification']['verified'] else 'no'} "
+            f"attempt={payload['attempt']}"
+        )
+    return 0
+
+
+def tail_lines(path: Path, count: int) -> str:
+    if not path.exists():
+        return ""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            position = handle.tell()
+            data = b""
+            while position > 0 and data.count(b"\n") <= count:
+                take = min(8192, position)
+                position -= take
+                handle.seek(position)
+                data = handle.read(take) + data
+    except OSError as exc:
+        raise OperationError(f"cannot read artifact log {path}: {exc}") from exc
+    lines = data.decode("utf-8", errors="replace").splitlines(keepends=True)
+    return "".join(lines[-count:])
+
+
+def cmd_tail(args: argparse.Namespace) -> int:
+    run_dir = validate_run_dir(args.run_dir)
+    artifact = artifact_dir_for(run_dir, args.task_id)
+    path = safe_child_file(artifact, TAIL_SOURCES[args.source])
+    sys.stdout.write(tail_lines(path, args.lines))
+    return 0
+
+
+def cmd_events(args: argparse.Namespace) -> int:
+    run_dir = validate_run_dir(args.run_dir)
+    if args.task_id is not None:
+        validate_name(args.task_id, "task id")
+    events = read_events(run_dir, args.task_id)[-args.limit :]
+    if args.json:
+        print(json.dumps(events, indent=2, sort_keys=True))
+    else:
+        for event in events:
+            print(json.dumps(event, sort_keys=True))
+    return 0
+
+
+def child_pids(pid: int) -> list[int]:
+    try:
+        text = Path(f"/proc/{pid}/task/{pid}/children").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    result: list[int] = []
+    for value in text.split():
+        try:
+            child = int(value)
+        except ValueError:
+            continue
+        result.append(child)
+        result.extend(child_pids(child))
+    return result
+
+
+def terminate_tree(pid: int, grace_seconds: float = 3.0) -> None:
+    targets = list(reversed(child_pids(pid))) + [pid]
+    for target in targets:
+        try:
+            os.kill(target, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + grace_seconds
+    while time.monotonic() < deadline:
+        if not any(pid_alive(target) for target in targets):
+            return
+        time.sleep(0.05)
+    for target in targets:
+        if pid_alive(target):
+            try:
+                os.kill(target, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def load_control_for(run_dir: Path, task_id: str) -> tuple[Path, dict]:
+    artifact = artifact_dir_for(run_dir, task_id)
+    control = read_json(artifact / "control.json")
+    if control.get("task_id") != task_id or control.get("artifact_dir") != str(artifact):
+        raise ContractError("control.json task/artifact identity mismatch")
+    return artifact, control
+
+
+def cmd_cancel(args: argparse.Namespace) -> int:
+    run_dir = validate_run_dir(args.run_dir)
+    validate_name(args.task_id, "task id")
+    artifact = artifact_dir_for(run_dir, args.task_id)
+    with locked_file(safe_child_file(artifact, ".lifecycle.lock")):
+        artifact, control = load_control_for(run_dir, args.task_id)
+        pid = parse_int_file(artifact / "lane-bg.pid")
+        expected_start = control.get("pid_start_time")
+        if not isinstance(expected_start, int):
+            expected_start = None
+        was_running = pid_alive(pid, expected_start)
+        control["cancel_requested_at"] = utc_now()
+        control["state"] = "cancelled"
+        write_json(artifact / "control.json", control)
+        append_event(run_dir, "cancel", args.task_id, pid=pid, was_running=was_running)
+        if was_running and pid is not None:
+            terminate_tree(pid)
+        payload = task_status(run_dir, args.task_id)
+        payload["status"] = "cancelled"
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def index_after(argv: list[str], token: str, start: int = 0) -> int:
+    try:
+        return argv.index(token, start)
+    except ValueError as exc:
+        raise ContractError(f"recorded argv is missing {token!r}") from exc
+
+
+def parse_recorded_options(
+    tokens: list[str], *, allowed: set[str], label: str
+) -> dict[str, str]:
+    if len(tokens) % 2:
+        raise ContractError(f"recorded {label} argv must contain option/value pairs")
+    parsed: dict[str, str] = {}
+    for index in range(0, len(tokens), 2):
+        option, value = tokens[index : index + 2]
+        if option not in allowed:
+            raise ContractError(f"unsupported option in recorded {label} argv: {option}")
+        if option in parsed:
+            raise ContractError(f"duplicate option in recorded {label} argv: {option}")
+        parsed[option] = value
+    return parsed
+
+
+def require_recorded_options(
+    parsed: dict[str, str], expected: dict[str, str], *, label: str
+) -> None:
+    for option, value in expected.items():
+        if parsed.get(option) != value:
+            raise ContractError(f"recorded {label} {option} mismatch")
+
+
+def recorded_int(value: str | None, *, minimum: int, maximum: int, label: str) -> int:
+    try:
+        parsed = int(value or "")
+    except ValueError as exc:
+        raise ContractError(f"recorded {label} must be an integer") from exc
+    if parsed < minimum or parsed > maximum:
+        raise ContractError(f"recorded {label} must be between {minimum} and {maximum}")
+    return parsed
+
+
+def validate_recorded_argv(
+    argv_value: object, *, artifact: Path, run_dir: Path, task_id: str, control: dict
+) -> list[str]:
+    if (
+        not isinstance(argv_value, list)
+        or not argv_value
+        or not all(isinstance(item, str) and "\0" not in item for item in argv_value)
+    ):
+        raise ContractError("recorded argv must be a non-empty string array")
+    argv = list(argv_value)
+    if command_hash(argv) != control.get("argv_sha256"):
+        raise ContractError("recorded argv checksum mismatch")
+    if argv[0] != str(LANE_BG):
+        raise ContractError("recorded argv must start with canonical lane-bg")
+    first_separator = index_after(argv, "--", 1)
+    bg_options = parse_recorded_options(
+        argv[1:first_separator], allowed={"--dir", "--label"}, label="lane-bg"
+    )
+    require_recorded_options(
+        bg_options,
+        {"--dir": str(artifact), "--label": task_id},
+        label="lane-bg",
+    )
+    if set(bg_options) != {"--dir", "--label"}:
+        raise ContractError("recorded lane-bg argv is incomplete")
+    if first_separator + 1 >= len(argv) or argv[first_separator + 1] != str(LANE_EXEC):
+        raise ContractError("recorded argv must invoke canonical lane-exec")
+    second_separator = index_after(argv, "--", first_separator + 2)
+    exec_allowed = {
+        "--idle",
+        "--max",
+        "--heartbeat",
+        "--log",
+        "--label",
+        "--event-log",
+        "--event-task",
+    }
+    exec_options = parse_recorded_options(
+        argv[first_separator + 2 : second_separator],
+        allowed=exec_allowed,
+        label="lane-exec",
+    )
+    require_recorded_options(
+        exec_options,
+        {
+            "--heartbeat": str(artifact / "heartbeat.json"),
+            "--log": str(artifact / "lane-exec.log"),
+            "--label": task_id,
+            "--event-log": str(run_dir / "events.jsonl"),
+            "--event-task": task_id,
+        },
+        label="lane-exec",
+    )
+    if set(exec_options) != exec_allowed:
+        raise ContractError("recorded lane-exec argv is incomplete")
+    idle = recorded_int(exec_options.get("--idle"), minimum=5, maximum=3600, label="idle")
+    maximum = recorded_int(
+        exec_options.get("--max"), minimum=10, maximum=86400, label="max-runtime"
+    )
+    if maximum < idle:
+        raise ContractError("recorded max-runtime must be greater than or equal to idle")
+    if second_separator + 1 >= len(argv) or argv[second_separator + 1] != str(LANE_SESSION):
+        raise ContractError("recorded argv must invoke canonical lane-session")
+    session = second_separator + 1
+    if argv[session + 1 : session + 2] != ["run"]:
+        raise ContractError("recorded lane-session argv must use run")
+    session_allowed = {
+        "--provider",
+        "--run-dir",
+        "--task-id",
+        "--role",
+        "--cwd",
+        "--prompt-file",
+        "--output",
+        "--model",
+        "--reasoning-effort",
+        "--pool-size",
+        "--max-tasks",
+        "--binary",
+    }
+    session_options = parse_recorded_options(
+        argv[session + 2 :], allowed=session_allowed, label="lane-session"
+    )
+    required = {
+        "--provider": "grok",
+        "--run-dir": str(run_dir),
+        "--task-id": task_id,
+        "--role": "writer",
+        "--cwd": str(control.get("project_cwd")),
+        "--prompt-file": str(artifact / "prompt.md"),
+        "--output": str(artifact / "provider.out"),
+    }
+    require_recorded_options(session_options, required, label="lane-session")
+    required_keys = set(required) | {
+        "--model",
+        "--reasoning-effort",
+        "--pool-size",
+        "--max-tasks",
+    }
+    if set(session_options) not in (required_keys, required_keys | {"--binary"}):
+        raise ContractError("recorded lane-session argv is incomplete")
+    model = session_options.get("--model", "")
+    if not SAFE_MODEL.fullmatch(model):
+        raise ContractError("recorded model contains unsupported characters")
+    if session_options.get("--reasoning-effort") not in {"low", "medium", "high"}:
+        raise ContractError("recorded reasoning effort is invalid")
+    recorded_int(
+        session_options.get("--pool-size"),
+        minimum=1,
+        maximum=HARD_PROVIDER_POOL,
+        label="pool-size",
+    )
+    recorded_int(
+        session_options.get("--max-tasks"),
+        minimum=1,
+        maximum=HARD_MAX_TASKS,
+        label="max-tasks",
+    )
+    if "--binary" in session_options:
+        binary = Path(session_options["--binary"]).resolve()
+        if not binary.is_file() or not os.access(binary, os.X_OK):
+            raise ContractError(f"recorded binary is unavailable: {binary}")
+    return argv
+
+
+def cmd_retry(args: argparse.Namespace) -> int:
+    run_dir = validate_run_dir(args.run_dir)
+    validate_name(args.task_id, "task id")
+    artifact = artifact_dir_for(run_dir, args.task_id)
+    lifecycle_lock = safe_child_file(artifact, ".lifecycle.lock")
+    with locked_file(lifecycle_lock):
+        artifact, control = load_control_for(run_dir, args.task_id)
+        current = task_status(run_dir, args.task_id)
+        if current["running"]:
+            raise ContractError("cannot retry a running lane")
+        attempt = control.get("attempt")
+        if not isinstance(attempt, int) or attempt < 1:
+            raise ContractError("recorded attempt is invalid")
+        if attempt >= MAX_ATTEMPTS:
+            raise ContractError(f"retry limit reached: maximum {MAX_ATTEMPTS} attempts")
+        argv = validate_recorded_argv(
+            control.get("argv"),
+            artifact=artifact,
+            run_dir=run_dir,
+            task_id=args.task_id,
+            control=control,
+        )
+        prompt_path = safe_child_file(artifact, "prompt.md")
+        if control.get("prompt_file") != str(prompt_path):
+            raise ContractError("recorded prompt path mismatch")
+        try:
+            prompt_digest = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+        except OSError as exc:
+            raise ContractError(f"cannot read recorded prompt: {exc}") from exc
+        if prompt_digest != control.get("prompt_sha256"):
+            raise ContractError("recorded prompt checksum mismatch")
+        project_cwd = Path(str(control.get("project_cwd", ""))).resolve()
+        if not project_cwd.is_dir():
+            raise ContractError(f"recorded project_cwd is unavailable: {project_cwd}")
+
+        for stale in (
+            "lane-bg.exit",
+            "heartbeat.json",
+            "verification.json",
+            "verified.txt",
+        ):
+            safe_child_file(artifact, stale).unlink(missing_ok=True)
+        control.pop("cancel_requested_at", None)
+        control["attempt"] = attempt + 1
+        control["state"] = "launching"
+        control["retry_requested_at"] = utc_now()
+        write_json(artifact / "control.json", control)
+        append_event(
+            run_dir, "control_retry", args.task_id, attempt=control["attempt"]
+        )
+        result = launch(argv, cwd=project_cwd)
+        payload = finish_launch_state(artifact=artifact, control=control, result=result)
+    print(json.dumps(payload, sort_keys=True))
+    return 0 if result.returncode == 0 else 1
+
+
+@contextmanager
+def locked_file(path: Path) -> Iterator[IO[str]]:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+", encoding="utf-8")
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    try:
+        yield handle
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
+@contextmanager
+def verification_slot(run_dir: Path, pool_size: int) -> Iterator[int]:
+    artifacts_root = (run_dir / "artifacts").resolve(strict=False)
+    if not is_within(artifacts_root, run_dir):
+        raise ContractError("RUN_DIR/artifacts may not escape through a symlink")
+    lock_root = (artifacts_root / ".verification-pool").resolve(strict=False)
+    if not is_within(lock_root, artifacts_root):
+        raise ContractError("verification pool path may not escape through a symlink")
+    lock_root.mkdir(parents=True, exist_ok=True)
+    handle: IO[str] | None = None
+    slot = -1
+    while handle is None:
+        for candidate in range(pool_size):
+            candidate_path = safe_child_file(lock_root, f"slot-{candidate}.lock")
+            candidate_handle = candidate_path.open(
+                "a+", encoding="utf-8"
+            )
+            try:
+                fcntl.flock(
+                    candidate_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB
+                )
+            except BlockingIOError:
+                candidate_handle.close()
+                continue
+            handle = candidate_handle
+            slot = candidate
+            break
+        if handle is None:
+            time.sleep(0.05)
+    try:
+        yield slot
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
+def verification_commands(task: dict) -> list[str]:
+    value = task.get("verification", [])
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ContractError("task verification must be a list of command strings")
+    if any("\0" in item for item in value):
+        raise ContractError("task verification commands may not contain NUL bytes")
+    return list(value)
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    context = validate_task_context(
+        run_dir_value=args.run_dir,
+        task_id=args.task_id,
+        task_file_value=args.task_file,
+        project_cwd_value=args.project_cwd,
+        create_artifact=False,
+    )
+    registered_artifact, _ = load_control_for(context.run_dir, context.task_id)
+    if registered_artifact != context.artifact_dir:
+        raise ContractError("verification artifact identity mismatch")
+    result_path = safe_child_file(context.artifact_dir, "verification.json")
+    verified_path = safe_child_file(context.artifact_dir, "verified.txt")
+    lifecycle_lock = safe_child_file(context.artifact_dir, ".lifecycle.lock")
+
+    with verification_slot(context.run_dir, args.verify_pool_size) as slot:
+        with locked_file(lifecycle_lock):
+            artifact, control = load_control_for(context.run_dir, context.task_id)
+            if artifact != context.artifact_dir:
+                raise ContractError("verification artifact identity mismatch")
+            if control.get("task_file") != str(context.task_file):
+                raise ContractError("verification task_file differs from registered control")
+            if control.get("project_cwd") != str(context.project_cwd):
+                raise ContractError("verification project_cwd differs from registered control")
+            attempt = control.get("attempt")
+            if not isinstance(attempt, int) or attempt < 1:
+                raise ContractError("recorded attempt is invalid")
+            current = task_status(context.run_dir, context.task_id)
+            if current["running"]:
+                raise ContractError("cannot verify while the provider is running")
+            if current["exit_code"] != 0:
+                raise ContractError("verification requires a completed provider exit code 0")
+            command_snapshot = control.get("verification_commands")
+            if not isinstance(command_snapshot, list):
+                raise ContractError("control.json is missing the verification snapshot")
+            commands = verification_commands({"verification": command_snapshot})
+            started_at = utc_now()
+            running = {
+                "version": 1,
+                "task_id": context.task_id,
+                "task_file": str(context.task_file),
+                "project_cwd": str(context.project_cwd),
+                "attempt": attempt,
+                "pool_size": args.verify_pool_size,
+                "slot": slot,
+                "command_timeout": args.command_timeout,
+                "status": "running",
+                "started_at": started_at,
+                "commands": [],
+            }
+            write_json(result_path, running)
+            append_event(
+                context.run_dir,
+                "verify_start",
+                context.task_id,
+                slot=slot,
+                attempt=attempt,
+                command_count=len(commands),
+            )
+
+            command_results: list[dict] = []
+            evidence: list[str] = []
+            passed = True
+            for command in commands:
+                command_started = utc_now()
+                try:
+                    completed = subprocess.run(
+                        ["/bin/bash", "-c", command],
+                        cwd=context.project_cwd,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        timeout=args.command_timeout,
+                        check=False,
+                    )
+                    exit_code = completed.returncode
+                    output = completed.stdout
+                except subprocess.TimeoutExpired as exc:
+                    exit_code = 124
+                    partial = exc.stdout or ""
+                    if isinstance(partial, bytes):
+                        partial = partial.decode("utf-8", errors="replace")
+                    output = (
+                        str(partial)
+                        + f"verification command timed out after {args.command_timeout}s\n"
+                    )
+                except OSError as exc:
+                    exit_code = 127
+                    output = f"cannot execute verification command: {exc}\n"
+                passed = passed and exit_code == 0
+                record = {
+                    "command": command,
+                    "started_at": command_started,
+                    "ended_at": utc_now(),
+                    "exit_code": exit_code,
+                    "output": output,
+                }
+                command_results.append(record)
+                evidence.extend(
+                    [
+                        f"$ {command}\n",
+                        output,
+                        "" if output.endswith("\n") or not output else "\n",
+                        f"[exit {exit_code}]\n\n",
+                    ]
+                )
+
+            payload = {
+                **running,
+                "status": "passed" if passed else "failed",
+                "ended_at": utc_now(),
+                "commands": command_results,
+            }
+            write_json(result_path, payload)
+            if passed:
+                atomic_write(
+                    verified_path,
+                    f"attempt={attempt}\n" + "".join(evidence),
+                )
+            else:
+                verified_path.unlink(missing_ok=True)
+            append_event(
+                context.run_dir,
+                "verify_exit",
+                context.task_id,
+                slot=slot,
+                attempt=attempt,
+                status=payload["status"],
+                exit_code=0 if passed else 1,
+            )
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0 if passed else 1
+
+
+def add_run_selector(parser: argparse.ArgumentParser, *, task_required: bool = True) -> None:
+    parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--task-id", required=task_required)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Typed lifecycle control for detached Grok lanes"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    start = sub.add_parser("start", help="validate and detach one Grok lane")
+    add_run_selector(start, task_required=False)
+    start.add_argument("--task-file", required=True)
+    start.add_argument("--project-cwd", required=True)
+    start.add_argument("--provider", choices=("grok",), default="grok")
+    start.add_argument("--binary", help="provider binary override for tests")
+    start.add_argument("--model", type=validate_model, default="grok-4.5")
+    start.add_argument(
+        "--reasoning-effort", choices=("low", "medium", "high"), default="medium"
+    )
+    start.add_argument(
+        "--idle",
+        type=lambda value: bounded_int(
+            value, minimum=5, maximum=3600, label="idle"
+        ),
+        default=900,
+    )
+    start.add_argument(
+        "--max-runtime",
+        "--max",
+        dest="max_runtime",
+        type=lambda value: bounded_int(
+            value, minimum=10, maximum=86400, label="max-runtime"
+        ),
+        default=7200,
+    )
+    start.add_argument(
+        "--pool-size",
+        type=lambda value: bounded_int(
+            value, minimum=1, maximum=HARD_PROVIDER_POOL, label="pool-size"
+        ),
+        default=configured_default(
+            "LANE_SESSION_POOL_SIZE", 5, maximum=HARD_PROVIDER_POOL
+        ),
+    )
+    start.add_argument(
+        "--max-tasks",
+        type=lambda value: bounded_int(
+            value, minimum=1, maximum=HARD_MAX_TASKS, label="max-tasks"
+        ),
+        default=7,
+    )
+    start.set_defaults(handler=cmd_start)
+
+    status = sub.add_parser("status", help="reconcile one lane's artifact state")
+    add_run_selector(status)
+    status.add_argument("--json", action="store_true")
+    status.set_defaults(handler=cmd_status)
+
+    tail = sub.add_parser("tail", help="read a bounded known artifact log")
+    add_run_selector(tail)
+    tail.add_argument("--source", choices=tuple(TAIL_SOURCES), default="supervisor")
+    tail.add_argument(
+        "--lines",
+        type=lambda value: bounded_int(
+            value, minimum=1, maximum=HARD_TAIL_LINES, label="lines"
+        ),
+        default=80,
+    )
+    tail.set_defaults(handler=cmd_tail)
+
+    events = sub.add_parser("events", help="read the append-only lifecycle journal")
+    add_run_selector(events, task_required=False)
+    events.add_argument(
+        "--limit",
+        type=lambda value: bounded_int(
+            value, minimum=1, maximum=HARD_TAIL_LINES, label="limit"
+        ),
+        default=100,
+    )
+    events.add_argument("--json", action="store_true")
+    events.set_defaults(handler=cmd_events)
+
+    cancel = sub.add_parser("cancel", help="terminate the recorded lane process tree")
+    add_run_selector(cancel)
+    cancel.set_defaults(handler=cmd_cancel)
+
+    retry = sub.add_parser("retry", help="replay a validated recorded argv vector")
+    add_run_selector(retry)
+    retry.set_defaults(handler=cmd_retry)
+
+    verify = sub.add_parser(
+        "verify", help="run only verification commands from the task contract"
+    )
+    add_run_selector(verify, task_required=False)
+    verify.add_argument("--task-file", required=True)
+    verify.add_argument("--project-cwd", required=True)
+    verify.add_argument(
+        "--verify-pool-size",
+        "--pool-size",
+        dest="verify_pool_size",
+        type=lambda value: bounded_int(
+            value, minimum=1, maximum=HARD_VERIFY_POOL, label="verify-pool-size"
+        ),
+        default=configured_default(
+            "LANE_VERIFY_POOL_SIZE", 2, maximum=HARD_VERIFY_POOL
+        ),
+    )
+    verify.add_argument(
+        "--command-timeout",
+        type=lambda value: bounded_int(
+            value,
+            minimum=1,
+            maximum=HARD_VERIFY_TIMEOUT,
+            label="command-timeout",
+        ),
+        default=1800,
+        help="maximum seconds for each verification command (default: 1800)",
+    )
+    verify.set_defaults(handler=cmd_verify)
+    return parser
+
+
+def main() -> int:
+    try:
+        parser = build_parser()
+        args = parser.parse_args()
+        return int(args.handler(args))
+    except ContractError as exc:
+        print(f"lane-ctl: {exc}", file=sys.stderr)
+        return 2
+    except OperationError as exc:
+        print(f"lane-ctl: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

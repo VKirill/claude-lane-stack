@@ -48,7 +48,7 @@ PROFILES = {
 }
 
 AGENT_MAP = {
-    "grok": "grok-implementer",
+    "grok": "lane-supervisor",
     "codex": "codex-implementer",
     "claude-worker": "general-purpose",
     "claude-reviewer": "codex-reviewer",

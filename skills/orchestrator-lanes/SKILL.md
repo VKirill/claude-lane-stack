@@ -66,109 +66,80 @@ wt-create /abs/repo <slug>
 # → prints WORKTREE_PATH=... BRANCH=agent/<slug>
 ```
 
-## Phase 3 — Dispatch (≤3 concurrent slots, progressive)
+## Phase 3 — Dispatch (event-driven, bounded)
 
-**Max 3 concurrent write lanes** (slot cap). Total tasks in a run may be 2–10+ —
-**pipeline** them: free a slot as soon as a task finishes, start the next ready
-task. High-risk write = solo (1 slot). Parallel only with **disjoint owns_paths**.
+Provider concurrency defaults to **5** and is configurable from **1–10**.
+Verification has a separate pool, default **2**, also bounded at **10**. High
+risk work remains solo. Parallel writers require **disjoint owns_paths**.
 
-### Anti-pattern (forbidden join-wait)
-
-**Do not** spawn N implementers that each poll-until-done in one PM turn when
-N>1. Claude Agent tool **joins all Agents in a turn** — you would only continue
-after the **slowest** task, and could not accept earlier finishers.
+Claude subagents do not own provider lifetime and never poll in a loop. The
+source-read-only `lane-supervisor` issues one typed `lane-ctl` action and
+returns. `lane-bg`, `lane-exec`, and `lane-session` own the detached process.
 
 ```text
-# BAD (join-wait): 3 Agents, each MODE=full / poll loop → PM blocked until last
-Agent(grok) + Agent(grok) + Agent(grok) # waits for max(t1,t2,t3)
+1) Fill free provider slots with ready, disjoint tasks:
+   Agent lane-supervisor ACTION=start → returns started immediately
+2) React to events/status on completion, failure, stall, or operator request.
+3) Provider exit 0 → ACTION=verify (separate semaphore).
+4) Accept each verified task immediately → free provider slot → refill DAG.
+5) One failed/stalled lane may retry once; a second failure becomes blocked.
 ```
 
-### Progressive protocol (required when ≥2 write tasks)
-
-| MODE | Who | What |
-|------|-----|------|
-| `start` | implementer | preflight + `lane-bg` + return **STATUS: started** (do **not** poll) |
-| `finish` | implementer | after CLI done: write `report.md`, owns/verify notes, return complete/partial |
-| `full` | implementer | start+poll+report in one Agent — **only** when run has **exactly 1** task |
-
-**Smart default (implementer, if MODE omitted):** ≥2 task YAML → `start`; 1 task → `full`.  
-PM for multi-task **must still set `MODE=start` explicitly** — never paste `MODE=full single task` on multi.
-
-**Forbidden:** N× Agent with `MODE=full` in one turn (Claude joins all → join-wait).  
-Ready tasks stay `idle` in UI while the slowest runs — PM cannot accept until the turn ends.
-
-PM loop (repeat until all tasks `done` or blocked):
+Required dispatch fields are `ACTION`, `RUN_DIR`, `TASK_FILE`, `PROJECT_CWD`,
+and `TASK_ID` when it cannot be derived. `lane-ctl start` builds the Grok prompt
+from `agents/grok/writer.md` plus the raw task YAML, registers immutable argv in
+`control.json`, and appends lifecycle records to run-level `events.jsonl`.
 
 ```text
-1) Fill free slots (running < 3, ready DAG tasks, disjoint owns):
-   Agent MODE=start → mark task status: running
-2) Short Bash (safe):
-   lane-poll --run-dir .agents/runs/<slug>
-   # exit 0 + finish_ready>0 → some CLI finished without report yet
-   # exit 2 → still running, nothing finish-ready
-3) For EACH finish_ready task (independently — do not wait for others):
-   Agent MODE=finish → accept (Phase 4) immediately → status: done
-   free slot → may start next ready task in same turn or next poll cycle
-4) If only running: sleep ~20–30s (short Bash) → poll again
-5) Periodically: lane-stall-check ; run-board
-```
-
-```text
-You are grok-implementer.
-MODE: start          # multi-task: start | finish only. full = single-task only
-PROJECT_CWD: <worktree or repo>
-TASK_FILE: .../tasks/001-….yaml
-ARTIFACT_DIR: .../artifacts/001
-RUN_DIR: .../runs/<slug>    # REQUIRED — enables lane-mode-check
-Load karpathy-guidelines. Read TASK_FILE. Own only owns_paths. Never merge to main.
-MODE=start → lane-bg only, return STATUS: started (no poll loop).
-MODE=finish → CLI must already be done; write report.md; return STATUS.
-Heartbeat: lane-heartbeat --repo PROJECT_CWD --run <slug> --task 001 --status running|done
+You are lane-supervisor.
+ACTION: start | status | events | tail | retry | cancel | verify
+RUN_DIR: /absolute/repo/.agents/runs/<slug>
+TASK_FILE: /absolute/.../tasks/001-title.yaml
+PROJECT_CWD: /absolute/worktree
+TASK_ID: 001
+Run one direct lane-ctl action. Never edit source or poll in a loop.
 ```
 
 | `lane` | Agent |
 |--------|--------|
-| grok | grok-implementer (**only** write programmer) |
+| grok | lane-supervisor (read-only control); Grok process is the writer |
 | codex-implementer | fallback write if Grok blocked |
 | codex-review-medium | codex-reviewer (sol medium) |
 | codex-review | codex-reviewer |
 
-### Background rule (prevents 2-minute kills)
+### Control-plane commands
 
 ```bash
-# MODE=start — implementer (returns immediately after detach):
-lane-bg --dir "$ARTIFACT_DIR" --label grok -- lane-exec ... -- grok ...
-
-# PM progressive poll (short Bash, multi-task):
-lane-poll --run-dir "$RUN_DIR" # finish_ready tasks → MODE=finish + accept now
-lane-wait --dir "$ARTIFACT_DIR" --once # single-dir; exit 2 = running, 0 = done
+lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
+lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
+lane-ctl events --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
+lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
 ```
 
-Docs: `~/.agents/docs/LANE-EXEC.md`. Bins: `lane-bg`, `lane-wait`, **`lane-poll`**, **`lane-mode-check`**, `lane-exec`.
+Docs: `~/.agents/docs/LANE-EXEC.md`. Primary control bin: `lane-ctl`; low-level
+compatibility bins remain `lane-bg`, `lane-wait`, `lane-poll`, `lane-mode-check`,
+`lane-exec`, and `lane-session`.
 
-**Hard anti-join:** implementers call `lane-mode-check` — multi-task runs **refuse**
-`MODE=full` (exit 2 / STATUS `refused_full_on_multi_task`). PM must re-dispatch
-`MODE=start`. Override only for tests: `LANE_ALLOW_FULL=1`.
-
-After each start: task `status: running`, `STATUS.md`, `lane-heartbeat`, `run-board`.
+After each start: task `status: running`, `STATUS.md`, and `run-board`.
 After each accept: task `status: done`, free slot, unlock `depends_on` dependents.
 
-**Detached heartbeat:** `lane-exec --heartbeat ARTIFACT/heartbeat.json` auto-writes
-on real activity (stdout/CPU) so `lane-stall-check` stays green after MODE=start
-(Claude supervisor is gone).
+**Detached heartbeat:** `lane-exec --heartbeat ARTIFACT/heartbeat.json` writes
+only on real activity (stdout/CPU). Run-level events distinguish registered live
+work from old task YAML and completed historical runs.
 
 ## Phase 4 — Accept (per-task, as soon as ready)
 
-**Progressive accept is mandatory for multi-task runs.** When task A finishes
+**Progressive accept is mandatory for multi-task runs.** When task A verifies
 while B and C still run: accept A **now**, mark done, free its slot, start the
 next ready task if any. **Never** defer accept until the last concurrent task
 completes.
 
-1. `report.md` STATUS complete + real VERIFIED / done_when evidence. 
+1. `report.md` STATUS complete + provider evidence.
 2. `check-owns-paths "$TASK_FILE"` exit 0. 
-3. No full-diff re-read on happy path. 
-4. Weak/empty/partial → other write lane or fix prompt. 
-5. Gate (opt-in): pre-merge review is off by default; see the gate note below.
+3. `lane-ctl verify` exit 0 + `verified.txt` / `verification.json`.
+4. No full-diff re-read on happy path.
+5. Weak/empty/partial → one retry or recovery lane.
+6. Gate (opt-in): pre-merge review is off by default; see the gate note below.
 
 Acceptance for **all** tiers is report + `check-owns-paths` + verify.
 Merge to main only when **all** tasks in the run are `done` (Phase 6) — but
@@ -188,10 +159,11 @@ must pass BEFORE merge for high-risk work in that project.
 Nightly/batch **reviews** may still group finished work later. That is not
 join-wait on write accept — write accept stays per-task progressive.
 
-Micro path: **one** task YAML → `MODE=full` OK (or smart default). Acceptance is
-report + `check-owns-paths` only (no reviewer); verify per `verify` field.
+Micro path still uses one detached Grok task through `lane-ctl start`. Acceptance
+is report + owns check + independent verification; no reviewer for low risk.
 
-Mark `status: done` only if 1–4 (and 5 if `gate: pre-merge` applies for this run).
+Mark `status: done` only if 1–5 pass and item 6 passes when the configured
+pre-merge gate applies.
 
 ## Phase 5 — Stall recovery
 
@@ -257,8 +229,8 @@ Ideas → **agent-todos**. Active build → this skill. Promote todo → run whe
 3. Parallel = disjoint owns_paths only. 
 4. Merge to main = **you** when run green. 
 5. Workers never `git push` / merge main. 
-6. Max 3 **concurrent** write slots; pipeline more tasks via progressive accept. 
+6. Provider slots default to 5 and are bounded at 10; verification defaults to 2 and has its own semaphore.
 7. Done = report + owns check + done_when (+ codex if required). 
 8. **English only** for all run/todo/docs files; chat with human may be Russian (`LANGUAGE.md`). 
-9. **Progressive accept** when ≥2 writes: MODE=start / lane-poll / MODE=finish per task — never join-wait the slowest before accepting finished ones.  
-10. **Never** N× `MODE=full` in one turn on a multi-task run. Always pass `RUN_DIR` + explicit `MODE`.
+9. **Progressive accept** when ≥2 writes: start detached, react to events, verify separately, accept per task.
+10. **Never** use a live Claude subagent or polling loop as the provider process supervisor.

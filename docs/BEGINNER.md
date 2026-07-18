@@ -207,13 +207,14 @@ You get a short **Now / Blocked / Next** summary and continue in plain language.
 Long silence? Workers can stall — the stack has tooling for exactly this.
 
 > [!IMPORTANT]
-> If a write lane **dies after ~2 minutes**, that is usually **Claude killing foreground Bash**, not a bug in your code. Upgrade to **v1.1.0+** so implementers use `lane-bg` + `lane-wait`, then start a **fresh** PM session. Details: [LANE-EXEC.md](LANE-EXEC.md).
+> If a write lane **dies after ~2 minutes**, that is usually **Claude killing foreground Bash**, not a bug in your code. Current runs use `lane-ctl` to detach the provider and record lifecycle events. Details: [LANE-EXEC.md](LANE-EXEC.md).
 
 Within one run, Grok tasks also reuse warm conversations through
 `lane-session`. Related sequential tasks keep context; truly parallel tasks use
-separate pool slots. The default session lifetime is seven successful tasks.
-Multi-task runs **accept each task as it finishes** (`lane-poll` + implementer
-`MODE=start`/`finish`) — the PM does not wait for the slowest sibling.
+separate pool slots (five by default, configurable 1–10). The default session
+lifetime is seven successful tasks. Multi-task runs react to lifecycle events,
+verify in a separate pool (two by default), and accept each task as it finishes.
+The PM does not wait for the slowest sibling.
 
 | Say to the PM | What happens |
 |---------------|--------------|

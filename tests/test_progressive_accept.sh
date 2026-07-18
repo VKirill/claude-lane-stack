@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 # Progressive accept + anti-join + detached heartbeat fixtures.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="$ROOT/bin:$PATH"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+
+# Read-only Claude supervisor: typed lane-ctl actions only, no source write tools
+# or unrestricted Bash in frontmatter.
+SUPERVISOR="$ROOT/agents/claude/lane-supervisor.md"
+grep -q '^tools: Read, Grep, Glob, Bash(lane-ctl start:' "$SUPERVISOR" || {
+  echo "FAIL: lane-supervisor must use typed lane-ctl tools"; exit 1;
+}
+if sed -n '1,/^---$/p' "$SUPERVISOR" | grep -Eq '(^|, )(Write|Edit|Bash)(,|$)'; then
+  echo "FAIL: lane-supervisor frontmatter grants source write or generic Bash"
+  exit 1
+fi
 
 RUN="$TMP/.agents/runs/prog-demo"
 mkdir -p "$RUN/tasks" "$RUN/artifacts/001" "$RUN/artifacts/002" "$RUN/artifacts/003"
