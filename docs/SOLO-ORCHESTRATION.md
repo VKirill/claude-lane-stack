@@ -10,18 +10,21 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 2. **You never merge.** If PM asks you to merge, PM is wrong — fix the skill.
 3. **Parallel only with ownership.** Disjoint `owns_paths` or serial.
 4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.
-5. **Bounded warm writer context.** Each task gets a fresh Claude supervisor spawn, while Grok resume only the session pool owned by that exact run. Rotate after seven successful tasks; review stays fresh.
+5. **One visible supervisor per run.** `run-supervisor` watches one durable
+   deterministic controller; Grok resumes only the writer session pool owned by
+   that run and rotates after seven successful tasks.
 6. **Receipts are truth.** Task YAML is immutable; `state.json` drives live
    STATUS/BOARD and only `acceptance.json` means done.
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
-8. **Event-driven progressive accept.** `lane-supervisor` starts a detached
-   Grok process and returns; PM reacts to events, verifies separately, and never
-   join-waits the slowest concurrent lane.
+8. **Durable progressive accept.** `run-controller` dispatches detached Grok
+   processes, reacts to receipts, and accepts each ready task without waiting
+   for the slowest concurrent lane. The controller survives Claude restarts.
 9. **Bounded pools.** Provider default 5/max 10; verification default 2/max 10.
 10. **Fail-closed ship.** Commit, validation, finalize, then push; branch and
     worktree stay recoverable on any failure.
 
-Daytime: micro/medium ship fast. Night: `night-shift` performs typed Codex Sol
+Daytime: micro/medium ship fast with exact checks and **no daytime LLM review**.
+Night: `night-shift` performs typed Codex Sol
 xhigh review and prepares verified Grok fixes in an isolated worktree. Morning:
 `resume-project` surfaces canonical findings and any repair run still awaiting
 human or merge policy action.
@@ -37,7 +40,7 @@ Applies when score 0–2, risk low, ≤2 files, and no `high_risk_paths`. PM
 keeps the generated v2 files concise and ships in minutes.
 
 - Skips: worktree, heartbeat ceremony, reviewer.
-- Keeps: strict generated task, validation, `lane-bg`, ownership/verification/
+- Keeps: strict generated task, validation, `run-controller`, ownership/verification/
   acceptance receipts, PM commit to main.
 - Commit: `<type>(<area>): <title> [micro:<slug>]`.
 
@@ -48,12 +51,9 @@ keeps the generated v2 files concise and ships in minutes.
 | none    | micro path / risk low               | verify field + check-owns-paths only |
 | nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Grok repair; fresh re-review |
 
-Pre-merge gate is OFF by default (solo, no-user products). When a project
-serves real users or money, re-enable per project: add `gate: pre-merge` to
-`run.yaml` (or set it as a project default in PROGRESS.md Pointers before
-`run-init`) — then
-codex-reviewer (sol xhigh, read-only)
-must pass BEFORE merge for high-risk work in that project.
+Normal daytime runs never invoke an LLM reviewer. Historical or explicitly
+configured `gate: pre-merge` runs stop for an operator decision instead of
+silently starting a reviewer. The standard review/fix loop is nightly.
 
 ## End-state of every run
 
@@ -76,8 +76,9 @@ PROGRESS.md ← Now/Next updated
 | `run-init <repo> <slug>` | create a strict schema-v2 run |
 | `run-validate --phase pre-dispatch\|pre-merge` | validate schema, DAG, scopes, and receipts |
 | `wt-create <repo> <slug>` | start isolated run |
+| `run-controller start/watch/status` | durable DAG dispatch, progressive acceptance, and live run status |
 | `lane-heartbeat …` | worker or supervisor pulse |
-| `lane-ctl start/status/events/tail` | typed detached lifecycle control |
+| `lane-ctl start/status/events/tail` | low-level typed lifecycle control and diagnostics |
 | `lane-ctl retry/cancel` | bounded recovery from recorded control state |
 | `lane-ctl verify` | exact task checks under the separate verification semaphore |
 | `lane-ctl accept` | write the sole technical done receipt |
@@ -97,6 +98,8 @@ PROGRESS.md ← Now/Next updated
 - Talk only to **dev-orchestrator**.
 - Say what you want; do not manage branches.
 - Cold start: `/resume-project` or «продолжи» → PM reads BOARD + PROGRESS.
+- During a run, the single `run-supervisor` remains visible until accepted or
+  blocked; Lane Board reads `controller.json` and exact task runtime stages.
 - If something stuck >5 min: «проверь stall» → PM runs stall-check + re-dispatch.
 
 ## Language

@@ -22,7 +22,7 @@ flowchart LR
     You(["🧑 You<br/>plain language"]) --> PM["🤖 PM<br/>dev-orchestrator"]
     PM --> W1["🔧 Grok — write"]
     PM --> W2["🔧 Grok<br/>heavy writes"]
-    PM --> W3["🔍 Codex<br/>review"]
+    Main -.-> W3["🌙 Codex<br/>night review"]
     W1 --> PM
     W2 --> PM
     W3 --> PM
@@ -133,8 +133,8 @@ Deep mode walks entrypoints, flows, wiki↔code mismatches, and real verify comm
 
 | Profile | You have installed | Who writes code | Who reviews |
 |---------|-------------------|-----------------|-------------|
-| `full` | Grok + Codex | Grok | Codex Sol |
-| `claude-codex` | Codex only | Codex Terra/Sol | Codex Sol |
+| `full` | Grok + Codex | Grok | Night: Codex Sol |
+| `claude-codex` | Codex only | Codex Terra/Sol | Night: Codex Sol |
 | `claude-only` | Just Claude Code | Claude subagents | Claude subagents |
 
 **Station 2 checklist — done when:**
@@ -168,7 +168,8 @@ Now say one **small, concrete** goal in plain language:
 |-----------|---------|-------------|
 | Files appear under `.agents/runs/` | Task cards for workers — the factory floor | No, just curiosity |
 | PM mentions "worktree" | Isolated copy so workers don't collide | No |
-| PM reports checks / review | Quality gate before merge | No |
+| One `run-supervisor` remains active | The durable controller is still dispatching/checking tasks | No |
+| PM reports exact checks | Ownership + registered verification passed; review is nightly | No |
 | PM says **done, merged to `main`** | Your result is official | ✅ Check the app |
 
 **Station 3 checklist — done when:**
@@ -250,10 +251,10 @@ Still weird? Ask the PM directly: *«explain what you're doing right now in simp
 |------|----------------|---------------|
 | **Agent** | An AI that can read/write code with tools | Always — they do the work |
 | **PM / orchestrator** | The "boss" agent (`dev-orchestrator`) | You talk mostly to this one |
-| **Lane** | A worker type: fast write / heavy write / review | Setup picks  vs Grok vs Codex |
+| **Lane** | A bounded worker/process slot | The controller runs several Grok tasks safely |
 | **Claude Code** | Anthropic's terminal coding app | **Required** — hosts the PM |
 | **Grok** | xAI CLI | Optional heavy-write worker |
-| **Codex** | OpenAI CLI | Optional reviewer + onboarding |
+| **Codex** | OpenAI CLI | Optional night reviewer/re-reviewer + onboarding |
 | **Task card / contract** | Small YAML file: goal, allowed files, checks | PM writes them; workers obey them |
 | **`.agents/runs/`** | Folder of active jobs — the factory floor | Appears once real work starts |
 | **`docs/plans/`** | Strategy notes (research, long plans) | Not code yet — say *«implement»* |
@@ -300,7 +301,10 @@ Yes, carefully. Best practice: tell the PM what you touched, so its task cards d
 <details>
 <summary><b>How is this different from just… using Claude Code?</b></summary>
 
-Plain Claude Code is one worker in one chat. Lane Stack adds a **manager layer**: task cards with file ownership, parallel workers from different vendors, an independent review lane, and automatic merge to `main`. You talk strategy; it runs logistics.
+Plain Claude Code is one worker in one chat. Lane Stack adds a **manager layer**:
+task cards with file ownership, a durable run controller, one visible run
+supervisor, nightly independent review/fix, and automatic merge to `main`. You
+talk strategy; it runs logistics.
 
 </details>
 

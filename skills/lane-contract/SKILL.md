@@ -15,22 +15,28 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 2. Set **`owns_paths`** + **`never_touch`** + behavioral `acceptance`.
 3. Paste code excerpts into `interfaces` and declare `read_first`, `invariants`,
    `out_of_scope`, and `expected_outputs`.
-4. Pass `PROJECT_CWD`, `TASK_FILE`, and `RUN_DIR` (absolute) to `lane-supervisor`.
+4. Pass absolute `PROJECT_CWD` and `RUN_DIR` to one `run-supervisor` for the
+   whole run. Use `lane-supervisor` only for an explicit one-lane diagnostic.
 5. Ensure parallel tasks have **disjoint** owns_paths.
-6. After **each** lane finishes: `check-owns-paths`; verify and accept evidence **immediately**
-   (progressive — do not wait for other concurrent tasks).
+6. Start the durable `run-controller`. It must run `check-owns-paths`, verify,
+   and accept evidence **immediately** after each lane finishes (progressive —
+   do not wait for other concurrent tasks).
 7. Treat `tasks/*.yaml` as immutable after first start. Runtime status belongs
    to `artifacts/<id>/state.json`; completion exists only in `acceptance.json`.
 8. Before merge run `run-validate --phase pre-merge`; then **merge to main**
    (`wt-merge-main` or commit) — human never merges.
 9. No task CLI / orchestrator MCP for queue.
-10. Start and observe work through typed `lane-ctl` actions. The supervisor is
-    source-read-only; the detached Grok process is the writer.
+10. Normal daytime work flows through `run-controller` and its typed `lane-ctl`
+    actions. The run supervisor is source-read-only; the detached Grok process
+    is the writer. There is no daytime LLM review.
 11. Keep provider slots (default 5, range 1–10) separate from verification slots
     (default 2, range 1–10).
 12. Run automated writers/reviewers with the lane automation marker. Imported
     Claude hooks are disabled for Grok and the shared native session-ledger
     exits without writing; skills, rules, and non-ledger safety hooks remain.
+13. Treat `Cancelled`, `Error`, any unknown provider terminal reason, and exit
+    zero without a root `report.md` whose `STATUS` is `complete` as retryable
+    failure, never as ready for verification.
 
 ## Lane must
 

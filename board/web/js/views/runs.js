@@ -2,6 +2,7 @@ import { goTo, projectHash } from "../router.js";
 import { getProjectName, getProjects, getScope, loadProject, runId, runsFrom, selectRun, taskStatus } from "../store.js";
 import { element, emptyState, errorState, formatDate, loading } from "../ui.js";
 import { statusBadge } from "../components/badges.js";
+import { controllerFacts, lifecycleLabel } from "../lifecycle.mjs";
 
 function details(payload) {
   return payload && payload.project && typeof payload.project === "object" ? { ...payload, ...payload.project } : payload || {};
@@ -42,6 +43,11 @@ function runRow(projectId, run) {
   row.className = "run-row";
   const lead = element("div", "");
   lead.append(element("div", "run-row__title", runId(run)), element("div", "run-row__meta", formatDate(run.lastActivity)));
+  if (run.controller) {
+    const controller = element("div", "run-row__controller", controllerFacts(run.controller).join(" · "));
+    controller.setAttribute("title", controller.textContent);
+    lead.append(controller);
+  }
   const progress = element("div", "");
   progress.append(element("div", "run-row__meta", `${done}/${total} done`));
   const bar = element("div", "progress");
@@ -57,6 +63,18 @@ function runRow(projectId, run) {
     chips.append(chip);
   });
   meta.append(chips);
+  const lifecycles = new Map();
+  tasks.forEach((task) => {
+    const status = task.runtime && typeof task.runtime.status === "string" ? task.runtime.status : null;
+    if (status) lifecycles.set(status, (lifecycles.get(status) || 0) + 1);
+  });
+  if (lifecycles.size > 0) {
+    const phases = element("div", "run-row__lifecycles");
+    [...lifecycles.entries()].forEach(([status, count]) => {
+      phases.append(element("span", `run-row__phase run-row__phase--${status.replace(/[^a-z0-9_-]/g, "-")}`, `${lifecycleLabel(status)}: ${count}`));
+    });
+    meta.append(phases);
+  }
   const merged = run.merged;
   if (merged) meta.append(element("div", "run-row__meta", `Merged ${merged.date || ""}${merged.commit ? ` · ${merged.commit}` : ""}`));
   row.append(lead, progress, meta);

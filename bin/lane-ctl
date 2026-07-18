@@ -564,6 +564,8 @@ def task_status_v2(
         "value": heartbeat_value,
     }
     report_path = safe_child_file(artifact, "report.md")
+    report_status = markdown_field(report_path, ("STATUS",))
+    report_complete = report_status == "complete"
     verification_path = safe_child_file(attempt_dir, "verification.json")
     verification = read_optional_json(verification_path)
     verification_trusted = v2_verification_receipt_trusted(
@@ -579,7 +581,8 @@ def task_status_v2(
         accepted_review == "passed" and review_trusted
     )
     accepted = (
-        verification_trusted
+        report_complete
+        and verification_trusted
         and verification is not None
         and verification.get("status") == "passed"
         and review_binding_trusted
@@ -601,27 +604,53 @@ def task_status_v2(
 
     if accepted:
         status = "accepted"
+        reason = "acceptance_valid"
+        next_action = "none"
     elif state.get("status") == "cancelled":
         status = "cancelled"
+        reason = "cancel_requested"
+        next_action = "retry"
     elif state.get("status") == "stalled" and running:
         status = "stalled"
+        reason = "heartbeat_stalled"
+        next_action = "cancel"
     elif running:
         status = "running"
+        reason = "provider_running"
+        next_action = "wait"
     elif exit_code == 0:
-        if verification_trusted and verification.get("status") == "passed":
+        if not report_complete:
+            status = "provider_incomplete"
+            reason = "report_incomplete" if report_path.is_file() else "report_missing"
+            next_action = "retry"
+        elif verification_trusted and verification.get("status") == "passed":
             status = "verified"
+            reason = "verification_passed"
+            next_action = "accept"
         elif verification_trusted and verification.get("status") == "failed":
             status = "verification_failed"
+            reason = "verification_failed"
+            next_action = "retry"
         elif verification_trusted and verification.get("status") == "running":
             status = "verifying"
+            reason = "verification_running"
+            next_action = "wait"
         else:
             status = "awaiting_verification"
+            reason = "provider_complete"
+            next_action = "verify"
     elif exit_code is not None:
         status = "failed"
+        reason = "provider_exit_nonzero"
+        next_action = "retry"
     elif control:
         status = "unknown"
+        reason = "provider_state_unknown"
+        next_action = "inspect"
     else:
         status = "not_started"
+        reason = "not_started"
+        next_action = "start"
 
     if persist and (state.get("status") != status or state.get("accepted") is not accepted):
         state = dict(state)
@@ -634,6 +663,9 @@ def task_status_v2(
         "schema_version": 2,
         "task_id": task_id,
         "status": status,
+        "reason": reason,
+        "report_complete": report_complete,
+        "next_action": next_action,
         "accepted": accepted,
         "pid": pid,
         "running": running,
@@ -643,7 +675,12 @@ def task_status_v2(
         "attempt_dir": str(attempt_dir),
         "task_sha256": state.get("task_sha256"),
         "heartbeat": heartbeat,
-        "report": {"exists": report_path.is_file(), "path": str(report_path)},
+        "report": {
+            "exists": report_path.is_file(),
+            "complete": report_complete,
+            "status": report_status,
+            "path": str(report_path),
+        },
         "verification": {
             "exists": verification_path.is_file(),
             "verified": bool(
@@ -2280,6 +2317,28 @@ def cmd_accept(args: argparse.Namespace) -> int:
             raise ContractError("owns-check.json task_sha256 does not match state")
         if Path(str(owns.get("cwd", ""))).resolve() != context.project_cwd:
             raise ContractError("owns-check.json cwd does not match project_cwd")
+        owns_scope = owns.get("scope")
+        scope_task_ids = owns.get("scope_task_ids")
+        if (
+            owns_scope not in {"task", "run"}
+            or not isinstance(scope_task_ids, list)
+            or not all(isinstance(item, str) for item in scope_task_ids)
+            or len(scope_task_ids) != len(set(scope_task_ids))
+        ):
+            raise ContractError("owns-check.json scope fields are invalid")
+        if owns_scope == "task":
+            expected_scope_task_ids = [task_id]
+        else:
+            expected_scope_task_ids = []
+            for candidate in sorted((context.run_dir / "tasks").glob("*.yaml")):
+                candidate_task, _ = load_task_yaml(candidate)
+                candidate_id = str(candidate_task.get("id", ""))
+                validate_name(candidate_id, "run task id")
+                expected_scope_task_ids.append(candidate_id)
+        if scope_task_ids != expected_scope_task_ids:
+            raise ContractError(
+                "owns-check.json scope_task_ids do not match the accepted task scope"
+            )
 
         attempt_dir = current_attempt_dir(artifact, state)
         verification_path = safe_child_file(attempt_dir, "verification.json")

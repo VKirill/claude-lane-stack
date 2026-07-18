@@ -6,8 +6,18 @@ export PATH="$ROOT/bin:$PATH"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Read-only Claude supervisor: typed lane-ctl actions only, no source write tools
-# or unrestricted Bash in frontmatter.
+# Read-only run supervisor: typed run-controller actions only, no source write
+# tools or unrestricted Bash in frontmatter.
+RUN_SUPERVISOR="$ROOT/agents/claude/run-supervisor.md"
+grep -q '^tools: Read, Bash(run-controller start:' "$RUN_SUPERVISOR" || {
+  echo "FAIL: run-supervisor must use typed run-controller tools"; exit 1;
+}
+if sed -n '1,/^---$/p' "$RUN_SUPERVISOR" | grep -Eq '(^|, )(Write|Edit|Bash)(,|$)'; then
+  echo "FAIL: run-supervisor frontmatter grants source write or generic Bash"
+  exit 1
+fi
+
+# Manual lane supervisor remains typed and source-read-only.
 SUPERVISOR="$ROOT/agents/claude/lane-supervisor.md"
 grep -q '^tools: Read, Grep, Glob, Bash(lane-ctl start:' "$SUPERVISOR" || {
   echo "FAIL: lane-supervisor must use typed lane-ctl tools"; exit 1;

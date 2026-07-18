@@ -15,8 +15,19 @@ test('builds the fixed list and detail API shapes from a project tree', async ()
   const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-snapshot-'));
   fixtures.push(root);
   await mkdir(path.join(root, '.agents', 'runs', 'run-a', 'tasks'), { recursive: true });
+  await mkdir(path.join(root, '.agents', 'runs', 'run-a', 'controller'), { recursive: true });
   await mkdir(path.join(root, '.agents', 'todos'), { recursive: true });
   await mkdir(path.join(root, '.agents', 'session-log'), { recursive: true });
+  await writeFile(path.join(root, '.agents', 'runs', 'run-a', 'controller.json'), JSON.stringify({
+    schema_version: 1,
+    stage: 'providers',
+    counts: { total: 3, accepted: 1, blocked: 0, running: 2, pending: 0 },
+    last_event: { type: 'provider_started', task_id: '003' },
+    next_action: 'wait',
+    updated_at: '2026-07-18T06:00:00Z',
+    ignored_secret: 'must not reach API',
+  }));
+  await writeFile(path.join(root, '.agents', 'runs', 'run-a', 'controller', 'lane-bg.pid'), `${process.pid}\n`);
   await writeFile(path.join(root, '.agents', 'runs', 'run-a', 'tasks', '001.yaml'), [
     'id: 001', 'title: First task', 'status: done', 'risk: low', 'lane: codex', 'verify: tests',
   ].join('\n'));
@@ -32,6 +43,9 @@ test('builds the fixed list and detail API shapes from a project tree', async ()
     utimes(path.join(root, '.agents', 'runs', 'run-a', 'tasks'), activity, activity),
     utimes(path.join(root, '.agents', 'runs', 'run-a', 'tasks', '001.yaml'), activity, activity),
     utimes(path.join(root, '.agents', 'runs', 'run-a', 'MERGE.md'), activity, activity),
+    utimes(path.join(root, '.agents', 'runs', 'run-a', 'controller.json'), activity, activity),
+    utimes(path.join(root, '.agents', 'runs', 'run-a', 'controller'), activity, activity),
+    utimes(path.join(root, '.agents', 'runs', 'run-a', 'controller', 'lane-bg.pid'), activity, activity),
   ]);
 
   const snapshot = await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root });
@@ -42,11 +56,106 @@ test('builds the fixed list and detail API shapes from a project tree', async ()
   assert.equal(summary.todoOpenCount, 1);
   assert.deepEqual(summary.review, { date: '2026-07-13', passed: 1, failed: 0 });
   assert.deepEqual(detail.runs, [{
-    slug: 'run-a', lastActivity: '2026-07-13T00:00:00.000Z', merged: { date: null, commit: null }, tasks: [{
+    slug: 'run-a', lastActivity: '2026-07-13T00:00:00.000Z', merged: { date: null, commit: null }, controller: {
+      status: 'running',
+      stage: 'providers',
+      counts: { total: 3, accepted: 1, blocked: 0, running: 2, pending: 0 },
+      last_event: { type: 'provider_started', task_id: '003' },
+      next_action: 'wait',
+      pid: process.pid,
+      updated_at: '2026-07-18T06:00:00Z',
+    }, tasks: [{
       id: '001', title: 'First task', status: 'done', risk: 'low', lane: 'codex', verify: 'tests',
     }],
   }]);
   assert.deepEqual(detail.progress, { now: ['Building server'], blocked: ['(none)'], next: ['Ship'] });
+});
+
+test('malformed controller receipt is ignored without hiding the run', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-controller-malformed-'));
+  fixtures.push(root);
+  const runPath = path.join(root, '.agents', 'runs', 'run-a');
+  await mkdir(path.join(runPath, 'tasks'), { recursive: true });
+  await writeFile(path.join(runPath, 'tasks', '001.yaml'), 'id: 001\ntitle: Visible task\n');
+  await writeFile(path.join(runPath, 'controller.json'), '{not json');
+
+  const detail = projectDetail(await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root }));
+
+  assert.equal(detail.runs.length, 1);
+  assert.equal(detail.runs[0].controller, null);
+  assert.equal(detail.runs[0].tasks[0].id, '001');
+});
+
+test('inconsistent accepted controller receipt is shown fail closed', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-controller-inconsistent-'));
+  fixtures.push(root);
+  const runPath = path.join(root, '.agents', 'runs', 'run-a');
+  await mkdir(path.join(runPath, 'tasks'), { recursive: true });
+  await writeFile(path.join(runPath, 'tasks', '001.yaml'), 'id: 001\ntitle: Visible task\n');
+  await writeFile(path.join(runPath, 'controller.json'), JSON.stringify({
+    schema_version: 1,
+    stage: 'accepted',
+    counts: { total: 1, accepted: 1, blocked: 0, running: 0, pending: 0 },
+    next_action: 'complete',
+    status: 'running',
+    tasks: { '001': { stage: 'running' } },
+  }));
+
+  const detail = projectDetail(await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root }));
+
+  assert.equal(detail.runs[0].controller.stage, 'failed');
+  assert.equal(detail.runs[0].controller.status, 'failed');
+  assert.equal(detail.runs[0].controller.next_action, 'operator_intervention');
+  assert.equal(detail.runs[0].controller.last_event.event, 'controller_failed');
+});
+
+test('dead nonterminal controller is shown as inferred failure', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-controller-dead-'));
+  fixtures.push(root);
+  const runPath = path.join(root, '.agents', 'runs', 'run-a');
+  await mkdir(path.join(runPath, 'tasks'), { recursive: true });
+  await mkdir(path.join(runPath, 'controller'), { recursive: true });
+  await writeFile(path.join(runPath, 'tasks', '001.yaml'), 'id: 001\ntitle: Visible task\n');
+  await writeFile(path.join(runPath, 'controller.json'), JSON.stringify({
+    schema_version: 1,
+    stage: 'running',
+    counts: { total: 1, accepted: 0, blocked: 0, running: 1, pending: 0 },
+    next_action: 'poll',
+    tasks: { '001': { stage: 'running' } },
+  }));
+  await writeFile(path.join(runPath, 'controller', 'lane-bg.pid'), '99999999\n');
+  await writeFile(path.join(runPath, 'controller', 'lane-bg.exit'), '1\n');
+
+  const detail = projectDetail(await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root }));
+
+  assert.equal(detail.runs[0].controller.stage, 'failed');
+  assert.equal(detail.runs[0].controller.status, 'failed');
+  assert.equal(detail.runs[0].controller.next_action, 'operator_intervention');
+  assert.equal(detail.runs[0].controller.last_event.event, 'controller_failed');
+  assert.match(detail.runs[0].controller.last_event.detail, /exited 1/);
+});
+
+test('invalid controller process receipt is shown as inferred failure', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-controller-invalid-process-'));
+  fixtures.push(root);
+  const runPath = path.join(root, '.agents', 'runs', 'run-a');
+  await mkdir(path.join(runPath, 'tasks'), { recursive: true });
+  await mkdir(path.join(runPath, 'controller'), { recursive: true });
+  await writeFile(path.join(runPath, 'tasks', '001.yaml'), 'id: 001\ntitle: Visible task\n');
+  await writeFile(path.join(runPath, 'controller.json'), JSON.stringify({
+    schema_version: 1,
+    stage: 'running',
+    counts: { total: 1, accepted: 0, blocked: 0, running: 1, pending: 0 },
+    next_action: 'poll',
+    tasks: { '001': { stage: 'running' } },
+  }));
+  await writeFile(path.join(runPath, 'controller', 'lane-bg.pid'), 'not-a-pid\n');
+
+  const detail = projectDetail(await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root }));
+
+  assert.equal(detail.runs[0].controller.stage, 'failed');
+  assert.equal(detail.runs[0].controller.status, 'failed');
+  assert.match(detail.runs[0].controller.last_event.detail, /invalid pid or exit/);
 });
 
 test('recent keeps every run with an unfinished task plus only the three newest fully-done runs', () => {

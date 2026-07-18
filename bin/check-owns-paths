@@ -37,6 +37,10 @@ class GitCommandError(RuntimeError):
     pass
 
 
+class ScopeError(RuntimeError):
+    pass
+
+
 def load_task(path: Path) -> dict:
     text = path.read_text(encoding="utf-8", errors="replace")
     if yaml:
@@ -199,12 +203,54 @@ def write_receipt(path: Path, payload: dict) -> None:
     os.replace(temp, path)
 
 
+def run_scope_ownership(task_path: Path, cwd: Path) -> tuple[list[str], list[str], list[str]]:
+    tasks_dir = task_path.parent
+    if tasks_dir.name != "tasks" or not task_path.is_file():
+        raise ScopeError("--run-scope requires a task under RUN_DIR/tasks")
+    owns: set[str] = set()
+    never: set[str] = set()
+    task_ids: list[str] = []
+    seen: set[str] = set()
+    for candidate in sorted(tasks_dir.glob("*.yaml")):
+        task = load_task(candidate)
+        task_id = str(task.get("id") or "")
+        if not SAFE_NAME.fullmatch(task_id) or task_id in {".", ".."}:
+            raise ScopeError(f"invalid run task id in {candidate.name}")
+        if task_id in seen:
+            raise ScopeError(f"duplicate run task id: {task_id}")
+        seen.add(task_id)
+        raw_cwd = task.get("project_cwd")
+        if not isinstance(raw_cwd, str) or Path(raw_cwd).resolve() != cwd:
+            raise ScopeError(f"run task {task_id} project_cwd does not match --cwd")
+        raw_owns = task.get("owns_paths") or task.get("files") or []
+        raw_never = task.get("never_touch") or []
+        if isinstance(raw_owns, str):
+            raw_owns = [raw_owns]
+        if isinstance(raw_never, str):
+            raw_never = [raw_never]
+        if not isinstance(raw_owns, list) or not raw_owns:
+            raise ScopeError(f"run task {task_id} has no owns_paths")
+        if not isinstance(raw_never, list):
+            raise ScopeError(f"run task {task_id} never_touch must be a list")
+        owns.update(str(value) for value in raw_owns if str(value).strip())
+        never.update(str(value) for value in raw_never if str(value).strip())
+        task_ids.append(task_id)
+    if not task_ids or str(load_task(task_path).get("id") or "") not in seen:
+        raise ScopeError("requested task is not part of the run task set")
+    return sorted(owns), sorted(never), task_ids
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("task_file")
     ap.add_argument("--cwd", default="")
     ap.add_argument("--base", default="")
     ap.add_argument("--uncommitted-only", action="store_true")
+    ap.add_argument(
+        "--run-scope",
+        action="store_true",
+        help="check the union of validated task ownership for a shared run worktree",
+    )
     args = ap.parse_args()
 
     task_path = Path(args.task_file).resolve()
@@ -222,6 +268,15 @@ def main() -> int:
     owns, never = list(owns or []), list(never or [])
 
     cwd = Path(args.cwd or data.get("project_cwd") or ".").resolve()
+    scope = "task"
+    scope_task_ids = [task_id]
+    if args.run_scope:
+        try:
+            owns, never, scope_task_ids = run_scope_ownership(task_path, cwd)
+        except ScopeError as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 2
+        scope = "run"
     mode = "git inspection failed"
     try:
         branch = run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD").strip()
@@ -255,6 +310,8 @@ def main() -> int:
             "task_sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "cwd": str(cwd),
+            "scope": scope,
+            "scope_task_ids": scope_task_ids,
             "mode": mode,
             **details,
             "exit_code": exit_code,

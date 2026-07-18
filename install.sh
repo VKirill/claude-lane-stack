@@ -124,14 +124,16 @@ else
 fi
 
 echo ""
-echo "Done. (v1.4.0+) Start PM:"
+echo "Done. (v1.5.0+) Start PM:"
 echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
 echo " claude --agent dev-orchestrator"
 echo "Onboard: /project-onboard or project-onboard . [--deep|--fast]"
 echo "Cold start: /resume-project or resume-project ."
+echo "Daytime runs: one visible run-supervisor watches durable run-controller"
+echo "Run controller: run-controller start/watch/status (survives Claude exit)"
 echo "Long lanes: lane-ctl + lane-bg user-systemd backend (never foreground Bash)"
 echo "Control plane: lane-ctl start/status/events/tail/retry/cancel/verify/accept"
-echo "Read-only supervisor: lane-supervisor (Grok remains the code writer)"
+echo "Manual lane recovery: lane-supervisor (Grok remains the code writer)"
 echo "Pools: provider default 5/max 10; verification default 2/max 10"
 echo "Warm lanes: lane-session resumes run-scoped Grok conversations"
 echo "Night shift: night-shift-all (Codex Sol xhigh review; Grok-only repair worktrees)"

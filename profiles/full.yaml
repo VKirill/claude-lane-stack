@@ -2,7 +2,7 @@
 pm: claude
 profile: full
 lanes:
-  fast_write: grok         # lane-supervisor controls the Grok writer
-  main_write: grok         # lane-supervisor controls the Grok writer
+  fast_write: grok         # run-supervisor watches the durable Grok controller
+  main_write: grok         # run-supervisor watches the durable Grok controller
   review: codex            # codex-reviewer
   emergency_write: codex   # codex-implementer

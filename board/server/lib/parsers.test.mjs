@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, test } from 'node:test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -133,6 +133,132 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
   }));
   tasks = await readTasks(tasksDirectory, 'contract-v2');
   assert.equal(tasks[0].status, 'running');
+
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    status: 'accepted',
+    attempt: 1,
+  }));
+  tasks = await readTasks(tasksDirectory, 'contract-v2');
+  assert.equal(tasks[0].status, 'pending');
+  assert.deepEqual(
+    [tasks[0].runtime.status, tasks[0].runtime.reason, tasks[0].runtime.next_action],
+    ['unknown', 'acceptance_receipt_missing', 'inspect'],
+  );
+});
+
+test('task list and detail expose the same exact read-only lifecycle evidence', async () => {
+  const project = await fixtureDirectory('lane-board-runtime-evidence-');
+  const run = 'runtime-run';
+  const runPath = path.join(project, '.agents', 'runs', run);
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  const attemptDirectory = path.join(artifactDirectory, 'attempts', '02');
+  await mkdir(tasksDirectory, { recursive: true });
+  await mkdir(attemptDirectory, { recursive: true });
+  const taskSource = [
+    'schema_version: 2',
+    'id: "001"',
+    'title: Observable provider',
+    'lane: grok',
+    'verify: tests',
+  ].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: createHash('sha256').update(taskSource).digest('hex'),
+    status: 'running',
+    current_attempt: 2,
+  }));
+  await writeFile(path.join(attemptDirectory, 'control.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    attempt: 2,
+  }));
+  await writeFile(path.join(attemptDirectory, 'lane-bg.pid'), `${process.pid}\n`);
+  const heartbeatPath = path.join(artifactDirectory, 'heartbeat.json');
+  await writeFile(heartbeatPath, JSON.stringify({ status: 'running' }));
+  const heartbeatTime = new Date(Date.now() - 4_000);
+  await utimes(heartbeatPath, heartbeatTime, heartbeatTime);
+
+  const [listed] = await readTasks(tasksDirectory, run);
+  const detail = await readTaskDetail(project, run, '001');
+
+  assert.equal(listed.status, 'running');
+  assert.deepEqual(detail.runtime, listed.runtime);
+  assert.deepEqual({ ...listed.runtime, heartbeat_age_seconds: null }, {
+    status: 'running',
+    attempt: 2,
+    pid: process.pid,
+    running: true,
+    exit_code: null,
+    heartbeat_age_seconds: null,
+    report_complete: false,
+    reason: 'provider_running',
+    next_action: 'wait',
+  });
+  assert.ok(listed.runtime.heartbeat_age_seconds >= 3);
+  assert.ok(listed.runtime.heartbeat_age_seconds < 30);
+});
+
+test('finished provider lifecycle distinguishes incomplete report and verification phases', async () => {
+  const project = await fixtureDirectory('lane-board-runtime-phases-');
+  const runPath = path.join(project, '.agents', 'runs', 'phases');
+  const tasksDirectory = path.join(runPath, 'tasks');
+  await mkdir(tasksDirectory, { recursive: true });
+
+  async function writePhase(id, { report = null, verification = null, stateStatus = 'running' } = {}) {
+    const source = ['schema_version: 2', `id: "${id}"`, `title: Phase ${id}`].join('\n');
+    const artifact = path.join(runPath, 'artifacts', id);
+    const attempt = path.join(artifact, 'attempts', '01');
+    await mkdir(attempt, { recursive: true });
+    await writeFile(path.join(tasksDirectory, `${id}.yaml`), source);
+    await writeFile(path.join(artifact, 'state.json'), JSON.stringify({
+      schema_version: 2,
+      task_id: id,
+      task_sha256: createHash('sha256').update(source).digest('hex'),
+      task_file: path.join(tasksDirectory, `${id}.yaml`),
+      project_cwd: project,
+      status: stateStatus,
+      current_attempt: 1,
+    }));
+    await writeFile(path.join(attempt, 'control.json'), JSON.stringify({ attempt: 1 }));
+    await writeFile(path.join(attempt, 'lane-bg.pid'), '999999999\n');
+    await writeFile(path.join(attempt, 'lane-bg.exit'), '0\n');
+    if (report !== null) await writeFile(path.join(artifact, 'report.md'), report);
+    if (verification !== null) {
+      await writeFile(path.join(attempt, 'verification.json'), JSON.stringify({
+        schema_version: 2,
+        task_id: id,
+        task_sha256: createHash('sha256').update(source).digest('hex'),
+        task_file: path.join(tasksDirectory, `${id}.yaml`),
+        project_cwd: project,
+        attempt: 1,
+        status: verification,
+      }));
+    }
+  }
+
+  await writePhase('001');
+  await writePhase('002', { report: 'STATUS: complete\n' });
+  await writePhase('003', { report: 'STATUS: complete\n', verification: 'running' });
+  await writePhase('004', { stateStatus: 'blocked' });
+
+  const tasks = await readTasks(tasksDirectory, 'phases');
+  const runtimeById = Object.fromEntries(tasks.map((task) => [task.id, task.runtime]));
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(runtimeById).map(([id, runtime]) => [id, [runtime.status, runtime.reason, runtime.next_action]])),
+    {
+      '001': ['provider_incomplete', 'report_missing', 'retry'],
+      '002': ['awaiting_verification', 'provider_complete', 'verify'],
+      '003': ['verifying', 'verification_running', 'wait'],
+      '004': ['blocked', 'blocked', 'inspect'],
+    },
+  );
+  assert.equal(runtimeById['001'].exit_code, 0);
+  assert.equal(runtimeById['002'].report_complete, true);
 });
 
 test('accepted v2 task has identical done status in list and detail views', async () => {

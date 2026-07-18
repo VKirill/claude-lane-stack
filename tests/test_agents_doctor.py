@@ -40,8 +40,8 @@ class AgentsDoctorTest(unittest.TestCase):
             profile = (repo / ".agents" / "routing.profile.yaml").read_text(
                 encoding="utf-8"
             )
-            self.assertIn("fast_write: grok  # agent: lane-supervisor", profile)
-            self.assertIn("main_write: grok  # agent: lane-supervisor", profile)
+            self.assertIn("fast_write: grok  # agent: run-supervisor", profile)
+            self.assertIn("main_write: grok  # agent: run-supervisor", profile)
             self.assertNotIn("agent: grok-implementer", profile)
 
 

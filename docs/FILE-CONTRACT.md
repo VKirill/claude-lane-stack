@@ -38,6 +38,11 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
     worktree.json # { branch, path, base } if isolated
     sessions.json # Grok warm-session pool + rotation history
     events.jsonl # append-only lifecycle events for registered lanes
+    controller.json # schema v1: atomic run-level lifecycle summary and next action
+    controller/
+      lane-bg.pid # durable controller supervisor PID
+      lane-bg.exit # terminal controller exit
+      lane-bg.supervisor.log # compact transition log
     tasks/
       001-short-title.yaml # immutable after first start
     artifacts/
@@ -62,15 +67,22 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
           02/ # retry; attempt 01 is never overwritten
 ```
 
-Long CLI lanes start through `lane-ctl`, which detaches them with `lane-bg` and
-records lifecycle events. Claude does not hold a foreground process or a live
-polling subagent. See [LANE-EXEC.md](LANE-EXEC.md).
+Normal daytime runs start through `run-controller`, itself detached with
+`lane-bg`. It releases the task DAG through typed `lane-ctl` actions and writes
+`controller.json`; one source-read-only `run-supervisor` watches bounded state
+changes only for operator visibility. Provider lanes remain detached and no
+Claude model is the lifecycle decision loop. See [LANE-EXEC.md](LANE-EXEC.md).
+The receipt follows `schemas/run-controller-v1.schema.json`; consumers must
+fail closed on unknown run/task stages instead of inferring success.
 
 Grok write lanes run through `lane-session`. Sessions are scoped to this
 run, role, worktree, and model. One slot accepts one task at a time; concurrent
 tasks spill into a pool of five slots by default, configurable from 1–10. A slot rotates after seven
 successful tasks (configurable up to a hard maximum of ten), after a provider
 failure, or when cwd/model changes. Review lanes never reuse writer sessions.
+Only `EndTurn` is a successful Grok terminal reason. `Cancelled`, `Error`, an
+unknown terminal reason, or a missing/incomplete root report is retryable
+failure and cannot enter verification.
 
 Night review is also file-based. Codex Sol xhigh emits schema-constrained chunk
 results; the engine validates and deduplicates them into
@@ -94,7 +106,8 @@ stale task file.
 
 Create this layout with `run-init <repo> <slug> ...`. Validate it before any
 provider starts with `run-validate --phase pre-dispatch` and before merge with
-`run-validate --phase pre-merge`.
+`run-validate --phase pre-merge`. The durable controller repeats
+`pre-dispatch` validation at startup and before each dependency-release wave.
 
 ## Task YAML v2
 
@@ -162,7 +175,10 @@ before the provider starts. Optional project verifier basenames come from
 1. Write lane may only edit paths under `owns_paths` (or `files` if `owns_paths` omitted). 
 2. `never_touch` always wins — even if listed in owns. 
 3. Parallel tasks **must** have disjoint `owns_paths` (no path prefix overlap). 
-4. After lane finishes, PM runs `check-owns-paths` — edits outside owns → task **blocked**, not done. 
+4. After a lane finishes, the daytime controller runs `check-owns-paths
+   --run-scope`: shared-worktree changes must stay inside the union of all
+   validated disjoint task ownership. Direct/single-task checks remain strict
+   to that task. Any edit outside the selected scope → task **blocked**, not done.
 5. Build errors in files **not** in owns_paths → ignore / wait; do not “helpfully” fix.
 
 ## Acceptance receipt
@@ -195,17 +211,22 @@ legacy YAML is not sufficient for schema v2.
    template; replace placeholders, split tasks, then pass pre-dispatch validation.
 2. If score ≥ 4 **or** ≥2 write tasks → `wt-create` worktree; all tasks share that `project_cwd`. 
 3. If single low-risk task → may use main working tree (still PM commits). 
-4. Dispatch through the source-read-only `lane-supervisor` and typed `lane-ctl`
-   actions. Provider slots default to 5 (range 1–10); parallel ownership remains disjoint.
-5. React to run `events.jsonl`; use status/tail only for bounded diagnostics.
-6. After provider exit 0, run the registered structured `verification` snapshot under
+4. Dispatch one source-read-only `run-supervisor`. It starts or resumes the
+   durable `run-controller`; provider slots default to 5 (range 1–10) and
+   parallel ownership remains disjoint.
+5. The controller reacts to task receipts and persists `controller.json`.
+   `lane-supervisor` status/tail remains a bounded manual diagnostic.
+6. After provider exit 0 plus a complete report, run the registered structured `verification` snapshot under
    the independent verify pool (default 2, range 1–10). Each command has a
    bounded timeout and evidence is valid only for that provider attempt.
-7. Run `check-owns-paths` to write `owns-check.json`, then `lane-ctl accept`.
+7. Run `check-owns-paths --run-scope` to write `owns-check.json`, then
+   `lane-ctl accept`. The receipt records `scope: run` and the exact task IDs
+   whose ownership formed the union.
    The receipt is valid only for the immutable task hash and current attempt.
    Accept each task **as soon as** `acceptance.json.accepted` is true — do not
    batch-wait for the slowest task.
-8. `risk: high` or `high_risk_paths` or ship → Codex `review.md` must pass when the configured gate requires it.
+8. No daytime LLM review. Explicit historical review gates stop for an operator
+   decision; the standard Codex review/fix/re-review loop runs at night.
 9. When all current-attempt receipts are accepted, PM freezes the source branch
    and pre-merge validation passes. `wt-merge-main` merges locally, writes
    merge.json/MERGE.md, invokes `run-finalize`, pushes only after finalize

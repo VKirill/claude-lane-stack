@@ -2,8 +2,9 @@
 
 **PM is always Claude Code** (`dev-orchestrator`, Fable/Opus).
 
-**Write programmer is Grok only.** Claude's `lane-supervisor` is source-read-only
-and can issue only typed `lane-ctl` actions.
+**Write programmer is Grok only.** Claude's `run-supervisor` is source-read-only
+and can issue only typed `run-controller` actions. `lane-supervisor` remains the
+typed one-lane diagnostic profile.
 
 | Profile | Aux CLIs | Write | Review |
 |---------|----------|-------|--------|

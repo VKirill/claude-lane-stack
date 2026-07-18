@@ -1,4 +1,4 @@
-import { lstat, readdir } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   readMerge,
@@ -107,6 +107,113 @@ export function selectRecentRuns(runsWithActivity) {
     .map(({ run }) => run);
 }
 
+async function readControllerSummary(runPath) {
+  const filePath = path.join(runPath, 'controller.json');
+  let value;
+  try {
+    value = JSON.parse(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR' && !(error instanceof SyntaxError)) {
+      warn(`could not read ${filePath}`, error);
+    }
+    return null;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const controllerPath = path.join(runPath, 'controller');
+  const readInteger = async (name) => {
+    try {
+      const source = (await readFile(path.join(controllerPath, name), 'utf8')).trim();
+      if (!/^-?\d+$/.test(source)) return { value: null, invalid: true };
+      const parsed = Number(source);
+      return Number.isInteger(parsed)
+        ? { value: parsed, invalid: false }
+        : { value: null, invalid: true };
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read controller ${name}`, error);
+      return { value: null, invalid: false };
+    }
+  };
+  const pidReceipt = await readInteger('lane-bg.pid');
+  const exitReceipt = await readInteger('lane-bg.exit');
+  const pid = pidReceipt.value;
+  const exitCode = exitReceipt.value;
+  let running = false;
+  if (pid !== null && pid > 1 && exitCode === null) {
+    try {
+      const parts = (await readFile(`/proc/${pid}/stat`, 'utf8')).trim().split(/\s+/);
+      if (parts.length >= 22 && parts[2] !== 'Z') {
+        process.kill(pid, 0);
+        running = true;
+      }
+    } catch {
+      running = false;
+    }
+  }
+  const text = (field) => typeof value[field] === 'string' ? value[field] : null;
+  const counts = value.counts && typeof value.counts === 'object' && !Array.isArray(value.counts)
+    ? Object.fromEntries(['total', 'accepted', 'blocked', 'running', 'pending']
+      .filter((key) => Number.isInteger(value.counts[key]) && value.counts[key] >= 0)
+      .map((key) => [key, value.counts[key]]))
+    : null;
+  let lastEvent = value.last_event === null
+    || typeof value.last_event === 'string'
+    || (value.last_event && typeof value.last_event === 'object' && !Array.isArray(value.last_event))
+    ? value.last_event
+    : null;
+  let stage = text('stage');
+  let nextAction = text('next_action');
+  if (stage === 'accepted') {
+    const tasks = value.tasks && typeof value.tasks === 'object' && !Array.isArray(value.tasks)
+      ? Object.values(value.tasks)
+      : [];
+    const consistent = tasks.length > 0
+      && tasks.every((task) => task && typeof task === 'object' && task.stage === 'accepted')
+      && counts?.total === tasks.length
+      && counts?.accepted === tasks.length
+      && nextAction === 'complete';
+    if (!consistent) {
+      stage = 'failed';
+      nextAction = 'operator_intervention';
+      lastEvent = {
+        type: 'transition',
+        event: 'controller_failed',
+        detail: 'accepted controller receipt is inconsistent with task stages or counts',
+        inferred: true,
+      };
+    }
+  }
+  if (!['accepted', 'blocked', 'failed'].includes(stage)
+    && (exitReceipt.invalid || pidReceipt.invalid || exitCode !== null || (pid !== null && !running))) {
+    const detail = exitReceipt.invalid || pidReceipt.invalid
+      ? 'controller process left an invalid pid or exit receipt'
+      : exitCode !== null
+        ? `controller process exited ${exitCode} without a terminal receipt`
+        : 'controller process is dead without a terminal receipt';
+    stage = 'failed';
+    nextAction = 'operator_intervention';
+    lastEvent = {
+      type: 'transition',
+      event: 'controller_failed',
+      detail,
+      inferred: true,
+    };
+  }
+  const terminalStage = ['accepted', 'blocked', 'failed'].includes(stage) ? stage : null;
+  const status = terminalStage
+    ?? text('status')
+    ?? (running ? 'running' : exitCode !== null ? (exitCode === 0 ? 'stopped' : 'failed') : 'unknown');
+  return {
+    status,
+    stage,
+    counts,
+    last_event: lastEvent,
+    next_action: nextAction,
+    pid: Number.isInteger(value.pid) && value.pid > 0 ? value.pid : pid,
+    updated_at: text('updated_at'),
+  };
+}
+
 export async function readRuns(projectPath) {
   const runsDirectory = path.join(projectPath, '.agents', 'runs');
   const runs = [];
@@ -127,6 +234,7 @@ export async function readRuns(projectPath) {
       slug: entry.name,
       lastActivity: await runLastActivity(runPath),
       merged,
+      controller: await readControllerSummary(runPath),
       tasks: promotedTasks,
     });
   }
@@ -180,7 +288,10 @@ export function projectDetail(snapshot) {
       slug: run.slug,
       lastActivity: run.lastActivity,
       merged: run.merged,
-      tasks: run.tasks.map(({ id, title, status, risk, lane, verify }) => ({ id, title, status, risk, lane, verify })),
+      controller: run.controller,
+      tasks: run.tasks.map(({ id, title, status, risk, lane, verify, runtime }) => ({
+        id, title, status, risk, lane, verify, ...(runtime ? { runtime } : {}),
+      })),
     })),
     todos: snapshot.todos,
     review: snapshot.review,

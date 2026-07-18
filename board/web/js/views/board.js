@@ -3,6 +3,7 @@ import { getBoardFilters, getProjectName, getProjects, getScope, loadProject, ru
 import { button, element, emptyState, errorState, loading } from "../ui.js";
 import { riskBadge, statusBadge, verifyBadge } from "../components/badges.js";
 import { openTaskDrawer } from "../components/drawer.js";
+import { lifecycleLabel, runtimeFacts } from "../lifecycle.mjs";
 
 const statuses = ["pending", "running", "done", "blocked", "stalled"];
 
@@ -96,6 +97,16 @@ function taskCard(projectId, task) {
   const titleSpan = element("span", "task-card__title", taskTitle(task));
   titleSpan.setAttribute("title", taskTitle(task));
   card.append(titleSpan);
+  if (task.runtime && typeof task.runtime === "object") {
+    const lifecycle = element(
+      "span",
+      `task-card__lifecycle task-card__lifecycle--${String(task.runtime.status || "unknown").replace(/[^a-z0-9_-]/g, "-")}`,
+      lifecycleLabel(task.runtime.status),
+    );
+    const facts = element("span", "task-card__runtime", runtimeFacts(task.runtime).join(" · "));
+    facts.setAttribute("title", facts.textContent);
+    card.append(lifecycle, facts);
+  }
   const meta = element("span", "task-card__meta");
   const idText = run ? `${taskId(task)} / ${run}` : taskId(task);
   const idChip = element("span", "task-card__id-chip", idText);

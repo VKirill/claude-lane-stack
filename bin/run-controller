@@ -1,0 +1,1074 @@
+#!/usr/bin/env python3
+"""Blocking, resumable controller for schema-v2 lane runs."""
+from __future__ import annotations
+
+import argparse
+import ast
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_LANE_CTL = ROOT / "bin" / "lane-ctl"
+DEFAULT_OWNS = ROOT / "bin" / "check-owns-paths"
+DEFAULT_LANE_BG = ROOT / "bin" / "lane-bg"
+DEFAULT_RUN_VALIDATE = ROOT / "bin" / "run-validate"
+TERMINAL_FAILURES = frozenset(
+    {
+        "cancelled",
+        "failed",
+        "provider_failed",
+        "provider_incomplete",
+        "verification_failed",
+        "stalled",
+    }
+)
+RUNNING_STATUSES = frozenset({"launching", "running", "unknown", "verifying"})
+
+
+class ControllerError(RuntimeError):
+    pass
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def scalar(value: str) -> Any:
+    value = value.strip()
+    if not value:
+        return None
+    if value in {"null", "~"}:
+        return None
+    if value in {"true", "false"}:
+        return value == "true"
+    try:
+        return ast.literal_eval(value)
+    except (SyntaxError, ValueError):
+        if re.fullmatch(r"-?[0-9]+", value):
+            return int(value)
+        return value
+
+
+def yaml_fields(path: Path) -> dict[str, Any]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ControllerError(f"cannot read YAML {path}: {exc}") from exc
+    fields: dict[str, Any] = {}
+    index = 0
+    while index < len(lines):
+        raw = lines[index]
+        match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*):(?:\s*(.*))?$", raw)
+        if not match:
+            index += 1
+            continue
+        key, raw_value = match.group(1), match.group(2) or ""
+        if raw_value:
+            fields[key] = scalar(raw_value)
+            index += 1
+            continue
+        nested: dict[str, Any] = {}
+        items: list[Any] = []
+        index += 1
+        while index < len(lines) and (not lines[index].strip() or lines[index][0].isspace()):
+            stripped = lines[index].strip()
+            if stripped.startswith("- "):
+                items.append(scalar(stripped[2:]))
+            else:
+                child = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*):(?:\s*(.*))?$", stripped)
+                if child and child.group(2):
+                    nested[child.group(1)] = scalar(child.group(2))
+            index += 1
+        fields[key] = items if items else nested
+    return fields
+
+
+def discover(
+    run_dir: Path, project_override: str | None
+) -> tuple[Path, int, int, str, list[dict[str, Any]]]:
+    run = yaml_fields(run_dir / "run.yaml")
+    if run.get("schema_version") != 2:
+        raise ControllerError("run-controller requires schema_version 2 run.yaml")
+    project_value = project_override or run.get("project_cwd")
+    if not isinstance(project_value, str) or not Path(project_value).is_absolute():
+        raise ControllerError("project_cwd must be an absolute path")
+    project_cwd = Path(project_value).expanduser().resolve()
+    if not project_cwd.is_dir():
+        raise ControllerError(f"project_cwd is not a directory: {project_cwd}")
+    pools = run.get("pools")
+    provider_slots = pools.get("provider") if isinstance(pools, dict) else None
+    verification_slots = pools.get("verification") if isinstance(pools, dict) else None
+    if not isinstance(provider_slots, int) or isinstance(provider_slots, bool) or not 1 <= provider_slots <= 10:
+        raise ControllerError("run pools.provider must be between 1 and 10")
+    if (
+        not isinstance(verification_slots, int)
+        or isinstance(verification_slots, bool)
+        or not 1 <= verification_slots <= 10
+    ):
+        raise ControllerError("run pools.verification must be between 1 and 10")
+    gate = run.get("gate")
+    if gate not in {"none", "pre-merge"}:
+        raise ControllerError(f"unsupported run gate: {gate}")
+
+    tasks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for task_file in sorted((run_dir / "tasks").glob("*.yaml")):
+        task = yaml_fields(task_file)
+        task_id = task.get("id")
+        dependencies = task.get("depends_on", [])
+        if task.get("schema_version") != 2 or not isinstance(task_id, str) or not task_id:
+            raise ControllerError(f"invalid schema-v2 task: {task_file}")
+        if task_id in seen:
+            raise ControllerError(f"duplicate task id: {task_id}")
+        if not isinstance(dependencies, list) or not all(isinstance(item, str) for item in dependencies):
+            raise ControllerError(f"task {task_id} depends_on must be a string list")
+        seen.add(task_id)
+        tasks.append({"id": task_id, "path": str(task_file.resolve()), "depends_on": dependencies})
+    if not tasks:
+        raise ControllerError("run has no task YAML files")
+    for task in tasks:
+        unknown = sorted(set(task["depends_on"]) - seen)
+        if unknown:
+            raise ControllerError(f"task {task['id']} has unknown dependencies: {', '.join(unknown)}")
+    remaining = {task["id"]: set(task["depends_on"]) for task in tasks}
+    released: set[str] = set()
+    while remaining:
+        ready = {task_id for task_id, dependencies in remaining.items() if dependencies <= released}
+        if not ready:
+            raise ControllerError("task dependency graph contains a cycle")
+        released.update(ready)
+        for task_id in ready:
+            remaining.pop(task_id)
+    return project_cwd, provider_slots, verification_slots, gate, tasks
+
+
+def atomic_json(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ControllerError(f"cannot read controller receipt {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ControllerError("controller receipt must be a JSON object")
+    return value
+
+
+def pid_alive(pid: int) -> bool:
+    if pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def inferred_failure(receipt: dict[str, Any], detail: str) -> dict[str, Any]:
+    observed = json.loads(json.dumps(receipt))
+    observed["stage"] = "failed"
+    observed["next_action"] = "operator_intervention"
+    observed["last_event"] = {
+        "type": "transition",
+        "event": "controller_failed",
+        "at": utc_now(),
+        "detail": detail,
+        "inferred": True,
+    }
+    return observed
+
+
+def observed_receipt(run_dir: Path) -> dict[str, Any]:
+    receipt = load_json(run_dir / "controller.json")
+    if receipt.get("stage") == "accepted":
+        tasks = receipt.get("tasks")
+        recorded_counts = receipt.get("counts")
+        if (
+            not isinstance(tasks, dict)
+            or not tasks
+            or any(
+                not isinstance(task, dict) or task.get("stage") != "accepted"
+                for task in tasks.values()
+            )
+            or not isinstance(recorded_counts, dict)
+            or recorded_counts.get("total") != len(tasks)
+            or recorded_counts.get("accepted") != len(tasks)
+            or receipt.get("next_action") != "complete"
+        ):
+            return inferred_failure(
+                receipt,
+                "accepted controller receipt is inconsistent with task stages or counts",
+            )
+        return receipt
+    if receipt.get("stage") in {"blocked", "failed"}:
+        return receipt
+    controller_dir = run_dir / "controller"
+    exit_path = controller_dir / "lane-bg.exit"
+    pid_path = controller_dir / "lane-bg.pid"
+    detail: str | None = None
+    if exit_path.is_file():
+        try:
+            exit_code = int(exit_path.read_text(encoding="utf-8").strip())
+            detail = f"controller process exited {exit_code} without a terminal receipt"
+        except (OSError, ValueError):
+            detail = "controller process left an invalid exit receipt"
+    elif pid_path.is_file():
+        try:
+            pid = int(pid_path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            detail = "controller process left an invalid pid receipt"
+        else:
+            if not pid_alive(pid):
+                detail = "controller process is dead without a terminal receipt"
+    if detail is None:
+        return receipt
+    return inferred_failure(receipt, detail)
+
+
+def validate_receipt_structure(receipt: dict[str, Any]) -> None:
+    if receipt.get("schema_version") != 1:
+        raise ControllerError("controller receipt schema_version must be 1")
+    task_states = receipt.get("tasks")
+    if not isinstance(task_states, dict) or not task_states:
+        raise ControllerError("controller receipt tasks must be a non-empty object")
+    for task_id, task_state in task_states.items():
+        if (
+            not isinstance(task_id, str)
+            or not isinstance(task_state, dict)
+            or not isinstance(task_state.get("stage"), str)
+        ):
+            raise ControllerError("controller receipt contains an invalid task state")
+
+
+def counts(receipt: dict[str, Any]) -> dict[str, int]:
+    stages = [task["stage"] for task in receipt["tasks"].values()]
+    return {
+        "total": len(stages),
+        "accepted": stages.count("accepted"),
+        "blocked": stages.count("blocked"),
+        "running": sum(stage not in {"pending", "accepted", "blocked"} for stage in stages),
+        "pending": stages.count("pending"),
+    }
+
+
+def next_action(receipt: dict[str, Any]) -> str:
+    current = counts(receipt)
+    if receipt.get("stage") in {"blocked", "failed"} or current["blocked"]:
+        return "operator_intervention"
+    if current["accepted"] == current["total"]:
+        return "complete"
+    if current["running"]:
+        return "poll"
+    return "dispatch_ready"
+
+
+def persist(receipt_path: Path, receipt: dict[str, Any]) -> None:
+    receipt["counts"] = counts(receipt)
+    receipt["next_action"] = next_action(receipt)
+    receipt["updated_at"] = utc_now()
+    atomic_json(receipt_path, receipt)
+
+
+def transition(
+    receipt_path: Path,
+    receipt: dict[str, Any],
+    event: str,
+    *,
+    task_id: str | None = None,
+    stage: str | None = None,
+    detail: str | None = None,
+) -> None:
+    if task_id is not None and stage is not None:
+        receipt["tasks"][task_id]["stage"] = stage
+        receipt["tasks"][task_id]["updated_at"] = utc_now()
+    payload = {"type": "transition", "event": event, "at": utc_now()}
+    if task_id is not None:
+        payload["task_id"] = task_id
+    if detail:
+        payload["detail"] = detail
+    receipt["last_event"] = payload
+    persist(receipt_path, receipt)
+    print(json.dumps(payload, sort_keys=True), flush=True)
+
+
+def action(argv: list[str], *, label: str) -> dict[str, Any]:
+    try:
+        result = subprocess.run(argv, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    except OSError as exc:
+        raise ControllerError(f"cannot execute {label}: {exc}") from exc
+    return decode_action_result(result, label=label)
+
+
+def decode_action_result(
+    result: subprocess.CompletedProcess[str], *, label: str
+) -> dict[str, Any]:
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+        raise ControllerError(f"{label} failed: {detail}")
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ControllerError(f"{label} returned invalid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ControllerError(f"{label} returned non-object JSON")
+    return value
+
+
+def launch_action(argv: list[str], *, label: str, json_output: bool) -> dict[str, Any]:
+    try:
+        process = subprocess.Popen(
+            argv,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise ControllerError(f"cannot execute {label}: {exc}") from exc
+    return {"process": process, "label": label, "json_output": json_output}
+
+
+def stop_actions(actions: dict[str, dict[str, Any]]) -> None:
+    for launched in actions.values():
+        process = launched["process"]
+        if process.poll() is None:
+            process.terminate()
+    for launched in actions.values():
+        process = launched["process"]
+        try:
+            process.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+
+
+def validate_run_contract(binary: Path, run_dir: Path) -> None:
+    try:
+        result = subprocess.run(
+            [str(binary), "--run-dir", str(run_dir), "--phase", "pre-dispatch"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        raise ControllerError(f"cannot execute run-validate: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "pre-dispatch validation failed"
+        raise ControllerError(f"run-validate failed: {detail}")
+
+
+def initial_receipt(run_dir: Path, project_cwd: Path, tasks: list[dict[str, Any]]) -> dict[str, Any]:
+    now = utc_now()
+    return {
+        "schema_version": 1,
+        "run_dir": str(run_dir),
+        "project_cwd": str(project_cwd),
+        "stage": "running",
+        "started_at": now,
+        "updated_at": now,
+        "completed_at": None,
+        "last_event": None,
+        "next_action": "dispatch_ready",
+        "counts": {},
+        "tasks": {
+            task["id"]: {
+                "task_file": task["path"],
+                "depends_on": task["depends_on"],
+                "stage": "pending",
+                "last_status": None,
+                "retries": 0,
+                "updated_at": now,
+            }
+            for task in tasks
+        },
+    }
+
+
+def run_controller(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir).expanduser().resolve()
+    if not run_dir.is_dir():
+        raise ControllerError(f"run directory does not exist: {run_dir}")
+    project_cwd, provider_slots, verification_slots, gate, tasks = discover(
+        run_dir, args.project_cwd
+    )
+    run_validate = Path(args.run_validate).expanduser().resolve()
+    receipt_path = run_dir / "controller.json"
+    lock_dir = run_dir / "controller"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_handle = (lock_dir / "controller.lock").open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        raise ControllerError("run controller is already active") from exc
+
+    if receipt_path.is_file():
+        try:
+            receipt = load_json(receipt_path)
+            validate_receipt_structure(receipt)
+        except ControllerError as exc:
+            receipt = initial_receipt(run_dir, project_cwd, tasks)
+            receipt["stage"] = "failed"
+            transition(
+                receipt_path,
+                receipt,
+                "controller_failed",
+                detail=f"invalid controller receipt: {exc}",
+            )
+            return 1
+    else:
+        receipt = initial_receipt(run_dir, project_cwd, tasks)
+    expected = {task["id"]: task["path"] for task in tasks}
+    recorded = {task_id: task.get("task_file") for task_id, task in receipt.get("tasks", {}).items()}
+    if recorded != expected:
+        raise ControllerError("controller receipt task identity does not match run")
+    if receipt.get("stage") == "accepted":
+        if all(task.get("stage") == "accepted" for task in receipt["tasks"].values()):
+            return 0
+        raise ControllerError(
+            "accepted controller receipt is inconsistent with task stages"
+        )
+    if receipt.get("stage") in {"blocked", "failed"}:
+        return 1
+    persist(receipt_path, receipt)
+    validate_run_contract(run_validate, run_dir)
+    if gate == "pre-merge":
+        receipt["stage"] = "failed"
+        transition(
+            receipt_path,
+            receipt,
+            "controller_failed",
+            detail="explicit_review_gate_requires_operator",
+        )
+        return 1
+    task_by_id = {task["id"]: task for task in tasks}
+    last_heartbeat = time.monotonic()
+    pipelines: dict[str, dict[str, Any]] = {}
+
+    try:
+        while True:
+            progress = False
+
+            # Only the controller process mutates the receipt. Child actions may
+            # finish concurrently, but their results are consumed serially here.
+            for task_id in list(pipelines):
+                launched = pipelines[task_id]
+                process = launched["process"]
+                if process.poll() is None:
+                    continue
+                stdout, stderr = process.communicate()
+                result = subprocess.CompletedProcess(
+                    process.args,
+                    process.returncode,
+                    stdout,
+                    stderr,
+                )
+                phase = launched["phase"]
+                task = task_by_id[task_id]
+                task_state = receipt["tasks"][task_id]
+                del pipelines[task_id]
+
+                if phase == "owns":
+                    if result.returncode != 0:
+                        detail = result.stderr.strip() or result.stdout.strip() or "check-owns-paths failed"
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_blocked",
+                            task_id=task_id,
+                            stage="blocked",
+                            detail=detail,
+                        )
+                        receipt["stage"] = "blocked"
+                        persist(receipt_path, receipt)
+                        return 1
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "owns_check_passed",
+                        task_id=task_id,
+                        stage="verifying",
+                    )
+                    if launched["skip_verify"]:
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "verification_passed",
+                            task_id=task_id,
+                            stage="accepting",
+                        )
+                        next_action_process = launch_action(
+                            [
+                                str(args.lane_ctl),
+                                "accept",
+                                "--run-dir",
+                                str(run_dir),
+                                "--task-file",
+                                task["path"],
+                                "--project-cwd",
+                                str(project_cwd),
+                            ],
+                            label=f"accept {task_id}",
+                            json_output=True,
+                        )
+                        next_action_process["phase"] = "accept"
+                        pipelines[task_id] = next_action_process
+                    else:
+                        next_action_process = launch_action(
+                            [
+                                str(args.lane_ctl),
+                                "verify",
+                                "--run-dir",
+                                str(run_dir),
+                                "--task-file",
+                                task["path"],
+                                "--project-cwd",
+                                str(project_cwd),
+                            ],
+                            label=f"verify {task_id}",
+                            json_output=True,
+                        )
+                        next_action_process["phase"] = "verify"
+                        pipelines[task_id] = next_action_process
+                    progress = True
+                    continue
+
+                if phase == "verify":
+                    if result.returncode != 0:
+                        if task_state["retries"] < 1:
+                            action(
+                                [
+                                    str(args.lane_ctl),
+                                    "retry",
+                                    "--run-dir",
+                                    str(run_dir),
+                                    "--task-id",
+                                    task_id,
+                                ],
+                                label=f"retry {task_id}",
+                            )
+                            task_state["retries"] += 1
+                            transition(
+                                receipt_path,
+                                receipt,
+                                "task_retried",
+                                task_id=task_id,
+                                stage="running",
+                                detail="verification_failed",
+                            )
+                            progress = True
+                            continue
+                        detail = result.stderr.strip() or result.stdout.strip() or "verification_failed"
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_blocked",
+                            task_id=task_id,
+                            stage="blocked",
+                            detail=detail,
+                        )
+                        receipt["stage"] = "blocked"
+                        persist(receipt_path, receipt)
+                        return 1
+                    decode_action_result(result, label=f"verify {task_id}")
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "verification_passed",
+                        task_id=task_id,
+                        stage="accepting",
+                    )
+                    next_action_process = launch_action(
+                        [
+                            str(args.lane_ctl),
+                            "accept",
+                            "--run-dir",
+                            str(run_dir),
+                            "--task-file",
+                            task["path"],
+                            "--project-cwd",
+                            str(project_cwd),
+                        ],
+                        label=f"accept {task_id}",
+                        json_output=True,
+                    )
+                    next_action_process["phase"] = "accept"
+                    pipelines[task_id] = next_action_process
+                    progress = True
+                    continue
+
+                if phase == "accept":
+                    decode_action_result(result, label=f"accept {task_id}")
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "task_accepted",
+                        task_id=task_id,
+                        stage="accepted",
+                    )
+                    progress = True
+                    continue
+
+                raise ControllerError(f"unsupported action phase for {task_id}: {phase}")
+
+            for task_id, task_state in receipt["tasks"].items():
+                if task_state["stage"] in {"accepted", "blocked"} or task_id in pipelines:
+                    continue
+                task = task_by_id[task_id]
+                status = action(
+                    [
+                        str(args.lane_ctl),
+                        "status",
+                        "--run-dir",
+                        str(run_dir),
+                        "--task-id",
+                        task_id,
+                        "--json",
+                    ],
+                    label=f"status {task_id}",
+                )
+                lane_status = status.get("status")
+                task_state["last_status"] = lane_status
+                attempt = status.get("attempt")
+                if isinstance(attempt, int) and attempt > 1:
+                    task_state["retries"] = max(task_state["retries"], attempt - 1)
+                if lane_status == "accepted":
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "task_accepted",
+                        task_id=task_id,
+                        stage="accepted",
+                    )
+                    progress = True
+                elif lane_status in {"awaiting_verification", "verified"}:
+                    external_verifications = sum(
+                        state["stage"] == "verification_running"
+                        for other_id, state in receipt["tasks"].items()
+                        if other_id not in pipelines
+                    )
+                    if len(pipelines) + external_verifications >= verification_slots:
+                        if task_state["stage"] != "awaiting_verification":
+                            transition(
+                                receipt_path,
+                                receipt,
+                                "task_awaiting_verification",
+                                task_id=task_id,
+                                stage="awaiting_verification",
+                            )
+                            progress = True
+                        continue
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "owns_check_started",
+                        task_id=task_id,
+                        stage="owns_check",
+                    )
+                    launched = launch_action(
+                        [
+                            str(args.check_owns_paths),
+                            task["path"],
+                            "--cwd",
+                            str(project_cwd),
+                            "--run-scope",
+                        ],
+                        label=f"check-owns-paths {task_id}",
+                        json_output=False,
+                    )
+                    launched["phase"] = "owns"
+                    launched["skip_verify"] = lane_status == "verified"
+                    pipelines[task_id] = launched
+                    progress = True
+                elif lane_status == "verifying":
+                    if task_state["stage"] != "verification_running":
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "verification_running",
+                            task_id=task_id,
+                            stage="verification_running",
+                        )
+                        progress = True
+                elif lane_status in RUNNING_STATUSES:
+                    if task_state["stage"] != "running":
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_running",
+                            task_id=task_id,
+                            stage="running",
+                        )
+                        progress = True
+                elif lane_status in TERMINAL_FAILURES:
+                    if task_state["retries"] < 1:
+                        if lane_status == "stalled":
+                            action(
+                                [
+                                    str(args.lane_ctl),
+                                    "cancel",
+                                    "--run-dir",
+                                    str(run_dir),
+                                    "--task-id",
+                                    task_id,
+                                ],
+                                label=f"cancel stalled {task_id}",
+                            )
+                        action(
+                            [
+                                str(args.lane_ctl),
+                                "retry",
+                                "--run-dir",
+                                str(run_dir),
+                                "--task-id",
+                                task_id,
+                            ],
+                            label=f"retry {task_id}",
+                        )
+                        task_state["retries"] += 1
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_retried",
+                            task_id=task_id,
+                            stage="running",
+                            detail=str(lane_status),
+                        )
+                        progress = True
+                    else:
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_blocked",
+                            task_id=task_id,
+                            stage="blocked",
+                            detail=str(lane_status),
+                        )
+                        receipt["stage"] = "blocked"
+                        persist(receipt_path, receipt)
+                        return 1
+                elif lane_status == "not_started":
+                    if task_state["stage"] == "pending":
+                        continue
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "task_blocked",
+                        task_id=task_id,
+                        stage="blocked",
+                        detail="provider state regressed to not_started after dispatch",
+                    )
+                    receipt["stage"] = "blocked"
+                    persist(receipt_path, receipt)
+                    return 1
+                else:
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "task_blocked",
+                        task_id=task_id,
+                        stage="blocked",
+                        detail=f"unsupported status: {lane_status}",
+                    )
+                    receipt["stage"] = "blocked"
+                    persist(receipt_path, receipt)
+                    return 1
+
+            if all(task["stage"] == "accepted" for task in receipt["tasks"].values()):
+                receipt["stage"] = "accepted"
+                receipt["completed_at"] = utc_now()
+                transition(receipt_path, receipt, "run_accepted")
+                return 0
+
+            provider_active = sum(
+                task["stage"] == "running" for task in receipt["tasks"].values()
+            )
+            accepted_ids = {
+                task_id
+                for task_id, task in receipt["tasks"].items()
+                if task["stage"] == "accepted"
+            }
+            dispatch_contract_valid = False
+            for task in tasks:
+                task_state = receipt["tasks"][task["id"]]
+                if provider_active >= provider_slots:
+                    break
+                if task_state["stage"] != "pending" or not set(task["depends_on"]) <= accepted_ids:
+                    continue
+                if not dispatch_contract_valid:
+                    validate_run_contract(run_validate, run_dir)
+                    dispatch_contract_valid = True
+                action(
+                    [
+                        str(args.lane_ctl),
+                        "start",
+                        "--run-dir",
+                        str(run_dir),
+                        "--task-file",
+                        task["path"],
+                        "--project-cwd",
+                        str(project_cwd),
+                        "--pool-size",
+                        str(provider_slots),
+                    ],
+                    label=f"start {task['id']}",
+                )
+                transition(
+                    receipt_path,
+                    receipt,
+                    "task_started",
+                    task_id=task["id"],
+                    stage="running",
+                )
+                provider_active += 1
+                progress = True
+
+            now = time.monotonic()
+            if now - last_heartbeat >= args.heartbeat_interval:
+                heartbeat = {"type": "heartbeat", "at": utc_now(), "counts": counts(receipt)}
+                print(json.dumps(heartbeat, sort_keys=True), flush=True)
+                last_heartbeat = now
+            if not progress:
+                time.sleep(args.poll_interval)
+    finally:
+        stop_actions(pipelines)
+
+
+def status_controller(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir).expanduser().resolve()
+    receipt_path = run_dir / "controller.json"
+    if not receipt_path.is_file():
+        raise ControllerError(f"controller receipt does not exist: {receipt_path}")
+    receipt = observed_receipt(run_dir)
+    print(json.dumps(receipt, sort_keys=True if args.json else False, indent=None if args.json else 2))
+    return 1 if receipt.get("stage") in {"blocked", "failed"} else 0
+
+
+def worker_argv(args: argparse.Namespace) -> list[str]:
+    argv = [
+        str(Path(__file__).resolve()),
+        "run",
+        "--run-dir",
+        str(Path(args.run_dir).expanduser().resolve()),
+        "--lane-ctl",
+        str(Path(args.lane_ctl).expanduser().resolve()),
+        "--check-owns-paths",
+        str(Path(args.check_owns_paths).expanduser().resolve()),
+        "--run-validate",
+        str(Path(args.run_validate).expanduser().resolve()),
+        "--poll-interval",
+        str(args.poll_interval),
+        "--heartbeat-interval",
+        str(args.heartbeat_interval),
+    ]
+    if args.project_cwd:
+        argv.extend(["--project-cwd", str(Path(args.project_cwd).expanduser().resolve())])
+    return argv
+
+
+def start_controller(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir).expanduser().resolve()
+    if not run_dir.is_dir():
+        raise ControllerError(f"run directory does not exist: {run_dir}")
+    controller_dir = run_dir / "controller"
+    receipt_path = run_dir / "controller.json"
+    if receipt_path.is_file():
+        recorded = load_json(receipt_path)
+        current = observed_receipt(run_dir)
+        if (
+            recorded.get("stage") not in {"accepted", "blocked", "failed"}
+            and current.get("stage") == "failed"
+        ):
+            failure = dict(current["last_event"])
+            failure.pop("inferred", None)
+            recorded["stage"] = "failed"
+            recorded["last_event"] = failure
+            persist(receipt_path, recorded)
+            current = recorded
+        if current.get("stage") in {"accepted", "blocked", "failed"}:
+            payload = {
+                "schema_version": 1,
+                "status": "terminal",
+                "stage": current["stage"],
+                "run_dir": str(run_dir),
+                "pid": None,
+                "log": str(controller_dir / "lane-bg.supervisor.log"),
+                "receipt": str(receipt_path),
+            }
+            print(json.dumps(payload, sort_keys=True))
+            return 0 if current["stage"] == "accepted" else 1
+    # lane-bg keeps exit receipts as history. Once a launch has been proven
+    # safe above, remove that stale marker before a new worker can publish a
+    # nonterminal controller receipt.
+    (controller_dir / "lane-bg.exit").unlink(missing_ok=True)
+    lane_bg = Path(args.lane_bg).expanduser().resolve()
+    try:
+        result = subprocess.run(
+            [
+                str(lane_bg),
+                "--dir",
+                str(controller_dir),
+                "--label",
+                f"run-controller-{run_dir.name}",
+                "--",
+                *worker_argv(args),
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        raise ControllerError(f"cannot execute lane-bg: {exc}") from exc
+    if result.returncode != 0:
+        raise ControllerError(result.stderr.strip() or result.stdout.strip() or "lane-bg failed")
+    pid_path = controller_dir / "lane-bg.pid"
+    try:
+        pid = int(pid_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError) as exc:
+        raise ControllerError("lane-bg did not record a controller pid") from exc
+    payload = {
+        "schema_version": 1,
+        "status": "already_running" if "LANE_BG_ALREADY_RUNNING" in result.stdout else "started",
+        "run_dir": str(run_dir),
+        "pid": pid,
+        "log": str(controller_dir / "lane-bg.supervisor.log"),
+        "receipt": str(run_dir / "controller.json"),
+    }
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def watch_controller(args: argparse.Namespace) -> int:
+    if not 0 <= args.timeout <= 300:
+        raise ControllerError("watch --timeout must be between 0 and 300 seconds")
+    if args.poll_interval <= 0:
+        raise ControllerError("watch --poll-interval must be positive")
+    receipt_path = Path(args.run_dir).expanduser().resolve() / "controller.json"
+    deadline = time.monotonic() + args.timeout
+    current: dict[str, Any] | None = None
+    while True:
+        if receipt_path.is_file():
+            current = observed_receipt(receipt_path.parent)
+        if current is not None and current.get("stage") in {"accepted", "blocked", "failed"}:
+            code = 0 if current.get("stage") == "accepted" else 1
+            break
+        if time.monotonic() >= deadline:
+            code = 2
+            break
+        time.sleep(min(args.poll_interval, max(0.0, deadline - time.monotonic())))
+    payload = current or {
+        "schema_version": 1,
+        "run_dir": str(receipt_path.parent),
+        "stage": "not_started",
+        "receipt": str(receipt_path),
+    }
+    print(json.dumps(payload, sort_keys=True, indent=None if args.json else 2))
+    return code
+
+
+def record_controller_failure(args: argparse.Namespace, error: str) -> None:
+    receipt_path = Path(args.run_dir).expanduser().resolve() / "controller.json"
+    if not receipt_path.is_file():
+        return
+    try:
+        receipt = load_json(receipt_path)
+        if receipt.get("stage") in {"accepted", "blocked", "failed"}:
+            return
+        receipt["stage"] = "failed"
+        payload = {
+            "type": "transition",
+            "event": "controller_failed",
+            "at": utc_now(),
+            "detail": error,
+        }
+        receipt["last_event"] = payload
+        persist(receipt_path, receipt)
+        print(json.dumps(payload, sort_keys=True), flush=True)
+    except (ControllerError, KeyError, TypeError, AttributeError):
+        try:
+            run_dir = Path(args.run_dir).expanduser().resolve()
+            project_cwd, _, _, _, tasks = discover(run_dir, args.project_cwd)
+            receipt = initial_receipt(run_dir, project_cwd, tasks)
+            receipt["stage"] = "failed"
+            payload = {
+                "type": "transition",
+                "event": "controller_failed",
+                "at": utc_now(),
+                "detail": error,
+            }
+            receipt["last_event"] = payload
+            persist(receipt_path, receipt)
+            print(json.dumps(payload, sort_keys=True), flush=True)
+        except (ControllerError, OSError, KeyError, TypeError, AttributeError):
+            return
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description=__doc__)
+    sub = result.add_subparsers(dest="command", required=True)
+    run = sub.add_parser("run", help="run the blocking schema-v2 controller")
+    run.add_argument("--run-dir", required=True)
+    run.add_argument("--project-cwd")
+    run.add_argument("--lane-ctl", default=str(DEFAULT_LANE_CTL))
+    run.add_argument("--check-owns-paths", default=str(DEFAULT_OWNS))
+    run.add_argument("--run-validate", default=str(DEFAULT_RUN_VALIDATE))
+    run.add_argument("--poll-interval", type=float, default=1.0)
+    run.add_argument("--heartbeat-interval", type=float, default=30.0)
+    start = sub.add_parser("start", help="durably start the controller through lane-bg")
+    start.add_argument("--run-dir", required=True)
+    start.add_argument("--project-cwd")
+    start.add_argument("--lane-ctl", default=str(DEFAULT_LANE_CTL))
+    start.add_argument("--check-owns-paths", default=str(DEFAULT_OWNS))
+    start.add_argument("--run-validate", default=str(DEFAULT_RUN_VALIDATE))
+    start.add_argument("--lane-bg", default=str(DEFAULT_LANE_BG))
+    start.add_argument("--poll-interval", type=float, default=1.0)
+    start.add_argument("--heartbeat-interval", type=float, default=30.0)
+    status = sub.add_parser("status", help="read the current controller receipt")
+    status.add_argument("--run-dir", required=True)
+    status.add_argument("--json", action="store_true", required=True)
+    watch = sub.add_parser("watch", help="wait for a terminal receipt or timeout")
+    watch.add_argument("--run-dir", required=True)
+    watch.add_argument("--timeout", type=float, required=True)
+    watch.add_argument("--poll-interval", type=float, default=0.25)
+    watch.add_argument("--json", action="store_true")
+    return result
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        if args.command == "run":
+            return run_controller(args)
+        if args.command == "start":
+            return start_controller(args)
+        if args.command == "status":
+            return status_controller(args)
+        if args.command == "watch":
+            return watch_controller(args)
+        raise ControllerError(f"unsupported command: {args.command}")
+    except ControllerError as exc:
+        if args.command == "run":
+            record_controller_failure(args, str(exc))
+        print(f"run-controller: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

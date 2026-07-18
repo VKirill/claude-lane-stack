@@ -38,9 +38,12 @@ MAX_EVENT_NAME = 80
 VERSION_TOKEN = re.compile(
     r"(?<![A-Za-z0-9])v?(\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9.-]{1,32})?)(?![A-Za-z0-9])"
 )
-SAFE_STOP_REASONS = frozenset(
+RECOGNIZED_STOP_REASONS = frozenset(
     {"EndTurn", "MaxTurns", "Stop", "Completed", "Cancelled", "Error"}
 )
+# Recognition only controls sanitized diagnostics. Success is deliberately
+# narrower: every provider terminal reason except EndTurn fails closed.
+SUCCESS_STOP_REASONS = frozenset({"EndTurn"})
 TOKEN_FIELDS = {
     "input_tokens",
     "cache_read_input_tokens",
@@ -405,7 +408,7 @@ def provider_version(binary: str) -> str | None:
 def sanitized_stop_reason(value: object) -> str | None:
     if not isinstance(value, str) or not value:
         return None
-    return value if value in SAFE_STOP_REASONS else "Other"
+    return value if value in RECOGNIZED_STOP_REASONS else "Other"
 
 
 def stream_provider(
@@ -514,6 +517,10 @@ def stream_provider(
             end_event["stopReason"] = safe_stop_reason
             write_log(f"\n[grok end: {safe_stop_reason}]\n".encode("utf-8"))
             visible_marker("end")
+            if safe_stop_reason not in SUCCESS_STOP_REASONS:
+                set_protocol_error(
+                    f"unsuccessful terminal reason: {safe_stop_reason}", line
+                )
         else:
             write_log(f"\n[grok event: {event_type}]\n".encode("utf-8"))
             visible_marker(event_type)

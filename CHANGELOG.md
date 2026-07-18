@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.5.0 — 2026-07-18
+
+### Added
+- **Durable daytime run controller:** `run-controller start/watch/status` owns
+  schema-v2 DAG dispatch, separate bounded provider/verification pools,
+  progressive ownership/verification/acceptance, one retry, atomic
+  `controller.json`, duplicate locking, crash receipts, and host-surviving
+  `lane-bg` process lifetime.
+- **One visible supervisor per run:** the source-read-only `run-supervisor`
+  starts or resumes the controller and stays visible through bounded watches
+  until the run is accepted or blocked. `lane-supervisor` remains available for
+  explicit one-lane diagnostics and recovery.
+- **Exact Lane Board observability:** run/task APIs and drawers expose raw
+  lifecycle stage, attempt, PID/liveness, provider exit, heartbeat age, report
+  completeness, reason, next action, and the run controller summary without
+  changing the existing board-column grouping.
+
+### Changed
+- **Day and night are separate loops:** daytime has no LLM review; exact
+  ownership and registered verification drive acceptance and shipping. The
+  existing Codex Sol xhigh review → Grok fix → re-review pipeline remains the
+  independent night shift.
+- **Grok completion is fail-closed:** only `EndTurn` is successful.
+  `Cancelled`, `Error`, and unknown terminal reasons now produce a sanitized
+  protocol failure and non-zero wrapper exit.
+- **A report is mandatory before verify:** provider exit zero without root
+  `report.md` and `STATUS: complete` is `provider_incomplete → retry`, never
+  `awaiting_verification`.
+- **Parallel ownership no longer self-conflicts:** daytime shared worktrees use
+  a receipt-recorded union of all pre-dispatch-validated, disjoint task
+  `owns_paths`; direct and night single-task checks remain task-strict.
+- **Dispatch validation stays fresh:** the controller reruns strict
+  `pre-dispatch` validation at startup and before every dependency-release wave.
+
 ## 1.4.0 — 2026-07-18
 
 ### Changed

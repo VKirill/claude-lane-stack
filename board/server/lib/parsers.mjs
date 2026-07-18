@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -55,12 +55,94 @@ async function readJsonObject(filePath) {
   }
 }
 
+async function readInteger(filePath) {
+  try {
+    const source = (await readFile(filePath, 'utf8')).trim();
+    if (!/^-?\d+$/.test(source)) return null;
+    const value = Number(source);
+    return Number.isInteger(value) ? value : null;
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
+    return null;
+  }
+}
+
+async function fileAgeSeconds(filePath) {
+  try {
+    const info = await stat(filePath);
+    return Math.max(0, Math.floor((Date.now() - info.mtimeMs) / 1000));
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not inspect ${filePath}`, error);
+    return null;
+  }
+}
+
+async function pidAlive(pid, expectedStart) {
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  try {
+    const parts = (await readFile(`/proc/${pid}/stat`, 'utf8')).trim().split(/\s+/);
+    if (parts.length < 22 || parts[2] === 'Z') return false;
+    if (Number.isInteger(expectedStart) && Number(parts[21]) !== expectedStart) return false;
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function reportEvidence(filePath) {
+  try {
+    const match = (await readFile(filePath, 'utf8')).match(/^\s*STATUS\s*:\s*([A-Za-z_-]+)\b/im);
+    return { exists: true, complete: match?.[1]?.toLowerCase() === 'complete' };
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
+    return { exists: false, complete: false };
+  }
+}
+
+function stateLifecycle(status) {
+  const normalized = typeof status === 'string' && status.trim() ? status.trim().toLowerCase() : 'not_started';
+  if (normalized === 'accepted') {
+    return {
+      status: 'unknown',
+      reason: 'acceptance_receipt_missing',
+      next_action: 'inspect',
+    };
+  }
+  const known = {
+    awaiting_verification: ['provider_complete', 'verify'],
+    blocked: ['blocked', 'inspect'],
+    cancelled: ['cancel_requested', 'retry'],
+    failed: ['provider_exit_nonzero', 'retry'],
+    launching: ['provider_starting', 'wait'],
+    not_started: ['not_started', 'start'],
+    provider_incomplete: ['report_incomplete', 'retry'],
+    running: ['provider_state_recorded', 'inspect'],
+    stalled: ['heartbeat_stalled', 'cancel'],
+    verified: ['verification_passed', 'accept'],
+    verification_failed: ['verification_failed', 'retry'],
+    verifying: ['verification_running', 'wait'],
+  };
+  const [reason, nextAction] = known[normalized] ?? ['unrecognized_state', 'inspect'];
+  return { status: normalized, reason, next_action: nextAction };
+}
+
+function trustedVerification(verification, state, taskId, attempt) {
+  return verification?.schema_version === 2
+    && verification.task_id === taskId
+    && verification.task_sha256 === state.task_sha256
+    && verification.task_file === state.task_file
+    && verification.project_cwd === state.project_cwd
+    && verification.attempt === attempt;
+}
+
 async function readTaskRuntime(runPath, taskId, taskSha256) {
+  if (!safePathSegment(taskId)) return null;
   const artifactPath = path.join(runPath, 'artifacts', taskId);
   const acceptance = await readJsonObject(path.join(artifactPath, 'acceptance.json'));
   const state = await readJsonObject(path.join(artifactPath, 'state.json'));
   const currentAttempt = state?.current_attempt ?? state?.attempt;
-  if (
+  const accepted = (
     acceptance?.schema_version === 2
     && acceptance?.task_id === taskId
     && acceptance?.task_sha256 === taskSha256
@@ -75,8 +157,60 @@ async function readTaskRuntime(runPath, taskId, taskSha256) {
     && acceptance?.accepted === true
     && typeof acceptance?.accepted_at === 'string'
     && acceptance.accepted_at.length > 0
-  ) return { status: 'done', acceptance, state };
-  return state ? { status: runtimeStatusToBoard(state.status), acceptance, state } : null;
+  );
+  if (!state) return null;
+
+  const attempt = Number.isInteger(currentAttempt) && currentAttempt > 0 && currentAttempt < 100
+    ? currentAttempt
+    : null;
+  const attemptPath = attempt === null ? null : path.join(artifactPath, 'attempts', String(attempt).padStart(2, '0'));
+  const control = attemptPath ? await readJsonObject(path.join(attemptPath, 'control.json')) : null;
+  const pid = attemptPath ? await readInteger(path.join(attemptPath, 'lane-bg.pid')) : null;
+  const exitCode = attemptPath ? await readInteger(path.join(attemptPath, 'lane-bg.exit')) : null;
+  const running = await pidAlive(pid, control?.pid_start_time);
+  const heartbeatAge = await fileAgeSeconds(path.join(artifactPath, 'heartbeat.json'));
+  const report = await reportEvidence(path.join(artifactPath, 'report.md'));
+  const verification = attemptPath ? await readJsonObject(path.join(attemptPath, 'verification.json')) : null;
+  const verificationTrusted = trustedVerification(verification, state, taskId, attempt);
+
+  let lifecycle;
+  if (accepted) lifecycle = { status: 'accepted', reason: 'acceptance_valid', next_action: 'none' };
+  else if (state.status === 'cancelled') lifecycle = stateLifecycle('cancelled');
+  else if (state.status === 'blocked') lifecycle = stateLifecycle('blocked');
+  else if (state.status === 'stalled' && running) lifecycle = stateLifecycle('stalled');
+  else if (running) lifecycle = { status: 'running', reason: 'provider_running', next_action: 'wait' };
+  else if (exitCode === 0 && !report.complete) {
+    lifecycle = {
+      status: 'provider_incomplete',
+      reason: report.exists ? 'report_incomplete' : 'report_missing',
+      next_action: 'retry',
+    };
+  } else if (exitCode === 0 && verificationTrusted && verification.status === 'passed') {
+    lifecycle = { status: 'verified', reason: 'verification_passed', next_action: 'accept' };
+  } else if (exitCode === 0 && verificationTrusted && verification.status === 'failed') {
+    lifecycle = { status: 'verification_failed', reason: 'verification_failed', next_action: 'retry' };
+  } else if (exitCode === 0 && verificationTrusted && verification.status === 'running') {
+    lifecycle = { status: 'verifying', reason: 'verification_running', next_action: 'wait' };
+  } else if (exitCode === 0) {
+    lifecycle = { status: 'awaiting_verification', reason: 'provider_complete', next_action: 'verify' };
+  } else if (exitCode !== null) {
+    lifecycle = { status: 'failed', reason: 'provider_exit_nonzero', next_action: 'retry' };
+  } else if (control) {
+    lifecycle = { status: 'unknown', reason: 'provider_state_unknown', next_action: 'inspect' };
+  } else lifecycle = stateLifecycle(state.status);
+
+  const runtime = {
+    status: lifecycle.status,
+    attempt,
+    pid,
+    running,
+    exit_code: exitCode,
+    heartbeat_age_seconds: heartbeatAge,
+    report_complete: report.complete,
+    reason: lifecycle.reason,
+    next_action: lifecycle.next_action,
+  };
+  return { status: accepted ? 'done' : runtimeStatusToBoard(runtime.status), runtime, acceptance, state };
 }
 
 
@@ -139,7 +273,10 @@ export async function readTasks(tasksDirectory, run) {
       if (task) {
         const taskSha256 = createHash('sha256').update(source).digest('hex');
         const runtime = await readTaskRuntime(runPath, task.id, taskSha256);
-        if (runtime) task.status = runtime.status;
+        if (runtime) {
+          task.status = runtime.status;
+          task.runtime = runtime.runtime;
+        }
         tasks.push(task);
       }
     } catch (error) {
@@ -421,6 +558,7 @@ export async function readTaskDetail(projectPath, run, taskId) {
   const runtime = await readTaskRuntime(runPath, taskId, taskSha256);
   if (runtime) {
     detail.status = runtime.status;
+    detail.runtime = runtime.runtime;
   } else if (detail.status !== undefined) {
     const merged = await readMerge(runPath);
     detail.status = promoteMergedTaskStatus(detail.status, merged);

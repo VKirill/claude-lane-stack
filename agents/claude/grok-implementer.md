@@ -18,7 +18,8 @@ Inputs: `PROJECT_CWD`, `TASK_FILE`, `RUN_DIR`, optional `TASK_ID`, and either
 - `MODE=start` or `MODE=full` maps to `ACTION=start` and returns immediately.
 - `MODE=finish` maps to `ACTION=status`; the PM dispatches a separate
   `ACTION=verify` only after provider exit 0.
-- Prefer the canonical `lane-supervisor` agent for new orchestration.
+- Prefer the canonical `run-supervisor` agent for normal new runs. Use
+  `lane-supervisor` only for an explicit one-lane diagnostic or recovery action.
 
 Follow the same hard restrictions as `lane-supervisor`: one direct `lane-ctl`
 command at a time; no shell composition, source edits, commits, pushes, merges,

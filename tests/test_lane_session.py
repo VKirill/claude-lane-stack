@@ -452,9 +452,10 @@ class LaneSessionTest(unittest.TestCase):
                 "FAKE_VERSION_TEXT": f"grok 9.8.7 {secret}",
                 "FAKE_STOP_REASON": secret,
             },
+            check=False,
         )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 65, result.stderr)
         receipt_source = (self.root / "runtime.json").read_text(encoding="utf-8")
         receipt = json.loads(receipt_source)
         diagnostic = (self.root / "task-control-string-001.log").read_text(
@@ -462,6 +463,11 @@ class LaneSessionTest(unittest.TestCase):
         )
         self.assertEqual(receipt["provider_version"], "9.8.7")
         self.assertEqual(receipt["stop_reason"], "Other")
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertEqual(
+            receipt["protocol_error"],
+            "unsuccessful terminal reason: Other",
+        )
         self.assertNotIn(secret, receipt_source)
         self.assertNotIn(secret, diagnostic)
 
@@ -497,6 +503,26 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(result.returncode, 65, result.stderr)
         receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
         self.assertEqual(receipt["protocol_error"], "stream ended without an end event")
+
+    def test_unsuccessful_terminal_reasons_fail_closed(self) -> None:
+        for index, stop_reason in enumerate(("Cancelled", "Error", "MaxTokens"), start=1):
+            with self.subTest(stop_reason=stop_reason):
+                result = self._run(
+                    "grok",
+                    f"terminal-failure-{index}",
+                    extra_env={"FAKE_STOP_REASON": stop_reason},
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 65, result.stderr)
+                receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+                self.assertFalse(receipt["protocol_valid"])
+                expected_reason = stop_reason if stop_reason in {"Cancelled", "Error"} else "Other"
+                self.assertEqual(receipt["stop_reason"], expected_reason)
+                self.assertEqual(
+                    receipt["protocol_error"],
+                    f"unsuccessful terminal reason: {expected_reason}",
+                )
 
     def test_provider_stderr_is_diagnostic_not_structured_output(self) -> None:
         result = self._run(

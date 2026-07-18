@@ -185,6 +185,62 @@ class ContractViewTests(unittest.TestCase):
             self.assertEqual(receipt["status"], "failed")
             self.assertIn("error", receipt)
 
+    def test_owns_check_run_scope_accepts_disjoint_parallel_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run("git", "init", "-b", "main", cwd=repo)
+            run("git", "config", "user.email", "test@example.com", cwd=repo)
+            run("git", "config", "user.name", "Test", cwd=repo)
+            (repo / "a.txt").write_text("base a\n", encoding="utf-8")
+            (repo / "b.txt").write_text("base b\n", encoding="utf-8")
+            run("git", "add", "a.txt", "b.txt", cwd=repo)
+            run("git", "commit", "-m", "base", cwd=repo)
+            (repo / "a.txt").write_text("task a\n", encoding="utf-8")
+            (repo / "b.txt").write_text("task b\n", encoding="utf-8")
+            task_dir = repo / ".agents" / "runs" / "demo" / "tasks"
+            task_dir.mkdir(parents=True)
+            task_a = task_dir / "001.yaml"
+            task_b = task_dir / "002.yaml"
+            task_a.write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\nowns_paths: ['a.txt']\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+            task_b.write_text(
+                f"schema_version: 2\nid: '002'\nproject_cwd: '{repo}'\nowns_paths: ['b.txt']\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+
+            individual = run(
+                str(ROOT / "bin" / "check-owns-paths"),
+                str(task_a),
+                "--cwd",
+                str(repo),
+            )
+            shared = run(
+                str(ROOT / "bin" / "check-owns-paths"),
+                str(task_a),
+                "--cwd",
+                str(repo),
+                "--run-scope",
+            )
+
+            self.assertEqual(individual.returncode, 1)
+            self.assertEqual(shared.returncode, 0, shared.stdout + shared.stderr)
+            receipt = json.loads(
+                (
+                    repo
+                    / ".agents"
+                    / "runs"
+                    / "demo"
+                    / "artifacts"
+                    / "001"
+                    / "owns-check.json"
+                ).read_text()
+            )
+            self.assertEqual(receipt["scope"], "run")
+            self.assertEqual(receipt["scope_task_ids"], ["001", "002"])
+            self.assertEqual(receipt["changed_files"], ["a.txt", "b.txt"])
+
 
 if __name__ == "__main__":
     unittest.main()

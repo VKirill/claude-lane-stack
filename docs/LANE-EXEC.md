@@ -1,48 +1,53 @@
-# Event-driven Grok lanes
+# Durable daytime Grok runs
 
 ## Why this exists
 
 Claude Code foreground Bash can be terminated after roughly two minutes. A
-model subagent that stays alive to poll a provider also consumes an orchestration
-slot and makes a parallel wave wait for its slowest member.
+model subagent per provider also consumes orchestration slots and can disappear
+before the provider produces acceptance evidence.
 
-The lane stack therefore separates four responsibilities:
+The lane stack therefore separates six responsibilities:
 
 | Component | Responsibility |
 |-----------|----------------|
-| `lane-supervisor` | Source-read-only Claude control agent; issues one typed action and returns |
+| `run-supervisor` | One visible source-read-only Claude agent per run; bounded watch only |
+| `run-controller` | Durable deterministic DAG, retry, ownership, verification, and acceptance loop |
+| `lane-supervisor` | Manual one-action lane diagnostic/recovery agent |
 | `lane-ctl` | Validates v2 contracts, builds the prompt, registers immutable state, exposes status/retry/cancel/verify/accept |
 | `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
 | `lane-session` | Run-scoped warm Grok sessions and bounded provider concurrency |
 
-Grok is the code writer. The Claude supervisor has no `Write`, `Edit`, or
-unrestricted `Bash` capability.
+Grok is the code writer. Both Claude supervisor profiles have no `Write`,
+`Edit`, or unrestricted `Bash` capability. There is no daytime LLM review.
 
-## Start a lane
+## Start and visibly watch a run
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 
 run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
-
-lane-ctl start \
+run-controller start \
   --run-dir "$RUN_DIR" \
-  --task-file "$TASK_FILE" \
   --project-cwd "$PROJECT_CWD"
+run-controller watch --run-dir "$RUN_DIR" --timeout 240
+run-controller status --run-dir "$RUN_DIR" --json
 ```
 
-`start` returns after the detached job is registered. It hashes the immutable
-task YAML, creates `state.json` plus `attempts/01/`, builds the attempt prompt
-from the canonical Grok writer contract plus the raw task YAML, writes the
-attempt control receipt, and launches this low-level chain:
+`run-controller start` returns after the run-level worker is registered under
+`RUN_DIR/controller/`. It is idempotent and survives Claude or subagent exit.
+The worker validates the run contract at startup and again before every new
+dispatch wave, so a task file changed between dependency waves fails closed.
+The controller releases ready DAG tasks through `lane-ctl`, which hashes the
+immutable task YAML, creates `state.json` plus `attempts/01/`, and launches:
 
 ```text
 lane-bg → lane-exec → lane-session → grok
 ```
 
-No model is kept alive merely to hold or poll the process. On Linux with a user
+One `run-supervisor` remains visible and repeats bounded `watch` calls until a
+terminal state; it does not make lifecycle decisions. On Linux with a user
 systemd manager, `lane-bg` launches a transient service so host tool cleanup
-cannot reap the provider after `start` returns. `LANE_BG_BACKEND=nohup` is kept
+cannot reap the controller or provider after `start` returns. `LANE_BG_BACKEND=nohup` is kept
 as a compatibility/test fallback.
 
 ## Observe and control
@@ -65,12 +70,14 @@ reconstructs or shell-evaluates a free-form command. The argv schema and prompt
 digest are revalidated, the task hash must still match, and the control plane
 permits at most two attempts. Retry writes `attempts/02` without overwriting 01.
 
-Status deliberately distinguishes `awaiting_verification`, `verified`, and
-`verification_failed`. Provider exit 0 is never reported as accepted work.
+Status deliberately distinguishes `provider_incomplete`,
+`awaiting_verification`, `verified`, and `verification_failed`. Provider exit 0
+without a root report whose `STATUS` is `complete` becomes
+`provider_incomplete → retry`; it is never ready for verification.
 
 ## Verify independently
 
-After provider exit 0:
+After provider exit 0 plus a complete report (normally driven by the controller):
 
 ```bash
 lane-ctl verify \
@@ -93,7 +100,7 @@ After verification, the PM produces the ownership receipt and invokes the
 technical gate:
 
 ```bash
-check-owns-paths "$TASK_FILE"
+check-owns-paths "$TASK_FILE" --run-scope # shared daytime run worktree
 lane-ctl accept \
   --run-dir "$RUN_DIR" \
   --task-file "$TASK_FILE" \
@@ -101,8 +108,16 @@ lane-ctl accept \
 ```
 
 `accept` checks the unchanged task hash, provider exit 0, canonical report
-status, `owns-check.json`, current-attempt verification, and required review.
+status, `owns-check.json`, and current-attempt verification. Daytime runs do not
+invoke an LLM reviewer; historical explicit review gates stop for an operator
+decision.
 Only then does it write root `acceptance.json` and set state to accepted.
+
+The controller uses `--run-scope` because concurrent tasks share one worktree:
+the gate checks the union of every repeatedly pre-dispatch-validated, disjoint
+`owns_paths`. This prevents sibling changes from creating false violations
+while still rejecting every change outside the run contract. Direct and night
+single-task calls remain strict per-task checks.
 
 ## Concurrency
 
@@ -124,6 +139,11 @@ private per-user directory under `/tmp`.
 
 ```text
 .agents/runs/<slug>/
+  controller.json
+  controller/
+    lane-bg.pid
+    lane-bg.exit
+    lane-bg.supervisor.log
   events.jsonl
   sessions.json
   artifacts/<task-id>/
@@ -170,10 +190,15 @@ Exit 124 means idle or maximum timeout. Exit codes from normal provider failure
 are propagated exactly. Read events and the bounded log tail before the one
 allowed retry.
 
+Only `EndTurn` is a successful Grok terminal reason. `Cancelled`, `Error`, and
+unknown terminal reasons are protocol failures with a non-zero wrapper exit;
+raw unknown values remain sanitized in runtime receipts.
+
 ## Compatibility tools
 
 `lane-wait`, `lane-poll`, `lane-mode-check`, and legacy `MODE` prompts remain
-for older runs. New orchestration uses `lane-ctl` and `lane-supervisor`.
+for older runs. New orchestration uses `run-controller` plus `run-supervisor`;
+`lane-ctl` and `lane-supervisor` remain the typed low-level/recovery path.
 
 ## Night review
 

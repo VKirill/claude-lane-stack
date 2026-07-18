@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/run-controller-v1.schema.json",
+  "title": "Claude Lane Stack run controller receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_dir",
+    "project_cwd",
+    "stage",
+    "started_at",
+    "updated_at",
+    "completed_at",
+    "last_event",
+    "next_action",
+    "counts",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_dir": {"type": "string", "pattern": "^/"},
+    "project_cwd": {"type": "string", "pattern": "^/"},
+    "stage": {"enum": ["running", "accepted", "blocked", "failed"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "completed_at": {
+      "oneOf": [
+        {"type": "string", "format": "date-time"},
+        {"type": "null"}
+      ]
+    },
+    "last_event": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/event"}
+      ]
+    },
+    "next_action": {
+      "enum": ["dispatch_ready", "poll", "complete", "operator_intervention"]
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "accepted", "blocked", "running", "pending"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 1},
+        "accepted": {"type": "integer", "minimum": 0},
+        "blocked": {"type": "integer", "minimum": 0},
+        "running": {"type": "integer", "minimum": 0},
+        "pending": {"type": "integer", "minimum": 0}
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      },
+      "additionalProperties": {"$ref": "#/$defs/task"}
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "event", "at"],
+      "properties": {
+        "type": {"const": "transition"},
+        "event": {"type": "string", "minLength": 1},
+        "at": {"type": "string", "format": "date-time"},
+        "task_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_file",
+        "depends_on",
+        "stage",
+        "last_status",
+        "retries",
+        "updated_at"
+      ],
+      "properties": {
+        "task_file": {"type": "string", "pattern": "^/"},
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "stage": {
+          "enum": [
+            "pending",
+            "running",
+            "awaiting_verification",
+            "owns_check",
+            "verifying",
+            "verification_running",
+            "accepting",
+            "accepted",
+            "blocked"
+          ]
+        },
+        "last_status": {"type": ["string", "null"]},
+        "retries": {"type": "integer", "minimum": 0, "maximum": 1},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

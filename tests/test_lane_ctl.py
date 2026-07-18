@@ -25,6 +25,10 @@ class LaneCtlTest(unittest.TestCase):
         self.run_dir = self.root / ".agents" / "runs" / "test-run"
         self.tasks_dir = self.run_dir / "tasks"
         self.tasks_dir.mkdir(parents=True)
+        (self.root / ".agents" / "night-shift.yaml").write_text(
+            'verification_executables: ["true", "printf", "sleep"]\n',
+            encoding="utf-8",
+        )
         self.project_cwd = self.root / "worktree"
         self.project_cwd.mkdir()
         self.provider_args = self.root / "provider-args.jsonl"
@@ -62,6 +66,17 @@ class LaneCtlTest(unittest.TestCase):
                     print("fake provider start", flush=True)
                 time.sleep(float(os.environ.get("FAKE_SLEEP", "0.05")))
                 exit_code = int(os.environ.get("FAKE_EXIT", "0"))
+                if streaming and exit_code == 0:
+                    prompt_path = Path(args[args.index("--prompt-file") + 1])
+                    if prompt_path.parent.parent.name == "attempts":
+                        report_mode = os.environ.get("FAKE_REPORT", "complete")
+                        if report_mode != "missing":
+                            report_status = (
+                                "complete" if report_mode == "complete" else report_mode
+                            )
+                            (prompt_path.parents[2] / "report.md").write_text(
+                                f"STATUS: {report_status}\\n", encoding="utf-8"
+                            )
                 if streaming:
                     emit({"type": "text", "data": "fake provider done\\n"})
                     if exit_code == 0:
@@ -928,6 +943,54 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual(status["status"], "awaiting_verification")
         self.assertFalse(status["verification"]["verified"])
 
+    def test_v2_status_requires_complete_provider_report(self) -> None:
+        cases = (
+            (
+                "001",
+                "missing",
+                "provider_incomplete",
+                "report_missing",
+                False,
+                "retry",
+            ),
+            (
+                "002",
+                "partial",
+                "provider_incomplete",
+                "report_incomplete",
+                False,
+                "retry",
+            ),
+            (
+                "003",
+                "complete",
+                "awaiting_verification",
+                "provider_complete",
+                True,
+                "verify",
+            ),
+        )
+        for task_id, report_mode, expected, reason, complete, next_action in cases:
+            with self.subTest(task_id=task_id):
+                task_file = self.write_v2_task(
+                    task_id,
+                    verification=[
+                        {"command": "true", "cwd": ".", "timeout_sec": 5}
+                    ],
+                )
+                self.start(
+                    task_file,
+                    task_id=task_id,
+                    env={"FAKE_REPORT": report_mode},
+                )
+
+                status = self.wait_status(task_id)
+                self.assertEqual(status["status"], expected)
+                self.assertEqual(status["reason"], reason)
+                self.assertIs(status["report_complete"], complete)
+                self.assertEqual(status["next_action"], next_action)
+                self.assertIs(status["report"]["complete"], complete)
+
     def test_v2_structured_verification_honors_cwd_and_timeout(self) -> None:
         nested = self.project_cwd / "nested"
         nested.mkdir()
@@ -1091,6 +1154,8 @@ class LaneCtlTest(unittest.TestCase):
                     "exit_code": 0,
                     "cwd": str(self.project_cwd),
                     "task_sha256": "wrong",
+                    "scope": "task",
+                    "scope_task_ids": ["001"],
                 }
             ),
             encoding="utf-8",
@@ -1113,9 +1178,26 @@ class LaneCtlTest(unittest.TestCase):
                     "exit_code": 0,
                     "cwd": str(self.project_cwd),
                     "task_sha256": state["task_sha256"],
+                    "scope": "run",
+                    "scope_task_ids": ["001", "ghost"],
                 }
             ),
             encoding="utf-8",
+        )
+        wrong_scope = self.run_ctl(
+            "accept",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-id",
+            "001",
+            check=False,
+        )
+        self.assertEqual(wrong_scope.returncode, 2)
+        self.assertIn("scope_task_ids", wrong_scope.stderr)
+        owns_receipt = json.loads((artifact / "owns-check.json").read_text())
+        owns_receipt.update(scope="task", scope_task_ids=["001"])
+        (artifact / "owns-check.json").write_text(
+            json.dumps(owns_receipt), encoding="utf-8"
         )
         missing_review = self.run_ctl(
             "accept",
@@ -1207,6 +1289,8 @@ class LaneCtlTest(unittest.TestCase):
                     "exit_code": 0,
                     "cwd": str(self.project_cwd),
                     "task_sha256": state["task_sha256"],
+                    "scope": "task",
+                    "scope_task_ids": ["001"],
                 }
             ),
             encoding="utf-8",
@@ -1269,6 +1353,8 @@ class LaneCtlTest(unittest.TestCase):
                     "exit_code": 0,
                     "cwd": str(self.project_cwd),
                     "task_sha256": state["task_sha256"],
+                    "scope": "task",
+                    "scope_task_ids": ["001"],
                 }
             ),
             encoding="utf-8",
@@ -1322,6 +1408,8 @@ class LaneCtlTest(unittest.TestCase):
                     "exit_code": 0,
                     "cwd": str(self.project_cwd),
                     "task_sha256": state["task_sha256"],
+                    "scope": "task",
+                    "scope_task_ids": ["001"],
                 }
             ),
             encoding="utf-8",

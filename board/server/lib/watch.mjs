@@ -37,6 +37,9 @@ export async function projectSignal(project) {
   for (const run of await readDirectory(runsPath)) {
     if (!run.isDirectory()) continue;
     const runPath = path.join(runsPath, run.name);
+    await addStat(parts, path.join(runPath, 'controller.json'));
+    await addStat(parts, path.join(runPath, 'controller', 'lane-bg.pid'));
+    await addStat(parts, path.join(runPath, 'controller', 'lane-bg.exit'));
     await addStat(parts, path.join(runPath, 'MERGE.md'));
     await addStat(parts, path.join(runPath, 'merge.json'));
     const tasksPath = path.join(runPath, 'tasks');
@@ -51,6 +54,19 @@ export async function projectSignal(project) {
       const artifactPath = path.join(artifactsPath, artifact.name);
       await addStat(parts, path.join(artifactPath, 'state.json'));
       await addStat(parts, path.join(artifactPath, 'acceptance.json'));
+      await addStat(parts, path.join(artifactPath, 'heartbeat.json'));
+      await addStat(parts, path.join(artifactPath, 'report.md'));
+      await addStat(parts, path.join(artifactPath, 'review.json'));
+      const attemptsPath = path.join(artifactPath, 'attempts');
+      await addStat(parts, attemptsPath);
+      for (const attempt of await readDirectory(attemptsPath)) {
+        if (!attempt.isDirectory()) continue;
+        const attemptPath = path.join(attemptsPath, attempt.name);
+        await addStat(parts, path.join(attemptPath, 'control.json'));
+        await addStat(parts, path.join(attemptPath, 'lane-bg.pid'));
+        await addStat(parts, path.join(attemptPath, 'lane-bg.exit'));
+        await addStat(parts, path.join(attemptPath, 'verification.json'));
+      }
     }
   }
 

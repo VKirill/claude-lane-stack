@@ -49,3 +49,34 @@ test('emits a project refresh when a task state receipt changes', async () => {
   assert.deepEqual(refreshed, ['fixture-project']);
   watcher.stop();
 });
+
+test('emits refreshes for controller, heartbeat, report, and current-attempt evidence', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-watch-runtime-'));
+  fixtures.push(root);
+  const run = path.join(root, '.agents', 'runs', 'demo');
+  const artifact = path.join(run, 'artifacts', '001');
+  const attempt = path.join(artifact, 'attempts', '01');
+  await mkdir(attempt, { recursive: true });
+  await writeFile(path.join(run, 'controller.json'), '{"stage":"running"}\n');
+  await writeFile(path.join(artifact, 'heartbeat.json'), '{"status":"running"}\n');
+  await writeFile(path.join(artifact, 'report.md'), 'STATUS: partial\n');
+  await writeFile(path.join(attempt, 'lane-bg.exit'), '0\n');
+
+  const project = { id: 'fixture-project', name: 'fixture', path: root };
+  const refreshed = [];
+  const watcher = createProjectWatcher({ getProjects: async () => [project] });
+  watcher.subscribe((projectId) => refreshed.push(projectId));
+  await watcher.poll();
+
+  await writeFile(path.join(run, 'controller.json'), '{"stage":"accepted","counts":{"total":1}}\n');
+  await watcher.poll();
+  await writeFile(path.join(artifact, 'heartbeat.json'), '{"status":"running","note":"activity"}\n');
+  await watcher.poll();
+  await writeFile(path.join(artifact, 'report.md'), 'STATUS: complete\nmore evidence\n');
+  await watcher.poll();
+  await writeFile(path.join(attempt, 'lane-bg.exit'), '65\n');
+  await watcher.poll();
+
+  assert.deepEqual(refreshed, Array(4).fill('fixture-project'));
+  watcher.stop();
+});

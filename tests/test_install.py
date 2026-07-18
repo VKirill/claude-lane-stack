@@ -13,6 +13,47 @@ INSTALL = ROOT / "install.sh"
 
 
 class InstallTest(unittest.TestCase):
+    def test_installs_daytime_controller_and_read_only_run_supervisor(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            home = tmp / "home"
+            work = tmp / "outside-repo"
+            home.mkdir()
+            work.mkdir()
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env.pop("CODEX_HOME", None)
+
+            result = subprocess.run(
+                [str(INSTALL)],
+                cwd=work,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=60,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            controller = home / ".agents" / "bin" / "run-controller"
+            self.assertTrue(controller.is_file())
+            self.assertEqual(controller.stat().st_mode & 0o777, 0o755)
+
+            supervisor = home / ".claude" / "agents" / "run-supervisor.md"
+            content = supervisor.read_text(encoding="utf-8")
+            self.assertIn("name: run-supervisor", content)
+            self.assertIn("Bash(run-controller start:*)", content)
+            self.assertIn("Bash(run-controller watch:*)", content)
+            self.assertNotIn("Write", content.partition("---\n")[2].partition("---\n")[0])
+            self.assertNotIn("Edit", content.partition("---\n")[2].partition("---\n")[0])
+
+            orchestrator = (home / ".claude" / "agents" / "dev-orchestrator.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("Agent(run-supervisor", orchestrator)
+            self.assertIn("no daytime LLM review", orchestrator)
+
     def test_bin_install_ignores_runtime_cache_directories(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             tmp = Path(raw_tmp)

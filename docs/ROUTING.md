@@ -8,12 +8,13 @@
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
 | Write (all risks) | **Grok 4.5** only | sole programmer lane |
-| Review (all) | Codex Sol | gpt-5.6-sol + xhigh, read-only |
+| Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
 | Onboard **deep** (default on full) | Codex **Sol** | `gpt-5.6-sol` + `high` |
-| Thin wrappers (implementer/reviewer supervisors) | Claude **Sonnet** | shell-out only |
+| Run visibility wrapper | Claude **Haiku** `run-supervisor` | typed start/watch/status only |
+| Diagnostic/reviewer wrappers | Claude **Sonnet** | shell-out only |
 
 ## GPT-5.6 Sol / Terra / Luna (Codex)
 
@@ -31,8 +32,8 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 | Signal | Lane | Model notes |
 |--------|------|-------------|
 | `risk: low` UI/wiring | **grok** | Grok 4.5 medium |
-| `risk: medium` | grok + codex-review sol xhigh | Grok 4.5 medium + gpt-5.6-sol xhigh |
-| `risk: high` auth/pay/schema | grok + codex-review Sol xhigh | nightly (gate opt-in for pre-merge) |
+| `risk: medium` | Grok daytime → Codex night shift | Grok 4.5 medium + gpt-5.6-sol xhigh nightly |
+| `risk: high` auth/pay/schema | Grok solo daytime → Codex night shift | no silent daytime reviewer |
 | Empty-diff / stalled Grok | re-dispatch grok once, then **codex-implementer** | — |
 
 ## Review tiers
@@ -42,12 +43,9 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 | none    | micro path / risk low               | verify field + check-owns-paths only |
 | nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Grok repair; fresh re-review |
 
-Pre-merge gate is OFF by default (solo, no-user products). When a project
-serves real users or money, re-enable per project: add `gate: pre-merge` to
-`run.yaml` (or set it as a project default in PROGRESS.md Pointers before
-`run-init`) — then
-codex-reviewer (sol xhigh, read-only)
-must pass BEFORE merge for high-risk work in that project.
+There is no daytime LLM review. Historical or explicitly configured
+`gate: pre-merge` runs stop for an operator decision instead of silently
+starting Codex. Normal review, repair, and fresh re-review run at night.
 
 ## Profile `claude-codex` (only Claude + Codex)
 
@@ -79,17 +77,20 @@ See `profiles/claude-codex.yaml`.
 
 ## Long lanes under Claude Code
 
-Foreground Bash dies ~**2 minutes**. Write lanes start through the typed control plane:
+Foreground Bash dies ~**2 minutes**. Daytime runs start through the durable
+typed controller:
 
 ```bash
 run-init "$(pwd)" "$SLUG" --score "$SCORE"
 run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
-lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
-lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
+run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD"
+run-controller watch --run-dir "$RUN_DIR" --timeout 240
+run-controller status --run-dir "$RUN_DIR" --json
 ```
 
-See [LANE-EXEC.md](LANE-EXEC.md). PM never runs 90m Bash or keeps a Claude
-subagent alive to poll. It reacts to lifecycle events and verifies independently.
+See [LANE-EXEC.md](LANE-EXEC.md). One source-read-only `run-supervisor` stays
+visible through bounded watches; the detached deterministic controller remains
+alive independently and makes all lifecycle decisions.
 
 Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
@@ -100,9 +101,9 @@ an independent cold session.
 
 | Situation | Policy |
 |-----------|--------|
-| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single detached **Grok** lane, no reviewer, verify none\|smoke |
-| 1 low-risk write | main tree OK; typed `lane-ctl start` |
-| ≥2 writes OR score ≥ 4 | worktree; provider pool default 5 / max 10; event-driven progressive accept; disjoint owns_paths |
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, durable controller around one detached **Grok** lane, no daytime reviewer |
+| 1 low-risk write | main tree OK; typed `run-controller start` |
+| ≥2 writes OR score ≥ 4 | worktree; provider pool default 5 / max 10; durable progressive accept; disjoint owns_paths |
 | Verification | separate pool default 2 / max 10; exact task commands only |
 | High risk write | solo writer |
 | Human never merges | PM → `wt-merge-main` |

@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { button, clear, element, errorState, focusTrap, loading } from "../ui.js";
 import { priorityBadge, statusBadge } from "./badges.js";
+import { lifecycleLabel } from "../lifecycle.mjs";
 
 const overlayRoot = () => document.getElementById("overlay-root");
 
@@ -58,7 +59,14 @@ function scalarMeta(payload, omit = []) {
 function taskContent(task) {
   const content = document.createDocumentFragment();
   content.append(drawerHeader(String(task.title || task.id || "Task")));
-  content.append(section("Task fields", scalarMeta(task, ["objective", "done_when", "report"])));
+  content.append(section("Task fields", scalarMeta(task, ["objective", "done_when", "report", "runtime"])));
+
+  if (task.runtime && typeof task.runtime === "object") {
+    content.append(section("Runtime lifecycle", scalarMeta({
+      lifecycle: lifecycleLabel(task.runtime.status),
+      ...task.runtime,
+    })));
+  }
 
   if (task.objective) {
     content.append(section("Objective", element("pre", "drawer__pre", task.objective)));

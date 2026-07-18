@@ -4,14 +4,15 @@
 
 # 🏭 Claude Lane Stack
 
-### A small AI coding factory for one person · **v1.4.0**
+### A small AI coding factory for one person · **v1.5.0**
 
-**Multi-agent orchestration for Claude Code** — you talk to one AI project manager,
-it dispatches optional workers (Grok / Codex), reviews their output
-and **merges finished code to `main`**. No five chats. No manual merges.
+**Multi-agent orchestration for Claude Code** — you talk to one AI project
+manager, it runs durable Grok work through acceptance, **merges finished code to
+`main`**, and sends independent review/fixes through the night shift. No five
+chats. No manual merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.0)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Start%20here-Beginner%20guide-brightgreen)](docs/BEGINNER.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -42,12 +43,13 @@ Working with AI coding tools usually looks like this: five chat windows, copy-pa
 |---------------|---------------|
 | You re-explain context to every model | One PM holds context, workers get **task cards** |
 | Models overwrite each other's files | Each card lists **owned paths** — workers stay in their lane |
-| Nobody reviews the AI's code | A dedicated **review lane** (Codex) gates every merge |
+| Nobody reviews the AI's code | A typed **night review/fix loop** (Codex → Grok → re-review) |
 | You merge branches manually | The PM merges to **`main`** after checks pass |
 | Next morning: "what were we doing?" | `/resume-project` — Now / Blocked / Next in seconds |
 | Onboard is a thin CLAUDE stub | **Deep forensic passport** on mature repos |
-| Long Grok runs die at ~2 min | **`lane-ctl` + user-systemd** — detached lifecycle survives host cleanup |
-| Parallel tasks wait for the slowest | **Event-driven accept** — detached Grok + lifecycle events + separate verify pool |
+| Long Grok runs die at ~2 min | **`run-controller` + user-systemd** — the whole lifecycle survives host cleanup |
+| You cannot tell if work is alive | One visible **`run-supervisor`** + exact Board runtime stages |
+| Parallel tasks wait for the slowest | **Progressive accept** — detached Grok + separate provider/verify pools |
 
 No task database. No required cloud service. **Plain files + plain git** — everything is inspectable in your repo.
 
@@ -83,13 +85,13 @@ flowchart LR
     end
     subgraph lanes ["👷 Worker lanes (optional)"]
         D["🔧 Grok — heavy writes"]
-        E["🔍 Codex — review gate"]
+        E["🌙 Codex — night review"]
     end
     A --> B
     B --> D
-    D --> E
-    E -->|checks passed| F[("📦 main")]
-    E -->|issues| B
+    D -->|exact checks| F[("📦 main")]
+    F -.-> E
+    E -.->|typed findings / Grok fixes| B
 ```
 
 | Role | Who | What they do |
@@ -97,7 +99,7 @@ flowchart LR
 | 👑 Owner | **You** | Say *what* you want (chat may be any language) |
 | 🤖 Project manager | Claude Code agent `dev-orchestrator` | Plans, dispatches, verifies, **merges** |
 | 🔧 Write lane | Grok *(optional)* | Implement task cards (detached via `lane-bg`) |
-| 🔍 Review / write / onboard | Codex *(optional)* | Review gate, emergency write, **project passport** |
+| 🔍 Review / write / onboard | Codex *(optional)* | Night review/re-review, emergency write, **project passport** |
 | 🗂️ Task cards | YAML in `.agents/runs/` | Factory floor — fully inspectable |
 | 📦 Official code | Git branch **`main`** | Where every successful job ends |
 
@@ -115,7 +117,7 @@ flowchart LR
 ```bash
 # 1️⃣  Install the stack — once per computer
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.4.0 # or: main
+cd claude-lane-stack && git checkout v1.5.0 # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH" # or open a new terminal
 
@@ -138,7 +140,7 @@ Then in chat:
 > [!IMPORTANT]
 > `/resume-project` is a *"welcome back"* command — **not** an installation step.
 
-📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.4.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0)**
+📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.5.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.0)**
 
 ---
 
@@ -186,21 +188,23 @@ Long Grok jobs start through the typed control plane:
 ```bash
 RUN_DIR="$(run-init "$(pwd)" "$SLUG" --score 7)"
 run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
-lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
-lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
-lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
-check-owns-paths "$TASK_FILE"
-lane-ctl accept --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
+run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD"
+run-controller watch --run-dir "$RUN_DIR" --timeout 240
+run-controller status --run-dir "$RUN_DIR" --json
 ```
 
 | Tool | Role |
 |------|------|
+| **`run-controller`** | durable DAG dispatch, one retry, progressive owns/verify/accept, exact run status |
 | **`lane-ctl`** | typed start/status/events/tail/retry/cancel/verify/accept control plane |
 | **`lane-bg`** | low-level transient user-systemd service; explicit nohup fallback |
 | **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
 | **`lane-session`** | resumes run-scoped Grok context; provider default 5/max 10 |
 
-The read-only `lane-supervisor` and `dev-orchestrator` use this pattern. Verification has a separate default 2/max 10 pool. Details: [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
+One read-only `run-supervisor` visibly watches the durable controller until the
+run is accepted or blocked. `lane-supervisor` remains a one-action diagnostic
+profile. Verification has a separate default 2/max 10 pool. Details:
+[docs/LANE-EXEC.md](docs/LANE-EXEC.md)
 
 Grok no longer relearns the repository on every task in a run. The first
 task creates a conversation; later related tasks resume it. A busy conversation
@@ -241,16 +245,19 @@ snapshotted at start and the parsed argv runs directly without a shell.
 
 ---
 
-## ⚡ Event-driven accept — no join-wait
+## ⚡ Durable progressive accept — visible, no join-wait
 
 Multi-task runs no longer wait for the **slowest** concurrent lane before accepting finished ones.
 
-1. Source-read-only **`lane-supervisor`** calls `lane-ctl start` and returns immediately.
-2. Detached `lane-bg → lane-exec → lane-session → grok` owns process lifetime.
-3. PM reacts to compact lifecycle events, then runs independent verification and ownership checks.
-4. `acceptance.json` is written now; refill the next ready task (provider default 5/max 10).
+1. Source-read-only **`run-supervisor`** starts one durable controller and stays visible through bounded watches.
+2. The detached controller releases `lane-bg → lane-exec → lane-session → grok` tasks from the DAG.
+3. Complete report → ownership check → independent verification → acceptance; incomplete/failed work retries once.
+4. `acceptance.json` is written immediately; the next ready task fills the free slot (provider default 5/max 10).
 
-Claude does not spend one live subagent per provider process. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md) · [skills/orchestrator-lanes](skills/orchestrator-lanes/SKILL.md).
+Claude uses one visible supervisor per **run**, not one agent per provider. The
+deterministic controller survives if that Claude task or session exits. There is
+no daytime LLM review; the typed night shift remains separate. See
+[docs/LANE-EXEC.md](docs/LANE-EXEC.md) · [skills/orchestrator-lanes](skills/orchestrator-lanes/SKILL.md).
 
 ## 📋 Task cards: how workers stay in their lane
 
@@ -302,7 +309,9 @@ Details: [docs/FILE-CONTRACT.md](docs/FILE-CONTRACT.md)
 <img src="docs/images/03-auto-merge-main.jpg" alt="The PM robot places verified code into the main vault while the developer relaxes with coffee" width="90%" />
 </div>
 
-The end of every successful job is the same: **verified code lands on `main`**, merged by the orchestrator via `wt-merge-main` after review and checks. Workers build in isolated **git worktrees**.
+The end of every successful job is the same: **verified code lands on `main`**,
+merged by the orchestrator via `wt-merge-main` after exact acceptance checks.
+Independent review and repair run at night. Workers build in isolated **git worktrees**.
 
 > [!WARNING]
 > If an agent ever asks *you* to resolve branches — that's a bug in the flow. Tell the PM: *«merging is your job»*.
@@ -333,6 +342,7 @@ Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 |---------|------------|
 | `run-board` | Job scoreboard |
 | `run-init` / `run-validate` / `run-finalize` | Versioned run contract lifecycle |
+| **`run-controller start/watch/status`** | Durable daytime lifecycle + exact live status |
 | `lane-session status --run-dir .agents/runs/<slug>` | Inspect that run's Grok session pool |
 | `wt-create` / `wt-merge-main` | Worktree + **merge into `main`** |
 | `check-owns-paths` | Did the worker stay in its file list? |
@@ -414,7 +424,10 @@ No — **only Claude Code is required**. Everything else is optional. `agents-do
 <details>
 <summary><b>How is this different from plain Claude Code?</b></summary>
 
-Plain Claude is one worker in one chat. Lane Stack adds **management**: task cards with ownership, multi-vendor lanes, independent review, auto-merge to `main`, deep onboard, cold-start recovery.
+Plain Claude is one worker in one chat. Lane Stack adds **management**: task
+cards with ownership, durable parallel Grok lanes, a visible run supervisor,
+nightly independent review/fix, auto-merge to `main`, deep onboard, and
+cold-start recovery.
 
 </details>
 
@@ -472,7 +485,7 @@ Each CLI talks only to its own vendor. No extra servers. Don't put secrets in ta
 | 📝 Ideas backlog | [docs/TODOS.md](docs/TODOS.md) |<!-- guardian: allow — link to existing docs/TODOS.md file, not a new TODO marker -->
 | 🔌 MCP (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Release v1.4.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0) |
+| 🚀 Release v1.5.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.0) |
 | 🤝 Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | 🔐 Security | [SECURITY.md](SECURITY.md) |
 
