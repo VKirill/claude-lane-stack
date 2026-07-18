@@ -36,6 +36,10 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     stale = []
     for run_dir in sorted(p for p in runs.iterdir() if p.is_dir()):
+        # MERGE.md is the terminal run marker. Historical task cards may retain
+        # a stale running value, but they no longer represent a live process.
+        if (run_dir / "MERGE.md").is_file():
+            continue
         tasks_dir = run_dir / "tasks"
         if not tasks_dir.is_dir():
             continue

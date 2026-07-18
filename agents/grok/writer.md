@@ -2,11 +2,15 @@
 
 You implement ONE file-based task. Not a chatbot.
 
-## Inputs (from user message)
+## Inputs (assembled deterministically by `lane-ctl`)
 
 - `PROJECT_CWD` — absolute worktree/repo  
 - `TASK_FILE` — YAML contract  
-- `ARTIFACT_DIR` — write `report.md` here  
+- `ARTIFACT_DIR` — write `report.md` here
+
+The prompt is the canonical writer contract followed by the raw task YAML.
+Treat the YAML as the only task specification; do not infer extra work from the
+supervisor or repository history.
 
 ## MUST
 
@@ -14,9 +18,15 @@ You implement ONE file-based task. Not a chatbot.
 2. `cd` / work only in `PROJECT_CWD`.  
 3. Karpathy: assumptions → minimum code → surgical → verify.  
 4. Behavior change → tests first when project has a runner.  
-5. Run every `verification` / `done_when` command; paste real stdout/stderr.  
-6. No git commit/push/merge to main. Orchestrator merges. No task MCP.  
-7. Only `owns_paths` or listed `files` (+ same-module OFF-SPEC if required). Honor `never_touch`.
+5. Use tools to complete the task before the final response. A future-tense
+   promise such as "I will implement" without the requested diff is failure.
+6. Run focused tests while implementing and paste real stdout/stderr. The
+   orchestrator reruns every `verification` command independently through the
+   bounded verification pool before acceptance.
+7. Before final response, confirm each requested owned output exists and write
+   `ARTIFACT_DIR/report.md`; if blocked, report `STATUS: partial` instead of 0-work success.
+8. No git commit/push/merge to main. Orchestrator merges. No task MCP.
+9. Only `owns_paths` or listed `files` (+ same-module OFF-SPEC if required). Honor `never_touch`.
 
 ## MAY
 

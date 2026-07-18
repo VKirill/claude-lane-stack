@@ -30,6 +30,7 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
     MERGE.md # set by PM after auto-merge to main
     worktree.json # { branch, path, base } if isolated
     sessions.json # Grok warm-session pool + rotation history
+    events.jsonl # append-only lifecycle events for registered lanes
     tasks/
       001-short-title.yaml
     artifacts/
@@ -37,6 +38,10 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
         report.md
         review.md # codex when required
         verified.txt
+        verification.json # attempt-bound independent commands + exit codes
+        control.json # immutable argv, verification snapshot, attempt metadata
+        prompt.md # canonical writer contract + raw task YAML
+        provider.out # provider final output
         heartbeat.json # last touch from lane
         lane-bg.pid # detached supervisor (lane-bg)
         lane-bg.exit # set when lane finishes
@@ -44,11 +49,13 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
         lane-exec.log # activity-aware wrapper
 ```
 
-Long CLI lanes **must** start with `lane-bg` and poll via `lane-wait --once` — Claude kills foreground Bash ~2 minutes. See [LANE-EXEC.md](LANE-EXEC.md).
+Long CLI lanes start through `lane-ctl`, which detaches them with `lane-bg` and
+records lifecycle events. Claude does not hold a foreground process or a live
+polling subagent. See [LANE-EXEC.md](LANE-EXEC.md).
 
 Grok write lanes run through `lane-session`. Sessions are scoped to this
 run, role, worktree, and model. One slot accepts one task at a time; concurrent
-tasks spill into a pool of at most three slots. A slot rotates after seven
+tasks spill into a pool of five slots by default, configurable from 1–10. A slot rotates after seven
 successful tasks (configurable up to a hard maximum of ten), after a provider
 failure, or when cwd/model changes. Review lanes never reuse writer sessions.
 
@@ -114,15 +121,17 @@ high_risk_paths: false # true → dual review (codex required even if risk mediu
 1. Create run dir + PLAN + tasks with **disjoint** `owns_paths`. 
 2. If score ≥ 4 **or** ≥2 write tasks → `wt-create` worktree; all tasks share that `project_cwd`. 
 3. If single low-risk task → may use main working tree (still PM commits). 
-4. Dispatch ≤3 **concurrent** write slots when owns_paths disjoint; pipeline more
-   tasks with progressive accept (`MODE=start` / `lane-poll` / `MODE=finish`).
-   `lane-session` leases a separate warm slot to each concurrent Grok task.
-5. Lanes heartbeat via `lane-heartbeat`; PM may run `lane-stall-check`. 
-6. Accept each task **as soon as** it has strong `report.md` + `check-owns-paths`
-   clean + `done_when` evidence — do not batch-wait for the slowest concurrent task. 
-7. `risk: high` or `high_risk_paths` or ship → Codex `review.md` must pass. 
-8. When **all** tasks done → PM **auto-merges to main** (`wt-merge-main` or commit on main) → write `MERGE.md` → update `BOARD.md` + `PROGRESS.md`. 
-9. Human is never asked to merge.
+4. Dispatch through the source-read-only `lane-supervisor` and typed `lane-ctl`
+   actions. Provider slots default to 5 (range 1–10); parallel ownership remains disjoint.
+5. React to run `events.jsonl`; use status/tail only for bounded diagnostics.
+6. After provider exit 0, run the registered task `verification` snapshot under
+   the independent verify pool (default 2, range 1–10). Each command has a
+   bounded timeout and evidence is valid only for that provider attempt.
+7. Accept each task **as soon as** it has strong `report.md`, `verified.txt`, and
+   clean `check-owns-paths` evidence — do not batch-wait for the slowest task.
+8. `risk: high` or `high_risk_paths` or ship → Codex `review.md` must pass when the configured gate requires it.
+9. When **all** tasks done → PM **auto-merges to main** (`wt-merge-main` or commit on main) → write `MERGE.md` → update `BOARD.md` + `PROGRESS.md`.
+10. Human is never asked to merge.
 
 ## Why files beat task MCP
 

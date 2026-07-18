@@ -13,8 +13,10 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 5. **Bounded warm writer context.** Each task gets a fresh Claude supervisor spawn, while Grok resume only the session pool owned by that exact run. Rotate after seven successful tasks; review stays fresh.
 6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`. 
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane. 
-8. **Progressive accept.** Multi-task runs accept each task when *it* finishes
-   (`lane-poll` + `MODE=finish`) — never join-wait the slowest concurrent lane.
+8. **Event-driven progressive accept.** `lane-supervisor` starts a detached
+   Grok process and returns; PM reacts to events, verifies separately, and never
+   join-waits the slowest concurrent lane.
+9. **Bounded pools.** Provider default 5/max 10; verification default 2/max 10.
 
 Daytime: micro/medium ship fast. Night: `night-review` batch. Morning: fix tasks from `REVIEW-<date>.md`.
 Automation: night-review runs from cron (03:00) per repo; morning `resume-project` surfaces REVIEW-<date>.md with the fix plan.
@@ -59,11 +61,12 @@ PROGRESS.md ← Now/Next updated
 | `resume-project` | cold start / new session |
 | `wt-create <repo> <slug>` | start isolated run |
 | `lane-heartbeat …` | worker or supervisor pulse |
+| `lane-ctl start/status/events/tail` | typed detached lifecycle control |
+| `lane-ctl retry/cancel` | bounded recovery from recorded control state |
+| `lane-ctl verify` | exact task checks under the separate verification semaphore |
 | `lane-session status --run-dir …` | inspect run-owned Grok session IDs and rotations |
 | `run-board <repo>` | refresh BOARD.md |
 | `lane-stall-check <repo>` | find zombies |
-| `lane-poll --run-dir <run>` | multi-task progressive: which lanes are finish_ready |
-| `lane-mode-check --run-dir <run> --mode …` | refuse MODE=full on multi-task (anti join-wait) |
 | `check-owns-paths <task.yaml>` | after write lane |
 | `wt-merge-main <repo> <slug>` | ship to main (PM only) |
 | `night-audit <repo>` | overnight audit file |

@@ -1,161 +1,152 @@
-# lane-exec — activity-aware timeouts for Grok / Codex
+# Event-driven Grok lanes
 
-## Problem
+## Why this exists
 
-Hard `timeout 570` / short `--print-timeout` kills agents that are **still thinking or working**. Supervisors then re-dispatch and waste money.
+Claude Code foreground Bash can be terminated after roughly two minutes. A
+model subagent that stays alive to poll a provider also consumes an orchestration
+slot and makes a parallel wave wait for its slowest member.
 
-## Solution
+The lane stack therefore separates four responsibilities:
 
-`~/.agents/bin/lane-exec` wraps the CLI with **three levels**:
+| Component | Responsibility |
+|-----------|----------------|
+| `lane-supervisor` | Source-read-only Claude control agent; issues one typed action and returns |
+| `lane-ctl` | Validates paths, builds the prompt, registers immutable control state, exposes status/retry/cancel/verify |
+| `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
+| `lane-session` | Run-scoped warm Grok sessions and bounded provider concurrency |
 
-| Level | Flag | Default | Behavior |
-|-------|------|---------|----------|
-| **1. Idle** | `--idle SEC` | 600–900 | Kill only if **no stdout** and **no CPU** (and no heartbeat mtime) for SEC |
-| **2. Max** | `--max SEC` | 5400–7200 | Absolute wall clock — always kills |
-| **3. Grace** | (auto) | 80% of max | Log warning only; does not kill |
+Grok is the code writer. The Claude supervisor has no `Write`, `Edit`, or
+unrestricted `Bash` capability.
 
-Any new output **or** CPU tick on the child **resets idle**.
-
-## Usage
-
-```bash
-export PATH="$HOME/.agents/bin:$PATH"
-
-lane-exec --idle 600 --max 5400 --label grok \
-  --log "$ARTIFACT_DIR/lane-exec.log" \
-  --heartbeat "$ARTIFACT_DIR/heartbeat.json" \
-  --  --print ".." --agent lane-frontend \
-       --print-timeout 90m \   # must be ≥ max so  does not self-kill
-       --mode accept-edits --dangerously-skip-permissions \
-       --add-dir "$PROJECT_CWD"
-```
-
-Exit `124` = idle or max timeout (same convention as GNU `timeout`).
-
-## Defaults by lane (in implementer agents)
-
-| Lane | idle | max |
-|------|------|-----|
-|  | 10m | 90m |
-| Grok | 15m | 2h |
-| Codex write | 15m | 2h |
-| Codex review | 15m | 90m |
-
-## What supervisors must NOT do
-
-- `timeout 570.` for production runs 
-- `--print-timeout 9m` while max wall is longer ( will die first) 
-- Kill and re-dispatch after a single 124 without reading `lane-exec.log` 
-- **Long foreground Claude Bash** wrapping `lane-exec` / `grok` / `codex` — host kills ~**2 minutes** (this is the #1 false “timeout”)
-
-## Background + poll (required under Claude Code)
-
-Claude’s Bash tool kills **foreground** commands around ~2 minutes. 
-`lane-exec` idle/max only apply to the **child** process. If Bash is killed first, the whole tree dies.
-
-**Always:**
+## Start a lane
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 
-# 1) Detach (returns immediately); Grok keep run-scoped warm context.
-lane-bg --dir "$ARTIFACT_DIR" --label grok -- \
-  lane-exec --idle 600 --max 5400 --log "$ARTIFACT_DIR/lane-exec.log" -- \
-  lane-session run --provider grok --run-dir "$RUN_DIR" \
-    --task-id "$TASK_ID" --role lane-frontend --cwd "$PROJECT_CWD" \
-    --prompt-file "$SPEC" --output "$ARTIFACT_DIR/lane-final.log" \
-    --model "Gemini 3.5 Flash (High)"
-
-# 2) Poll with short calls (each < 30s)
-lane-wait --dir "$ARTIFACT_DIR" --once
-# exit 0 = done, 2 = still running, 3 = not started, 124 = max-wait (loop mode)
-
-# Multi-task progressive (PM): scan all artifacts under a run
-lane-poll --run-dir "$RUN_DIR"
-# finish_ready>0 → those CLIs finished; dispatch MODE=finish + accept NOW
-# do not wait for other still-running siblings
+lane-ctl start \
+  --run-dir "$RUN_DIR" \
+  --task-file "$TASK_FILE" \
+  --project-cwd "$PROJECT_CWD"
 ```
 
-| File | Meaning |
-|------|---------|
-| `artifacts/N/lane-bg.pid` | detached supervisor pid |
-| `artifacts/N/lane-bg.exit` | exit code when finished |
-| `artifacts/N/lane-bg.supervisor.log` | combined stdout/stderr of the job |
-| `artifacts/N/lane-exec.log` | activity-aware wrapper log |
-| `sessions.json` | current Grok session IDs, slot ownership, successful-turn counts, rotation history |
+`start` returns after the detached job is registered. It creates the task
+artifact directory, builds `prompt.md` from the canonical Grok writer contract
+plus the raw task YAML, writes `control.json`, and launches this low-level chain:
 
-Optional: host `run_in_background=true` on the `lane-bg` Bash call — still prefer `lane-bg` so the job survives agent restarts.
-
-## Progressive accept (multi-task)
-
-When ≥2 write tasks share a run, implementers use **`MODE=start`** (detach only)
-and **`MODE=finish`** (report after CLI done). PM owns the poll loop via
-**`lane-poll`**, accepts each task as soon as it is finish_ready, frees the slot,
-and may start the next ready task. Cap remains **3 concurrent** writers;
-total tasks may be larger via pipeline refill.
-
-**Forbidden join-wait:** spawning N Agents that each poll-until-done in one PM
-turn — the host joins all Agent tool calls, so you only continue after the
-slowest.
-
-**Hard guard:** `lane-mode-check --run-dir RUN --mode full` exits **2** when the
-run has ≥2 task cards. Implementers call it in preflight and refuse with
-`STATUS: refused_full_on_multi_task`. Override (tests only): `LANE_ALLOW_FULL=1`.
-
-**Detached heartbeat:** pass `--heartbeat ARTIFACT_DIR/heartbeat.json` to
-`lane-exec`. On real activity (stdout / CPU) it rewrites the file (throttled)
-so `lane-stall-check` works after `MODE=start` when the Claude supervisor is
-gone. Idle kill still uses *real* activity — heartbeat is not written on a
-timer alone.
-
-## night-review
-
-`night-review <repo-root>` batches today's merged runs and micro commits into one read-only Codex review.
-For an unattended run, start it through `lane-bg`:
-
-```bash
-lane-bg --dir "$ART" --label night-review -- night-review "$(pwd)"
-```
-
-### night-review-all
-
-`night-review-all` auto-discovers projects under `~/apps`, `~/sites`, and `~/tools` using the same lane-stack markers as `docs-maintain-all`. It reviews only repositories active in the last 24 hours (recent commits on the current branch or today's session-log directory).
-
-Cron example:
 ```text
-0 3 * * * $HOME/.agents/bin/night-review-all >> $HOME/.agents/logs/night-review.log 2>&1
+lane-bg → lane-exec → lane-session → grok
 ```
 
-## Warm session affinity (Grok)
+No model is kept alive merely to hold or poll the process. On Linux with a user
+systemd manager, `lane-bg` launches a transient service so host tool cleanup
+cannot reap the provider after `start` returns. `LANE_BG_BACKEND=nohup` is kept
+as a compatibility/test fallback.
 
-`lane-session` removes the cognitive cold start without giving up safe
-parallelism:
+## Observe and control
 
-- the first Grok task gets a preassigned UUID; later tasks use `--resume`;
-- Grok headless calls use `--prompt-file` and `--no-auto-update`, keeping task
-  contents out of process argv while avoiding background update checks;
-- the first task's open conversation DB is detected and later tasks use
-  `--conversation`;
-- the warmest free slot is preferred; a busy slot is never used concurrently;
-- up to three slots may exist per provider/role, matching the PM parallel cap;
-- default rotation is seven successful tasks; `LANE_SESSION_MAX_TASKS` may set
-  1–10 and `LANE_SESSION_POOL_SIZE` may set 1–3; retries count as successful
-  turns even when they reuse the same task ID;
-- provider failure, stale interrupted state, cwd change, or model change forces
-  a fresh session;
-- session IDs are stored under the exact absolute run directory, so two runs in
-  the same repository/cwd never resume each other's conversations; neither
-  provider uses its ambiguous global `--continue` mode;
-- locks live under the runtime temp directory, not inside the repository.
-- SIGINT/SIGTERM invalidates the lease and terminates the provider's full
-  process group before another task may reuse that slot.
-
-Inspect a run without modifying it:
+Use short, typed calls:
 
 ```bash
-lane-session status --run-dir .agents/runs/<slug>
+lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
+lane-ctl events --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
+lane-ctl tail --run-dir "$RUN_DIR" --task-id "$TASK_ID" --lines 80
+lane-ctl retry --run-dir "$RUN_DIR" --task-id "$TASK_ID"
+lane-ctl cancel --run-dir "$RUN_DIR" --task-id "$TASK_ID"
 ```
 
-## Heartbeat (optional)
+Normal orchestration reacts to compact `events.jsonl` records. `tail` is for an
+error, stall, or explicit diagnostic request, not a continuous token-expensive
+log loop. A retry reuses the recorded argv array from `control.json`; it never
+reconstructs or shell-evaluates a free-form command. The argv schema and prompt
+digest are revalidated, and the control plane permits at most two attempts.
 
-`lane-heartbeat` can update `artifacts/<id>/heartbeat.json` during the run; mtime counts as activity even if the CLI is quiet.
+Status deliberately distinguishes `awaiting_verification`, `verified`, and
+`verification_failed`. Provider exit 0 is never reported as accepted work.
+
+## Verify independently
+
+After provider exit 0:
+
+```bash
+lane-ctl verify \
+  --run-dir "$RUN_DIR" \
+  --task-file "$TASK_FILE" \
+  --project-cwd "$PROJECT_CWD"
+```
+
+At `start`, the control plane snapshots the exact `verification` commands from
+the trusted task YAML. `verify` can run only after the matching provider attempt
+exits 0, uses that immutable snapshot, and applies a per-command timeout (30
+minutes by default, configurable with `--command-timeout`). It has a separate
+file-lock semaphore: default 2 concurrent checks, configurable from 1–10.
+Results are bound to the attempt in `verification.json` and `verified.txt`.
+Provider completion alone is never task acceptance.
+
+## Concurrency
+
+- Provider pool: default 5, configurable 1–10.
+- Verification pool: default 2, configurable 1–10.
+- One warm session slot serves one task at a time.
+- Parallel write tasks require disjoint `owns_paths`.
+- High-risk write work remains serial even when capacity is available.
+- Accept a verified task immediately and refill the next ready DAG task; never
+  join-wait for the slowest sibling.
+
+`lane-session` rotates a warm slot after seven successful tasks by default,
+after a provider failure, or when cwd/model changes. Sessions are scoped to the
+exact run directory, role, worktree, and model; review never reuses them.
+If `XDG_RUNTIME_DIR` is unavailable or read-only, session locks fall back to a
+private per-user directory under `/tmp`.
+
+## Artifacts and events
+
+```text
+.agents/runs/<slug>/
+  events.jsonl
+  sessions.json
+  artifacts/<task-id>/
+    control.json
+    prompt.md
+    lane-bg.pid
+    lane-bg.exit
+    lane-bg.supervisor.log
+    lane-exec.log
+    provider.out
+    heartbeat.json
+    verification.json
+    verified.txt
+    report.md
+```
+
+`lane-exec` appends atomic single-write JSONL records for start, timeout,
+interruption, and exit. The final exit record and log line are written before
+the log file is closed, so a successful child exits 0 instead of being masked by
+supervisor cleanup.
+
+Registered control artifacts and events distinguish live work from historical
+task YAML. A run with `MERGE.md` is complete and must not be reported as stalled.
+
+## Timeouts
+
+`lane-exec` has independent limits:
+
+| Level | Typical Grok value | Behavior |
+|-------|--------------------|----------|
+| idle | 900s | terminate only after no stdout, CPU, or external heartbeat activity |
+| max | 7200s | absolute wall-clock ceiling |
+| grace | 80% of max | log a warning; do not terminate |
+
+Exit 124 means idle or maximum timeout. Exit codes from normal provider failure
+are propagated exactly. Read events and the bounded log tail before the one
+allowed retry.
+
+## Compatibility tools
+
+`lane-wait`, `lane-poll`, `lane-mode-check`, and legacy `MODE` prompts remain
+for older runs. New orchestration uses `lane-ctl` and `lane-supervisor`.
+
+## Night review
+
+`night-review <repo-root>` remains a detached, read-only batch review and may be
+started through `lane-bg`. It is not part of the writer session or verification
+pool.

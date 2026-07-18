@@ -1,14 +1,14 @@
 # Claude Lane Stack
 
-> Multi-agent orchestration for Claude Code (v1.3.1): you talk to one AI project manager (`dev-orchestrator`), it dispatches optional worker lanes (Grok / Codex) through file-based YAML task contracts in `.agents/runs/`, accepts each task as it finishes (progressive accept via `lane-poll` + MODE=start/finish — no join-wait), verifies with an independent review lane (Codex Sol), and auto-merges finished code to git `main` via `wt-merge-main`. Built for solo developers. No required database or cloud service — plain files + plain git. MIT license.
+> Multi-agent orchestration for Claude Code: you talk to one AI project manager (`dev-orchestrator`); a source-read-only `lane-supervisor` dispatches detached Grok writers through typed `lane-ctl` actions and file-based YAML contracts in `.agents/runs/`; lifecycle events drive progressive accept without join-wait; task verification runs in a separate bounded pool; Codex remains review/recovery; and the PM auto-merges finished code to git `main`. Built for solo developers. No required database or cloud service — plain files + plain git. MIT license.
 
 Key facts:
 - Only Claude Code is required; workers optional and auto-detected by `agents-doctor` (profiles: full → claude-only).
 - Task cards list `owns_paths` so parallel workers cannot touch each other's files; optional git worktrees.
 - Merging to `main` is always done by the orchestrator, never the human.
 - **Onboard 2.0**: dual scenario `minimal|full` + dual depth `fast|deep` (full defaults to deep forensic). Commands: `/project-onboard`, `/project-onboard deep`, shell `project-onboard`.
-- **Long lanes**: Claude foreground Bash dies ~2 minutes — use `lane-bg` + `lane-wait` around `lane-exec` (activity-aware idle/max). See docs/LANE-EXEC.md.
-- **Warm Grok sessions**: `lane-session` resumes run-scoped conversations, leases up to three parallel slots, and rotates after seven successful tasks by default. Review stays independent.
+- **Long lanes**: `lane-ctl` registers detached work; `lane-bg` uses a transient user-systemd service so provider lifetime survives host cleanup; `lane-exec` applies activity-aware idle/max. See docs/LANE-EXEC.md.
+- **Warm Grok sessions**: `lane-session` resumes run-scoped conversations, defaults to five provider slots (configurable 1–10), and rotates after seven successful tasks. Verification defaults to two separate slots (max 10); review stays independent.
 - **Language**: durable files English; chat with human may be Russian (docs/LANGUAGE.md).
 - **Codex models**: GPT-5.6 Sol (review/deep/high-risk), Terra (scoped write/docs), Luna (trivia only). No 5.5.
 - Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1

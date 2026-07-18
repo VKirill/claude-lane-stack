@@ -89,7 +89,7 @@ class LaneSessionTest(unittest.TestCase):
         *,
         role: str | None = None,
         max_tasks: int = 7,
-        pool_size: int = 2,
+        pool_size: int | None = 2,
         sleep: float | None = None,
         exit_code: int = 0,
         run_dir: Path | None = None,
@@ -136,9 +136,9 @@ class LaneSessionTest(unittest.TestCase):
             "test-model",
             "--max-tasks",
             str(max_tasks),
-            "--pool-size",
-            str(pool_size),
         ]
+        if pool_size is not None:
+            command.extend(["--pool-size", str(pool_size)])
         result = subprocess.run(
             command,
             env=env,
@@ -155,6 +155,34 @@ class LaneSessionTest(unittest.TestCase):
 
     def _state(self) -> dict:
         return json.loads((self.run_dir / "sessions.json").read_text())
+
+    def test_provider_pool_defaults_to_five_and_accepts_ten(self) -> None:
+        self._run("grok", "default-pool", pool_size=None)
+        self.assertEqual(self._state()["defaults"]["pool_size"], 5)
+
+        second_run = self.root / ".agents" / "runs" / "ten-pool"
+        second_run.mkdir(parents=True)
+        self._run("grok", "ten-pool", pool_size=10, run_dir=second_run)
+        state = json.loads((second_run / "sessions.json").read_text())
+        self.assertEqual(state["defaults"]["pool_size"], 10)
+
+        rejected = self._run("grok", "too-wide", pool_size=11, check=False)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("pool-size must be between 1 and 10", rejected.stderr)
+
+    def test_read_only_xdg_runtime_falls_back_to_user_tmp(self) -> None:
+        unusable = self.root / "runtime-is-a-file"
+        unusable.write_text("not a directory\n", encoding="utf-8")
+
+        result = self._run(
+            "grok",
+            "runtime-fallback",
+            extra_env={"XDG_RUNTIME_DIR": str(unusable)},
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self._state()["sessions"]["grok:grok:0"]["status"], "idle")
 
     def test_grok_reuses_session_then_rotates_at_task_limit(self) -> None:
         self._run("grok", "001", max_tasks=2)

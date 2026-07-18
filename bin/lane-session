@@ -28,7 +28,8 @@ from typing import IO
 
 STATE_VERSION = 1
 HARD_MAX_TASKS = 10
-HARD_MAX_POOL = 3
+DEFAULT_POOL_SIZE = 5
+HARD_MAX_POOL = 10
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
@@ -78,14 +79,26 @@ def unlock_file(handle: IO[str]) -> None:
 
 def runtime_lock_dir(run_dir: Path) -> Path:
     digest = hashlib.sha256(str(run_dir.resolve()).encode("utf-8")).hexdigest()[:20]
-    runtime_root = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
-    path = runtime_root / "claude-lane-stack" / "session-locks" / digest
-    path.mkdir(parents=True, exist_ok=True)
-    try:
-        path.chmod(0o700)
-    except OSError:
-        pass
-    return path
+    configured = os.environ.get("XDG_RUNTIME_DIR")
+    roots = []
+    if configured:
+        roots.append(Path(configured) / "claude-lane-stack")
+    roots.append(Path("/tmp") / f"claude-lane-stack-{os.getuid()}")
+
+    errors: list[str] = []
+    for root in roots:
+        path = root / "session-locks" / digest
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            root.chmod(0o700)
+            path.chmod(0o700)
+            probe = path / f".probe-{os.getpid()}"
+            probe.touch(exist_ok=False)
+            probe.unlink()
+            return path
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    raise RuntimeError("no writable session lock directory: " + "; ".join(errors))
 
 
 def rotation_reason(record: dict | None, *, cwd: str, model: str, max_tasks: int) -> str | None:
@@ -498,7 +511,7 @@ def build_parser() -> argparse.ArgumentParser:
             value, maximum=HARD_MAX_POOL, name="pool-size"
         ),
         default=positive_bounded(
-            os.environ.get("LANE_SESSION_POOL_SIZE", "3"),
+            os.environ.get("LANE_SESSION_POOL_SIZE", str(DEFAULT_POOL_SIZE)),
             maximum=HARD_MAX_POOL,
             name="pool-size",
         ),

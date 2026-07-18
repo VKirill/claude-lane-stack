@@ -3,6 +3,23 @@
 ## Unreleased
 
 ### Changed
+- **Event-driven Grok control plane:** added a source-read-only
+  `lane-supervisor` and typed `lane-ctl` actions for detached start, compact
+  status/events/tail, recorded-argv retry, cancel, and independent verify.
+- **Bounded parallel pools:** Grok writer sessions now default to five slots and
+  support 1–10; verification uses a separate semaphore (default two, max ten).
+- **Deterministic prompts:** `lane-ctl` composes the canonical Grok writer
+  contract with raw task YAML and records control/prompt artifacts per attempt.
+- **Lifecycle correctness:** `lane-exec` emits atomic JSONL lifecycle events,
+  preserves child exit codes, and writes final status before closing its log.
+- **Host-surviving detach:** `lane-bg` uses a transient user-systemd service by
+  default and retains an explicit nohup fallback for hermetic tests/older hosts.
+- **Attempt-bound acceptance:** verification now requires provider exit 0, uses
+  the command snapshot captured at start, enforces per-command timeouts, rejects
+  symlink escapes, and cannot survive into a retry. Retry is capped at one and
+  revalidates a duplicate-free argv schema.
+- **Portable session locks:** a read-only `XDG_RUNTIME_DIR` falls back to a
+  private per-user lock directory under `/tmp`.
 - **Grok is the only write programmer.** Removed write-lane CLI integrations and
   docs for the retired fast-write path. `agents-doctor` / profiles / implementer
   routing use Grok only; Codex remains review and write fallback.

@@ -77,28 +77,29 @@ See `profiles/claude-codex.yaml`.
 
 ## Long lanes under Claude Code
 
-Foreground Bash dies ~**2 minutes**. Write lanes **must** detach:
+Foreground Bash dies ~**2 minutes**. Write lanes start through the typed control plane:
 
 ```bash
-lane-bg --dir "$ARTIFACT_DIR" -- … lane-exec … -- grok|codex …
-lane-wait --dir "$ARTIFACT_DIR" --once
+lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
+lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
 ```
 
-See [LANE-EXEC.md](LANE-EXEC.md). PM never runs 90m Bash; multi-task uses
-**progressive accept** (`MODE=start` → `lane-poll` → `MODE=finish` per task).
+See [LANE-EXEC.md](LANE-EXEC.md). PM never runs 90m Bash or keeps a Claude
+subagent alive to poll. It reacts to lifecycle events and verifies independently.
 
 Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
-slots (maximum three). Default rotation: seven successful tasks; review remains
+slots (five by default, configurable 1–10). Default rotation: seven successful tasks; review remains
 an independent cold session.
 
 ## Parallelism (solo)
 
 | Situation | Policy |
 |-----------|--------|
-| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single **Grok** lane `MODE=full`, no reviewer, verify none\|smoke |
-| 1 low-risk write | main tree OK; `MODE=full` OK |
-| ≥2 writes OR score ≥ 4 | worktree; max 3 **concurrent** slots; progressive accept; disjoint owns_paths |
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, single detached **Grok** lane, no reviewer, verify none\|smoke |
+| 1 low-risk write | main tree OK; typed `lane-ctl start` |
+| ≥2 writes OR score ≥ 4 | worktree; provider pool default 5 / max 10; event-driven progressive accept; disjoint owns_paths |
+| Verification | separate pool default 2 / max 10; exact task commands only |
 | High risk write | solo writer |
 | Human never merges | PM → `wt-merge-main` |
 
