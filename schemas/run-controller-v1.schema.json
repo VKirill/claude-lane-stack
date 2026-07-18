@@ -100,6 +100,7 @@
         "stage": {
           "enum": [
             "pending",
+            "retry_wait",
             "running",
             "awaiting_verification",
             "owns_check",
@@ -112,6 +113,16 @@
         },
         "last_status": {"type": ["string", "null"]},
         "retries": {"type": "integer", "minimum": 0, "maximum": 1},
+        "fallbacks": {"type": "integer", "minimum": 0, "maximum": 1},
+        "provider": {"enum": ["grok", "codex"]},
+        "model": {"type": "string", "minLength": 1},
+        "last_failure_class": {"type": ["string", "null"]},
+        "retry_not_before": {
+          "oneOf": [
+            {"type": "string", "format": "date-time"},
+            {"type": "null"}
+          ]
+        },
         "updated_at": {"type": "string", "format": "date-time"}
       }
     }

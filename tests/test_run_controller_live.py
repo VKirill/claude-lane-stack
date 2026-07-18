@@ -153,6 +153,7 @@ class LiveRunControllerTest(unittest.TestCase):
                     prompt = Path(args[args.index("--prompt-file") + 1])
                     session_flag = "--session-id" if "--session-id" in args else "--resume"
                     session_id = args[args.index(session_flag) + 1]
+                    model = args[args.index("--model") + 1]
                     task_id = re.search(r'^id:\\s*["\\']?([^"\\'\\s]+)', prompt.read_text(encoding="utf-8"), re.M).group(1)
                     target = "baseline.txt" if task_id == "001" else "second.txt"
                     (Path.cwd() / target).write_text(f"changed by {task_id}\\n", encoding="utf-8")
@@ -182,6 +183,7 @@ class LiveRunControllerTest(unittest.TestCase):
                         "type": "end",
                         "stopReason": "EndTurn",
                         "sessionId": session_id,
+                        "modelUsage": {model: {"inputTokens": 1, "outputTokens": 1, "modelCalls": 1}},
                     }), flush=True)
                     """
                 ),

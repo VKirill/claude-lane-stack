@@ -91,6 +91,14 @@ provider-incomplete and retryable. The current attempt's `runtime.json` binds
 that file by SHA-256; status, verification, and acceptance fail closed after a
 manual or stale-report substitution. Retry moves the old root report into its
 attempt directory before the next provider starts.
+Provider stderr/error text is never persisted raw. A bounded in-memory matcher
+stores only a typed failure class and digest. The controller records a
+non-blocking retry deadline (30 seconds by default), replays Grok once, and may
+start one ephemeral Codex `gpt-5.6-sol` + `high` attempt only after a second
+failure explicitly marked `fallback_eligible`. Codex receives the same
+immutable prompt and read-only `.agents` boundary, then produces the same bound
+report and runtime receipt. Unknown, task, ownership, verification, and
+cancellation failures never trigger an automatic provider switch.
 
 Night review is also file-based. Codex Sol xhigh emits schema-constrained chunk
 results; the engine validates and deduplicates them into
@@ -200,6 +208,8 @@ before the provider starts. Optional project verifier basenames come from
   "task_sha256": "<64 hex>",
   "attempt": 2,
   "provider_exit": 0,
+  "provider": "grok",
+  "model": "grok-4.5",
   "report": "complete",
   "owns_check": "passed",
   "verification": "passed",

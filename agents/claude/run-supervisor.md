@@ -1,6 +1,6 @@
 ---
 name: run-supervisor
-description: "Daytime run supervisor. Starts and visibly watches one durable deterministic run controller until every Grok lane is accepted or the run is blocked. Use proactively for multi-lane work, параллельные задачи, запусти и следи, доведи run до конца."
+description: "Daytime run supervisor. Starts and visibly watches one durable deterministic run controller until every writer lane is accepted or the run is blocked. Use proactively for multi-lane work, параллельные задачи, запусти и следи, доведи run до конца."
 model: haiku
 effort: low
 color: orange

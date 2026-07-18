@@ -37,7 +37,9 @@ commit to main.
 
 Micro commit format: `<type>(<area>): <title> [micro:<slug>]`.
 
-Default lane: `grok` (only write programmer). Fallback: re-dispatch grok once, then `codex-implementer`.
+Default writer is Grok 4.5. The controller retries Grok once after a persisted
+backoff; a second classified model/catalog/quota/auth/transport failure uses one
+integrated `gpt-5.6-sol` + `high` Codex attempt through the same receipt chain.
 
 Target latency: < 3 minutes word-to-commit.
 
@@ -95,13 +97,14 @@ and non-ledger safety hooks remain available.
 2) Agent run-supervisor watches bounded state changes until terminal.
 3) Controller fills provider slots with ready DAG tasks.
 4) Complete provider report → owns check → verify → accept immediately.
-5) Incomplete/failed/stalled provider or failed verification retries once;
-   a second failure becomes blocked.
+5) Incomplete/failed/stalled provider or failed verification retries once.
+6) A second fallback-eligible Grok availability failure starts one typed Codex
+   Sol high attempt; every other second failure becomes blocked.
 ```
 
 Required run dispatch fields are `RUN_DIR` and `PROJECT_CWD`. `lane-ctl start`
-builds each Grok prompt
-from `agents/grok/writer.md` plus the raw task YAML, registers immutable argv in
+builds each writer prompt from `agents/grok/writer.md` plus the raw task YAML,
+registers immutable argv in
 `attempts/<nn>/control.json`, and appends lifecycle records to run-level
 `events.jsonl`.
 
@@ -116,7 +119,8 @@ Never edit source and never return while the controller is still running.
 | `lane` | Agent |
 |--------|--------|
 | grok | one run-supervisor (read-only watch); Grok processes are writers |
-| codex-implementer | fallback write if Grok blocked |
+| codex fallback | automatic Sol high write only after two eligible Grok failures |
+| codex-implementer | manual emergency recovery after the typed controller blocks |
 | codex-review-medium | codex-reviewer (sol xhigh) |
 | codex-review | codex-reviewer |
 
@@ -129,6 +133,7 @@ run-controller status --run-dir "$RUN_DIR" --json
 lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
 lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
 lane-ctl events --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
+lane-ctl fallback --run-dir "$RUN_DIR" --task-id "$TASK_ID" # controller/recovery only
 lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
 check-owns-paths "$TASK_FILE" --run-scope
 lane-ctl accept --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
@@ -240,8 +245,10 @@ git push origin main # if remote exists — merge+push = one ship step
 medium runs enter the typed nightly review queue (`night-shift`). Findings are
 canonical `.agents/findings/*.json`; never leave a defect only in chat or a
 free-form daily report. Codex reviews and re-reviews read-only; Grok is the only
-normal repair writer. The deterministic runner may retry once and may merge or
-push only when `.agents/night-shift.yaml` explicitly opts in.
+normal repair writer. The deterministic runner retries Grok once, may use one
+typed Sol high recovery after a second eligible availability failure, and may
+merge or push only when `.agents/night-shift.yaml` explicitly opts in. A fresh
+Sol xhigh re-review remains mandatory after either writer provider.
 
 Treat `.agents/runs/<slug>/merge.json` as the machine receipt and `MERGE.md` as
 its human view. `run-finalize` deterministically updates PROGRESS/BOARD/OPEN
@@ -259,10 +266,11 @@ Writers remain run-scoped Grok sessions; supervision is one fresh
 
 ## Recovery ladder
 
-1. Same lane + attempt-scoped recovery note
-2. Fallback write lane: `codex-implementer`
-3. Before first start, amend the task; after start, create a replacement task
-4. `blocked` + STATUS note (then ask user only if business/irreversible)
+1. Same Grok lane + attempt-scoped retry after persisted backoff
+2. Integrated Codex Sol high fallback when runtime marks the Grok failure eligible
+3. Manual `codex-implementer` only after the typed controller blocks
+4. Before first start, amend the task; after start, create a replacement task
+5. `blocked` + STATUS note (then ask user only if business/irreversible)
 
 ## TODOs vs runs
 

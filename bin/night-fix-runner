@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resume and verify a generated Grok night-fix run deterministically."""
+"""Resume and verify a generated night-fix run deterministically."""
 from __future__ import annotations
 
 import argparse
@@ -922,13 +922,64 @@ def process_task(
 
         if status.get("status") in {"awaiting_verification", "verified"}:
             break
-        if int(status.get("attempt") or task_state.get("attempts") or 1) >= 2:
+        attempt = int(status.get("attempt") or task_state.get("attempts") or 1)
+        provider = status.get("provider")
+        if attempt >= 2:
+            if (
+                attempt == 2
+                and isinstance(provider, dict)
+                and provider.get("name") == "grok"
+                and provider.get("fallback_eligible") is True
+            ):
+                fallback_argv = [
+                    str(LANE_CTL),
+                    "fallback",
+                    "--run-dir",
+                    str(run_dir),
+                    "--task-id",
+                    task_id,
+                ]
+                if codex_bin:
+                    fallback_argv.extend(["--binary", codex_bin])
+                fallback = run_command(
+                    fallback_argv,
+                    timeout=120,
+                    check=False,
+                )
+                if fallback.returncode != 0:
+                    set_stage(
+                        repo,
+                        state,
+                        task_id,
+                        "blocked",
+                        error=fallback.stderr.strip() or "Codex fallback launch failed",
+                    )
+                    return False
+                task_state["attempts"] = 3
+                set_stage(
+                    repo,
+                    state,
+                    task_id,
+                    "provider_running",
+                    attempts=3,
+                    provider="codex",
+                    model="gpt-5.6-sol",
+                    fallback_from="grok",
+                    fallback_failure_class=provider.get("failure_class"),
+                )
+                status = wait_for_provider(
+                    run_dir,
+                    task_id,
+                    poll_interval=poll_interval,
+                    timeout=provider_timeout,
+                )
+                continue
             set_stage(
                 repo,
                 state,
                 task_id,
                 "blocked",
-                error=f"provider failed after two attempts: {status.get('status')}",
+                error=f"provider failed after bounded attempts: {status.get('status')}",
             )
             return False
         retried = run_command(

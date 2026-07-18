@@ -34,8 +34,12 @@ class LaneCtlTest(unittest.TestCase):
         self.fake_home = self.root / "home"
         self.grok_home = self.fake_home / ".grok"
         self.grok_home.mkdir(parents=True)
-        self.provider_args = self.grok_home / "provider-args.jsonl"
-        self.provider = self.grok_home / "fake-grok"
+        (self.fake_home / ".codex").mkdir()
+        (self.fake_home / ".codex" / "auth.json").write_text(
+            "{}\n", encoding="utf-8"
+        )
+        self.provider_args = self.project_cwd / "provider-args.jsonl"
+        self.provider = self.project_cwd / "fake-provider"
         self.provider.write_text(
             textwrap.dedent(
                 """\
@@ -55,6 +59,42 @@ class LaneCtlTest(unittest.TestCase):
 
                 with Path(os.environ["FAKE_ARGS_LOG"]).open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(args) + "\\n")
+
+                if args and args[0] == "exec":
+                    prompt = sys.stdin.read()
+                    task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
+                    prompt_sha256 = re.search(
+                        r"prompt_sha256=([0-9a-f]{64})", prompt
+                    ).group(1)
+                    report_text = (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n"
+                        "SUMMARY: fake Codex fallback\\n"
+                        "<<<LANE_REPORT:END>>>"
+                    )
+                    print(json.dumps({"type": "thread.started", "thread_id": "codex-thread"}), flush=True)
+                    print(json.dumps({"type": "turn.started"}), flush=True)
+                    print(
+                        json.dumps(
+                            {
+                                "type": "item.completed",
+                                "item": {"type": "agent_message", "text": report_text},
+                            }
+                        ),
+                        flush=True,
+                    )
+                    print(
+                        json.dumps(
+                            {
+                                "type": "turn.completed",
+                                "usage": {"input_tokens": 10, "output_tokens": 5},
+                            }
+                        ),
+                        flush=True,
+                    )
+                    raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
                 streaming = "--output-format" in args and args[
                     args.index("--output-format") + 1
                 ] == "streaming-json"
@@ -71,6 +111,8 @@ class LaneCtlTest(unittest.TestCase):
                     print("fake provider start", flush=True)
                 time.sleep(float(os.environ.get("FAKE_SLEEP", "0.05")))
                 exit_code = int(os.environ.get("FAKE_EXIT", "0"))
+                if os.environ.get("FAKE_STDERR"):
+                    print(os.environ["FAKE_STDERR"], file=sys.stderr, flush=True)
                 report_text = None
                 if streaming and exit_code == 0:
                     prompt_path = Path(args[args.index("--prompt-file") + 1])
@@ -102,6 +144,13 @@ class LaneCtlTest(unittest.TestCase):
                                 "type": "end",
                                 "stopReason": "EndTurn",
                                 "sessionId": session_id,
+                                "modelUsage": {
+                                    args[args.index("--model") + 1]: {
+                                        "inputTokens": 10,
+                                        "outputTokens": 5,
+                                        "modelCalls": 1,
+                                    }
+                                },
                             }
                         )
                     else:
@@ -923,6 +972,94 @@ class LaneCtlTest(unittest.TestCase):
                 self.assertTrue((attempt_dir / name).is_file(), f"{attempt_dir}/{name}")
         self.assertFalse((artifact / "control.json").exists())
 
+    def test_v2_codex_sol_high_fallback_keeps_normal_acceptance_chain(self) -> None:
+        task_file = self.write_v2_task(
+            verification=[{"command": "true", "cwd": ".", "timeout_sec": 5}],
+            verify="tests",
+        )
+        failure_env = {
+            "FAKE_EXIT": "1",
+            "FAKE_STDERR": "Settings fetch failed after 3 attempts private-detail",
+        }
+        self.start(
+            task_file,
+            env=failure_env,
+            model="grok-4.5",
+        )
+        first = self.wait_status()
+        self.assertEqual(first["status"], "failed")
+        self.assertEqual(first["provider"]["name"], "grok")
+        self.assertEqual(first["provider"]["failure_class"], "grok_bootstrap_transient")
+        self.assertTrue(first["provider"]["fallback_eligible"])
+
+        self.run_ctl(
+            "retry",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-id",
+            "001",
+            env=failure_env,
+        )
+        second = self.wait_status()
+        self.assertEqual(second["attempt"], 2)
+        self.assertEqual(second["status"], "failed")
+
+        self.run_ctl(
+            "fallback",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-id",
+            "001",
+            "--binary",
+            str(self.provider),
+        )
+        ready = self.wait_status()
+        self.assertEqual(ready["attempt"], 3)
+        self.assertEqual(ready["status"], "awaiting_verification")
+        self.assertEqual(ready["provider"]["name"], "codex")
+        self.assertEqual(ready["provider"]["model"], "gpt-5.6-sol")
+
+        self.run_ctl(
+            "verify",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-file",
+            str(task_file),
+            "--project-cwd",
+            str(self.project_cwd),
+        )
+        artifact = self.run_dir / "artifacts" / "001"
+        state = json.loads((artifact / "state.json").read_text())
+        (artifact / "owns-check.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "status": "passed",
+                    "exit_code": 0,
+                    "cwd": str(self.project_cwd),
+                    "task_sha256": state["task_sha256"],
+                    "scope": "task",
+                    "scope_task_ids": ["001"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        accepted = json.loads(
+            self.run_ctl(
+                "accept",
+                "--run-dir",
+                str(self.run_dir),
+                "--task-file",
+                str(task_file),
+                "--project-cwd",
+                str(self.project_cwd),
+            ).stdout
+        )
+        self.assertTrue(accepted["accepted"])
+        self.assertEqual(accepted["provider"], "codex")
+        self.assertEqual(accepted["model"], "gpt-5.6-sol")
+        self.assertEqual(accepted["attempt"], 3)
+
     def test_v2_status_rejects_stale_previous_attempt_verification(self) -> None:
         task_file = self.write_v2_task(
             verification=[{"command": "node --version", "cwd": ".", "timeout_sec": 5}]
@@ -1292,6 +1429,8 @@ class LaneCtlTest(unittest.TestCase):
                 "task_sha256",
                 "attempt",
                 "provider_exit",
+                "provider",
+                "model",
                 "report",
                 "report_sha256",
                 "owns_check",

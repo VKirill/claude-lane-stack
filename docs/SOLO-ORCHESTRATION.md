@@ -22,17 +22,22 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 9. **Bounded pools.** Provider default 5/max 10; verification default 2/max 10.
 10. **Fail-closed ship.** Commit, validation, finalize, then push; branch and
     worktree stay recoverable on any failure.
+11. **Typed provider recovery.** Retry exact Grok once after a persisted
+    deadline; only a second classified availability failure may use one
+    ephemeral Codex Sol high writer attempt through the same receipts.
 
 Daytime: micro/medium ship fast with exact checks and **no daytime LLM review**.
 Night: `night-shift` performs typed Codex Sol
-xhigh review and prepares verified Grok fixes in an isolated worktree. Morning:
-`resume-project` surfaces canonical findings and any repair run still awaiting
-human or merge policy action.
+xhigh review and prepares verified Grok-primary fixes in an isolated worktree.
+The same typed one-shot Sol high recovery is available after two classified
+Grok availability failures; the independent xhigh re-review remains mandatory.
+Morning: `resume-project` surfaces canonical findings and any repair run still
+awaiting human or merge policy action.
 
 Automatic nightly merge/push is disabled by default. A repository must opt in
 through `.agents/night-shift.yaml`; high/critical fixes still require the
-configured pre-merge gate. The runner is resumable and retries a failed writer
-at most once.
+configured pre-merge gate. The runner is resumable, retries Grok once, and
+allows at most one typed recovery attempt.
 
 ## Micro path
 

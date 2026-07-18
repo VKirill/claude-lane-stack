@@ -30,10 +30,17 @@ class LaneSessionTest(unittest.TestCase):
         self.fake_home = self.root / "home"
         self.grok_home = self.fake_home / ".grok"
         self.grok_home.mkdir(parents=True)
-        self.args_log = self.grok_home / "provider-args.jsonl"
+        (self.grok_home / "provider-secret.txt").write_text(
+            "grok-secret-file\n", encoding="utf-8"
+        )
+        (self.fake_home / ".codex").mkdir()
+        (self.fake_home / ".codex" / "auth.json").write_text(
+            "{}\n", encoding="utf-8"
+        )
+        self.args_log = self.cwd / "provider-args.jsonl"
         self.conversations = self.grok_home / "conversations"
         self.conversations.mkdir()
-        self.fake_provider = self.grok_home / "fake-provider"
+        self.fake_provider = self.cwd / "fake-provider"
         self.fake_provider.write_text(
             textwrap.dedent(
                 """\
@@ -50,7 +57,27 @@ class LaneSessionTest(unittest.TestCase):
                 from pathlib import Path
 
                 args = sys.argv[1:]
+
+                def credential_probe():
+                    home = Path(os.environ["HOME"])
+                    codex_home = os.environ.get("CODEX_HOME")
+                    return {
+                        "openai": os.environ.get("OPENAI_API_KEY"),
+                        "grok": os.environ.get("GROK_API_KEY"),
+                        "xai": os.environ.get("XAI_API_KEY"),
+                        "codex_home": codex_home,
+                        "host_codex_auth_readable": (home / ".codex" / "auth.json").is_file(),
+                        "host_grok_auth_readable": (home / ".grok" / "provider-secret.txt").is_file(),
+                        "active_codex_auth_readable": bool(
+                            codex_home and (Path(codex_home) / "auth.json").is_file()
+                        ),
+                    }
+
                 if "--version" in args:
+                    if os.environ.get("FAKE_VERSION_PROBE_LOG"):
+                        Path(os.environ["FAKE_VERSION_PROBE_LOG"]).write_text(
+                            json.dumps(credential_probe()), encoding="utf-8"
+                        )
                     print(os.environ.get("FAKE_VERSION_TEXT", "grok 0.2.103-test (fake)"))
                     raise SystemExit(0)
                 streaming = "--output-format" in args and args[
@@ -70,6 +97,11 @@ class LaneSessionTest(unittest.TestCase):
                                 os.environ.get("CLAUDE_LANE_AUTOMATION", "<unset>"),
                             )
                         ),
+                        encoding="utf-8",
+                    )
+                if os.environ.get("FAKE_PROVIDER_SECRET_LOG"):
+                    Path(os.environ["FAKE_PROVIDER_SECRET_LOG"]).write_text(
+                        json.dumps(credential_probe()),
                         encoding="utf-8",
                     )
                 if os.environ.get("FAKE_SOCKET_PROBE"):
@@ -105,6 +137,52 @@ class LaneSessionTest(unittest.TestCase):
                 log = Path(os.environ["FAKE_ARGS_LOG"])
                 with log.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(args) + "\\n")
+
+                if args and args[0] == "exec":
+                    if os.environ.get("FAKE_CODEX_HOME_LOG"):
+                        codex_home = Path(os.environ["CODEX_HOME"])
+                        Path(os.environ["FAKE_CODEX_HOME_LOG"]).write_text(
+                            json.dumps(
+                                {
+                                    "path": str(codex_home),
+                                    "auth_exists": (codex_home / "auth.json").is_file(),
+                                }
+                            ),
+                            encoding="utf-8",
+                        )
+                    prompt = sys.stdin.read()
+                    task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
+                    prompt_sha256 = re.search(
+                        r"prompt_sha256=([0-9a-f]{64})", prompt
+                    ).group(1)
+                    report = (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n"
+                        "SUMMARY: fake codex report\\n"
+                        "<<<LANE_REPORT:END>>>"
+                    )
+                    emit({"type": "thread.started", "thread_id": "codex-thread-test"})
+                    emit({"type": "turn.started"})
+                    emit(
+                        {
+                            "type": "item.completed",
+                            "item": {"type": "agent_message", "text": report},
+                        }
+                    )
+                    emit(
+                        {
+                            "type": "turn.completed",
+                            "usage": {
+                                "input_tokens": 11,
+                                "cached_input_tokens": 2,
+                                "output_tokens": 7,
+                                "reasoning_output_tokens": 3,
+                            },
+                        }
+                    )
+                    raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
 
                 if os.environ.get("FAKE_PROVIDER_KIND") == "" and "--conversation" not in args:
                     conversations = Path(os.environ["UNUSED_REMOVED"])
@@ -197,9 +275,16 @@ class LaneSessionTest(unittest.TestCase):
                             emit({"type": "text", "data": text_data[split_at:]})
                         else:
                             emit({"type": "text", "data": text_data})
-                        if exit_code != 0 or mode == "error":
-                            emit({"type": "error", "message": "provider failed"})
-                        elif mode != "missing-end":
+                        if exit_code != 0 or mode in {"error", "error-end"}:
+                            emit(
+                                {
+                                    "type": "error",
+                                    "message": os.environ.get(
+                                        "FAKE_ERROR_MESSAGE", "provider failed"
+                                    ),
+                                }
+                            )
+                        if exit_code == 0 and mode not in {"error", "missing-end"}:
                             emit(
                                 {
                                     "type": "end",
@@ -215,7 +300,7 @@ class LaneSessionTest(unittest.TestCase):
                                         "total_tokens": 17,
                                     },
                                     "modelUsage": {
-                                        model: {
+                                        os.environ.get("FAKE_EFFECTIVE_MODEL", model): {
                                             "inputTokens": 10,
                                             "outputTokens": 4,
                                             "modelCalls": 2,
@@ -248,6 +333,7 @@ class LaneSessionTest(unittest.TestCase):
         run_dir: Path | None = None,
         extra_env: dict[str, str] | None = None,
         binary: Path | None = None,
+        model: str = "test-model",
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         prompt = self.cwd / f"task-{task_id}.md"
@@ -288,7 +374,7 @@ class LaneSessionTest(unittest.TestCase):
             "--binary",
             str(binary or self.fake_provider),
             "--model",
-            "test-model",
+            model,
             "--max-tasks",
             str(max_tasks),
         ]
@@ -784,6 +870,168 @@ class LaneSessionTest(unittest.TestCase):
         self.assertIn("grok stderr", diagnostic)
         self.assertNotIn("sensitive detail", diagnostic)
 
+    def test_settings_failure_is_typed_without_leaking_raw_stderr(self) -> None:
+        secret = "customer-secret-token"
+        result = self._run(
+            "grok",
+            "settings-failure",
+            exit_code=1,
+            extra_env={
+                "FAKE_STDERR": f"Settings fetch failed after 3 attempts {secret}"
+            },
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        receipt_source = (self.root / "runtime.json").read_text(encoding="utf-8")
+        receipt = json.loads(receipt_source)
+        self.assertEqual(receipt["failure_class"], "grok_bootstrap_transient")
+        self.assertTrue(receipt["failure_retryable"])
+        self.assertTrue(receipt["fallback_eligible"])
+        self.assertNotIn(secret, receipt_source)
+        self.assertNotIn(
+            secret,
+            (self.root / "task-settings-failure.log").read_text(encoding="utf-8"),
+        )
+
+    def test_zero_exit_rate_limit_error_event_is_fallback_eligible(self) -> None:
+        result = self._run(
+            "grok",
+            "rate-limit-event",
+            extra_env={
+                "FAKE_STREAM_MODE": "error",
+                "FAKE_ERROR_MESSAGE": "rate limit reached",
+            },
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 65)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider_exit_code"], 0)
+        self.assertEqual(receipt["failure_class"], "grok_quota_exhausted")
+        self.assertTrue(receipt["failure_retryable"])
+        self.assertTrue(receipt["fallback_eligible"])
+
+    def test_rate_limit_error_followed_by_terminal_error_remains_fallback_eligible(self) -> None:
+        result = self._run(
+            "grok",
+            "rate-limit-terminal-error",
+            extra_env={
+                "FAKE_STREAM_MODE": "error-end",
+                "FAKE_ERROR_MESSAGE": "rate limit reached",
+                "FAKE_STOP_REASON": "Error",
+            },
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 65)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["protocol_error"], "unsuccessful terminal reason: Error")
+        self.assertEqual(receipt["failure_class"], "grok_quota_exhausted")
+        self.assertTrue(receipt["failure_retryable"])
+        self.assertTrue(receipt["fallback_eligible"])
+
+    def test_provider_credentials_are_not_shared_across_vendors(self) -> None:
+        grok_log = self.cwd / "grok-env.json"
+        codex_log = self.cwd / "codex-env.json"
+        grok_version_log = self.cwd / "grok-version-env.json"
+        codex_version_log = self.cwd / "codex-version-env.json"
+        secret_env = {
+            "OPENAI_API_KEY": "openai-secret",
+            "GROK_API_KEY": "grok-secret",
+            "XAI_API_KEY": "xai-secret",
+            "CODEX_HOME": str(self.fake_home / ".codex"),
+        }
+
+        self._run(
+            "grok",
+            "grok-credential-boundary",
+            extra_env={
+                **secret_env,
+                "FAKE_PROVIDER_SECRET_LOG": str(grok_log),
+                "FAKE_VERSION_PROBE_LOG": str(grok_version_log),
+            },
+        )
+        self._run(
+            "codex",
+            "codex-credential-boundary",
+            model="gpt-5.6-sol",
+            extra_env={
+                **secret_env,
+                "FAKE_PROVIDER_SECRET_LOG": str(codex_log),
+                "FAKE_VERSION_PROBE_LOG": str(codex_version_log),
+            },
+        )
+
+        grok_env = json.loads(grok_log.read_text(encoding="utf-8"))
+        self.assertEqual(grok_env["grok"], "grok-secret")
+        self.assertEqual(grok_env["xai"], "xai-secret")
+        self.assertIsNone(grok_env["openai"])
+        self.assertIsNone(grok_env["codex_home"])
+        self.assertFalse(grok_env["host_codex_auth_readable"])
+        self.assertTrue(grok_env["host_grok_auth_readable"])
+        codex_env = json.loads(codex_log.read_text(encoding="utf-8"))
+        self.assertEqual(codex_env["openai"], "openai-secret")
+        self.assertIsNone(codex_env["grok"])
+        self.assertIsNone(codex_env["xai"])
+        self.assertNotEqual(codex_env["codex_home"], secret_env["CODEX_HOME"])
+        self.assertFalse(codex_env["host_codex_auth_readable"])
+        self.assertFalse(codex_env["host_grok_auth_readable"])
+        self.assertTrue(codex_env["active_codex_auth_readable"])
+        self.assertEqual(
+            json.loads(grok_version_log.read_text(encoding="utf-8")), grok_env
+        )
+        self.assertEqual(
+            json.loads(codex_version_log.read_text(encoding="utf-8")), codex_env
+        )
+
+    def test_effective_grok_model_mismatch_fails_closed(self) -> None:
+        result = self._run(
+            "grok",
+            "model-mismatch",
+            model="grok-4.5",
+            extra_env={"FAKE_EFFECTIVE_MODEL": "grok-3"},
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 65, result.stderr)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertEqual(receipt["failure_class"], "grok_model_mismatch")
+        self.assertFalse(
+            (self.run_dir / "artifacts" / "model-mismatch" / "report.md").exists()
+        )
+
+    def test_codex_sol_high_uses_ephemeral_typed_runtime(self) -> None:
+        codex_home_log = self.cwd / "codex-home.json"
+        result = self._run(
+            "codex",
+            "codex-fallback",
+            model="gpt-5.6-sol",
+            extra_env={"FAKE_CODEX_HOME_LOG": str(codex_home_log)},
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self._calls()[0]
+        self.assertEqual(args[0], "exec")
+        self.assertEqual(args[args.index("--model") + 1], "gpt-5.6-sol")
+        self.assertIn('model_reasoning_effort="high"', args)
+        self.assertIn("--ephemeral", args)
+        self.assertIn("--disable", args)
+        self.assertEqual(args[args.index("--disable") + 1], "multi_agent")
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider"], "codex")
+        self.assertEqual(receipt["model"], "gpt-5.6-sol")
+        self.assertEqual(receipt["reasoning_effort"], "high")
+        self.assertEqual(receipt["mode"], "ephemeral")
+        self.assertEqual(receipt["stop_reason"], "TurnCompleted")
+        self.assertTrue(receipt["protocol_valid"])
+        codex_home = json.loads(codex_home_log.read_text(encoding="utf-8"))
+        self.assertTrue(codex_home["auth_exists"])
+        self.assertNotEqual(Path(codex_home["path"]), self.fake_home / ".codex")
+        self.assertFalse(Path(codex_home["path"]).exists())
+
     def test_launch_exception_writes_sanitized_failure_receipt(self) -> None:
         broken_provider = self.grok_home / "broken-provider-secret-token"
         broken_provider.write_text("not an executable format\n", encoding="utf-8")
@@ -806,7 +1054,8 @@ class LaneSessionTest(unittest.TestCase):
         receipt = json.loads(receipt_source)
         self.assertEqual(receipt["provider_exit_code"], 127)
         self.assertEqual(receipt["exit_code"], 127)
-        self.assertNotIn("failure_class", receipt)
+        self.assertEqual(receipt["failure_class"], "grok_provider_failed")
+        self.assertFalse(receipt["fallback_eligible"])
         self.assertFalse(receipt["protocol_valid"])
         self.assertNotIn("failure_message", receipt)
         self.assertNotIn("secret-token", receipt_source)

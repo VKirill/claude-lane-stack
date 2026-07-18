@@ -27,8 +27,10 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
    (`wt-merge-main` or commit) — human never merges.
 9. No task CLI / orchestrator MCP for queue.
 10. Normal daytime work flows through `run-controller` and its typed `lane-ctl`
-    actions. The run supervisor is source-read-only; the detached Grok process
-    is the writer. There is no daytime LLM review.
+    actions. The run supervisor is source-read-only; Grok is the primary
+    detached writer. One Codex Sol high writer attempt is allowed only after
+    two classified fallback-eligible Grok availability failures. There is no
+    daytime LLM review.
 11. Keep provider slots (default 5, range 1–10) separate from verification slots
     (default 2, range 1–10).
 12. Run automated writers/reviewers with the lane automation marker. Imported
@@ -39,6 +41,10 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
     ready for verification. Grok never writes `.agents`; `lane-session`
     validates the final-response envelope, materializes root `report.md`, and
     binds it to the current attempt through `runtime.json.report_sha256`.
+14. Preserve provider identity across receipts. The controller persists a
+    retry deadline, replays Grok once, and may call typed `lane-ctl fallback`
+    only when the second Grok runtime has `fallback_eligible: true`. Attempt 3
+    is fixed to `codex` / `gpt-5.6-sol` / `high`; no fourth attempt exists.
 
 ## Lane must
 

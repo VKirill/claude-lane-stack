@@ -4,7 +4,7 @@
 
 # 🏭 Claude Lane Stack
 
-### A small AI coding factory for one person · **v1.5.2**
+### A small AI coding factory for one person · **v1.5.3**
 
 **Multi-agent orchestration for Claude Code** — you talk to one AI project
 manager, it runs durable Grok work through acceptance, **merges finished code to
@@ -12,7 +12,7 @@ manager, it runs durable Grok work through acceptance, **merges finished code to
 chats. No manual merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.2)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.3)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Start%20here-Beginner%20guide-brightgreen)](docs/BEGINNER.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -119,7 +119,7 @@ flowchart LR
 ```bash
 # 1️⃣  Install the stack — once per computer
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.5.2 # or: main
+cd claude-lane-stack && git checkout v1.5.3 # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH" # or open a new terminal
 
@@ -142,7 +142,7 @@ Then in chat:
 > [!IMPORTANT]
 > `/resume-project` is a *"welcome back"* command — **not** an installation step.
 
-📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.5.2](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.2)**
+📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.5.3](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.3)**
 
 ---
 
@@ -197,11 +197,11 @@ run-controller status --run-dir "$RUN_DIR" --json
 
 | Tool | Role |
 |------|------|
-| **`run-controller`** | durable DAG dispatch, one retry, progressive owns/verify/accept, exact run status |
-| **`lane-ctl`** | typed start/status/events/tail/retry/cancel/verify/accept control plane |
+| **`run-controller`** | durable DAG dispatch, persisted Grok retry, typed Codex fallback, progressive owns/verify/accept |
+| **`lane-ctl`** | typed start/status/events/tail/retry/fallback/cancel/verify/accept control plane |
 | **`lane-bg`** | low-level transient user-systemd service; explicit nohup fallback |
 | **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
-| **`lane-session`** | resumes run-scoped Grok context; provider default 5/max 10 |
+| **`lane-session`** | resumes Grok context and runs one-shot Codex fallback; provider default 5/max 10 |
 
 One read-only `run-supervisor` visibly watches the durable controller until the
 run is accepted or blocked. `lane-supervisor` remains a one-action diagnostic
@@ -215,6 +215,11 @@ configurable from one to ten).
 Sessions rotate after seven successful tasks by default, on failure, or when the
 worktree/model changes. Codex review stays independent and does not reuse writer
 context.
+For a sanitized model/catalog/quota/auth/transport availability failure, the
+controller records a 30-second retry deadline, replays the exact Grok 4.5
+request once, then may use one fixed `gpt-5.6-sol` + `high` writer attempt. It
+still requires the same report digest, ownership, verification, and acceptance
+receipts; this is recovery, not silent model substitution or daytime review.
 
 ### Typed night shift
 
@@ -229,9 +234,11 @@ Codex uses the installed `night-review` profile: `gpt-5.6-sol`, `xhigh`,
 read-only, approval `never`. It reviews bounded diff chunks and stores every
 concrete or systemic issue under `.agents/findings/<fingerprint>.json`; daily
 REVIEW, OPEN, and TODO files are projections. Grok is the only normal repair
-writer and runs without subagents in an isolated worktree. A finding closes
-only after registered verification, ownership checks, a fresh Codex re-review,
-and `acceptance.json`.
+writer and runs without subagents in an isolated worktree. If two Grok attempts
+end in a classified model/catalog/quota/auth/transport availability failure,
+the runner may use the same single fixed Codex Sol high recovery attempt as the
+daytime controller. A finding closes only after registered verification,
+ownership checks, a fresh Codex xhigh re-review, and `acceptance.json`.
 
 Night merge/push is disabled unless the project opts in:
 
@@ -252,8 +259,8 @@ snapshotted at start and the parsed argv runs directly without a shell.
 Multi-task runs no longer wait for the **slowest** concurrent lane before accepting finished ones.
 
 1. Source-read-only **`run-supervisor`** starts one durable controller and stays visible through bounded watches.
-2. The detached controller releases `lane-bg → lane-exec → lane-session → grok` tasks from the DAG.
-3. Complete report → ownership check → independent verification → acceptance; incomplete/failed work retries once.
+2. The detached controller releases `lane-bg → lane-exec → lane-session → provider` tasks from the DAG.
+3. Complete report → ownership check → independent verification → acceptance; Grok retries once, then only eligible availability failures may use one Codex Sol high fallback.
 4. `acceptance.json` is written immediately; the next ready task fills the free slot (provider default 5/max 10).
 
 Claude uses one visible supervisor per **run**, not one agent per provider. The
@@ -487,7 +494,7 @@ Each CLI talks only to its own vendor. No extra servers. Don't put secrets in ta
 | 📝 Ideas backlog | [docs/TODOS.md](docs/TODOS.md) |<!-- guardian: allow — link to existing docs/TODOS.md file, not a new TODO marker -->
 | 🔌 MCP (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Release v1.5.2 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.2) |
+| 🚀 Release v1.5.3 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.3) |
 | 🤝 Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | 🔐 Security | [SECURITY.md](SECURITY.md) |
 

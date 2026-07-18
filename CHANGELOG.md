@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.3 — 2026-07-18
+
+### Added
+- **Typed provider recovery:** daytime and night repair runs retry the exact
+  Grok 4.5 request once, then allow one fixed `gpt-5.6-sol` high-effort writer
+  attempt only for classified model/catalog/quota/auth/transport failures.
+- **Provider-aware receipts and UI:** runtime, acceptance, controller state,
+  and Lane Board details expose the actual provider, model, sanitized failure
+  class, and fallback eligibility without silently substituting models.
+
+### Changed
+- **Codex fallback is isolated and bounded:** it runs ephemerally with a private
+  minimal `CODEX_HOME`, subagents disabled, workspace-write sandboxing, and the
+  same immutable prompt/report/ownership/verification/acceptance chain.
+- **Provider credentials stay separated:** Grok never receives OpenAI auth, and
+  Codex never receives Grok/xAI auth or the host Codex home.
+- **Retry is durable rather than blocking:** the controller persists a retry
+  deadline, frees the provider slot, and resumes eligible work only when shared
+  provider capacity is available, without a sleep loop or Claude polling agent.
+- **Grok error events are typed:** zero-exit rate-limit/model/settings events
+  cannot bypass availability classification or incorrectly suppress fallback.
+- **Night review stays independent:** a recovery write still requires fresh
+  Codex Sol xhigh re-review before acceptance; verification or ownership
+  failures never trigger provider substitution.
+
 ## 1.5.2 — 2026-07-18
 
 ### Fixed

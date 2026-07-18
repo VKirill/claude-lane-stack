@@ -20,9 +20,13 @@ test('lifecycle labels distinguish every operator-relevant task phase', () => {
   ]);
 });
 
-test('runtime facts expose attempt, process, exit, heartbeat, report, and next action', () => {
+test('runtime facts expose provider, failure, process, report, and next action', () => {
   assert.deepEqual(runtimeFacts({
     attempt: 2,
+    provider: 'grok',
+    model: 'grok-4.5',
+    failure_class: 'grok_rate_limited',
+    fallback_eligible: true,
     pid: 4321,
     running: true,
     exit_code: null,
@@ -32,6 +36,8 @@ test('runtime facts expose attempt, process, exit, heartbeat, report, and next a
     next_action: 'wait',
   }), [
     'attempt 2',
+    'provider grok · grok-4.5',
+    'failure grok_rate_limited · fallback eligible',
     'pid 4321 running',
     'exit —',
     'heartbeat 12s',
@@ -42,12 +48,12 @@ test('runtime facts expose attempt, process, exit, heartbeat, report, and next a
   assert.equal(runtimeFacts({
     report_complete: true,
     report_trusted: true,
-  })[4], 'report complete (trusted)');
+  })[6], 'report complete (trusted)');
   assert.equal(runtimeFacts({
     report_complete: false,
     report_trusted: false,
     report_reason: 'report_digest_mismatch',
-  })[4], 'report incomplete (untrusted:report_digest_mismatch)');
+  })[6], 'report incomplete (untrusted:report_digest_mismatch)');
 });
 
 test('controller facts summarize the durable run controller', () => {

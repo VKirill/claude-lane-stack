@@ -65,7 +65,7 @@ Claude **foreground Bash dies ~2 minutes**. That is **not** `lane-exec` idle/max
 | **lane-supervisor** | Manual one-action diagnostic/recovery profile only; never the normal daytime liveness owner. |
 | **Grok** | Sole normal code writer in its task worktree. `lane-bg` / `lane-exec` keep it alive independently of Claude. |
 | **You (PM)** | Dispatch one `run-supervisor`, wait for its terminal digest, then validate, merge/commit, finalize, and push. |
-| Stall/failure | The controller records evidence and retries once; the second failure is terminal `blocked`. |
+| Stall/failure | The controller records evidence, schedules one exact Grok retry, then permits one Codex Sol high attempt only for a second eligible availability failure. |
 
 ### Progressive event protocol (mandatory when ≥2 write tasks)
 
@@ -77,7 +77,9 @@ Agent run-supervisor:
 controller loop:
   release ready DAG tasks up to provider slots (default 5, max 10)
   provider complete → owns check → verify → accept immediately
-  provider incomplete/failed/stalled or verify failed → one retry → blocked
+  provider incomplete/failed/stalled or verify failed → one Grok retry
+  second eligible Grok availability failure → one Codex Sol high fallback
+  any other second failure → blocked
 all accepted → PM pre-merge validation → merge/commit → finalize → push
 ```
 
@@ -99,6 +101,10 @@ are supported (five by default); each slot is serial, rotates after seven
 successful tasks, and is never reused for review. `Cancelled`, `Error`, an
 unknown terminal reason, or exit zero without a complete report are failures,
 never an invitation to verification.
+After two Grok attempts, only a sanitized runtime failure marked
+`fallback_eligible` may start the one-shot `gpt-5.6-sol` + `high` Codex adapter.
+It is a writer attempt, not daytime review, and must pass the same report digest,
+ownership, verification, and acceptance gates.
 
 There is **no daytime LLM review**. Daytime acceptance is exact ownership plus
 registered verification evidence. Independent review and repair remain in the
@@ -113,9 +119,10 @@ Grok task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 
 - Codex never writes product code during the night shift.
 - Grok is the only normal writer and receives `--no-subagents`.
-- The runner polls `lane-ctl` receipts, retries a provider at most once, runs
-  ownership and registered verification checks, then requests a fresh Codex
-  re-review before acceptance.
+- The runner polls `lane-ctl` receipts, retries Grok once, and may use one Sol
+  high recovery attempt only after a second typed availability failure. It then
+  runs ownership and registered verification checks and requests a fresh Codex
+  xhigh re-review before acceptance.
 - Never invent or execute an ad-hoc verify command. Unsafe or empty generated
   verification moves the finding to `needs_human`.
 - A reviewer comment about a systemic control-plane defect must be saved as a
@@ -150,7 +157,7 @@ Grok task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 | gitnexus | discovery for task YAML |
 | Agent → run-supervisor | durable start + bounded watch until accepted/blocked; no source writes |
 | Agent → lane-supervisor | one typed diagnostic/recovery action; no source writes |
-| Grok process / Codex agent | normal write / review (Grok write; Codex review or recovery write) |
+| Grok process / Codex fallback process | normal write / one typed Sol high recovery write |
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
@@ -167,7 +174,8 @@ one strict **Grok** task, same receipts, commit main — keep generated docs sho
 4. Dispatch exactly one `run-supervisor` for the run. It starts/resumes the
 durable controller and does not return while status is non-terminal ·
 5. Controller progressively dispatches, checks ownership, verifies, accepts,
-and retries once. PM receives accepted/blocked plus exact evidence; no daytime LLM review ·
+and retries Grok once; a second eligible availability failure gets one typed
+Codex Sol high attempt. PM receives accepted/blocked plus exact evidence; no daytime LLM review ·
 6. All receipts accepted → `run-validate --phase pre-merge` →
 **`wt-merge-main`** / commit main. The worktree source is frozen first; any
 auto-commit failure preserves it. Then local merge → merge.json/MERGE.md →
@@ -181,7 +189,8 @@ auto-commit failure preserves it. Then local merge → merge.json/MERGE.md →
 | low / UI | **grok** | — |
 | medium | **grok** | typed nightly (`night-shift`) |
 | high / high_risk_paths / ship | **grok** | typed nightly (`night-shift`) |
-| Grok blocked after recovery | codex-implementer | nightly |
+| Grok model/catalog/quota/auth unavailable twice | integrated Codex Sol high | fresh nightly xhigh re-review |
+| Typed controller blocked | manual codex-implementer | nightly |
 
 Historical `gate: pre-merge` runs require an explicit operator decision; the
 daytime controller never invokes a reviewer silently. New normal daytime runs

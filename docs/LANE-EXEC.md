@@ -1,4 +1,4 @@
-# Durable daytime Grok runs
+# Durable daytime writer runs
 
 ## Why this exists
 
@@ -15,9 +15,11 @@ The lane stack therefore separates six responsibilities:
 | `lane-supervisor` | Manual one-action lane diagnostic/recovery agent |
 | `lane-ctl` | Validates v2 contracts, builds the prompt, registers immutable state, exposes status/retry/cancel/verify/accept |
 | `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
-| `lane-session` | Warm Grok sessions, provider isolation, validated report transport, and bounded concurrency |
+| `lane-session` | Warm Grok plus one-shot Codex fallback, provider isolation, validated report transport, and bounded concurrency |
 
-Grok is the code writer. Both Claude supervisor profiles have no `Write`,
+Grok is the primary code writer. A classified second availability failure may
+use one Codex Sol high writer attempt; that is recovery, not daytime review.
+Both Claude supervisor profiles have no `Write`,
 `Edit`, or unrestricted `Bash` capability. There is no daytime LLM review.
 
 ## Start and visibly watch a run
@@ -59,6 +61,7 @@ lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
 lane-ctl events --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
 lane-ctl tail --run-dir "$RUN_DIR" --task-id "$TASK_ID" --lines 80
 lane-ctl retry --run-dir "$RUN_DIR" --task-id "$TASK_ID"
+lane-ctl fallback --run-dir "$RUN_DIR" --task-id "$TASK_ID" # typed recovery only
 lane-ctl cancel --run-dir "$RUN_DIR" --task-id "$TASK_ID"
 ```
 
@@ -68,7 +71,10 @@ log loop. A retry reuses the recorded argv array from the current attempt's
 `control.json`; it never
 reconstructs or shell-evaluates a free-form command. The argv schema and prompt
 digest are revalidated, the task hash must still match, and the control plane
-permits at most two attempts. Retry writes `attempts/02` without overwriting 01.
+permits two Grok attempts. Retry writes `attempts/02` without overwriting 01.
+After a second sanitized `fallback_eligible` Grok failure, the controller alone
+may create `attempts/03` with fixed provider/model/effort: `codex`,
+`gpt-5.6-sol`, `high`. No fourth attempt is permitted.
 
 Grok runs with `bypassPermissions` because headless interactive approval cannot
 wait for an operator. This does not grant control-plane ownership: an outer
@@ -83,6 +89,10 @@ This boundary does not claim network-egress isolation. The `owns_paths`
 contract remains the narrower behavioral boundary. The final response carries
 one task/prompt-bound report envelope; trusted `lane-session` validates it and
 atomically materializes root `report.md`.
+Codex uses its inner `workspace-write` sandbox and approval `never` inside the
+same outer Bubblewrap boundary. It is ephemeral, has multi-agent disabled, and
+cannot write `.agents`; `lane-session` parses its JSON event stream and writes
+the canonical report only after `turn.completed`.
 
 Status deliberately distinguishes `provider_incomplete`,
 `awaiting_verification`, `verified`, and `verification_failed`. Provider exit 0
@@ -187,6 +197,8 @@ private per-user directory under `/tmp`.
       verification.json
     attempts/02/
       ...
+    attempts/03/ # optional fixed Codex Sol high fallback
+      ...
 ```
 
 `lane-exec` appends atomic single-write JSONL records for start, timeout,
@@ -235,7 +247,9 @@ or advancing the checkpoint.
 `night-shift <repo-root>` adds the bounded repair phase. Generated v2 tasks run
 through the ordinary Grok provider pool in a dedicated worktree; deterministic
 receipts, not a Claude polling subagent, drive retry/verify/re-review/accept.
-Grok receives no-subagent and outer workspace-sandbox guardrails. Merge and push are
+After two classified Grok availability failures, the runner may start the one
+fixed Codex Sol high recovery attempt through the same receipt chain. Grok
+receives no-subagent and outer workspace-sandbox guardrails. Merge and push are
 off unless the target repository explicitly opts in through
 `.agents/night-shift.yaml`.
 

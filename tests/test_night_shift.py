@@ -96,6 +96,7 @@ class NightShiftTest(unittest.TestCase):
                 target.write_text(target.read_text(encoding="utf-8") + "fixed\\n", encoding="utf-8")
                 session_flag = "--session-id" if "--session-id" in args else "--resume"
                 session_id = args[args.index(session_flag) + 1]
+                model = args[args.index("--model") + 1]
                 print(json.dumps({"type": "session", "sessionId": session_id}), flush=True)
                 print(json.dumps({"type": "text", "data": "fix complete\\n"}), flush=True)
                 print(json.dumps({
@@ -114,6 +115,7 @@ class NightShiftTest(unittest.TestCase):
                     "type": "end",
                     "stopReason": "EndTurn",
                     "sessionId": session_id,
+                    "modelUsage": {model: {"inputTokens": 1, "outputTokens": 1, "modelCalls": 1}},
                 }), flush=True)
                 """
             ),

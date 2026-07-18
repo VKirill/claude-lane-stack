@@ -34,7 +34,8 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 | `risk: low` UI/wiring | **grok** | Grok 4.5 medium |
 | `risk: medium` | Grok daytime → Codex night shift | Grok 4.5 medium + gpt-5.6-sol xhigh nightly |
 | `risk: high` auth/pay/schema | Grok solo daytime → Codex night shift | no silent daytime reviewer |
-| Empty-diff / stalled Grok | re-dispatch grok once, then **codex-implementer** | — |
+| Grok model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |
+| Empty-diff / task/protocol failure | retry once, then block; manual **codex-implementer** only by operator | — |
 
 ## Review tiers
 
@@ -96,6 +97,10 @@ Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
 slots (five by default, configurable 1–10). Default rotation: seven successful tasks; review remains
 an independent cold session.
+Classified provider availability failures are sanitized in `runtime.json`. The
+controller waits 30 seconds by default, retries the exact Grok model once, then
+may use one ephemeral `gpt-5.6-sol` + `high` writer attempt. It cannot switch on
+ownership, verification, cancellation, or an unknown failure.
 
 ## Parallelism (solo)
 

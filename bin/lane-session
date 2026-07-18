@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run Grok with run-scoped warm-session affinity.
+"""Run a typed writer provider behind the lane control-plane boundary.
 
-Each run keeps a small pool of resumable writer sessions in sessions.json.
-One task owns one pool slot at a time; parallel tasks spill into other slots.
+Grok uses run-scoped warm-session affinity. Codex is a one-shot fallback that
+uses the same report and runtime receipt contract without session reuse.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
@@ -33,19 +34,20 @@ DEFAULT_POOL_SIZE = 5
 HARD_MAX_POOL = 10
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 GROK_SANDBOX_PROFILE = "off"
+CODEX_SANDBOX_PROFILE = "workspace-write"
 RUNTIME_SANDBOX_PROFILE = "bubblewrap-workspace"
 PROTOCOL_FAILURE_EXIT = 65
 MAX_PROVIDER_LOG_BYTES = 1024 * 1024
 MAX_REPORT_SCAN_CHARS = 512 * 1024
 MAX_REPORT_BYTES = 256 * 1024
 MAX_EVENT_NAME = 80
+MAX_FAILURE_EVIDENCE_BYTES = 64 * 1024
 REPORT_BEGIN = "<<<LANE_REPORT:BEGIN>>>"
 REPORT_END = "<<<LANE_REPORT:END>>>"
 PROVIDER_ENV_KEYS = frozenset(
     {
         "ALL_PROXY",
         "COLORTERM",
-        "GROK_API_KEY",
         "HOME",
         "HTTPS_PROXY",
         "HTTP_PROXY",
@@ -61,7 +63,6 @@ PROVIDER_ENV_KEYS = frozenset(
         "SSL_CERT_FILE",
         "TERM",
         "USER",
-        "XAI_API_KEY",
         "XDG_DATA_DIRS",
         "all_proxy",
         "http_proxy",
@@ -69,17 +70,25 @@ PROVIDER_ENV_KEYS = frozenset(
         "no_proxy",
     }
 )
+PROVIDER_AUTH_ENV_KEYS = {
+    "grok": frozenset({"GROK_API_KEY", "XAI_API_KEY"}),
+    "codex": frozenset({"OPENAI_API_KEY"}),
+}
 TEST_PROVIDER_ENV_KEYS = frozenset(
     {
         "FAKE_ARGS_LOG",
         "FAKE_CHILD_PID_FILE",
         "FAKE_CONTROL_PROBE",
+        "FAKE_CODEX_HOME_LOG",
         "FAKE_DUPLICATE_REPORT",
+        "FAKE_ERROR_MESSAGE",
         "FAKE_ENV_LOG",
         "FAKE_ENV_SCRUB_LOG",
         "FAKE_EXIT",
+        "FAKE_EFFECTIVE_MODEL",
         "FAKE_PID_FILE",
         "FAKE_PROVIDER_KIND",
+        "FAKE_PROVIDER_SECRET_LOG",
         "FAKE_PULSE",
         "FAKE_REPORT",
         "FAKE_REPORT_MODE",
@@ -94,6 +103,7 @@ TEST_PROVIDER_ENV_KEYS = frozenset(
         "FAKE_TEXT_SIZE",
         "FAKE_HOST_TMP_PROBE",
         "FAKE_VERSION_TEXT",
+        "FAKE_VERSION_PROBE_LOG",
         "UNUSED_REMOVED",
     }
 )
@@ -112,6 +122,8 @@ TOKEN_FIELDS = {
     "output_tokens",
     "reasoning_tokens",
     "total_tokens",
+    "cached_input_tokens",
+    "reasoning_output_tokens",
 }
 MODEL_USAGE_FIELDS = {
     "inputTokens",
@@ -195,6 +207,8 @@ def runtime_lock_dir(run_dir: Path) -> Path:
 def rotation_reason(record: dict | None, *, cwd: str, model: str, max_tasks: int) -> str | None:
     if not record:
         return None
+    if record.get("provider") == "codex":
+        return "ephemeral_provider"
     if record.get("invalid"):
         return record.get("invalid_reason") or "invalid"
     if record.get("status") == "running":
@@ -245,6 +259,11 @@ class StreamResult:
     report_sha256: str | None
     log_truncated: bool
     stderr_bytes: int
+    failure_class: str | None
+    failure_retryable: bool
+    fallback_eligible: bool
+    failure_source: str | None
+    failure_evidence_sha256: str | None
 
 
 def acquire_lease(
@@ -359,11 +378,33 @@ def acquire_lease(
 def provider_command(
     args: argparse.Namespace, lease: Lease, *, prompt_sha256: str
 ) -> list[str]:
-    if args.provider != "grok":
-        raise RuntimeError(f"unsupported provider {args.provider!r}; only grok is supported")
     binary = args.binary or shutil.which(args.provider)
     if not binary:
         raise RuntimeError(f"{args.provider} binary not found")
+    if args.provider == "codex":
+        return [
+            binary,
+            "exec",
+            "--json",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--disable",
+            "multi_agent",
+            "--model",
+            args.model,
+            "-c",
+            f'model_reasoning_effort="{args.reasoning_effort}"',
+            "-c",
+            'approval_policy="never"',
+            "--sandbox",
+            CODEX_SANDBOX_PROFILE,
+            "--cd",
+            str(args.cwd),
+            "--skip-git-repo-check",
+            "-",
+        ]
+    if args.provider != "grok":
+        raise RuntimeError(f"unsupported provider {args.provider!r}")
     command = [
         binary,
         "--no-subagents",
@@ -389,7 +430,8 @@ def provider_command(
             "read-only to you. Return the canonical report in your final response "
             f"between {REPORT_BEGIN} and {REPORT_END}; it must contain exact "
             f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a "
-            "STATUS field."
+            "STATUS line whose value is exactly one of complete, partial, "
+            "timeout, or unavailable."
         ),
         "--output-format",
         "streaming-json",
@@ -404,6 +446,27 @@ def provider_command(
     return command
 
 
+def provider_input(
+    args: argparse.Namespace, *, prompt_sha256: str
+) -> bytes | None:
+    if args.provider != "codex":
+        return None
+    prompt = args.prompt_file.read_text(encoding="utf-8")
+    boundary = (
+        "\n\nLane runtime task boundary (non-negotiable): "
+        f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
+        f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
+        "Treat the raw task YAML above as authoritative. Write only paths matched "
+        "by owns_paths, honor never_touch, do not spawn subagents, and do not "
+        "commit, merge, or push. The .agents control plane is read-only to you. "
+        "Return the canonical report as the final response between "
+        f"{REPORT_BEGIN} and {REPORT_END}; it must contain exact "
+        f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a STATUS "
+        "line whose value is exactly one of complete, partial, timeout, or unavailable."
+    )
+    return (prompt + boundary + "\n").encode("utf-8")
+
+
 def control_plane_root(run_dir: Path) -> Path:
     for candidate in (run_dir, *run_dir.parents):
         if candidate.name == ".agents":
@@ -411,21 +474,45 @@ def control_plane_root(run_dir: Path) -> Path:
     raise RuntimeError(f"run-dir must be inside a .agents control plane: {run_dir}")
 
 
-def provider_environment() -> dict[str, str]:
-    allowed = PROVIDER_ENV_KEYS | TEST_PROVIDER_ENV_KEYS
+def provider_environment(provider: str) -> dict[str, str]:
+    allowed = (
+        PROVIDER_ENV_KEYS
+        | PROVIDER_AUTH_ENV_KEYS.get(provider, frozenset())
+        | TEST_PROVIDER_ENV_KEYS
+    )
     environment = {
         key: value for key, value in os.environ.items() if key in allowed
     }
-    environment.update(
-        {
-            "CLAUDE_LANE_AUTOMATION": "1",
-            "GROK_CLAUDE_HOOKS_ENABLED": "0",
-            "GROK_SUBAGENTS": "0",
-            "GROK_SANDBOX": GROK_SANDBOX_PROFILE,
-            "TMPDIR": "/tmp",
-        }
-    )
+    environment.update({"CLAUDE_LANE_AUTOMATION": "1", "TMPDIR": "/tmp"})
+    if provider == "grok":
+        environment.update(
+            {
+                "GROK_CLAUDE_HOOKS_ENABLED": "0",
+                "GROK_SUBAGENTS": "0",
+                "GROK_SANDBOX": GROK_SANDBOX_PROFILE,
+            }
+        )
     return environment
+
+
+def prepare_codex_home(provider: str) -> Path | None:
+    if provider != "codex":
+        return None
+    configured = os.environ.get("CODEX_HOME")
+    source_home = (
+        Path(configured).expanduser().resolve()
+        if configured
+        else (Path.home() / ".codex").resolve()
+    )
+    auth_source = source_home / "auth.json"
+    if not auth_source.is_file():
+        raise RuntimeError(f"Codex auth file not found: {auth_source}")
+    scratch = Path(tempfile.mkdtemp(prefix=f"claude-lane-codex-{os.getuid()}-"))
+    scratch.chmod(0o700)
+    auth_target = scratch / "auth.json"
+    shutil.copyfile(auth_source, auth_target)
+    auth_target.chmod(0o600)
+    return scratch
 
 
 def active_pathname_sockets() -> list[Path]:
@@ -448,7 +535,13 @@ def active_pathname_sockets() -> list[Path]:
 
 
 def sandbox_provider_command(
-    command: list[str], *, run_dir: Path, cwd: Path, home: Path
+    command: list[str],
+    *,
+    provider: str,
+    run_dir: Path,
+    cwd: Path,
+    home: Path,
+    provider_state_dir: Path | None = None,
 ) -> list[str]:
     bwrap = shutil.which("bwrap")
     if not bwrap:
@@ -475,11 +568,35 @@ def sandbox_provider_command(
         "--tmpfs",
         "/var/tmp",
     ]
-    writable_paths = (home / ".grok", cwd)
+    writable_paths = (
+        (home / ".grok", cwd)
+        if provider == "grok"
+        else tuple(path for path in (cwd, provider_state_dir) if path is not None)
+    )
     for writable in writable_paths:
         if writable.exists():
             wrapped.extend(("--bind", str(writable), str(writable)))
     wrapped.extend(("--ro-bind", str(control_root), str(control_root)))
+    hidden_paths: set[Path] = set()
+    if provider == "grok":
+        hidden_paths.add((home / ".codex").resolve())
+        configured_codex_home = os.environ.get("CODEX_HOME")
+        if configured_codex_home:
+            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
+    elif provider == "codex":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".grok").resolve(),
+            }
+        )
+    for hidden in sorted(hidden_paths, key=str):
+        if provider_state_dir is not None and hidden == provider_state_dir:
+            continue
+        if hidden.is_dir():
+            wrapped.extend(("--tmpfs", str(hidden)))
+        elif hidden.exists():
+            wrapped.extend(("--ro-bind", "/dev/null", str(hidden)))
     for socket_path in active_pathname_sockets():
         hidden_by_private_tmpfs = any(
             socket_path.is_relative_to(root)
@@ -625,10 +742,14 @@ def sanitized_model_usage(value: object) -> dict | None:
     return result or None
 
 
-def provider_version(binary: str) -> str | None:
+def provider_version(
+    command: list[str], *, cwd: Path, environment: dict[str, str]
+) -> str | None:
     try:
         result = subprocess.run(
-            [binary, "--version"],
+            command,
+            cwd=cwd,
+            env=environment,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -652,16 +773,299 @@ def sanitized_stop_reason(value: object) -> str | None:
     return value if value in RECOGNIZED_STOP_REASONS else "Other"
 
 
-def stream_provider(
+def bounded_evidence_append(buffer: bytearray, data: bytes) -> None:
+    remaining = MAX_FAILURE_EVIDENCE_BYTES - len(buffer)
+    if remaining > 0:
+        buffer.extend(data[:remaining])
+
+
+def grok_model_matches(requested_model: str, model_usage: dict | None) -> bool:
+    if not model_usage or len(model_usage) != 1:
+        return False
+    effective = next(iter(model_usage))
+    allowed = {requested_model}
+    if requested_model == "grok-4.5":
+        allowed.add("grok-4.5-build")
+    return effective in allowed
+
+
+def classify_grok_failure(
+    evidence: bytes,
+    *,
+    provider_exit_code: int,
+    protocol_error: str | None,
+) -> tuple[str | None, bool, bool, str | None, str | None]:
+    error_event = protocol_error == "provider emitted an error event"
+    if protocol_error is not None and not error_event:
+        failure_class = (
+            "grok_model_mismatch"
+            if protocol_error == "effective model does not match requested model"
+            else "grok_protocol_failure"
+        )
+        return failure_class, True, False, "protocol", None
+    if provider_exit_code == 0 and not error_event:
+        return None, False, False, None, None
+
+    lower = evidence.decode("utf-8", errors="ignore").lower()
+    patterns: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+        (
+            "grok_bootstrap_transient",
+            ("settings fetch failed", "failed to load settings", "settings unavailable"),
+            True,
+        ),
+        (
+            "grok_model_unavailable",
+            ("unknown model", "model not found", "unsupported model", "model unavailable"),
+            True,
+        ),
+        (
+            "grok_quota_exhausted",
+            ("rate limit", "quota", "usage limit", "limit reached", "status 429", " 429 "),
+            True,
+        ),
+        (
+            "grok_auth_unavailable",
+            ("unauthorized", "authentication failed", "login required", "invalid token"),
+            True,
+        ),
+        (
+            "grok_region_unavailable",
+            ("region unavailable", "not available in your region", "geo blocked", "status 403"),
+            True,
+        ),
+        (
+            "grok_transport_transient",
+            ("connection reset", "timed out", "timeout", "status 503", "service unavailable"),
+            True,
+        ),
+    )
+    evidence_digest = hashlib.sha256(evidence).hexdigest() if evidence else None
+    for failure_class, signatures, fallback_eligible in patterns:
+        if any(signature in lower for signature in signatures):
+            return failure_class, True, fallback_eligible, "provider", evidence_digest
+    if error_event:
+        return "grok_protocol_failure", True, False, "protocol", evidence_digest
+    return "grok_provider_failed", True, False, "exit", evidence_digest
+
+
+def stream_codex_provider(
     process: subprocess.Popen[bytes],
     output: IO[bytes],
     *,
-    expected_session_id: str,
     task_id: str,
     prompt_sha256: str,
     report_path: Path,
     report_root: Path,
 ) -> StreamResult:
+    assert process.stdout is not None
+    assert process.stderr is not None
+    stdout_fd = process.stdout.fileno()
+    stderr_fd = process.stderr.fileno()
+    open_fds = {stdout_fd, stderr_fd}
+    pending = b""
+    log_bytes = 0
+    log_truncated = False
+    protocol_error: str | None = None
+    thread_id: str | None = None
+    turn_completed = False
+    response_tail = ""
+    marker_overlap = ""
+    report_begin_count = 0
+    report_end_count = 0
+    report_sha256: str | None = None
+    stderr_bytes = 0
+    usage: dict | None = None
+
+    def write_log(data: bytes) -> None:
+        nonlocal log_bytes, log_truncated
+        remaining = MAX_PROVIDER_LOG_BYTES - log_bytes
+        if remaining <= 0:
+            log_truncated = True
+            return
+        chunk = data[:remaining]
+        output.write(chunk)
+        output.flush()
+        log_bytes += len(chunk)
+        if len(chunk) < len(data):
+            log_truncated = True
+
+    def visible_marker(event_type: str) -> None:
+        marker = f"CODEX_EVENT {event_type}\n".encode("utf-8")
+        sys.stdout.buffer.write(marker)
+        sys.stdout.buffer.flush()
+
+    def set_protocol_error(reason: str, line: bytes = b"") -> None:
+        nonlocal protocol_error
+        if protocol_error is not None:
+            return
+        protocol_error = reason
+        digest = hashlib.sha256(line).hexdigest()[:16]
+        write_log(
+            f"\n[codex protocol error: {reason}; bytes={len(line)}; sha256={digest}]\n".encode(
+                "utf-8"
+            )
+        )
+        visible_marker("protocol-error")
+
+    def process_line(line: bytes) -> None:
+        nonlocal thread_id, turn_completed, response_tail, marker_overlap
+        nonlocal report_begin_count, report_end_count, usage
+        if not line.strip():
+            return
+        try:
+            event = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            set_protocol_error("malformed json stream", line)
+            return
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+            set_protocol_error("event must be an object with a string type", line)
+            return
+        event_type = event["type"]
+        if len(event_type) > MAX_EVENT_NAME or not SAFE_NAME.fullmatch(event_type):
+            set_protocol_error("event type is invalid", line)
+            return
+        if event_type == "thread.started":
+            value = event.get("thread_id")
+            if isinstance(value, str) and value:
+                thread_id = value
+            visible_marker(event_type)
+        elif event_type == "item.completed":
+            item = event.get("item")
+            if not isinstance(item, dict):
+                set_protocol_error("completed item must be an object", line)
+                return
+            if item.get("type") == "agent_message":
+                data = item.get("text")
+                if not isinstance(data, str):
+                    set_protocol_error("agent message text must be a string", line)
+                    return
+                encoded = data.encode("utf-8", errors="replace")
+                response_tail = (response_tail + data)[-MAX_REPORT_SCAN_CHARS:]
+                marker_scan = marker_overlap + data
+                report_begin_count += marker_scan.count(REPORT_BEGIN)
+                report_end_count += marker_scan.count(REPORT_END)
+                overlap_size = max(len(REPORT_BEGIN), len(REPORT_END)) - 1
+                marker_overlap = marker_scan[-overlap_size:]
+                write_log(encoded)
+                sys.stdout.buffer.write(encoded)
+                sys.stdout.buffer.flush()
+            else:
+                write_log(f"\n[codex item: {item.get('type', 'unknown')}]\n".encode())
+                visible_marker(event_type)
+        elif event_type == "turn.completed":
+            if turn_completed:
+                set_protocol_error("duplicate turn.completed event", line)
+                return
+            turn_completed = True
+            usage = sanitized_usage(event.get("usage"), TOKEN_FIELDS)
+            visible_marker(event_type)
+        elif event_type in {"turn.failed", "error"}:
+            set_protocol_error("Codex turn failed", line)
+        else:
+            write_log(f"\n[codex event: {event_type}]\n".encode("utf-8"))
+            visible_marker(event_type)
+
+    def consume(chunk: bytes) -> None:
+        nonlocal pending
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            process_line(line)
+
+    def consume_stderr(chunk: bytes) -> None:
+        nonlocal stderr_bytes
+        stderr_bytes += len(chunk)
+        digest = hashlib.sha256(chunk).hexdigest()[:16]
+        write_log(
+            f"\n[codex stderr: bytes={len(chunk)}; sha256={digest}]\n".encode("utf-8")
+        )
+        visible_marker("stderr")
+
+    while open_fds:
+        ready, _, _ = select.select(list(open_fds), [], [], 0.1)
+        for fd in ready:
+            chunk = os.read(fd, 65536)
+            if chunk:
+                consume(chunk) if fd == stdout_fd else consume_stderr(chunk)
+            else:
+                open_fds.discard(fd)
+    if pending:
+        process_line(pending)
+
+    provider_exit_code = process.wait()
+    if provider_exit_code == 0 and protocol_error is None and not turn_completed:
+        protocol_error = "stream ended without turn.completed"
+    if provider_exit_code == 0 and protocol_error is None:
+        try:
+            report = extract_lane_report(
+                response_tail,
+                task_id=task_id,
+                prompt_sha256=prompt_sha256,
+                begin_count=report_begin_count,
+                end_count=report_end_count,
+            )
+            report_sha256 = materialize_lane_report(
+                report_path, report, root=report_root
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            protocol_error = str(exc)
+    exit_code = (
+        PROTOCOL_FAILURE_EXIT
+        if provider_exit_code == 0 and protocol_error is not None
+        else provider_exit_code
+    )
+    failure_class = None
+    failure_source = None
+    if exit_code != 0:
+        failure_class = (
+            "codex_protocol_failure" if protocol_error else "codex_provider_failed"
+        )
+        failure_source = "protocol" if protocol_error else "exit"
+    return StreamResult(
+        provider_exit_code=provider_exit_code,
+        exit_code=exit_code,
+        session_id=thread_id,
+        stop_reason="TurnCompleted" if turn_completed else None,
+        usage=usage,
+        model_usage=None,
+        num_turns=1 if turn_completed else None,
+        total_cost_usd=None,
+        total_cost_usd_ticks=None,
+        cost_is_partial=None,
+        usage_is_incomplete=None,
+        protocol_error=protocol_error,
+        report_sha256=report_sha256,
+        log_truncated=log_truncated,
+        stderr_bytes=stderr_bytes,
+        failure_class=failure_class,
+        failure_retryable=False,
+        fallback_eligible=False,
+        failure_source=failure_source,
+        failure_evidence_sha256=None,
+    )
+
+
+def stream_provider(
+    process: subprocess.Popen[bytes],
+    output: IO[bytes],
+    *,
+    provider: str,
+    expected_session_id: str,
+    requested_model: str,
+    task_id: str,
+    prompt_sha256: str,
+    report_path: Path,
+    report_root: Path,
+) -> StreamResult:
+    if provider == "codex":
+        return stream_codex_provider(
+            process,
+            output,
+            task_id=task_id,
+            prompt_sha256=prompt_sha256,
+            report_path=report_path,
+            report_root=report_root,
+        )
     assert process.stdout is not None
     assert process.stderr is not None
     stdout_fd = process.stdout.fileno()
@@ -679,6 +1083,7 @@ def stream_provider(
     report_begin_count = 0
     report_end_count = 0
     report_sha256: str | None = None
+    failure_evidence = bytearray()
 
     def write_log(data: bytes) -> None:
         nonlocal log_bytes, log_truncated
@@ -754,10 +1159,14 @@ def stream_provider(
             write_log(b"\n[grok event: thought]\n")
             visible_marker("thought")
         elif event_type == "error":
-            if not isinstance(event.get("message"), str):
+            message = event.get("message")
+            if not isinstance(message, str):
                 set_protocol_error("error event message must be a string", line)
                 return
             saw_error = True
+            bounded_evidence_append(
+                failure_evidence, message.encode("utf-8", errors="replace")
+            )
             write_log(b"\n[grok event: error]\n")
             visible_marker("error")
         elif event_type == "end":
@@ -792,6 +1201,7 @@ def stream_provider(
     def consume_stderr(chunk: bytes) -> None:
         nonlocal stderr_bytes
         stderr_bytes += len(chunk)
+        bounded_evidence_append(failure_evidence, chunk)
         digest = hashlib.sha256(chunk).hexdigest()[:16]
         write_log(
             f"\n[grok stderr: bytes={len(chunk)}; sha256={digest}]\n".encode("utf-8")
@@ -817,6 +1227,13 @@ def stream_provider(
         protocol_error = "provider emitted an error event"
     if provider_exit_code == 0 and protocol_error is None and end_event is None:
         protocol_error = "stream ended without an end event"
+    model_usage = sanitized_model_usage((end_event or {}).get("modelUsage"))
+    if (
+        provider_exit_code == 0
+        and protocol_error is None
+        and not grok_model_matches(requested_model, model_usage)
+    ):
+        protocol_error = "effective model does not match requested model"
     if provider_exit_code == 0 and protocol_error is None:
         try:
             report = extract_lane_report(
@@ -843,13 +1260,27 @@ def stream_provider(
     ticks = end.get("total_cost_usd_ticks")
     if isinstance(ticks, bool) or not isinstance(ticks, int) or ticks < 0:
         ticks = None
+    classification_error = protocol_error
+    if saw_error and protocol_error == "unsuccessful terminal reason: Error":
+        classification_error = "provider emitted an error event"
+    (
+        failure_class,
+        failure_retryable,
+        fallback_eligible,
+        failure_source,
+        failure_evidence_sha256,
+    ) = classify_grok_failure(
+        bytes(failure_evidence),
+        provider_exit_code=provider_exit_code,
+        protocol_error=classification_error,
+    )
     return StreamResult(
         provider_exit_code=provider_exit_code,
         exit_code=exit_code,
         session_id=end.get("sessionId") if isinstance(end.get("sessionId"), str) else None,
         stop_reason=end.get("stopReason") if isinstance(end.get("stopReason"), str) else None,
         usage=sanitized_usage(end.get("usage"), TOKEN_FIELDS),
-        model_usage=sanitized_model_usage(end.get("modelUsage")),
+        model_usage=model_usage,
         num_turns=num_turns,
         total_cost_usd=safe_scalar(end.get("total_cost_usd")),
         total_cost_usd_ticks=ticks,
@@ -863,6 +1294,11 @@ def stream_provider(
         report_sha256=report_sha256,
         log_truncated=log_truncated,
         stderr_bytes=stderr_bytes,
+        failure_class=failure_class,
+        failure_retryable=failure_retryable,
+        fallback_eligible=fallback_eligible,
+        failure_source=failure_source,
+        failure_evidence_sha256=failure_evidence_sha256,
     )
 
 
@@ -877,6 +1313,11 @@ def write_runtime_receipt(
     result: StreamResult,
     failure_class: str | None = None,
 ) -> None:
+    effective_failure_class = failure_class or result.failure_class
+    provider_sandbox = (
+        GROK_SANDBOX_PROFILE if args.provider == "grok" else CODEX_SANDBOX_PROFILE
+    )
+    permission_mode = "bypassPermissions" if args.provider == "grok" else "never"
     receipt: dict[str, object] = {
         "schema_version": 1,
         "provider": args.provider,
@@ -884,14 +1325,18 @@ def write_runtime_receipt(
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
         "sandbox": RUNTIME_SANDBOX_PROFILE,
-        "provider_sandbox": GROK_SANDBOX_PROFILE,
+        "provider_sandbox": provider_sandbox,
         "subagents_enabled": False,
-        "permission_mode": "bypassPermissions",
+        "permission_mode": permission_mode,
         "control_plane_read_only": True,
         "task_id": args.task_id,
         "role": args.role,
         "slot": lease.slot,
-        "mode": "new" if lease.is_new else "resume",
+        "mode": (
+            "ephemeral"
+            if args.provider == "codex"
+            else "new" if lease.is_new else "resume"
+        ),
         "session_id": result.session_id or lease.record.get("session_id"),
         "started_at": started_at,
         "finished_at": utc_now(),
@@ -900,7 +1345,7 @@ def write_runtime_receipt(
         "protocol_valid": (
             result.exit_code == 0
             and result.protocol_error is None
-            and failure_class is None
+            and effective_failure_class is None
         ),
         "log_truncated": result.log_truncated,
         "stderr_bytes": result.stderr_bytes,
@@ -920,7 +1365,15 @@ def write_runtime_receipt(
         "protocol_error": result.protocol_error,
         "report_sha256": result.report_sha256,
         "prompt_sha256": prompt_sha256,
-        "failure_class": failure_class,
+        "failure_class": effective_failure_class,
+        "failure_retryable": result.failure_retryable
+        if effective_failure_class is not None
+        else None,
+        "fallback_eligible": result.fallback_eligible
+        if effective_failure_class is not None
+        else None,
+        "failure_source": result.failure_source,
+        "failure_evidence_sha256": result.failure_evidence_sha256,
     }
     receipt.update({key: value for key, value in optional.items() if value is not None})
     save_state(path, receipt)
@@ -992,6 +1445,7 @@ def run_provider(args: argparse.Namespace) -> int:
     result: StreamResult | None = None
     version_text: str | None = None
     prompt_sha256: str | None = None
+    provider_state_dir: Path | None = None
     started_at = utc_now()
     old_handlers: dict[int, signal.Handlers] = {}
 
@@ -1004,11 +1458,31 @@ def run_provider(args: argparse.Namespace) -> int:
     try:
         prompt_sha256 = hashlib.sha256(args.prompt_file.read_bytes()).hexdigest()
         provider_argv = provider_command(args, lease, prompt_sha256=prompt_sha256)
-        version_text = provider_version(provider_argv[0])
-        provider_env = provider_environment()
+        stdin_payload = provider_input(args, prompt_sha256=prompt_sha256)
+        provider_state_dir = prepare_codex_home(args.provider)
+        provider_env = provider_environment(args.provider)
+        if provider_state_dir is not None:
+            provider_env["CODEX_HOME"] = str(provider_state_dir)
         provider_home = Path(provider_env.get("HOME", str(Path.home()))).resolve()
         command = sandbox_provider_command(
-            provider_argv, run_dir=run_dir, cwd=cwd, home=provider_home
+            provider_argv,
+            provider=args.provider,
+            run_dir=run_dir,
+            cwd=cwd,
+            home=provider_home,
+            provider_state_dir=provider_state_dir,
+        )
+        version_text = provider_version(
+            sandbox_provider_command(
+                [provider_argv[0], "--version"],
+                provider=args.provider,
+                run_dir=run_dir,
+                cwd=cwd,
+                home=provider_home,
+                provider_state_dir=provider_state_dir,
+            ),
+            cwd=cwd,
+            environment=provider_env,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1023,14 +1497,21 @@ def run_provider(args: argparse.Namespace) -> int:
                 command,
                 cwd=cwd,
                 env=provider_env,
+                stdin=subprocess.PIPE if stdin_payload is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
             )
+            if stdin_payload is not None:
+                assert process.stdin is not None
+                process.stdin.write(stdin_payload)
+                process.stdin.close()
             result = stream_provider(
                 process,
                 output,
+                provider=args.provider,
                 expected_session_id=str(lease.record["session_id"]),
+                requested_model=args.model,
                 task_id=args.task_id,
                 prompt_sha256=prompt_sha256,
                 report_path=run_dir / "artifacts" / args.task_id / "report.md",
@@ -1090,6 +1571,11 @@ def run_provider(args: argparse.Namespace) -> int:
             report_sha256=None,
             log_truncated=False,
             stderr_bytes=0,
+            failure_class=None,
+            failure_retryable=False,
+            fallback_eligible=False,
+            failure_source="signal",
+            failure_evidence_sha256=None,
         )
         write_runtime_receipt(
             path=args.output.with_name("runtime.json"),
@@ -1148,6 +1634,11 @@ def run_provider(args: argparse.Namespace) -> int:
                 report_sha256=None,
                 log_truncated=False,
                 stderr_bytes=0,
+                failure_class=None,
+                failure_retryable=False,
+                fallback_eligible=False,
+                failure_source="exception",
+                failure_evidence_sha256=None,
             )
             try:
                 write_runtime_receipt(
@@ -1168,6 +1659,8 @@ def run_provider(args: argparse.Namespace) -> int:
                 )
         raise
     finally:
+        if provider_state_dir is not None:
+            shutil.rmtree(provider_state_dir, ignore_errors=True)
         for signum, old_handler in old_handlers.items():
             signal.signal(signum, old_handler)
         unlock_file(lease.handle)
@@ -1187,7 +1680,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="acquire a session slot and run one task")
-    run.add_argument("--provider", required=True, choices=("grok",))
+    run.add_argument("--provider", required=True, choices=("grok", "codex"))
     run.add_argument("--run-dir", required=True, type=Path)
     run.add_argument("--task-id", required=True)
     run.add_argument("--role", required=True)

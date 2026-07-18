@@ -124,7 +124,7 @@ else
 fi
 
 echo ""
-echo "Done. (v1.5.2+) Start PM:"
+echo "Done. (v1.5.3+) Start PM:"
 echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
 echo " claude --agent dev-orchestrator"
 echo "Onboard: /project-onboard or project-onboard . [--deep|--fast]"
@@ -136,6 +136,6 @@ echo "Control plane: lane-ctl start/status/events/tail/retry/cancel/verify/accep
 echo "Manual lane recovery: lane-supervisor (Grok remains the code writer)"
 echo "Pools: provider default 5/max 10; verification default 2/max 10"
 echo "Warm lanes: lane-session resumes run-scoped Grok conversations"
-echo "Night shift: night-shift-all (Codex Sol xhigh review; Grok-only repair worktrees)"
+echo "Night shift: night-shift-all (Codex Sol xhigh review; Grok-primary repair with typed Sol fallback)"
 echo "Beginner: docs/BEGINNER.md · RU: docs/BEGINNER.ru.md"
 echo "Docs: $DEST/docs/ (ONBOARD-SCENARIOS, LANE-EXEC, ROUTING, LANGUAGE)"

@@ -447,6 +447,106 @@ class NightFixRunnerTest(unittest.TestCase):
             self.assertEqual(state["tasks"]["fix"]["stage"], "blocked")
             self.assertEqual(json.loads(finding_path.read_text())["status"], "needs_human")
 
+    def test_second_eligible_grok_failure_uses_one_codex_fallback(self) -> None:
+        runner = load_runner()
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            repo = Path(raw_tmp) / "repo"
+            run_dir = repo / ".agents" / "runs" / "night"
+            worktree = repo / ".worktrees" / "night"
+            task_path = run_dir / "tasks" / "fix.yaml"
+            artifact_state = run_dir / "artifacts" / "fix" / "state.json"
+            artifact_state.parent.mkdir(parents=True)
+            artifact_state.write_text("{}\n", encoding="utf-8")
+            task_path.parent.mkdir(parents=True, exist_ok=True)
+            task_path.write_text("id: fix\n", encoding="utf-8")
+            worktree.mkdir(parents=True)
+            state = {
+                "run_dir": str(run_dir),
+                "status": "running",
+                "tasks": {"fix": {"stage": "pending", "attempts": 2}},
+            }
+            task = {
+                "id": "fix",
+                "path": str(task_path),
+                "task_sha256": "d" * 64,
+                "depends_on": [],
+                "finding_id": "c" * 64,
+                "validation_error": None,
+            }
+            second_failure = {
+                "status": "failed",
+                "attempt": 2,
+                "provider": {
+                    "name": "grok",
+                    "failure_class": "grok_model_unavailable",
+                    "fallback_eligible": True,
+                },
+            }
+            fallback_complete = {
+                "status": "awaiting_verification",
+                "attempt": 3,
+                "provider": {"name": "codex", "model": "gpt-5.6-sol"},
+            }
+            commands: list[list[str]] = []
+
+            def successful_command(argv, **kwargs):
+                commands.append(argv)
+                if argv[0] == str(runner.REVIEW_ENGINE):
+                    output = Path(argv[argv.index("--output") + 1])
+                    output.write_text(
+                        json.dumps({"verdict": "passed", "findings": []}),
+                        encoding="utf-8",
+                    )
+                return subprocess.CompletedProcess(argv, 0, "", "")
+
+            with mock.patch.object(
+                runner, "acceptance_is_valid", side_effect=[False, True]
+            ), mock.patch.object(
+                runner, "validate_task_finding"
+            ), mock.patch.object(
+                runner, "git_head", return_value="a" * 40
+            ), mock.patch.object(
+                runner, "lane_status", return_value=second_failure
+            ), mock.patch.object(
+                runner, "wait_for_provider", return_value=fallback_complete
+            ), mock.patch.object(
+                runner, "worktree_snapshot", return_value="snapshot"
+            ), mock.patch.object(
+                runner, "run_command", side_effect=successful_command
+            ), mock.patch.object(
+                runner, "finalize_accepted_task", return_value=True
+            ):
+                completed = runner.process_task(
+                    repo,
+                    run_dir,
+                    worktree,
+                    task,
+                    state,
+                    poll_interval=0,
+                    provider_timeout=1,
+                    codex_bin="/usr/bin/codex-test",
+                    grok_bin=None,
+                )
+
+            self.assertTrue(completed)
+            fallback = next(argv for argv in commands if "fallback" in argv)
+            self.assertEqual(
+                fallback,
+                [
+                    str(runner.LANE_CTL),
+                    "fallback",
+                    "--run-dir",
+                    str(run_dir),
+                    "--task-id",
+                    "fix",
+                    "--binary",
+                    "/usr/bin/codex-test",
+                ],
+            )
+            self.assertEqual(state["tasks"]["fix"]["attempts"], 3)
+            self.assertEqual(state["tasks"]["fix"]["provider"], "codex")
+            self.assertEqual(state["tasks"]["fix"]["model"], "gpt-5.6-sol")
+
     def test_commit_refuses_worktree_drift_after_review(self) -> None:
         runner = load_runner()
         with tempfile.TemporaryDirectory() as raw_tmp:

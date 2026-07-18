@@ -141,18 +141,35 @@ async function trustedProviderReport({ artifactPath, attemptPath, state, taskId,
   const controlIdentityValid = control.task_id === taskId
     && control.attempt === attempt
     && control.task_sha256 === state.task_sha256;
+  const expectedProvider = control.provider ?? 'grok';
+  const providerIdentityValid = ['grok', 'codex'].includes(runtime.provider)
+    && runtime.provider === expectedProvider
+    && runtime.model === (control.model ?? runtime.model)
+    && runtime.reasoning_effort === (control.reasoning_effort ?? runtime.reasoning_effort);
+  const providerPolicyValid = (
+    runtime.provider === 'grok'
+    && runtime.stop_reason === 'EndTurn'
+    && runtime.provider_sandbox === 'off'
+    && runtime.permission_mode === 'bypassPermissions'
+  ) || (
+    runtime.provider === 'codex'
+    && runtime.model === 'gpt-5.6-sol'
+    && runtime.reasoning_effort === 'high'
+    && runtime.stop_reason === 'TurnCompleted'
+    && runtime.provider_sandbox === 'workspace-write'
+    && runtime.permission_mode === 'never'
+  );
   const runtimeIdentityValid = controlIdentityValid
+    && providerIdentityValid
+    && providerPolicyValid
     && runtime.schema_version === 1
-    && runtime.provider === 'grok'
     && runtime.task_id === taskId
     && runtime.attempt === attempt
     && runtime.provider_exit_code === 0
     && runtime.exit_code === 0
     && runtime.protocol_valid === true
-    && runtime.stop_reason === 'EndTurn'
     && runtime.sandbox === 'bubblewrap-workspace'
-    && runtime.provider_sandbox === 'off'
-    && runtime.permission_mode === 'bypassPermissions'
+    && runtime.subagents_enabled === false
     && runtime.control_plane_read_only === true
     && typeof promptSha256 === 'string'
     && SHA256_HEX.test(promptSha256)
@@ -288,6 +305,8 @@ async function readTaskRuntime(runPath, taskId, taskSha256) {
     && acceptance.attempt > 0
     && acceptance.attempt === currentAttempt
     && acceptance?.provider_exit === 0
+    && (acceptance?.provider ?? report.runtime?.provider) === report.runtime?.provider
+    && (acceptance?.model ?? report.runtime?.model) === report.runtime?.model
     && acceptance?.report === 'complete'
     && acceptance?.report_sha256 === report.sha256
     && acceptance?.owns_check === 'passed'
@@ -342,6 +361,9 @@ async function readTaskRuntime(runPath, taskId, taskSha256) {
     runtime_exit_code: report.runtime?.exit_code ?? null,
     protocol_valid: report.runtime?.protocol_valid ?? null,
     protocol_error: report.runtime?.protocol_error ?? null,
+    failure_class: report.runtime?.failure_class ?? null,
+    failure_retryable: report.runtime?.failure_retryable ?? null,
+    fallback_eligible: report.runtime?.fallback_eligible ?? null,
     stop_reason: report.runtime?.stop_reason ?? null,
     sandbox: report.runtime?.sandbox ?? null,
     provider_sandbox: report.runtime?.provider_sandbox ?? null,

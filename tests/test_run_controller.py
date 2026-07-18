@@ -61,16 +61,23 @@ class RunControllerTest(unittest.TestCase):
                 plan = json.loads(Path(os.environ["FAKE_CTL_PLAN"]).read_text())
                 state = json.loads(state_path.read_text()) if state_path.exists() else {}
 
-                def record(kind):
+                def record(kind, **extra):
                     with log_path.open("a", encoding="utf-8") as handle:
-                        handle.write(json.dumps({"action": kind, "task_id": task_id}) + "\\n")
+                        handle.write(
+                            json.dumps({"action": kind, "task_id": task_id, **extra}) + "\\n"
+                        )
 
                 if action == "start":
                     if task_id in plan.get("start_error", []):
                         record("start")
                         print("forced start failure", file=sys.stderr)
                         raise SystemExit(7)
-                    state[task_id] = {"status": "running", "attempt": 1, "polls": 0}
+                    state[task_id] = {
+                        "status": "running",
+                        "attempt": 1,
+                        "polls": 0,
+                        "provider": "grok",
+                    }
                     record("start")
                     payload = {"status": "started", "task_id": task_id, "attempt": 1}
                 elif action == "status":
@@ -88,7 +95,9 @@ class RunControllerTest(unittest.TestCase):
                                 item["status"] = "stalled"
                             elif task_id in plan.get("cancel_first", []) and item["attempt"] == 1:
                                 item["status"] = "cancelled"
-                            elif task_id in plan.get("fail_always", []):
+                            elif item.get("provider") == "codex" and task_id in plan.get("fallback_fail", []):
+                                item["status"] = "failed"
+                            elif item.get("provider") == "grok" and task_id in plan.get("fail_always", []):
                                 item["status"] = "failed"
                             elif task_id in plan.get("fail_first", []) and item["attempt"] == 1:
                                 item["status"] = "provider_failed"
@@ -101,12 +110,58 @@ class RunControllerTest(unittest.TestCase):
                         "status": item["status"],
                         "accepted": item["status"] == "accepted",
                         "attempt": item["attempt"],
+                        "provider": {
+                            "name": item.get("provider", "grok"),
+                            "model": "gpt-5.6-sol" if item.get("provider") == "codex" else "grok-4.5",
+                            "failure_class": (
+                                "grok_bootstrap_transient"
+                                if item["status"] == "failed"
+                                and item.get("provider") == "grok"
+                                and task_id in plan.get("eligible_failure", [])
+                                else "codex_provider_failed"
+                                if item["status"] == "failed" and item.get("provider") == "codex"
+                                else None
+                            ),
+                            "failure_retryable": item["status"] == "failed",
+                            "fallback_eligible": (
+                                item["status"] == "failed"
+                                and item.get("provider") == "grok"
+                                and task_id in plan.get("eligible_failure", [])
+                            ),
+                        },
                     }
                 elif action == "retry":
                     item = state[task_id]
                     item.update(status="running", attempt=item["attempt"] + 1, polls=0)
-                    record("retry")
+                    retry_details = {}
+                    if plan.get("record_retry_peers"):
+                        retry_details["other_running"] = sorted(
+                            other_id
+                            for other_id, other in state.items()
+                            if other_id != task_id and other.get("status") == "running"
+                        )
+                    record("retry", **retry_details)
                     payload = {"status": "started", "task_id": task_id, "attempt": item["attempt"]}
+                elif action == "fallback":
+                    item = state[task_id]
+                    item.update(
+                        status="running",
+                        attempt=item["attempt"] + 1,
+                        polls=0,
+                        provider="codex",
+                    )
+                    record(
+                        "fallback",
+                        provider="codex",
+                        model="gpt-5.6-sol",
+                        reasoning_effort="high",
+                    )
+                    payload = {
+                        "status": "started",
+                        "task_id": task_id,
+                        "attempt": item["attempt"],
+                        "provider": "codex",
+                    }
                 elif action == "cancel":
                     item = state[task_id]
                     item["status"] = "cancelled"
@@ -263,6 +318,8 @@ class RunControllerTest(unittest.TestCase):
                 "0.01",
                 "--heartbeat-interval",
                 "1",
+                "--retry-backoff",
+                "0",
                 *extra,
             ],
             text=True,
@@ -356,6 +413,81 @@ class RunControllerTest(unittest.TestCase):
         receipt = json.loads((self.run_dir / "controller.json").read_text())
         self.assertEqual(receipt["tasks"]["001"]["retries"], 1)
         self.assertEqual(receipt["tasks"]["001"]["stage"], "accepted")
+
+    def test_transient_retry_wait_is_persisted_without_blocking_sleep(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.fake_plan.write_text(
+            json.dumps({"finish_after": {"001": 1}, "fail_first": ["001"]}),
+            encoding="utf-8",
+        )
+        process = subprocess.Popen(
+            [
+                str(CONTROLLER),
+                "run",
+                "--run-dir",
+                str(self.run_dir),
+                "--lane-ctl",
+                str(self.fake_lane_ctl),
+                "--check-owns-paths",
+                str(self.fake_owns),
+                "--run-validate",
+                str(self.fake_run_validate),
+                "--poll-interval",
+                "0.01",
+                "--retry-backoff",
+                "30",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.env(),
+        )
+        self.addCleanup(lambda: process.poll() is None and process.kill())
+        deadline = time.monotonic() + 5
+        task_state = None
+        while time.monotonic() < deadline:
+            if (self.run_dir / "controller.json").is_file():
+                receipt = json.loads((self.run_dir / "controller.json").read_text())
+                task_state = receipt["tasks"]["001"]
+                if task_state["stage"] == "retry_wait":
+                    break
+            time.sleep(0.02)
+        self.assertIsNotNone(task_state)
+        self.assertEqual(task_state["stage"], "retry_wait")
+        self.assertIsInstance(task_state["retry_not_before"], str)
+        self.assertEqual(
+            [action["action"] for action in self.actions()],
+            ["start"],
+        )
+        process.terminate()
+        process.communicate(timeout=3)
+
+    def test_due_retry_waits_for_provider_capacity(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.write_task("002")
+        self.fake_plan.write_text(
+            json.dumps(
+                {
+                    "finish_after": {"001": 1, "002": 30},
+                    "fail_first": ["001"],
+                    "record_retry_peers": True,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller("--retry-backoff", "0.05")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        actions = self.actions()
+        retry = next(
+            item
+            for item in actions
+            if item["action"] == "retry" and item["task_id"] == "001"
+        )
+        self.assertEqual(retry["other_running"], [])
 
     def test_stalled_provider_is_cancelled_before_retry(self) -> None:
         self.write_run(provider_slots=1)
@@ -467,6 +599,39 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(receipt["stage"], "blocked")
         self.assertEqual(receipt["tasks"]["001"]["stage"], "blocked")
         self.assertEqual(receipt["next_action"], "operator_intervention")
+
+    def test_second_eligible_grok_failure_falls_back_to_codex_sol_high(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.fake_plan.write_text(
+            json.dumps(
+                {
+                    "finish_after": {"001": 1},
+                    "fail_always": ["001"],
+                    "eligible_failure": ["001"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller("--retry-backoff", "0")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            [action["action"] for action in self.actions()],
+            ["start", "retry", "fallback", "owns", "verify", "accept"],
+        )
+        fallback = self.actions()[2]
+        self.assertEqual(fallback["provider"], "codex")
+        self.assertEqual(fallback["model"], "gpt-5.6-sol")
+        self.assertEqual(fallback["reasoning_effort"], "high")
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        task = receipt["tasks"]["001"]
+        self.assertEqual(task["retries"], 1)
+        self.assertEqual(task["fallbacks"], 1)
+        self.assertEqual(task["provider"], "codex")
+        self.assertEqual(task["model"], "gpt-5.6-sol")
+        self.assertEqual(task["stage"], "accepted")
 
     def test_duplicate_controller_lock_fails_fast(self) -> None:
         self.write_run(provider_slots=1)

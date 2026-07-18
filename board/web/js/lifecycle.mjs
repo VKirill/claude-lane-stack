@@ -37,8 +37,13 @@ export function runtimeFacts(runtime) {
   const reportTrust = runtime.report_trusted === true
     ? 'trusted'
     : runtime.report_trusted === false ? `untrusted:${runtime.report_reason || 'unknown'}` : null;
+  const failure = runtime.failure_class
+    ? `${runtime.failure_class} · fallback ${runtime.fallback_eligible === true ? 'eligible' : 'no'}`
+    : '—';
   return [
     `attempt ${attempt}`,
+    `provider ${runtime.provider || '—'} · ${runtime.model || '—'}`,
+    `failure ${failure}`,
     `pid ${process}`,
     `exit ${exit}`,
     `heartbeat ${heartbeat}`,

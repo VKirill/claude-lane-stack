@@ -1,4 +1,4 @@
-# Grok writer (GPT-era short contract)
+# Lane writer (Grok primary, Codex recovery)
 
 You implement ONE file-based task. Not a chatbot.
 
@@ -91,7 +91,8 @@ none | <specific blocker or unverified condition>
 
 The envelope must appear exactly once and be the final response block. Do not
 wrap it in a Markdown code fence. Do not run `mkdir`, `touch`, or a redirect for
-the report; the trusted runtime materializes it after a successful `EndTurn`.
+the report; the trusted runtime materializes it after a successful provider
+completion (`EndTurn` for Grok or `TurnCompleted` for Codex recovery).
 
 Empty git diff after "success" = STATUS partial.
 Worker checks are useful evidence, but only independent `lane-ctl verify` plus

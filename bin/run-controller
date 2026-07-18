@@ -11,7 +11,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,7 @@ TERMINAL_FAILURES = frozenset(
     }
 )
 RUNNING_STATUSES = frozenset({"launching", "running", "unknown", "verifying"})
+CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 
 
 class ControllerError(RuntimeError):
@@ -394,6 +395,11 @@ def initial_receipt(run_dir: Path, project_cwd: Path, tasks: list[dict[str, Any]
                 "stage": "pending",
                 "last_status": None,
                 "retries": 0,
+                "fallbacks": 0,
+                "provider": "grok",
+                "model": "grok-4.5",
+                "last_failure_class": None,
+                "retry_not_before": None,
                 "updated_at": now,
             }
             for task in tasks
@@ -405,6 +411,8 @@ def run_controller(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir).expanduser().resolve()
     if not run_dir.is_dir():
         raise ControllerError(f"run directory does not exist: {run_dir}")
+    if not 0 <= args.retry_backoff <= 300:
+        raise ControllerError("retry backoff must be between 0 and 300 seconds")
     project_cwd, provider_slots, verification_slots, gate, tasks = discover(
         run_dir, args.project_cwd
     )
@@ -438,6 +446,12 @@ def run_controller(args: argparse.Namespace) -> int:
     recorded = {task_id: task.get("task_file") for task_id, task in receipt.get("tasks", {}).items()}
     if recorded != expected:
         raise ControllerError("controller receipt task identity does not match run")
+    for task_state in receipt["tasks"].values():
+        task_state.setdefault("fallbacks", 0)
+        task_state.setdefault("provider", "grok")
+        task_state.setdefault("model", "grok-4.5")
+        task_state.setdefault("last_failure_class", None)
+        task_state.setdefault("retry_not_before", None)
     if receipt.get("stage") == "accepted":
         if all(task.get("stage") == "accepted" for task in receipt["tasks"].values()):
             return 0
@@ -552,24 +566,17 @@ def run_controller(args: argparse.Namespace) -> int:
                 if phase == "verify":
                     if result.returncode != 0:
                         if task_state["retries"] < 1:
-                            action(
-                                [
-                                    str(args.lane_ctl),
-                                    "retry",
-                                    "--run-dir",
-                                    str(run_dir),
-                                    "--task-id",
-                                    task_id,
-                                ],
-                                label=f"retry {task_id}",
-                            )
-                            task_state["retries"] += 1
+                            task_state["last_failure_class"] = "verification_failed"
+                            task_state["retry_not_before"] = (
+                                datetime.now(timezone.utc)
+                                + timedelta(seconds=args.retry_backoff)
+                            ).isoformat()
                             transition(
                                 receipt_path,
                                 receipt,
-                                "task_retried",
+                                "task_retry_scheduled",
                                 task_id=task_id,
-                                stage="running",
+                                stage="retry_wait",
                                 detail="verification_failed",
                             )
                             progress = True
@@ -631,6 +638,46 @@ def run_controller(args: argparse.Namespace) -> int:
                 if task_state["stage"] in {"accepted", "blocked"} or task_id in pipelines:
                     continue
                 task = task_by_id[task_id]
+                if task_state["stage"] == "retry_wait":
+                    raw_not_before = task_state.get("retry_not_before")
+                    try:
+                        not_before = datetime.fromisoformat(str(raw_not_before))
+                    except ValueError as exc:
+                        raise ControllerError(
+                            f"task {task_id} has invalid retry_not_before"
+                        ) from exc
+                    if datetime.now(timezone.utc) < not_before:
+                        continue
+                    provider_active = sum(
+                        state["stage"] == "running"
+                        for other_id, state in receipt["tasks"].items()
+                        if other_id != task_id
+                    )
+                    if provider_active >= provider_slots:
+                        continue
+                    action(
+                        [
+                            str(args.lane_ctl),
+                            "retry",
+                            "--run-dir",
+                            str(run_dir),
+                            "--task-id",
+                            task_id,
+                        ],
+                        label=f"retry {task_id}",
+                    )
+                    task_state["retries"] += 1
+                    task_state["retry_not_before"] = None
+                    transition(
+                        receipt_path,
+                        receipt,
+                        "task_retried",
+                        task_id=task_id,
+                        stage="running",
+                        detail=str(task_state.get("last_failure_class") or "provider_failure"),
+                    )
+                    progress = True
+                    continue
                 status = action(
                     [
                         str(args.lane_ctl),
@@ -645,9 +692,22 @@ def run_controller(args: argparse.Namespace) -> int:
                 )
                 lane_status = status.get("status")
                 task_state["last_status"] = lane_status
+                provider = status.get("provider")
+                if not isinstance(provider, dict):
+                    provider = {}
+                provider_name = provider.get("name")
+                provider_model = provider.get("model")
+                if provider_name in {"grok", "codex"}:
+                    task_state["provider"] = provider_name
+                if isinstance(provider_model, str) and provider_model:
+                    task_state["model"] = provider_model
                 attempt = status.get("attempt")
-                if isinstance(attempt, int) and attempt > 1:
-                    task_state["retries"] = max(task_state["retries"], attempt - 1)
+                if isinstance(attempt, int) and attempt > 1 and provider_name == "grok":
+                    task_state["retries"] = max(
+                        task_state["retries"], min(1, attempt - 1)
+                    )
+                if provider_name == "codex":
+                    task_state["fallbacks"] = 1
                 if lane_status == "accepted":
                     transition(
                         receipt_path,
@@ -730,25 +790,54 @@ def run_controller(args: argparse.Namespace) -> int:
                                 ],
                                 label=f"cancel stalled {task_id}",
                             )
+                        failure_class = provider.get("failure_class")
+                        task_state["last_failure_class"] = (
+                            failure_class
+                            if isinstance(failure_class, str)
+                            else str(lane_status)
+                        )
+                        task_state["retry_not_before"] = (
+                            datetime.now(timezone.utc)
+                            + timedelta(seconds=args.retry_backoff)
+                        ).isoformat()
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_retry_scheduled",
+                            task_id=task_id,
+                            stage="retry_wait",
+                            detail=task_state["last_failure_class"],
+                        )
+                        progress = True
+                    elif (
+                        task_state["fallbacks"] < 1
+                        and provider_name == "grok"
+                        and provider.get("fallback_eligible") is True
+                    ):
                         action(
                             [
                                 str(args.lane_ctl),
-                                "retry",
+                                "fallback",
                                 "--run-dir",
                                 str(run_dir),
                                 "--task-id",
                                 task_id,
                             ],
-                            label=f"retry {task_id}",
+                            label=f"fallback {task_id}",
                         )
-                        task_state["retries"] += 1
+                        task_state["fallbacks"] = 1
+                        task_state["provider"] = "codex"
+                        task_state["model"] = CODEX_FALLBACK_MODEL
+                        task_state["last_failure_class"] = provider.get(
+                            "failure_class"
+                        )
                         transition(
                             receipt_path,
                             receipt,
-                            "task_retried",
+                            "task_fallback_started",
                             task_id=task_id,
                             stage="running",
-                            detail=str(lane_status),
+                            detail=f"codex:{CODEX_FALLBACK_MODEL}",
                         )
                         progress = True
                     else:
@@ -836,6 +925,8 @@ def run_controller(args: argparse.Namespace) -> int:
                     task_id=task["id"],
                     stage="running",
                 )
+                task_state["provider"] = "grok"
+                task_state["model"] = "grok-4.5"
                 provider_active += 1
                 progress = True
 
@@ -876,6 +967,8 @@ def worker_argv(args: argparse.Namespace) -> list[str]:
         str(args.poll_interval),
         "--heartbeat-interval",
         str(args.heartbeat_interval),
+        "--retry-backoff",
+        str(args.retry_backoff),
     ]
     if args.project_cwd:
         argv.extend(["--project-cwd", str(Path(args.project_cwd).expanduser().resolve())])
@@ -1031,6 +1124,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--run-validate", default=str(DEFAULT_RUN_VALIDATE))
     run.add_argument("--poll-interval", type=float, default=1.0)
     run.add_argument("--heartbeat-interval", type=float, default=30.0)
+    run.add_argument("--retry-backoff", type=float, default=30.0)
     start = sub.add_parser("start", help="durably start the controller through lane-bg")
     start.add_argument("--run-dir", required=True)
     start.add_argument("--project-cwd")
@@ -1040,6 +1134,7 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--lane-bg", default=str(DEFAULT_LANE_BG))
     start.add_argument("--poll-interval", type=float, default=1.0)
     start.add_argument("--heartbeat-interval", type=float, default=30.0)
+    start.add_argument("--retry-backoff", type=float, default=30.0)
     status = sub.add_parser("status", help="read the current controller receipt")
     status.add_argument("--run-dir", required=True)
     status.add_argument("--json", action="store_true", required=True)

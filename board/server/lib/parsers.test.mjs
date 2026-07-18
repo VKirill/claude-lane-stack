@@ -25,7 +25,15 @@ async function fixtureDirectory(prefix) {
   return directory;
 }
 
-async function writeTrustedProviderReport({ artifactDirectory, taskId, taskSource, attempt = 1 }) {
+async function writeTrustedProviderReport({
+  artifactDirectory,
+  taskId,
+  taskSource,
+  attempt = 1,
+  provider = 'grok',
+  model = provider === 'codex' ? 'gpt-5.6-sol' : 'grok-4.5',
+  reasoningEffort = provider === 'codex' ? 'high' : 'medium',
+}) {
   const attemptDirectory = path.join(artifactDirectory, 'attempts', String(attempt).padStart(2, '0'));
   const taskSha256 = createHash('sha256').update(taskSource).digest('hex');
   const promptSha256 = createHash('sha256').update(`prompt:${taskId}:${attempt}`).digest('hex');
@@ -43,20 +51,25 @@ async function writeTrustedProviderReport({ artifactDirectory, taskId, taskSourc
     task_sha256: taskSha256,
     attempt,
     prompt_sha256: promptSha256,
+    provider,
+    model,
+    reasoning_effort: reasoningEffort,
   }));
   await writeFile(path.join(attemptDirectory, 'runtime.json'), JSON.stringify({
     schema_version: 1,
-    provider: 'grok',
-    model: 'grok-4.5',
+    provider,
+    model,
+    reasoning_effort: reasoningEffort,
     task_id: taskId,
     attempt,
     provider_exit_code: 0,
     exit_code: 0,
     protocol_valid: true,
-    stop_reason: 'EndTurn',
+    stop_reason: provider === 'codex' ? 'TurnCompleted' : 'EndTurn',
     sandbox: 'bubblewrap-workspace',
-    provider_sandbox: 'off',
-    permission_mode: 'bypassPermissions',
+    provider_sandbox: provider === 'codex' ? 'workspace-write' : 'off',
+    permission_mode: provider === 'codex' ? 'never' : 'bypassPermissions',
+    subagents_enabled: false,
     control_plane_read_only: true,
     prompt_sha256: promptSha256,
     report_sha256: reportSha256,
@@ -162,6 +175,8 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
     task_sha256: createHash('sha256').update(taskSource).digest('hex'),
     attempt: 1,
     provider_exit: 0,
+    provider: 'grok',
+    model: 'grok-4.5',
     report: 'complete',
     report_sha256: trusted.reportSha256,
     owns_check: 'passed',
@@ -201,6 +216,8 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
     task_sha256: '0'.repeat(64),
     attempt: 1,
     provider_exit: 0,
+    provider: 'grok',
+    model: 'grok-4.5',
     report: 'complete',
     owns_check: 'passed',
     verification: 'passed',
@@ -288,6 +305,9 @@ test('task list and detail expose the same exact read-only lifecycle evidence', 
     runtime_exit_code: null,
     protocol_valid: null,
     protocol_error: null,
+    failure_class: null,
+    failure_retryable: null,
+    fallback_eligible: null,
     stop_reason: null,
     sandbox: null,
     provider_sandbox: null,
@@ -404,6 +424,38 @@ test('tampered provider report is fail-closed and exposed as untrusted', async (
   assert.equal(listed.runtime.report_reason, 'report_digest_mismatch');
 });
 
+test('Codex Sol high fallback runtime is trusted and visible', async () => {
+  const project = await fixtureDirectory('lane-board-codex-fallback-');
+  const runPath = path.join(project, '.agents', 'runs', 'codex-run');
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  await mkdir(tasksDirectory, { recursive: true });
+  const taskSource = ['schema_version: 2', 'id: "001"', 'title: Codex fallback'].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const trusted = await writeTrustedProviderReport({
+    artifactDirectory,
+    taskId: '001',
+    taskSource,
+    attempt: 3,
+    provider: 'codex',
+  });
+  await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: trusted.taskSha256,
+    status: 'awaiting_verification',
+    current_attempt: 3,
+  }));
+
+  const tasks = await readTasks(tasksDirectory, 'codex-run');
+
+  assert.equal(tasks[0].runtime.status, 'awaiting_verification');
+  assert.equal(tasks[0].runtime.report_trusted, true);
+  assert.equal(tasks[0].runtime.provider, 'codex');
+  assert.equal(tasks[0].runtime.model, 'gpt-5.6-sol');
+});
+
 test('accepted v2 task has identical done status in list and detail views', async () => {
   const project = await fixtureDirectory('lane-board-v2-parity-');
   const run = 'accepted-run';
@@ -451,6 +503,8 @@ test('accepted v2 task has identical done status in list and detail views', asyn
     task_sha256: createHash('sha256').update(taskSource).digest('hex'),
     attempt: 1,
     provider_exit: 0,
+    provider: 'grok',
+    model: 'grok-4.5',
     report: 'complete',
     report_sha256: trusted.reportSha256,
     owns_check: 'passed',
@@ -484,6 +538,8 @@ test('accepted v2 task has identical done status in list and detail views', asyn
     task_sha256: trusted.taskSha256,
     attempt: 1,
     provider_exit: 0,
+    provider: 'grok',
+    model: 'grok-4.5',
     report: 'complete',
     report_sha256: trusted.reportSha256,
     owns_check: 'passed',

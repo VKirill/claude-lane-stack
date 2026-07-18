@@ -48,7 +48,10 @@ HARD_MAX_TASKS = 10
 HARD_TAIL_LINES = 1000
 HARD_VERIFY_TIMEOUT = 86400
 HARD_V2_VERIFY_TIMEOUT = 7200
-MAX_ATTEMPTS = 2
+MAX_GROK_ATTEMPTS = 2
+MAX_ATTEMPTS = 3
+CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
+CODEX_FALLBACK_REASONING = "high"
 TAIL_SOURCES = {
     "supervisor": "lane-bg.supervisor.log",
     "executor": "lane-exec.log",
@@ -563,19 +566,40 @@ def trusted_provider_report(
         and expected_control.get("attempt") == attempt
         and expected_control.get("task_sha256") == state.get("task_sha256")
     )
+    provider = runtime.get("provider")
+    expected_provider = expected_control.get("provider", "grok")
+    provider_identity_valid = (
+        provider in {"grok", "codex"}
+        and provider == expected_provider
+        and runtime.get("model") == expected_control.get("model", runtime.get("model"))
+        and runtime.get("reasoning_effort")
+        == expected_control.get("reasoning_effort", runtime.get("reasoning_effort"))
+    )
+    provider_policy_valid = (
+        provider == "grok"
+        and runtime.get("stop_reason") == "EndTurn"
+        and runtime.get("provider_sandbox") == "off"
+        and runtime.get("permission_mode") == "bypassPermissions"
+    ) or (
+        provider == "codex"
+        and runtime.get("model") == CODEX_FALLBACK_MODEL
+        and runtime.get("reasoning_effort") == CODEX_FALLBACK_REASONING
+        and runtime.get("stop_reason") == "TurnCompleted"
+        and runtime.get("provider_sandbox") == "workspace-write"
+        and runtime.get("permission_mode") == "never"
+    )
     required_runtime = (
         control_identity_valid
+        and provider_identity_valid
+        and provider_policy_valid
         and runtime.get("schema_version") == 1
-        and runtime.get("provider") == "grok"
         and runtime.get("task_id") == task_id
         and runtime.get("attempt") == attempt
         and runtime.get("provider_exit_code") == 0
         and runtime.get("exit_code") == 0
         and runtime.get("protocol_valid") is True
-        and runtime.get("stop_reason") == "EndTurn"
         and runtime.get("sandbox") == "bubblewrap-workspace"
-        and runtime.get("provider_sandbox") == "off"
-        and runtime.get("permission_mode") == "bypassPermissions"
+        and runtime.get("subagents_enabled") is False
         and runtime.get("control_plane_read_only") is True
         and isinstance(prompt_sha256, str)
         and SHA256_HEX.fullmatch(prompt_sha256) is not None
@@ -631,6 +655,7 @@ def task_status_v2(
         expected_start = None
     running = pid_alive(pid, expected_start)
     exit_code = parse_int_file(safe_child_file(attempt_dir, "lane-bg.exit"))
+    runtime = read_optional_json(safe_child_file(attempt_dir, "runtime.json")) or {}
     heartbeat_path = safe_child_file(artifact, "heartbeat.json")
     heartbeat_value = read_optional_json(heartbeat_path)
     heartbeat = {
@@ -678,6 +703,14 @@ def task_status_v2(
         and acceptance.get("attempt")
         == state.get("current_attempt", state.get("attempt"))
         and acceptance.get("provider_exit") == 0
+        and acceptance.get(
+            "provider", (report_evidence.get("runtime") or {}).get("provider")
+        )
+        == (report_evidence.get("runtime") or {}).get("provider")
+        and acceptance.get(
+            "model", (report_evidence.get("runtime") or {}).get("model")
+        )
+        == (report_evidence.get("runtime") or {}).get("model")
         and acceptance.get("report") == "complete"
         and acceptance.get("report_sha256") == report_evidence.get("sha256")
         and acceptance.get("owns_check") == "passed"
@@ -749,6 +782,14 @@ def task_status_v2(
         state["updated_at"] = utc_now()
         write_task_state(artifact, state)
 
+    provider = {
+        "name": runtime.get("provider"),
+        "model": runtime.get("model"),
+        "reasoning_effort": runtime.get("reasoning_effort"),
+        "failure_class": runtime.get("failure_class"),
+        "failure_retryable": runtime.get("failure_retryable"),
+        "fallback_eligible": runtime.get("fallback_eligible"),
+    }
     return {
         "schema_version": 2,
         "task_id": task_id,
@@ -764,6 +805,7 @@ def task_status_v2(
         "artifact_dir": str(artifact),
         "attempt_dir": str(attempt_dir),
         "task_sha256": state.get("task_sha256"),
+        "provider": provider,
         "heartbeat": heartbeat,
         "report": {
             "exists": report_path.is_file(),
@@ -959,7 +1001,7 @@ def build_launch_argv(
         str(LANE_SESSION),
         "run",
         "--provider",
-        "grok",
+        args.provider,
         "--run-dir",
         str(context.run_dir),
         "--task-id",
@@ -1124,6 +1166,9 @@ def cmd_start_v2(
         "heartbeat_file": str(heartbeat_path),
         "prompt_file": str(prompt_path),
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "provider": args.provider,
+        "model": args.model,
+        "reasoning_effort": args.reasoning_effort,
         "argv": argv,
         "argv_sha256": command_hash(argv),
         "verification_commands": verification_snapshot,
@@ -1209,6 +1254,9 @@ def cmd_start(args: argparse.Namespace) -> int:
             "artifact_dir": str(context.artifact_dir),
             "prompt_file": str(context.artifact_dir / "prompt.md"),
             "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "provider": args.provider,
+            "model": args.model,
+            "reasoning_effort": args.reasoning_effort,
             "argv": argv,
             "argv_sha256": command_hash(argv),
             "verification_commands": verification_commands(context.task),
@@ -1519,8 +1567,11 @@ def validate_recorded_argv(
     session_options = parse_recorded_options(
         argv[session + 2 :], allowed=session_allowed, label="lane-session"
     )
+    recorded_provider = control.get("provider", "grok")
+    if recorded_provider not in {"grok", "codex"}:
+        raise ContractError("recorded provider is unsupported")
     required = {
-        "--provider": "grok",
+        "--provider": recorded_provider,
         "--run-dir": str(run_dir),
         "--task-id": task_id,
         "--role": "writer",
@@ -1542,6 +1593,17 @@ def validate_recorded_argv(
         raise ContractError("recorded model contains unsupported characters")
     if session_options.get("--reasoning-effort") not in {"low", "medium", "high"}:
         raise ContractError("recorded reasoning effort is invalid")
+    if recorded_provider == "codex" and (
+        model != CODEX_FALLBACK_MODEL
+        or session_options.get("--reasoning-effort") != CODEX_FALLBACK_REASONING
+    ):
+        raise ContractError("recorded Codex fallback profile is invalid")
+    if control.get("model", model) != model:
+        raise ContractError("recorded model does not match control")
+    if control.get("reasoning_effort", session_options.get("--reasoning-effort")) != session_options.get(
+        "--reasoning-effort"
+    ):
+        raise ContractError("recorded reasoning effort does not match control")
     recorded_int(
         session_options.get("--pool-size"),
         minimum=1,
@@ -1575,6 +1637,31 @@ def relocate_attempt_argv(argv: list[str], old_dir: Path, new_dir: Path) -> list
     return relocated
 
 
+def replace_recorded_option(argv: list[str], option: str, value: str) -> None:
+    try:
+        index = argv.index(option)
+    except ValueError as exc:
+        raise ContractError(f"recorded argv is missing {option}") from exc
+    if index + 1 >= len(argv):
+        raise ContractError(f"recorded argv option has no value: {option}")
+    argv[index + 1] = value
+
+
+def archive_root_report(artifact: Path, attempt_dir: Path) -> None:
+    report_path = safe_child_file(artifact, "report.md")
+    if not (report_path.exists() or report_path.is_symlink()):
+        return
+    if report_path.is_symlink() or not report_path.is_file():
+        raise ContractError("cannot archive unsafe root report.md")
+    archived_report = safe_child_file(attempt_dir, "report.md")
+    if archived_report.exists() or archived_report.is_symlink():
+        raise ContractError("current attempt already contains an archived report.md")
+    try:
+        os.replace(report_path, archived_report)
+    except OSError as exc:
+        raise OperationError(f"cannot archive root report.md: {exc}") from exc
+
+
 def cmd_retry_v2(
     run_dir: Path, task_id: str, artifact: Path, state: dict
 ) -> tuple[int, dict]:
@@ -1588,10 +1675,14 @@ def cmd_retry_v2(
     attempt = state.get("current_attempt", state.get("attempt"))
     if not isinstance(attempt, int) or attempt < 1:
         raise ContractError("state.json current_attempt is invalid")
-    if attempt >= MAX_ATTEMPTS:
-        raise ContractError(f"retry limit reached: maximum {MAX_ATTEMPTS} attempts")
+    if attempt >= MAX_GROK_ATTEMPTS:
+        raise ContractError(
+            f"Grok retry limit reached: maximum {MAX_GROK_ATTEMPTS} attempts"
+        )
 
     old_dir, old_control = load_control_for(run_dir, task_id)
+    if old_control.get("provider", "grok") != "grok":
+        raise ContractError("retry replays Grok only; Codex fallback is one-shot")
     old_argv = validate_recorded_argv(
         old_control.get("argv"),
         artifact=old_dir,
@@ -1641,17 +1732,7 @@ def cmd_retry_v2(
         control=control,
     )
     write_json(safe_child_file(new_dir, "control.json"), control)
-    report_path = safe_child_file(artifact, "report.md")
-    if report_path.exists() or report_path.is_symlink():
-        if report_path.is_symlink() or not report_path.is_file():
-            raise ContractError("cannot archive unsafe root report.md during retry")
-        archived_report = safe_child_file(old_dir, "report.md")
-        if archived_report.exists() or archived_report.is_symlink():
-            raise ContractError("current attempt already contains an archived report.md")
-        try:
-            os.replace(report_path, archived_report)
-        except OSError as exc:
-            raise OperationError(f"cannot archive root report.md during retry: {exc}") from exc
+    archive_root_report(artifact, old_dir)
     state = dict(state)
     state["current_attempt"] = next_attempt
     state["attempt"] = next_attempt
@@ -1669,6 +1750,155 @@ def cmd_retry_v2(
         result=result,
     )
     return (0 if result.returncode == 0 else 1), payload
+
+
+def cmd_fallback_v2(
+    run_dir: Path,
+    task_id: str,
+    artifact: Path,
+    state: dict,
+    *,
+    binary_override: str | None,
+) -> tuple[int, dict]:
+    context = context_from_state(run_dir, task_id, state)
+    current = task_status(run_dir, task_id)
+    if current["running"]:
+        raise ContractError("cannot fallback a running lane")
+    state = read_json(state_path_for(artifact))
+    if state.get("accepted") or state.get("status") == "done":
+        raise ContractError("cannot fallback an accepted task")
+    attempt = state.get("current_attempt", state.get("attempt"))
+    if attempt != MAX_GROK_ATTEMPTS:
+        raise ContractError(
+            f"Codex fallback requires exactly {MAX_GROK_ATTEMPTS} completed Grok attempts"
+        )
+
+    old_dir, old_control = load_control_for(run_dir, task_id)
+    old_argv = validate_recorded_argv(
+        old_control.get("argv"),
+        artifact=old_dir,
+        run_dir=run_dir,
+        task_id=task_id,
+        control=old_control,
+    )
+    if old_control.get("provider", "grok") != "grok":
+        raise ContractError("Codex fallback may only replace a Grok attempt")
+    runtime = read_json(safe_child_file(old_dir, "runtime.json"))
+    if (
+        runtime.get("provider") != "grok"
+        or runtime.get("fallback_eligible") is not True
+        or runtime.get("exit_code") == 0
+        or not isinstance(runtime.get("failure_class"), str)
+    ):
+        raise ContractError("current Grok failure is not eligible for Codex fallback")
+
+    old_prompt = safe_child_file(old_dir, "prompt.md")
+    try:
+        prompt_bytes = old_prompt.read_bytes()
+    except OSError as exc:
+        raise ContractError(f"cannot read recorded prompt: {exc}") from exc
+    if hashlib.sha256(prompt_bytes).hexdigest() != old_control.get("prompt_sha256"):
+        raise ContractError("recorded prompt checksum mismatch")
+
+    next_attempt = attempt + 1
+    if next_attempt > MAX_ATTEMPTS:
+        raise ContractError(f"fallback limit reached: maximum {MAX_ATTEMPTS} attempts")
+    new_dir = attempt_dir_for(artifact, next_attempt, create=True)
+    new_prompt = safe_child_file(new_dir, "prompt.md")
+    atomic_write(new_prompt, prompt_bytes)
+    new_argv = relocate_attempt_argv(old_argv, old_dir, new_dir)
+    replace_recorded_option(new_argv, "--provider", "codex")
+    replace_recorded_option(new_argv, "--model", CODEX_FALLBACK_MODEL)
+    replace_recorded_option(
+        new_argv, "--reasoning-effort", CODEX_FALLBACK_REASONING
+    )
+    while "--binary" in new_argv:
+        binary_index = new_argv.index("--binary")
+        del new_argv[binary_index : binary_index + 2]
+    binary = resolve_binary(binary_override)
+    if binary is not None:
+        new_argv.extend(["--binary", binary])
+
+    control = dict(old_control)
+    for key in (
+        "launcher_exit_code",
+        "launcher_stdout",
+        "launcher_stderr",
+        "launched_at",
+        "pid",
+        "pid_start_time",
+        "retry_of_attempt",
+    ):
+        control.pop(key, None)
+    control.update(
+        {
+            "attempt": next_attempt,
+            "attempt_dir": str(new_dir),
+            "prompt_file": str(new_prompt),
+            "provider": "codex",
+            "model": CODEX_FALLBACK_MODEL,
+            "reasoning_effort": CODEX_FALLBACK_REASONING,
+            "argv": new_argv,
+            "argv_sha256": command_hash(new_argv),
+            "created_at": utc_now(),
+            "fallback_of_attempt": attempt,
+            "fallback_from_provider": "grok",
+            "fallback_failure_class": runtime["failure_class"],
+        }
+    )
+    validate_recorded_argv(
+        new_argv,
+        artifact=new_dir,
+        run_dir=run_dir,
+        task_id=task_id,
+        control=control,
+    )
+    write_json(safe_child_file(new_dir, "control.json"), control)
+    archive_root_report(artifact, old_dir)
+    state = dict(state)
+    state["current_attempt"] = next_attempt
+    state["attempt"] = next_attempt
+    state["status"] = "launching"
+    state["accepted"] = False
+    state["updated_at"] = utc_now()
+    write_task_state(artifact, state)
+    append_event(
+        run_dir,
+        "control_fallback",
+        task_id,
+        attempt=next_attempt,
+        provider="codex",
+        model=CODEX_FALLBACK_MODEL,
+    )
+    result = launch(new_argv, cwd=context.project_cwd)
+    payload = finish_launch_v2(
+        artifact=artifact,
+        attempt_dir=new_dir,
+        control=control,
+        state=state,
+        result=result,
+    )
+    payload.update(provider="codex", model=CODEX_FALLBACK_MODEL)
+    return (0 if result.returncode == 0 else 1), payload
+
+
+def cmd_fallback(args: argparse.Namespace) -> int:
+    run_dir = validate_run_dir(args.run_dir)
+    validate_name(args.task_id, "task id")
+    artifact = artifact_dir_for(run_dir, args.task_id)
+    with locked_file(safe_child_file(artifact, ".lifecycle.lock")):
+        state = load_task_state(artifact)
+        if state is None:
+            raise ContractError("Codex fallback requires a schema-v2 lane")
+        exit_code, payload = cmd_fallback_v2(
+            run_dir,
+            args.task_id,
+            artifact,
+            state,
+            binary_override=args.binary,
+        )
+    print(json.dumps(payload, sort_keys=True))
+    return exit_code
 
 
 def cmd_retry(args: argparse.Namespace) -> int:
@@ -1691,8 +1921,10 @@ def cmd_retry(args: argparse.Namespace) -> int:
         attempt = control.get("attempt")
         if not isinstance(attempt, int) or attempt < 1:
             raise ContractError("recorded attempt is invalid")
-        if attempt >= MAX_ATTEMPTS:
-            raise ContractError(f"retry limit reached: maximum {MAX_ATTEMPTS} attempts")
+        if attempt >= MAX_GROK_ATTEMPTS:
+            raise ContractError(
+                f"Grok retry limit reached: maximum {MAX_GROK_ATTEMPTS} attempts"
+            )
         argv = validate_recorded_argv(
             control.get("argv"),
             artifact=artifact,
@@ -2506,6 +2738,8 @@ def cmd_accept(args: argparse.Namespace) -> int:
             "task_sha256": state.get("task_sha256"),
             "attempt": attempt,
             "provider_exit": 0,
+            "provider": report_evidence["runtime"]["provider"],
+            "model": report_evidence["runtime"]["model"],
             "report": "complete",
             "report_sha256": report_evidence["sha256"],
             "owns_check": "passed",
@@ -2622,6 +2856,14 @@ def build_parser() -> argparse.ArgumentParser:
     retry = sub.add_parser("retry", help="replay a validated recorded argv vector")
     add_run_selector(retry)
     retry.set_defaults(handler=cmd_retry)
+
+    fallback = sub.add_parser(
+        "fallback",
+        help="replace a second eligible Grok failure with Codex Sol high",
+    )
+    add_run_selector(fallback)
+    fallback.add_argument("--binary", help="Codex binary override for tests")
+    fallback.set_defaults(handler=cmd_fallback)
 
     verify = sub.add_parser(
         "verify", help="run only verification commands from the task contract"
