@@ -104,6 +104,7 @@ TEST_PROVIDER_ENV_KEYS = frozenset(
         "FAKE_HOST_TMP_PROBE",
         "FAKE_VERSION_TEXT",
         "FAKE_VERSION_PROBE_LOG",
+        "FAKE_VERSION_WARNING",
         "UNUSED_REMOVED",
     }
 )
@@ -549,6 +550,16 @@ def sandbox_provider_command(
             "bubblewrap is required to protect the .agents control plane"
         )
     control_root = control_plane_root(run_dir)
+    sandbox_command = list(command)
+    codex_binary: Path | None = None
+    if provider == "codex":
+        try:
+            codex_binary = Path(command[0]).resolve(strict=True)
+        except OSError as exc:
+            raise RuntimeError(f"cannot resolve Codex binary: {command[0]}") from exc
+        if not codex_binary.is_file():
+            raise RuntimeError(f"Codex binary is not a regular file: {codex_binary}")
+        sandbox_command[0] = "/opt/claude-lane-codex"
     wrapped = [
         bwrap,
         "--die-with-parent",
@@ -608,7 +619,17 @@ def sandbox_provider_command(
         if hidden_by_private_tmpfs and not exposed_by_writable_bind:
             continue
         wrapped.extend(("--ro-bind", "/dev/null", str(socket_path)))
-    wrapped.extend(("--chdir", str(cwd), "--", *command))
+    if codex_binary is not None:
+        wrapped.extend(
+            (
+                "--tmpfs",
+                "/opt",
+                "--ro-bind",
+                str(codex_binary),
+                sandbox_command[0],
+            )
+        )
+    wrapped.extend(("--chdir", str(cwd), "--", *sandbox_command))
     return wrapped
 
 
@@ -760,10 +781,10 @@ def provider_version(
         return None
     if result.returncode != 0:
         return None
-    line = (result.stdout or "").splitlines()[0:1]
-    if not line:
+    output = (result.stdout or "")[:4096]
+    if not output:
         return None
-    match = VERSION_TOKEN.search(line[0])
+    match = VERSION_TOKEN.search(output)
     return match.group(1) if match else None
 
 

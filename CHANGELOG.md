@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.4 — 2026-07-18
+
+### Fixed
+- **Packaged Codex binaries survive credential isolation:** the fallback resolves
+  the standalone CLI before hiding the host `~/.codex`, then exposes only that
+  executable through a read-only sandbox mount. Host Codex credentials and
+  configuration remain hidden.
+- **Codex version receipts tolerate safe launcher warnings:** bounded version
+  output is scanned for the sanitized semantic version instead of assuming it
+  is always the first line.
+
 ## 1.5.3 — 2026-07-18
 
 ### Added

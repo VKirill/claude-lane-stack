@@ -78,6 +78,8 @@ class LaneSessionTest(unittest.TestCase):
                         Path(os.environ["FAKE_VERSION_PROBE_LOG"]).write_text(
                             json.dumps(credential_probe()), encoding="utf-8"
                         )
+                    if os.environ.get("FAKE_VERSION_WARNING"):
+                        print(os.environ["FAKE_VERSION_WARNING"])
                     print(os.environ.get("FAKE_VERSION_TEXT", "grok 0.2.103-test (fake)"))
                     raise SystemExit(0)
                 streaming = "--output-format" in args and args[
@@ -984,6 +986,27 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(
             json.loads(codex_version_log.read_text(encoding="utf-8")), codex_env
         )
+
+    def test_codex_binary_under_hidden_host_home_is_mounted_separately(self) -> None:
+        packaged_binary = self.fake_home / ".codex" / "packages" / "fake-provider"
+        packaged_binary.parent.mkdir(parents=True)
+        shutil.copy2(self.fake_provider, packaged_binary)
+        packaged_binary.chmod(0o755)
+        binary_link = self.cwd / "codex-provider"
+        binary_link.symlink_to(packaged_binary)
+
+        result = self._run(
+            "codex",
+            "codex-packaged-binary",
+            binary=binary_link,
+            model="gpt-5.6-sol",
+            extra_env={"FAKE_VERSION_WARNING": "WARNING: temporary provider home"},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider"], "codex")
+        self.assertEqual(receipt["provider_version"], "0.2.103-test")
 
     def test_effective_grok_model_mismatch_fails_closed(self) -> None:
         result = self._run(
