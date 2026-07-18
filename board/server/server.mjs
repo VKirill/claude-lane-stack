@@ -83,6 +83,7 @@ async function serveStatic(request, response, requestPath) {
     response.writeHead(200, {
       'content-type': contentType(filePath),
       'content-length': body.length,
+      'cache-control': 'no-cache',
     });
     response.end(request.method === 'HEAD' ? '' : body);
   } catch (error) {

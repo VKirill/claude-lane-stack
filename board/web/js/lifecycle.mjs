@@ -34,12 +34,15 @@ export function runtimeFacts(runtime) {
   const report = runtime.report_complete === true
     ? 'complete'
     : runtime.report_complete === false ? 'incomplete' : '—';
+  const reportTrust = runtime.report_trusted === true
+    ? 'trusted'
+    : runtime.report_trusted === false ? `untrusted:${runtime.report_reason || 'unknown'}` : null;
   return [
     `attempt ${attempt}`,
     `pid ${process}`,
     `exit ${exit}`,
     `heartbeat ${heartbeat}`,
-    `report ${report}`,
+    `report ${report}${reportTrust ? ` (${reportTrust})` : ''}`,
     `reason ${runtime.reason || '—'}`,
     `next ${runtime.next_action || '—'}`,
   ];

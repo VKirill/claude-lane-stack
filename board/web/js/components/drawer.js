@@ -62,10 +62,11 @@ function taskContent(task) {
   content.append(section("Task fields", scalarMeta(task, ["objective", "done_when", "report", "runtime"])));
 
   if (task.runtime && typeof task.runtime === "object") {
-    content.append(section("Runtime lifecycle", scalarMeta({
+    const runtimeMeta = Object.fromEntries(Object.entries({
       lifecycle: lifecycleLabel(task.runtime.status),
       ...task.runtime,
-    })));
+    }).map(([key, value]) => [key, value ?? "—"]));
+    content.append(section("Runtime lifecycle", scalarMeta(runtimeMeta)));
   }
 
   if (task.objective) {

@@ -80,6 +80,15 @@ test('serves todo bodies, task detail reports, and review history', async () => 
     '  - board/server/**',
     'verify: tests',
   ].join('\n');
+  const taskSha256 = createHash('sha256').update(taskSource).digest('hex');
+  const promptSha256 = createHash('sha256').update('api-fixture-prompt').digest('hex');
+  const reportSource = [
+    'STATUS: complete',
+    'TASK_ID: 008',
+    `PROMPT_SHA256: ${promptSha256}`,
+    ...Array.from({ length: 61 }, (_, index) => `line ${index + 1}`),
+  ].join('\n');
+  const reportSha256 = createHash('sha256').update(reportSource).digest('hex');
   await mkdir(path.join(projectPath, '.git'), { recursive: true });
   await mkdir(path.join(runPath, 'tasks'), { recursive: true });
   await mkdir(path.join(runPath, 'controller'), { recursive: true });
@@ -90,16 +99,37 @@ test('serves todo bodies, task detail reports, and review history', async () => 
   await writeFile(path.join(runPath, 'artifacts', '008', 'state.json'), JSON.stringify({
     schema_version: 2,
     task_id: '008',
-    task_sha256: createHash('sha256').update(taskSource).digest('hex'),
+    task_sha256: taskSha256,
     status: 'awaiting_verification',
     current_attempt: 1,
   }));
-  await writeFile(path.join(runPath, 'artifacts', '008', 'attempts', '01', 'control.json'), JSON.stringify({ attempt: 1 }));
+  await writeFile(path.join(runPath, 'artifacts', '008', 'attempts', '01', 'control.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '008',
+    task_sha256: taskSha256,
+    attempt: 1,
+    prompt_sha256: promptSha256,
+  }));
+  await writeFile(path.join(runPath, 'artifacts', '008', 'attempts', '01', 'runtime.json'), JSON.stringify({
+    schema_version: 1,
+    provider: 'grok',
+    model: 'grok-4.5',
+    task_id: '008',
+    attempt: 1,
+    provider_exit_code: 0,
+    exit_code: 0,
+    protocol_valid: true,
+    protocol_error: null,
+    stop_reason: 'EndTurn',
+    sandbox: 'bubblewrap-workspace',
+    provider_sandbox: 'off',
+    permission_mode: 'bypassPermissions',
+    control_plane_read_only: true,
+    prompt_sha256: promptSha256,
+    report_sha256: reportSha256,
+  }));
   await writeFile(path.join(runPath, 'artifacts', '008', 'attempts', '01', 'lane-bg.exit'), '0\n');
-  await writeFile(path.join(runPath, 'artifacts', '008', 'report.md'), [
-    'STATUS: complete',
-    ...Array.from({ length: 61 }, (_, index) => `line ${index + 1}`),
-  ].join('\n'));
+  await writeFile(path.join(runPath, 'artifacts', '008', 'report.md'), reportSource);
   await writeFile(path.join(runPath, 'controller.json'), JSON.stringify({
     stage: 'running',
     counts: { total: 1, accepted: 0, blocked: 0, running: 1, pending: 0 },
@@ -123,6 +153,7 @@ test('serves todo bodies, task detail reports, and review history', async () => 
     const lifecycleModule = await getText(`${fixture.baseUrl}/js/lifecycle.mjs`);
     assert.equal(lifecycleModule.status, 200);
     assert.equal(lifecycleModule.headers['content-type'], 'text/javascript; charset=utf-8');
+    assert.equal(lifecycleModule.headers['cache-control'], 'no-cache');
 
     const todo = await getJson(`${fixture.baseUrl}/api/projects/${id}/todos/todo-dir`);
     assert.equal(todo.status, 200);
@@ -148,6 +179,22 @@ test('serves todo bodies, task detail reports, and review history', async () => 
       exit_code: 0,
       heartbeat_age_seconds: null,
       report_complete: true,
+      report_trusted: true,
+      report_reason: 'runtime_report_digest_valid',
+      report_sha256: reportSha256,
+      recorded_report_sha256: reportSha256,
+      provider: 'grok',
+      model: 'grok-4.5',
+      provider_exit_code: 0,
+      runtime_exit_code: 0,
+      protocol_valid: true,
+      protocol_error: null,
+      stop_reason: 'EndTurn',
+      sandbox: 'bubblewrap-workspace',
+      provider_sandbox: 'off',
+      permission_mode: 'bypassPermissions',
+      control_plane_read_only: true,
+      prompt_sha256: promptSha256,
       reason: 'provider_complete',
       next_action: 'verify',
     });

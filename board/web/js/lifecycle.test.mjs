@@ -39,6 +39,15 @@ test('runtime facts expose attempt, process, exit, heartbeat, report, and next a
     'reason provider_running',
     'next wait',
   ]);
+  assert.equal(runtimeFacts({
+    report_complete: true,
+    report_trusted: true,
+  })[4], 'report complete (trusted)');
+  assert.equal(runtimeFacts({
+    report_complete: false,
+    report_trusted: false,
+    report_reason: 'report_digest_mismatch',
+  })[4], 'report incomplete (untrusted:report_digest_mismatch)');
 });
 
 test('controller facts summarize the durable run controller', () => {

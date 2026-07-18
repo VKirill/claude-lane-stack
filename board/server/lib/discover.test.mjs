@@ -48,3 +48,18 @@ test('does not discover qualifying directories deeper than the configured limit'
 
   assert.deepEqual(projects.map((project) => project.path), [allowed]);
 });
+
+test('prunes dependency and database-volume trees during discovery', async () => {
+  const home = await fixtureDirectory();
+  const apps = path.join(home, 'apps');
+  const visible = path.join(apps, 'visible');
+  const dependencyProject = path.join(apps, 'host', 'node_modules', 'nested-project');
+  const databaseProject = path.join(apps, 'host', 'postgres_data', 'nested-project');
+  await projectAt(visible);
+  await projectAt(dependencyProject);
+  await projectAt(databaseProject);
+
+  const projects = await discoverProjects({ roots: [apps], maxDepth: 4 });
+
+  assert.deepEqual(projects.map((project) => project.path), [visible]);
+});

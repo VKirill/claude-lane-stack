@@ -25,6 +25,58 @@ async function fixtureDirectory(prefix) {
   return directory;
 }
 
+async function writeTrustedProviderReport({ artifactDirectory, taskId, taskSource, attempt = 1 }) {
+  const attemptDirectory = path.join(artifactDirectory, 'attempts', String(attempt).padStart(2, '0'));
+  const taskSha256 = createHash('sha256').update(taskSource).digest('hex');
+  const promptSha256 = createHash('sha256').update(`prompt:${taskId}:${attempt}`).digest('hex');
+  const report = [
+    'STATUS: complete',
+    `TASK_ID: ${taskId}`,
+    `PROMPT_SHA256: ${promptSha256}`,
+    '',
+  ].join('\n');
+  const reportSha256 = createHash('sha256').update(report).digest('hex');
+  await mkdir(attemptDirectory, { recursive: true });
+  await writeFile(path.join(attemptDirectory, 'control.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: taskId,
+    task_sha256: taskSha256,
+    attempt,
+    prompt_sha256: promptSha256,
+  }));
+  await writeFile(path.join(attemptDirectory, 'runtime.json'), JSON.stringify({
+    schema_version: 1,
+    provider: 'grok',
+    model: 'grok-4.5',
+    task_id: taskId,
+    attempt,
+    provider_exit_code: 0,
+    exit_code: 0,
+    protocol_valid: true,
+    stop_reason: 'EndTurn',
+    sandbox: 'bubblewrap-workspace',
+    provider_sandbox: 'off',
+    permission_mode: 'bypassPermissions',
+    control_plane_read_only: true,
+    prompt_sha256: promptSha256,
+    report_sha256: reportSha256,
+  }));
+  await writeFile(path.join(artifactDirectory, 'report.md'), report);
+  return { attemptDirectory, reportSha256, taskSha256 };
+}
+
+async function writeTrustedVerification({ attemptDirectory, taskId, taskSha256, taskFile, projectCwd, attempt = 1 }) {
+  await writeFile(path.join(attemptDirectory, 'verification.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: taskId,
+    task_sha256: taskSha256,
+    task_file: taskFile,
+    project_cwd: projectCwd,
+    attempt,
+    status: 'passed',
+  }));
+}
+
 after(async () => {
   await Promise.all(fixtures.map((directory) => rm(directory, { recursive: true, force: true })));
 });
@@ -74,18 +126,36 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
     'lane: grok',
     'verify: tests',
   ].join('\n');
-  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const taskFile = path.join(tasksDirectory, '001.yaml');
+  const projectCwd = root;
+  await writeFile(taskFile, taskSource);
   await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
+    task_sha256: createHash('sha256').update(taskSource).digest('hex'),
+    task_file: taskFile,
+    project_cwd: projectCwd,
     status: 'awaiting_verification',
-    attempt: 1,
+    current_attempt: 1,
   }));
 
   let tasks = await readTasks(tasksDirectory, 'contract-v2');
   assert.equal(tasks[0].status, 'running');
   assert.equal(tasks[0].schemaVersion, 2);
 
+  const trusted = await writeTrustedProviderReport({
+    artifactDirectory,
+    taskId: '001',
+    taskSource,
+  });
+  await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+  await writeTrustedVerification({
+    attemptDirectory: trusted.attemptDirectory,
+    taskId: '001',
+    taskSha256: trusted.taskSha256,
+    taskFile,
+    projectCwd,
+  });
   await writeFile(path.join(artifactDirectory, 'acceptance.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
@@ -93,6 +163,7 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
     attempt: 1,
     provider_exit: 0,
     report: 'complete',
+    report_sha256: trusted.reportSha256,
     owns_check: 'passed',
     verification: 'passed',
     review: 'not_required',
@@ -105,8 +176,11 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
   await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
+    task_sha256: trusted.taskSha256,
+    task_file: taskFile,
+    project_cwd: projectCwd,
     status: 'running',
-    attempt: 2,
+    current_attempt: 2,
   }));
   tasks = await readTasks(tasksDirectory, 'contract-v2');
   assert.equal(tasks[0].status, 'running');
@@ -114,8 +188,11 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
   await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
+    task_sha256: trusted.taskSha256,
+    task_file: taskFile,
+    project_cwd: projectCwd,
     status: 'awaiting_verification',
-    attempt: 1,
+    current_attempt: 1,
   }));
 
   await writeFile(path.join(artifactDirectory, 'acceptance.json'), JSON.stringify({
@@ -137,8 +214,11 @@ test('v2 task status comes from state and acceptance receipts, not mutable YAML'
   await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
+    task_sha256: trusted.taskSha256,
+    task_file: taskFile,
+    project_cwd: projectCwd,
     status: 'accepted',
-    attempt: 1,
+    current_attempt: 2,
   }));
   tasks = await readTasks(tasksDirectory, 'contract-v2');
   assert.equal(tasks[0].status, 'pending');
@@ -164,7 +244,9 @@ test('task list and detail expose the same exact read-only lifecycle evidence', 
     'lane: grok',
     'verify: tests',
   ].join('\n');
-  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const taskFile = path.join(tasksDirectory, '001.yaml');
+  const projectCwd = project;
+  await writeFile(taskFile, taskSource);
   await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
@@ -196,6 +278,22 @@ test('task list and detail expose the same exact read-only lifecycle evidence', 
     exit_code: null,
     heartbeat_age_seconds: null,
     report_complete: false,
+    report_trusted: false,
+    report_reason: 'runtime_missing',
+    report_sha256: null,
+    recorded_report_sha256: null,
+    provider: null,
+    model: null,
+    provider_exit_code: null,
+    runtime_exit_code: null,
+    protocol_valid: null,
+    protocol_error: null,
+    stop_reason: null,
+    sandbox: null,
+    provider_sandbox: null,
+    permission_mode: null,
+    control_plane_read_only: null,
+    prompt_sha256: null,
     reason: 'provider_running',
     next_action: 'wait',
   });
@@ -224,10 +322,18 @@ test('finished provider lifecycle distinguishes incomplete report and verificati
       status: stateStatus,
       current_attempt: 1,
     }));
-    await writeFile(path.join(attempt, 'control.json'), JSON.stringify({ attempt: 1 }));
+    let trusted = null;
+    if (report !== null) {
+      trusted = await writeTrustedProviderReport({
+        artifactDirectory: artifact,
+        taskId: id,
+        taskSource: source,
+      });
+    } else {
+      await writeFile(path.join(attempt, 'control.json'), JSON.stringify({ attempt: 1 }));
+    }
     await writeFile(path.join(attempt, 'lane-bg.pid'), '999999999\n');
     await writeFile(path.join(attempt, 'lane-bg.exit'), '0\n');
-    if (report !== null) await writeFile(path.join(artifact, 'report.md'), report);
     if (verification !== null) {
       await writeFile(path.join(attempt, 'verification.json'), JSON.stringify({
         schema_version: 2,
@@ -251,7 +357,7 @@ test('finished provider lifecycle distinguishes incomplete report and verificati
   assert.deepEqual(
     Object.fromEntries(Object.entries(runtimeById).map(([id, runtime]) => [id, [runtime.status, runtime.reason, runtime.next_action]])),
     {
-      '001': ['provider_incomplete', 'report_missing', 'retry'],
+      '001': ['provider_incomplete', 'runtime_missing', 'retry'],
       '002': ['awaiting_verification', 'provider_complete', 'verify'],
       '003': ['verifying', 'verification_running', 'wait'],
       '004': ['blocked', 'blocked', 'inspect'],
@@ -259,6 +365,43 @@ test('finished provider lifecycle distinguishes incomplete report and verificati
   );
   assert.equal(runtimeById['001'].exit_code, 0);
   assert.equal(runtimeById['002'].report_complete, true);
+  assert.equal(runtimeById['002'].report_trusted, true);
+});
+
+test('tampered provider report is fail-closed and exposed as untrusted', async () => {
+  const project = await fixtureDirectory('lane-board-runtime-tamper-');
+  const run = 'tampered-run';
+  const runPath = path.join(project, '.agents', 'runs', run);
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  await mkdir(tasksDirectory, { recursive: true });
+  const taskSource = ['schema_version: 2', 'id: "001"', 'title: Tampered report'].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const trusted = await writeTrustedProviderReport({ artifactDirectory, taskId: '001', taskSource });
+  await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: trusted.taskSha256,
+    status: 'awaiting_verification',
+    current_attempt: 1,
+  }));
+  await writeFile(path.join(artifactDirectory, 'report.md'), [
+    'STATUS: complete',
+    'TASK_ID: 001',
+    `PROMPT_SHA256: ${createHash('sha256').update('tampered').digest('hex')}`,
+    '',
+  ].join('\n'));
+
+  const [listed] = await readTasks(tasksDirectory, run);
+  const detail = await readTaskDetail(project, run, '001');
+
+  assert.deepEqual(detail.runtime, listed.runtime);
+  assert.equal(listed.status, 'pending');
+  assert.equal(listed.runtime.status, 'provider_incomplete');
+  assert.equal(listed.runtime.report_complete, false);
+  assert.equal(listed.runtime.report_trusted, false);
+  assert.equal(listed.runtime.report_reason, 'report_digest_mismatch');
 });
 
 test('accepted v2 task has identical done status in list and detail views', async () => {
@@ -277,13 +420,31 @@ test('accepted v2 task has identical done status in list and detail views', asyn
     'lane: grok',
     'verify: tests',
   ].join('\n');
-  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const taskFile = path.join(tasksDirectory, '001.yaml');
+  const projectCwd = project;
+  await writeFile(taskFile, taskSource);
   await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
+    task_sha256: createHash('sha256').update(taskSource).digest('hex'),
+    task_file: taskFile,
+    project_cwd: projectCwd,
     status: 'awaiting_verification',
-    attempt: 1,
+    current_attempt: 1,
   }));
+  const trusted = await writeTrustedProviderReport({
+    artifactDirectory,
+    taskId: '001',
+    taskSource,
+  });
+  await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+  await writeTrustedVerification({
+    attemptDirectory: trusted.attemptDirectory,
+    taskId: '001',
+    taskSha256: trusted.taskSha256,
+    taskFile,
+    projectCwd,
+  });
   await writeFile(path.join(artifactDirectory, 'acceptance.json'), JSON.stringify({
     schema_version: 2,
     task_id: '001',
@@ -291,6 +452,7 @@ test('accepted v2 task has identical done status in list and detail views', asyn
     attempt: 1,
     provider_exit: 0,
     report: 'complete',
+    report_sha256: trusted.reportSha256,
     owns_check: 'passed',
     verification: 'passed',
     review: 'not_required',
@@ -303,6 +465,57 @@ test('accepted v2 task has identical done status in list and detail views', asyn
 
   assert.equal(listed.status, 'done');
   assert.equal(detail.status, listed.status);
+
+  await rm(path.join(trusted.attemptDirectory, 'verification.json'));
+  const [missingVerification] = await readTasks(tasksDirectory, run);
+  assert.equal(missingVerification.status, 'running');
+  assert.equal(missingVerification.runtime.status, 'awaiting_verification');
+
+  await writeTrustedVerification({
+    attemptDirectory: trusted.attemptDirectory,
+    taskId: '001',
+    taskSha256: trusted.taskSha256,
+    taskFile,
+    projectCwd,
+  });
+  await writeFile(path.join(artifactDirectory, 'acceptance.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: trusted.taskSha256,
+    attempt: 1,
+    provider_exit: 0,
+    report: 'complete',
+    report_sha256: trusted.reportSha256,
+    owns_check: 'passed',
+    verification: 'passed',
+    review: 'passed',
+    accepted: true,
+    accepted_at: '2026-07-18T00:00:00Z',
+  }));
+  const review = {
+    schema_version: 2,
+    receipt_type: 'task_re_review',
+    task_id: '001',
+    task_sha256: trusted.taskSha256,
+    attempt: 1,
+    project_cwd: projectCwd,
+    base_ref: 'a'.repeat(40),
+    reviewed_diff_sha256: 'b'.repeat(64),
+    reviewed_tree_sha256: 'c'.repeat(64),
+    verdict: 'passed',
+    findings: [],
+    reviewed_at: '2026-07-18T00:00:00Z',
+  };
+  await writeFile(path.join(artifactDirectory, 'review.json'), JSON.stringify(review));
+  const [reviewed] = await readTasks(tasksDirectory, run);
+  assert.equal(reviewed.status, 'done');
+
+  await writeFile(path.join(artifactDirectory, 'review.json'), JSON.stringify({
+    ...review,
+    reviewed_diff_sha256: 'tampered',
+  }));
+  const [tamperedReview] = await readTasks(tasksDirectory, run);
+  assert.equal(tamperedReview.status, 'running');
 });
 
 test('parses progress headings and joins wrapped bullet text', () => {

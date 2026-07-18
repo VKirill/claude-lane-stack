@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
+const PRUNED_DIRECTORY_NAMES = new Set(['.agents', '.git', 'node_modules', 'postgres_data']);
+
 function warn(message, error) {
   console.warn(`[lane-board] ${message}${error ? `: ${error.message}` : ''}`);
 }
@@ -58,7 +60,7 @@ export async function discoverProjects({ roots, maxDepth = 3 } = {}) {
       if (depth >= maxDepth) continue;
 
       for (const entry of await readDirectories(directory)) {
-        if (!entry.isDirectory() || entry.name === '.git' || entry.name === '.agents') continue;
+        if (!entry.isDirectory() || PRUNED_DIRECTORY_NAMES.has(entry.name)) continue;
         queue.push({ directory: path.join(directory, entry.name), depth: depth + 1 });
       }
     }

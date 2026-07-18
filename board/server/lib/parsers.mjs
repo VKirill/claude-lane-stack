@@ -1,8 +1,24 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 const TASK_STATUSES = new Set(['pending', 'running', 'done', 'blocked', 'stalled']);
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+const GIT_COMMIT_HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const REVIEW_RECEIPT_FIELDS = new Set([
+  'schema_version',
+  'receipt_type',
+  'task_id',
+  'task_sha256',
+  'attempt',
+  'project_cwd',
+  'base_ref',
+  'reviewed_diff_sha256',
+  'reviewed_tree_sha256',
+  'verdict',
+  'findings',
+  'reviewed_at',
+]);
 
 function warn(message, error) {
   console.warn(`[lane-board] ${message}${error ? `: ${error.message}` : ''}`);
@@ -90,14 +106,85 @@ async function pidAlive(pid, expectedStart) {
   }
 }
 
-async function reportEvidence(filePath) {
+async function readRegularFile(filePath) {
   try {
-    const match = (await readFile(filePath, 'utf8')).match(/^\s*STATUS\s*:\s*([A-Za-z_-]+)\b/im);
-    return { exists: true, complete: match?.[1]?.toLowerCase() === 'complete' };
+    const info = await lstat(filePath);
+    if (!info.isFile()) return null;
+    return await readFile(filePath, 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
-    return { exists: false, complete: false };
+    return null;
   }
+}
+
+async function readRegularJson(filePath) {
+  const source = await readRegularFile(filePath);
+  if (source === null) return null;
+  try {
+    const value = JSON.parse(source);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function trustedProviderReport({ artifactPath, attemptPath, state, taskId, attempt }) {
+  if (!Number.isInteger(attempt) || attempt < 1 || !attemptPath) {
+    return { trusted: false, complete: false, reason: 'attempt_invalid', sha256: null, runtime: null };
+  }
+  const runtime = await readRegularJson(path.join(attemptPath, 'runtime.json'));
+  if (!runtime) return { trusted: false, complete: false, reason: 'runtime_missing', sha256: null, runtime: null };
+  const control = await readRegularJson(path.join(attemptPath, 'control.json'));
+  if (!control) return { trusted: false, complete: false, reason: 'control_missing', sha256: null, runtime };
+
+  const promptSha256 = control.prompt_sha256;
+  const controlIdentityValid = control.task_id === taskId
+    && control.attempt === attempt
+    && control.task_sha256 === state.task_sha256;
+  const runtimeIdentityValid = controlIdentityValid
+    && runtime.schema_version === 1
+    && runtime.provider === 'grok'
+    && runtime.task_id === taskId
+    && runtime.attempt === attempt
+    && runtime.provider_exit_code === 0
+    && runtime.exit_code === 0
+    && runtime.protocol_valid === true
+    && runtime.stop_reason === 'EndTurn'
+    && runtime.sandbox === 'bubblewrap-workspace'
+    && runtime.provider_sandbox === 'off'
+    && runtime.permission_mode === 'bypassPermissions'
+    && runtime.control_plane_read_only === true
+    && typeof promptSha256 === 'string'
+    && SHA256_HEX.test(promptSha256)
+    && runtime.prompt_sha256 === promptSha256;
+  if (!runtimeIdentityValid) {
+    return { trusted: false, complete: false, reason: 'runtime_identity_mismatch', sha256: null, runtime };
+  }
+
+  const recordedSha256 = runtime.report_sha256;
+  if (typeof recordedSha256 !== 'string' || !SHA256_HEX.test(recordedSha256)) {
+    return { trusted: false, complete: false, reason: 'runtime_report_digest_missing', sha256: null, runtime };
+  }
+  const report = await readRegularFile(path.join(artifactPath, 'report.md'));
+  if (report === null) return { trusted: false, complete: false, reason: 'report_missing', sha256: null, runtime };
+  const actualSha256 = createHash('sha256').update(report).digest('hex');
+  if (actualSha256 !== recordedSha256) {
+    return { trusted: false, complete: false, reason: 'report_digest_mismatch', sha256: null, runtime };
+  }
+  const taskMatches = [...report.matchAll(/^TASK_ID:\s*(\S+)\s*$/gm)].map((match) => match[1]);
+  const promptMatches = [...report.matchAll(/^PROMPT_SHA256:\s*([0-9a-f]{64})\s*$/gm)].map((match) => match[1]);
+  if (taskMatches.length !== 1 || taskMatches[0] !== taskId
+    || promptMatches.length !== 1 || promptMatches[0] !== promptSha256) {
+    return { trusted: false, complete: false, reason: 'report_identity_mismatch', sha256: null, runtime };
+  }
+  const status = report.match(/^\s*STATUS\s*:\s*([A-Za-z_-]+)\b/im)?.[1]?.toLowerCase() ?? null;
+  return {
+    trusted: true,
+    complete: status === 'complete',
+    reason: 'runtime_report_digest_valid',
+    sha256: actualSha256,
+    runtime,
+  };
 }
 
 function stateLifecycle(status) {
@@ -136,28 +223,37 @@ function trustedVerification(verification, state, taskId, attempt) {
     && verification.attempt === attempt;
 }
 
+function trustedReview(review, state, taskId, attempt) {
+  if (!review || Object.keys(review).length !== REVIEW_RECEIPT_FIELDS.size
+    || Object.keys(review).some((field) => !REVIEW_RECEIPT_FIELDS.has(field))) return false;
+  const reviewedAt = review.reviewed_at;
+  return review.schema_version === 2
+    && review.receipt_type === 'task_re_review'
+    && review.task_id === taskId
+    && review.task_sha256 === state.task_sha256
+    && review.attempt === attempt
+    && typeof state.project_cwd === 'string'
+    && review.project_cwd === state.project_cwd
+    && typeof review.base_ref === 'string'
+    && GIT_COMMIT_HEX.test(review.base_ref)
+    && typeof review.reviewed_diff_sha256 === 'string'
+    && SHA256_HEX.test(review.reviewed_diff_sha256)
+    && typeof review.reviewed_tree_sha256 === 'string'
+    && SHA256_HEX.test(review.reviewed_tree_sha256)
+    && review.verdict === 'passed'
+    && Array.isArray(review.findings)
+    && review.findings.length === 0
+    && typeof reviewedAt === 'string'
+    && /(?:Z|[+-]\d{2}:\d{2})$/.test(reviewedAt)
+    && Number.isFinite(Date.parse(reviewedAt));
+}
+
 async function readTaskRuntime(runPath, taskId, taskSha256) {
   if (!safePathSegment(taskId)) return null;
   const artifactPath = path.join(runPath, 'artifacts', taskId);
   const acceptance = await readJsonObject(path.join(artifactPath, 'acceptance.json'));
   const state = await readJsonObject(path.join(artifactPath, 'state.json'));
   const currentAttempt = state?.current_attempt ?? state?.attempt;
-  const accepted = (
-    acceptance?.schema_version === 2
-    && acceptance?.task_id === taskId
-    && acceptance?.task_sha256 === taskSha256
-    && Number.isInteger(acceptance?.attempt)
-    && acceptance.attempt > 0
-    && acceptance.attempt === currentAttempt
-    && acceptance?.provider_exit === 0
-    && acceptance?.report === 'complete'
-    && acceptance?.owns_check === 'passed'
-    && acceptance?.verification === 'passed'
-    && ['passed', 'not_required'].includes(acceptance?.review)
-    && acceptance?.accepted === true
-    && typeof acceptance?.accepted_at === 'string'
-    && acceptance.accepted_at.length > 0
-  );
   if (!state) return null;
 
   const attempt = Number.isInteger(currentAttempt) && currentAttempt > 0 && currentAttempt < 100
@@ -169,9 +265,38 @@ async function readTaskRuntime(runPath, taskId, taskSha256) {
   const exitCode = attemptPath ? await readInteger(path.join(attemptPath, 'lane-bg.exit')) : null;
   const running = await pidAlive(pid, control?.pid_start_time);
   const heartbeatAge = await fileAgeSeconds(path.join(artifactPath, 'heartbeat.json'));
-  const report = await reportEvidence(path.join(artifactPath, 'report.md'));
+  const report = await trustedProviderReport({ artifactPath, attemptPath, state, taskId, attempt });
   const verification = attemptPath ? await readJsonObject(path.join(attemptPath, 'verification.json')) : null;
   const verificationTrusted = trustedVerification(verification, state, taskId, attempt);
+  const review = await readJsonObject(path.join(artifactPath, 'review.json'));
+  const reviewTrusted = trustedReview(review, state, taskId, attempt);
+  const acceptedReview = acceptance?.review;
+  const reviewBindingTrusted = acceptedReview === 'not_required'
+    || (acceptedReview === 'passed' && reviewTrusted);
+  const accepted = (
+    state.task_id === taskId
+    && state.task_sha256 === taskSha256
+    && report.trusted
+    && report.complete
+    && verificationTrusted
+    && verification?.status === 'passed'
+    && reviewBindingTrusted
+    && acceptance?.schema_version === 2
+    && acceptance?.task_id === taskId
+    && acceptance?.task_sha256 === taskSha256
+    && Number.isInteger(acceptance?.attempt)
+    && acceptance.attempt > 0
+    && acceptance.attempt === currentAttempt
+    && acceptance?.provider_exit === 0
+    && acceptance?.report === 'complete'
+    && acceptance?.report_sha256 === report.sha256
+    && acceptance?.owns_check === 'passed'
+    && acceptance?.verification === 'passed'
+    && ['passed', 'not_required'].includes(acceptance?.review)
+    && acceptance?.accepted === true
+    && typeof acceptance?.accepted_at === 'string'
+    && acceptance.accepted_at.length > 0
+  );
 
   let lifecycle;
   if (accepted) lifecycle = { status: 'accepted', reason: 'acceptance_valid', next_action: 'none' };
@@ -182,7 +307,7 @@ async function readTaskRuntime(runPath, taskId, taskSha256) {
   else if (exitCode === 0 && !report.complete) {
     lifecycle = {
       status: 'provider_incomplete',
-      reason: report.exists ? 'report_incomplete' : 'report_missing',
+      reason: report.trusted ? 'report_incomplete' : report.reason,
       next_action: 'retry',
     };
   } else if (exitCode === 0 && verificationTrusted && verification.status === 'passed') {
@@ -207,6 +332,22 @@ async function readTaskRuntime(runPath, taskId, taskSha256) {
     exit_code: exitCode,
     heartbeat_age_seconds: heartbeatAge,
     report_complete: report.complete,
+    report_trusted: report.trusted,
+    report_reason: report.reason,
+    report_sha256: report.sha256,
+    recorded_report_sha256: report.runtime?.report_sha256 ?? null,
+    provider: report.runtime?.provider ?? null,
+    model: report.runtime?.model ?? null,
+    provider_exit_code: report.runtime?.provider_exit_code ?? null,
+    runtime_exit_code: report.runtime?.exit_code ?? null,
+    protocol_valid: report.runtime?.protocol_valid ?? null,
+    protocol_error: report.runtime?.protocol_error ?? null,
+    stop_reason: report.runtime?.stop_reason ?? null,
+    sandbox: report.runtime?.sandbox ?? null,
+    provider_sandbox: report.runtime?.provider_sandbox ?? null,
+    permission_mode: report.runtime?.permission_mode ?? null,
+    control_plane_read_only: report.runtime?.control_plane_read_only ?? null,
+    prompt_sha256: report.runtime?.prompt_sha256 ?? null,
     reason: lifecycle.reason,
     next_action: lifecycle.next_action,
   };

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.5.2 — 2026-07-18
+
+### Fixed
+- **Lane Board cards stay inside their columns:** task cards can shrink around
+  long runtime details without covering neighbouring lanes at desktop or
+  tablet widths.
+- **The dashboard mirrors fail-closed acceptance:** task details validate the
+  current attempt, runtime identity, terminal protocol, sandbox contract, and
+  prompt/report digests before presenting a provider report as complete.
+- **Project discovery skips non-project data trees:** recursive scanning prunes
+  `.agents`, `.git`, `node_modules`, and `postgres_data`, eliminating repeated
+  permission errors and needless CPU/memory use on broad application roots.
+- **Board assets refresh predictably:** static JavaScript and CSS use
+  `Cache-Control: no-cache`, so a normal reload picks up a new release.
+
 ## 1.5.1 — 2026-07-18
 
 ### Fixed
