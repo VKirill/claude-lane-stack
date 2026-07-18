@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -26,20 +27,26 @@ class LaneSessionTest(unittest.TestCase):
         self.run_dir.mkdir(parents=True)
         self.cwd = self.root / "worktree"
         self.cwd.mkdir()
-        self.args_log = self.root / "provider-args.jsonl"
-        self.conversations = self.root / "conversations"
+        self.fake_home = self.root / "home"
+        self.grok_home = self.fake_home / ".grok"
+        self.grok_home.mkdir(parents=True)
+        self.args_log = self.grok_home / "provider-args.jsonl"
+        self.conversations = self.grok_home / "conversations"
         self.conversations.mkdir()
-        self.fake_provider = self.root / "fake-provider"
+        self.fake_provider = self.grok_home / "fake-provider"
         self.fake_provider.write_text(
             textwrap.dedent(
                 """\
                 #!/usr/bin/env python3
                 import json
+                import hashlib
                 import os
                 import subprocess
                 import sys
                 import time
                 import uuid
+                import re
+                import socket
                 from pathlib import Path
 
                 args = sys.argv[1:]
@@ -62,6 +69,29 @@ class LaneSessionTest(unittest.TestCase):
                                 os.environ.get("GROK_CLAUDE_HOOKS_ENABLED", "<unset>"),
                                 os.environ.get("CLAUDE_LANE_AUTOMATION", "<unset>"),
                             )
+                        ),
+                        encoding="utf-8",
+                    )
+                if os.environ.get("FAKE_SOCKET_PROBE"):
+                    probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    try:
+                        probe.connect(os.environ["FAKE_SOCKET_PROBE"])
+                        socket_connect = "allowed"
+                    except OSError:
+                        socket_connect = "denied"
+                    finally:
+                        probe.close()
+                    Path(os.environ["FAKE_ENV_SCRUB_LOG"]).write_text(
+                        json.dumps(
+                            {
+                                "socket_connect": socket_connect,
+                                "host_tmp_visible": Path(
+                                    os.environ["FAKE_HOST_TMP_PROBE"]
+                                ).exists(),
+                                "docker_host": os.environ.get("DOCKER_HOST"),
+                                "ssh_auth_sock": os.environ.get("SSH_AUTH_SOCK"),
+                                "dbus": os.environ.get("DBUS_SESSION_BUS_ADDRESS"),
+                            }
                         ),
                         encoding="utf-8",
                     )
@@ -106,12 +136,67 @@ class LaneSessionTest(unittest.TestCase):
                     session_flag = "--session-id" if "--session-id" in args else "--resume"
                     session_id = args[args.index(session_flag) + 1]
                     model = args[args.index("--model") + 1]
+                    rules = args[args.index("--rules") + 1]
+                    task_id = re.search(r"task_id=([^;]+)", rules).group(1)
+                    prompt_path = Path(args[args.index("--prompt-file") + 1])
+                    prompt_sha256 = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
                     if mode == "malformed":
                         print("not-json", flush=True)
                     else:
                         text_size = int(os.environ.get("FAKE_TEXT_SIZE", "0"))
                         text_data = "x" * text_size if text_size else "provider complete"
-                        emit({"type": "text", "data": text_data})
+                        report_mode = os.environ.get("FAKE_REPORT_MODE", "complete")
+                        if os.environ.get("FAKE_CONTROL_PROBE"):
+                            try:
+                                Path(os.environ["FAKE_CONTROL_PROBE"]).write_text(
+                                    "provider forged control state\\n", encoding="utf-8"
+                                )
+                                control_write = "allowed"
+                            except OSError:
+                                control_write = "denied"
+                            Path.cwd().joinpath("provider-write-proof.txt").write_text(
+                                "source write allowed\\n", encoding="utf-8"
+                            )
+                            proc_probe = (
+                                Path("/proc")
+                                / str(os.getppid())
+                                / "root"
+                                / str(Path(os.environ["FAKE_CONTROL_PROBE"])).lstrip("/")
+                            )
+                            try:
+                                proc_probe.write_text(
+                                    "provider forged through proc\\n", encoding="utf-8"
+                                )
+                                proc_write = "allowed"
+                            except OSError:
+                                proc_write = "denied"
+                        else:
+                            control_write = "not-requested"
+                            proc_write = "not-requested"
+                        if report_mode != "missing":
+                            report_task = os.environ.get("FAKE_REPORT_TASK_ID", task_id)
+                            report_prompt = os.environ.get(
+                                "FAKE_REPORT_PROMPT_SHA256", prompt_sha256
+                            )
+                            report_block = (
+                                "\\n<<<LANE_REPORT:BEGIN>>>\\n"
+                                f"TASK_ID: {report_task}\\n"
+                                f"PROMPT_SHA256: {report_prompt}\\n"
+                                f"STATUS: {report_mode}\\n"
+                                f"CONTROL_PLANE_WRITE: {control_write}\\n"
+                                f"PROC_CONTROL_WRITE: {proc_write}\\n"
+                                "SUMMARY: fake provider report\\n"
+                                "<<<LANE_REPORT:END>>>\\n"
+                            )
+                            text_data += report_block
+                            if os.environ.get("FAKE_DUPLICATE_REPORT"):
+                                text_data += report_block
+                        if os.environ.get("FAKE_SPLIT_REPORT"):
+                            split_at = text_data.index("<<<LANE_REPORT:BEGIN>>>") + 8
+                            emit({"type": "text", "data": text_data[:split_at]})
+                            emit({"type": "text", "data": text_data[split_at:]})
+                        else:
+                            emit({"type": "text", "data": text_data})
                         if exit_code != 0 or mode == "error":
                             emit({"type": "error", "message": "provider failed"})
                         elif mode != "missing-end":
@@ -165,12 +250,13 @@ class LaneSessionTest(unittest.TestCase):
         binary: Path | None = None,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
-        prompt = self.root / f"task-{task_id}.md"
+        prompt = self.cwd / f"task-{task_id}.md"
         prompt.write_text(f"Implement task {task_id}\n", encoding="utf-8")
         output = self.root / f"task-{task_id}.log"
         env = os.environ.copy()
         env.update(
             {
+                "HOME": str(self.fake_home),
                 "FAKE_ARGS_LOG": str(self.args_log),
                 "FAKE_PROVIDER_KIND": provider,
                 "FAKE_SLEEP": str(
@@ -261,7 +347,10 @@ class LaneSessionTest(unittest.TestCase):
         first, second, third = self._calls()
         self.assertIn("--no-auto-update", first)
         self.assertIn("--no-subagents", first)
-        self.assertEqual(first[first.index("--sandbox") + 1], "workspace")
+        self.assertEqual(
+            first[first.index("--permission-mode") + 1], "bypassPermissions"
+        )
+        self.assertEqual(first[first.index("--sandbox") + 1], "off")
         self.assertEqual(first[first.index("--output-format") + 1], "streaming-json")
         rules = first[first.index("--rules") + 1]
         self.assertIn("task_id=001", rules)
@@ -285,13 +374,14 @@ class LaneSessionTest(unittest.TestCase):
 
 
     def test_parallel_tasks_use_distinct_pool_sessions(self) -> None:
-        prompt1 = self.root / "parallel-001.md"
-        prompt2 = self.root / "parallel-002.md"
+        prompt1 = self.cwd / "parallel-001.md"
+        prompt2 = self.cwd / "parallel-002.md"
         prompt1.write_text("Task 001\n", encoding="utf-8")
         prompt2.write_text("Task 002\n", encoding="utf-8")
         env = os.environ.copy()
         env.update(
             {
+                "HOME": str(self.fake_home),
                 "FAKE_ARGS_LOG": str(self.args_log),
                 "FAKE_PROVIDER_KIND": "grok",
                 "FAKE_SLEEP": "0.6",
@@ -370,7 +460,7 @@ class LaneSessionTest(unittest.TestCase):
 
         active = self._state()["sessions"]["grok:grok:0"]
         self.assertNotEqual(active["session_id"], first_id)
-        self.assertEqual(active["sandbox"], "workspace")
+        self.assertEqual(active["sandbox"], "bubblewrap-workspace")
         self.assertEqual(self._state()["history"][0]["rotation_reason"], "sandbox_changed")
 
     def test_two_runs_in_same_worktree_never_resume_each_others_session(self) -> None:
@@ -411,8 +501,163 @@ class LaneSessionTest(unittest.TestCase):
         result = self._run("grok", "001")
         self.assertIn("provider complete", result.stdout)
 
+    def test_runtime_materializes_report_from_provider_response(self) -> None:
+        result = self._run(
+            "grok", "report-001", extra_env={"FAKE_SPLIT_REPORT": "1"}
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = self.run_dir / "artifacts" / "report-001" / "report.md"
+        self.assertTrue(report.is_file())
+        self.assertIn("TASK_ID: report-001", report.read_text(encoding="utf-8"))
+        self.assertNotIn("<<<LANE_REPORT", report.read_text(encoding="utf-8"))
+
+    def test_missing_or_wrong_task_report_fails_closed(self) -> None:
+        missing = self._run(
+            "grok",
+            "missing-report",
+            extra_env={"FAKE_REPORT_MODE": "missing"},
+            check=False,
+        )
+        self.assertEqual(missing.returncode, 65, missing.stderr)
+        missing_receipt = json.loads(
+            (self.root / "runtime.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(missing_receipt["protocol_error"], "lane report is missing")
+
+        wrong = self._run(
+            "grok",
+            "wrong-report",
+            extra_env={"FAKE_REPORT_TASK_ID": "some-other-task"},
+            check=False,
+        )
+        self.assertEqual(wrong.returncode, 65, wrong.stderr)
+        wrong_receipt = json.loads(
+            (self.root / "runtime.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(wrong_receipt["protocol_error"], "lane report task_id mismatch")
+
+    def test_duplicate_or_wrong_prompt_report_fails_closed(self) -> None:
+        duplicate = self._run(
+            "grok",
+            "duplicate-report",
+            extra_env={"FAKE_DUPLICATE_REPORT": "1"},
+            check=False,
+        )
+        self.assertEqual(duplicate.returncode, 65, duplicate.stderr)
+        duplicate_receipt = json.loads(
+            (self.root / "runtime.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            duplicate_receipt["protocol_error"],
+            "lane report envelope must appear exactly once",
+        )
+
+        wrong_prompt = self._run(
+            "grok",
+            "wrong-prompt-report",
+            extra_env={"FAKE_REPORT_PROMPT_SHA256": "0" * 64},
+            check=False,
+        )
+        self.assertEqual(wrong_prompt.returncode, 65, wrong_prompt.stderr)
+        prompt_receipt = json.loads(
+            (self.root / "runtime.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            prompt_receipt["protocol_error"], "lane report prompt_sha256 mismatch"
+        )
+
+    def test_cancelled_provider_does_not_materialize_complete_report(self) -> None:
+        result = self._run(
+            "grok",
+            "cancelled-report",
+            extra_env={"FAKE_STOP_REASON": "Cancelled"},
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 65, result.stderr)
+        self.assertFalse(
+            (self.run_dir / "artifacts" / "cancelled-report" / "report.md").exists()
+        )
+
+    def test_symlinked_report_target_is_rejected(self) -> None:
+        outside = self.root / "outside-report.md"
+        outside.write_text("preserve me\n", encoding="utf-8")
+        report_dir = self.run_dir / "artifacts" / "symlink-report"
+        report_dir.mkdir(parents=True)
+        (report_dir / "report.md").symlink_to(outside)
+
+        result = self._run("grok", "symlink-report", check=False)
+
+        self.assertEqual(result.returncode, 65, result.stderr)
+        self.assertEqual(outside.read_text(encoding="utf-8"), "preserve me\n")
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertIn("refusing symlinked lane report path", receipt["protocol_error"])
+
+    def test_symlinked_report_ancestor_is_rejected(self) -> None:
+        outside = self.root / "outside-artifacts"
+        outside.mkdir()
+        (self.run_dir / "artifacts").symlink_to(outside, target_is_directory=True)
+
+        result = self._run("grok", "ancestor-symlink", check=False)
+
+        self.assertEqual(result.returncode, 65, result.stderr)
+        self.assertFalse((outside / "ancestor-symlink" / "report.md").exists())
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertIn("refusing symlinked lane report path", receipt["protocol_error"])
+
+    def test_provider_can_write_source_but_cannot_write_run_control_plane(self) -> None:
+        forged = self.run_dir / "provider-forged.json"
+        result = self._run(
+            "grok",
+            "boundary-001",
+            extra_env={"FAKE_CONTROL_PROBE": str(forged)},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(forged.exists())
+        self.assertEqual(
+            (self.cwd / "provider-write-proof.txt").read_text(encoding="utf-8"),
+            "source write allowed\n",
+        )
+        report = self.run_dir / "artifacts" / "boundary-001" / "report.md"
+        report_text = report.read_text(encoding="utf-8")
+        self.assertIn("CONTROL_PLANE_WRITE: denied", report_text)
+        self.assertIn("PROC_CONTROL_WRITE: denied", report_text)
+
+    def test_provider_cannot_reach_host_socket_tmp_or_unsafe_environment(self) -> None:
+        socket_path = self.grok_home / "host-control.sock"
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(str(socket_path))
+        server.listen(1)
+        self.addCleanup(server.close)
+        host_tmp = self.root / "host-tmp-secret"
+        host_tmp.write_text("host only\n", encoding="utf-8")
+        scrub_log = self.grok_home / "sandbox-boundary.json"
+
+        result = self._run(
+            "grok",
+            "socket-boundary",
+            extra_env={
+                "FAKE_SOCKET_PROBE": str(socket_path),
+                "FAKE_HOST_TMP_PROBE": str(host_tmp),
+                "FAKE_ENV_SCRUB_LOG": str(scrub_log),
+                "DOCKER_HOST": "unix:///var/run/docker.sock",
+                "SSH_AUTH_SOCK": str(socket_path),
+                "DBUS_SESSION_BUS_ADDRESS": f"unix:path={socket_path}",
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        boundary = json.loads(scrub_log.read_text(encoding="utf-8"))
+        self.assertEqual(boundary["socket_connect"], "denied")
+        self.assertFalse(boundary["host_tmp_visible"])
+        self.assertIsNone(boundary["docker_host"])
+        self.assertIsNone(boundary["ssh_auth_sock"])
+        self.assertIsNone(boundary["dbus"])
+
     def test_grok_writer_disables_claude_compat_hooks(self) -> None:
-        env_log = self.root / "provider-env.txt"
+        env_log = self.grok_home / "provider-env.txt"
 
         result = self._run(
             "grok",
@@ -433,7 +678,8 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["provider_version"], "0.2.103-test")
         self.assertEqual(receipt["model"], "test-model")
         self.assertEqual(receipt["reasoning_effort"], "high")
-        self.assertEqual(receipt["sandbox"], "workspace")
+        self.assertEqual(receipt["sandbox"], "bubblewrap-workspace")
+        self.assertEqual(receipt["provider_sandbox"], "off")
         self.assertFalse(receipt["subagents_enabled"])
         self.assertEqual(receipt["session_id"], self._state()["sessions"]["grok:grok:0"]["session_id"])
         self.assertEqual(receipt["provider_exit_code"], 0)
@@ -539,7 +785,7 @@ class LaneSessionTest(unittest.TestCase):
         self.assertNotIn("sensitive detail", diagnostic)
 
     def test_launch_exception_writes_sanitized_failure_receipt(self) -> None:
-        broken_provider = self.root / "broken-provider-secret-token"
+        broken_provider = self.grok_home / "broken-provider-secret-token"
         broken_provider.write_text("not an executable format\n", encoding="utf-8")
         broken_provider.chmod(0o755)
 
@@ -550,17 +796,17 @@ class LaneSessionTest(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.returncode, 127)
         active = self._state()["sessions"]["grok:grok:0"]
         self.assertTrue(active["invalid"])
-        self.assertEqual(active["invalid_reason"], "provider_exit_125")
+        self.assertEqual(active["invalid_reason"], "provider_exit_127")
         receipt_path = self.root / "runtime.json"
         self.assertTrue(receipt_path.is_file())
         receipt_source = receipt_path.read_text(encoding="utf-8")
         receipt = json.loads(receipt_source)
-        self.assertEqual(receipt["provider_exit_code"], 125)
-        self.assertEqual(receipt["exit_code"], 125)
-        self.assertEqual(receipt["failure_class"], "OSError")
+        self.assertEqual(receipt["provider_exit_code"], 127)
+        self.assertEqual(receipt["exit_code"], 127)
+        self.assertNotIn("failure_class", receipt)
         self.assertFalse(receipt["protocol_valid"])
         self.assertNotIn("failure_message", receipt)
         self.assertNotIn("secret-token", receipt_source)
@@ -593,13 +839,14 @@ class LaneSessionTest(unittest.TestCase):
 
 
     def test_sigterm_stops_provider_and_invalidates_session(self) -> None:
-        prompt = self.root / "signal-task.md"
+        prompt = self.cwd / "signal-task.md"
         prompt.write_text("Wait for termination\n", encoding="utf-8")
-        provider_pid = self.root / "provider.pid"
-        child_pid_file = self.root / "provider-child.pid"
+        provider_pid = self.grok_home / "provider.pid"
+        child_pid_file = self.grok_home / "provider-child.pid"
         env = os.environ.copy()
         env.update(
             {
+                "HOME": str(self.fake_home),
                 "FAKE_ARGS_LOG": str(self.args_log),
                 "FAKE_PROVIDER_KIND": "grok",
                 "FAKE_SLEEP": "30",
@@ -640,15 +887,28 @@ class LaneSessionTest(unittest.TestCase):
         while not child_pid_file.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         self.assertTrue(child_pid_file.exists())
-        provider_process_pid = int(provider_pid.read_text())
-        tool_child_pid = int(child_pid_file.read_text())
+        ps_output = subprocess.run(
+            ["ps", "-eo", "pid=,ppid="],
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout
+        children: dict[int, list[int]] = {}
+        for raw_line in ps_output.splitlines():
+            pid_text, parent_text = raw_line.split()
+            children.setdefault(int(parent_text), []).append(int(pid_text))
+        descendants: list[int] = []
+        pending = [manager.pid]
+        while pending:
+            parent = pending.pop()
+            direct = children.get(parent, [])
+            descendants.extend(direct)
+            pending.extend(direct)
+        self.assertGreaterEqual(len(descendants), 2)
 
         os.kill(manager.pid, signal.SIGTERM)
         self.assertEqual(manager.wait(timeout=5), 143)
-        for pid, label in (
-            (provider_process_pid, "provider"),
-            (tool_child_pid, "provider tool child"),
-        ):
+        for pid in descendants:
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 try:
@@ -657,18 +917,19 @@ class LaneSessionTest(unittest.TestCase):
                     break
                 time.sleep(0.05)
             else:
-                self.fail(f"{label} survived lane-session SIGTERM")
+                self.fail(f"provider descendant {pid} survived lane-session SIGTERM")
 
         active = self._state()["sessions"]["grok:grok:0"]
         self.assertTrue(active["invalid"])
         self.assertEqual(active["invalid_reason"], "provider_exit_143")
 
     def test_lane_exec_observes_streamed_provider_activity(self) -> None:
-        prompt = self.root / "long-task.md"
+        prompt = self.cwd / "long-task.md"
         prompt.write_text("Stay active\n", encoding="utf-8")
         env = os.environ.copy()
         env.update(
             {
+                "HOME": str(self.fake_home),
                 "FAKE_ARGS_LOG": str(self.args_log),
                 "FAKE_PROVIDER_KIND": "grok",
                 "FAKE_SLEEP": "6",

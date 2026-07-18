@@ -535,6 +535,86 @@ def v2_review_receipt_identity_trusted(
     return True
 
 
+def trusted_provider_report(
+    artifact: Path,
+    state: dict,
+    task_id: str,
+    control: dict | None = None,
+) -> dict:
+    attempt = state.get("current_attempt", state.get("attempt"))
+    if not isinstance(attempt, int) or attempt < 1:
+        return {"trusted": False, "reason": "attempt_invalid"}
+    attempt_dir = current_attempt_dir(artifact, state)
+    runtime_path = safe_child_file(attempt_dir, "runtime.json")
+    if runtime_path.is_symlink() or not runtime_path.is_file():
+        return {"trusted": False, "reason": "runtime_missing"}
+    runtime = read_optional_json(runtime_path)
+    if runtime is None:
+        return {"trusted": False, "reason": "runtime_missing"}
+    control_path = safe_child_file(attempt_dir, "control.json")
+    if control_path.is_symlink() or not control_path.is_file():
+        return {"trusted": False, "reason": "control_missing"}
+    expected_control = control or read_optional_json(control_path)
+    if expected_control is None:
+        return {"trusted": False, "reason": "control_missing"}
+    prompt_sha256 = expected_control.get("prompt_sha256")
+    control_identity_valid = (
+        expected_control.get("task_id") == task_id
+        and expected_control.get("attempt") == attempt
+        and expected_control.get("task_sha256") == state.get("task_sha256")
+    )
+    required_runtime = (
+        control_identity_valid
+        and runtime.get("schema_version") == 1
+        and runtime.get("provider") == "grok"
+        and runtime.get("task_id") == task_id
+        and runtime.get("attempt") == attempt
+        and runtime.get("provider_exit_code") == 0
+        and runtime.get("exit_code") == 0
+        and runtime.get("protocol_valid") is True
+        and runtime.get("stop_reason") == "EndTurn"
+        and runtime.get("sandbox") == "bubblewrap-workspace"
+        and runtime.get("provider_sandbox") == "off"
+        and runtime.get("permission_mode") == "bypassPermissions"
+        and runtime.get("control_plane_read_only") is True
+        and isinstance(prompt_sha256, str)
+        and SHA256_HEX.fullmatch(prompt_sha256) is not None
+        and runtime.get("prompt_sha256") == prompt_sha256
+    )
+    if not required_runtime:
+        return {"trusted": False, "reason": "runtime_identity_mismatch"}
+    recorded_sha256 = runtime.get("report_sha256")
+    if not isinstance(recorded_sha256, str) or not SHA256_HEX.fullmatch(
+        recorded_sha256
+    ):
+        return {"trusted": False, "reason": "runtime_report_digest_missing"}
+    report_path = safe_child_file(artifact, "report.md")
+    if report_path.is_symlink() or not report_path.is_file():
+        return {"trusted": False, "reason": "report_missing"}
+    try:
+        report_bytes = report_path.read_bytes()
+        report_text = report_bytes.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {"trusted": False, "reason": "report_unreadable"}
+    actual_sha256 = hashlib.sha256(report_bytes).hexdigest()
+    if actual_sha256 != recorded_sha256:
+        return {"trusted": False, "reason": "report_digest_mismatch"}
+    task_matches = re.findall(r"(?m)^TASK_ID:\s*(\S+)\s*$", report_text)
+    prompt_matches = re.findall(
+        r"(?m)^PROMPT_SHA256:\s*([0-9a-f]{64})\s*$", report_text
+    )
+    if task_matches != [task_id] or prompt_matches != [prompt_sha256]:
+        return {"trusted": False, "reason": "report_identity_mismatch"}
+    report_status = markdown_field(report_path, ("STATUS",))
+    return {
+        "trusted": True,
+        "reason": "runtime_report_digest_valid",
+        "sha256": actual_sha256,
+        "status": report_status,
+        "runtime": runtime,
+    }
+
+
 def task_status_v2(
     run_dir: Path,
     task_id: str,
@@ -564,8 +644,13 @@ def task_status_v2(
         "value": heartbeat_value,
     }
     report_path = safe_child_file(artifact, "report.md")
-    report_status = markdown_field(report_path, ("STATUS",))
-    report_complete = report_status == "complete"
+    report_evidence = trusted_provider_report(
+        artifact, state, task_id, control=control
+    )
+    report_status = report_evidence.get("status")
+    report_complete = bool(
+        report_evidence.get("trusted") and report_status == "complete"
+    )
     verification_path = safe_child_file(attempt_dir, "verification.json")
     verification = read_optional_json(verification_path)
     verification_trusted = v2_verification_receipt_trusted(
@@ -594,6 +679,7 @@ def task_status_v2(
         == state.get("current_attempt", state.get("attempt"))
         and acceptance.get("provider_exit") == 0
         and acceptance.get("report") == "complete"
+        and acceptance.get("report_sha256") == report_evidence.get("sha256")
         and acceptance.get("owns_check") == "passed"
         and acceptance.get("verification") == "passed"
         and acceptance.get("review") in {"passed", "not_required"}
@@ -621,7 +707,11 @@ def task_status_v2(
     elif exit_code == 0:
         if not report_complete:
             status = "provider_incomplete"
-            reason = "report_incomplete" if report_path.is_file() else "report_missing"
+            reason = (
+                "report_incomplete"
+                if report_evidence.get("trusted")
+                else str(report_evidence.get("reason", "report_untrusted"))
+            )
             next_action = "retry"
         elif verification_trusted and verification.get("status") == "passed":
             status = "verified"
@@ -678,6 +768,9 @@ def task_status_v2(
         "report": {
             "exists": report_path.is_file(),
             "complete": report_complete,
+            "trusted": bool(report_evidence.get("trusted")),
+            "reason": report_evidence.get("reason"),
+            "sha256": report_evidence.get("sha256"),
             "status": report_status,
             "path": str(report_path),
         },
@@ -1548,6 +1641,17 @@ def cmd_retry_v2(
         control=control,
     )
     write_json(safe_child_file(new_dir, "control.json"), control)
+    report_path = safe_child_file(artifact, "report.md")
+    if report_path.exists() or report_path.is_symlink():
+        if report_path.is_symlink() or not report_path.is_file():
+            raise ContractError("cannot archive unsafe root report.md during retry")
+        archived_report = safe_child_file(old_dir, "report.md")
+        if archived_report.exists() or archived_report.is_symlink():
+            raise ContractError("current attempt already contains an archived report.md")
+        try:
+            os.replace(report_path, archived_report)
+        except OSError as exc:
+            raise OperationError(f"cannot archive root report.md during retry: {exc}") from exc
     state = dict(state)
     state["current_attempt"] = next_attempt
     state["attempt"] = next_attempt
@@ -1814,6 +1918,18 @@ def cmd_verify_v2(
                 raise ContractError("cannot verify while the provider is running")
             if current["exit_code"] != 0:
                 raise ContractError("verification requires a completed provider exit code 0")
+            report_evidence = trusted_provider_report(
+                artifact, state, context.task_id, control=control
+            )
+            if not report_evidence.get("trusted"):
+                raise ContractError(
+                    "verification requires the current trusted provider report: "
+                    f"{report_evidence.get('reason', 'untrusted')}"
+                )
+            if report_evidence.get("status") != "complete":
+                raise ContractError(
+                    "verification requires current provider report STATUS: complete"
+                )
             snapshot = control.get("verification_commands")
             extra_executables = recorded_verification_executables(control)
             entries = verification_entries(
@@ -2301,8 +2417,16 @@ def cmd_accept(args: argparse.Namespace) -> int:
         if current["running"] or current["exit_code"] != 0:
             raise ContractError("accept requires current provider exit code 0")
 
-        report_path = safe_child_file(artifact, "report.md")
-        if markdown_field(report_path, ("STATUS",)) != "complete":
+        _, control = load_control_for(run_dir, task_id)
+        report_evidence = trusted_provider_report(
+            artifact, state, task_id, control=control
+        )
+        if not report_evidence.get("trusted"):
+            raise ContractError(
+                "accept requires the current trusted provider report: "
+                f"{report_evidence.get('reason', 'untrusted')}"
+            )
+        if report_evidence.get("status") != "complete":
             raise ContractError("accept requires root report.md STATUS: complete")
 
         owns_path = safe_child_file(artifact, "owns-check.json")
@@ -2383,6 +2507,7 @@ def cmd_accept(args: argparse.Namespace) -> int:
             "attempt": attempt,
             "provider_exit": 0,
             "report": "complete",
+            "report_sha256": report_evidence["sha256"],
             "owns_check": "passed",
             "verification": "passed",
             "review": review_status,

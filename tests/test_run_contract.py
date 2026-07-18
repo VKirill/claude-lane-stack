@@ -132,6 +132,7 @@ class RunContractTest(unittest.TestCase):
             "attempt": 1,
             "provider_exit": 0,
             "report": "complete",
+            "report_sha256": "a" * 64,
             "owns_check": "passed",
             "verification": "passed",
             "review": "not_required",

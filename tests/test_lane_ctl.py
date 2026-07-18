@@ -31,14 +31,19 @@ class LaneCtlTest(unittest.TestCase):
         )
         self.project_cwd = self.root / "worktree"
         self.project_cwd.mkdir()
-        self.provider_args = self.root / "provider-args.jsonl"
-        self.provider = self.root / "fake-grok"
+        self.fake_home = self.root / "home"
+        self.grok_home = self.fake_home / ".grok"
+        self.grok_home.mkdir(parents=True)
+        self.provider_args = self.grok_home / "provider-args.jsonl"
+        self.provider = self.grok_home / "fake-grok"
         self.provider.write_text(
             textwrap.dedent(
                 """\
                 #!/usr/bin/env python3
+                import hashlib
                 import json
                 import os
+                import re
                 import sys
                 import time
                 from pathlib import Path
@@ -66,19 +71,31 @@ class LaneCtlTest(unittest.TestCase):
                     print("fake provider start", flush=True)
                 time.sleep(float(os.environ.get("FAKE_SLEEP", "0.05")))
                 exit_code = int(os.environ.get("FAKE_EXIT", "0"))
+                report_text = None
                 if streaming and exit_code == 0:
                     prompt_path = Path(args[args.index("--prompt-file") + 1])
-                    if prompt_path.parent.parent.name == "attempts":
-                        report_mode = os.environ.get("FAKE_REPORT", "complete")
-                        if report_mode != "missing":
-                            report_status = (
-                                "complete" if report_mode == "complete" else report_mode
-                            )
-                            (prompt_path.parents[2] / "report.md").write_text(
-                                f"STATUS: {report_status}\\n", encoding="utf-8"
-                            )
+                    rules = args[args.index("--rules") + 1]
+                    task_id = re.search(r"task_id=([^;]+)", rules).group(1)
+                    report_mode = os.environ.get("FAKE_REPORT", "complete")
+                    if report_mode != "missing":
+                        report_status = (
+                            "complete" if report_mode == "complete" else report_mode
+                        )
+                        prompt_sha256 = hashlib.sha256(
+                            prompt_path.read_bytes()
+                        ).hexdigest()
+                        report_text = (
+                            "<<<LANE_REPORT:BEGIN>>>\\n"
+                            f"TASK_ID: {task_id}\\n"
+                            f"PROMPT_SHA256: {prompt_sha256}\\n"
+                            f"STATUS: {report_status}\\n"
+                            "SUMMARY: fake lane-ctl report\\n"
+                            "<<<LANE_REPORT:END>>>\\n"
+                        )
                 if streaming:
                     emit({"type": "text", "data": "fake provider done\\n"})
+                    if report_text is not None:
+                        emit({"type": "text", "data": report_text})
                     if exit_code == 0:
                         emit(
                             {
@@ -170,6 +187,7 @@ class LaneCtlTest(unittest.TestCase):
         command = [sys.executable, str(LANE_CTL), *args]
         merged_env = os.environ.copy()
         merged_env["LANE_BG_BACKEND"] = "nohup"
+        merged_env["HOME"] = str(self.fake_home)
         merged_env["FAKE_ARGS_LOG"] = str(self.provider_args)
         merged_env.update(env or {})
         return subprocess.run(
@@ -871,6 +889,7 @@ class LaneCtlTest(unittest.TestCase):
         original_control = (attempt_one / "control.json").read_bytes()
         original_prompt = (attempt_one / "prompt.md").read_bytes()
         original_output = (attempt_one / "provider.out").read_bytes()
+        original_report = (artifact / "report.md").read_bytes()
 
         self.run_ctl(
             "retry",
@@ -886,6 +905,13 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual((attempt_one / "control.json").read_bytes(), original_control)
         self.assertEqual((attempt_one / "prompt.md").read_bytes(), original_prompt)
         self.assertEqual((attempt_one / "provider.out").read_bytes(), original_output)
+        self.assertEqual((attempt_one / "report.md").read_bytes(), original_report)
+        self.assertEqual(
+            json.loads((attempt_one / "runtime.json").read_text())["attempt"], 1
+        )
+        self.assertEqual(
+            json.loads((attempt_two / "runtime.json").read_text())["attempt"], 2
+        )
         for attempt_dir in (attempt_one, attempt_two):
             for name in (
                 "control.json",
@@ -948,8 +974,8 @@ class LaneCtlTest(unittest.TestCase):
             (
                 "001",
                 "missing",
-                "provider_incomplete",
-                "report_missing",
+                "failed",
+                "provider_exit_nonzero",
                 False,
                 "retry",
             ),
@@ -990,6 +1016,44 @@ class LaneCtlTest(unittest.TestCase):
                 self.assertIs(status["report_complete"], complete)
                 self.assertEqual(status["next_action"], next_action)
                 self.assertIs(status["report"]["complete"], complete)
+
+    def test_v2_tampered_report_fails_status_verify_and_accept_closed(self) -> None:
+        task_file = self.write_v2_task(
+            verification=[{"command": "true", "cwd": ".", "timeout_sec": 5}]
+        )
+        self.start(task_file)
+        self.assertEqual(self.wait_status()["status"], "awaiting_verification")
+        artifact = self.run_dir / "artifacts" / "001"
+        with (artifact / "report.md").open("a", encoding="utf-8") as handle:
+            handle.write("TAMPERED: true\n")
+
+        status = self.wait_status()
+        self.assertEqual(status["status"], "provider_incomplete")
+        self.assertFalse(status["report"]["trusted"])
+        self.assertEqual(status["report"]["reason"], "report_digest_mismatch")
+
+        verified = self.run_ctl(
+            "verify",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-file",
+            str(task_file),
+            "--project-cwd",
+            str(self.project_cwd),
+            check=False,
+        )
+        self.assertEqual(verified.returncode, 2)
+        self.assertIn("report_digest_mismatch", verified.stderr)
+        accepted = self.run_ctl(
+            "accept",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-id",
+            "001",
+            check=False,
+        )
+        self.assertEqual(accepted.returncode, 2)
+        self.assertIn("report_digest_mismatch", accepted.stderr)
 
     def test_v2_structured_verification_honors_cwd_and_timeout(self) -> None:
         nested = self.project_cwd / "nested"
@@ -1145,7 +1209,6 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual(missing_evidence.returncode, 2)
 
         state = json.loads((artifact / "state.json").read_text())
-        (artifact / "report.md").write_text("STATUS: complete\n", encoding="utf-8")
         (artifact / "owns-check.json").write_text(
             json.dumps(
                 {
@@ -1230,6 +1293,7 @@ class LaneCtlTest(unittest.TestCase):
                 "attempt",
                 "provider_exit",
                 "report",
+                "report_sha256",
                 "owns_check",
                 "verification",
                 "review",
@@ -1238,6 +1302,10 @@ class LaneCtlTest(unittest.TestCase):
             },
         )
         self.assertEqual(receipt["review"], "passed")
+        runtime = json.loads(
+            (artifact / "attempts" / "01" / "runtime.json").read_text()
+        )
+        self.assertEqual(receipt["report_sha256"], runtime["report_sha256"])
         self.assertTrue(receipt["accepted"])
         self.assertEqual(
             json.loads((artifact / "acceptance.json").read_text()), receipt
@@ -1280,7 +1348,6 @@ class LaneCtlTest(unittest.TestCase):
         )
         artifact = self.run_dir / "artifacts" / "001"
         state = json.loads((artifact / "state.json").read_text())
-        (artifact / "report.md").write_text("STATUS: complete\n", encoding="utf-8")
         (artifact / "owns-check.json").write_text(
             json.dumps(
                 {
@@ -1344,7 +1411,6 @@ class LaneCtlTest(unittest.TestCase):
         )
         artifact = self.run_dir / "artifacts" / "001"
         state = json.loads((artifact / "state.json").read_text())
-        (artifact / "report.md").write_text("STATUS: complete\n", encoding="utf-8")
         (artifact / "owns-check.json").write_text(
             json.dumps(
                 {
@@ -1399,7 +1465,6 @@ class LaneCtlTest(unittest.TestCase):
         )
         artifact = self.run_dir / "artifacts" / "001"
         state = json.loads((artifact / "state.json").read_text())
-        (artifact / "report.md").write_text("STATUS: complete\n", encoding="utf-8")
         (artifact / "owns-check.json").write_text(
             json.dumps(
                 {

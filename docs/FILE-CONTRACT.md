@@ -81,8 +81,16 @@ tasks spill into a pool of five slots by default, configurable from 1–10. A sl
 successful tasks (configurable up to a hard maximum of ten), after a provider
 failure, or when cwd/model changes. Review lanes never reuse writer sessions.
 Only `EndTurn` is a successful Grok terminal reason. `Cancelled`, `Error`, an
-unknown terminal reason, or a missing/incomplete root report is retryable
-failure and cannot enter verification.
+unknown terminal reason, or a missing/invalid final report envelope is a
+retryable protocol failure and cannot enter verification. The provider cannot
+write `.agents`: Bubblewrap mounts the control plane read-only for Grok.
+Instead, Grok returns one report envelope bound to `TASK_ID` and the assembled
+prompt SHA-256; trusted `lane-session` validates it and atomically writes root
+`report.md`. A valid `STATUS: partial|timeout|unavailable` report remains
+provider-incomplete and retryable. The current attempt's `runtime.json` binds
+that file by SHA-256; status, verification, and acceptance fail closed after a
+manual or stale-report substitution. Retry moves the old root report into its
+attempt directory before the next provider starts.
 
 Night review is also file-based. Codex Sol xhigh emits schema-constrained chunk
 results; the engine validates and deduplicates them into

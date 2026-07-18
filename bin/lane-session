@@ -16,6 +16,7 @@ import re
 import select
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -31,10 +32,71 @@ HARD_MAX_TASKS = 10
 DEFAULT_POOL_SIZE = 5
 HARD_MAX_POOL = 10
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
-GROK_SANDBOX_PROFILE = "workspace"
+GROK_SANDBOX_PROFILE = "off"
+RUNTIME_SANDBOX_PROFILE = "bubblewrap-workspace"
 PROTOCOL_FAILURE_EXIT = 65
 MAX_PROVIDER_LOG_BYTES = 1024 * 1024
+MAX_REPORT_SCAN_CHARS = 512 * 1024
+MAX_REPORT_BYTES = 256 * 1024
 MAX_EVENT_NAME = 80
+REPORT_BEGIN = "<<<LANE_REPORT:BEGIN>>>"
+REPORT_END = "<<<LANE_REPORT:END>>>"
+PROVIDER_ENV_KEYS = frozenset(
+    {
+        "ALL_PROXY",
+        "COLORTERM",
+        "GROK_API_KEY",
+        "HOME",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "LOGNAME",
+        "NODE_EXTRA_CA_CERTS",
+        "NO_PROXY",
+        "PATH",
+        "SHELL",
+        "SSL_CERT_DIR",
+        "SSL_CERT_FILE",
+        "TERM",
+        "USER",
+        "XAI_API_KEY",
+        "XDG_DATA_DIRS",
+        "all_proxy",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    }
+)
+TEST_PROVIDER_ENV_KEYS = frozenset(
+    {
+        "FAKE_ARGS_LOG",
+        "FAKE_CHILD_PID_FILE",
+        "FAKE_CONTROL_PROBE",
+        "FAKE_DUPLICATE_REPORT",
+        "FAKE_ENV_LOG",
+        "FAKE_ENV_SCRUB_LOG",
+        "FAKE_EXIT",
+        "FAKE_PID_FILE",
+        "FAKE_PROVIDER_KIND",
+        "FAKE_PULSE",
+        "FAKE_REPORT",
+        "FAKE_REPORT_MODE",
+        "FAKE_REPORT_PROMPT_SHA256",
+        "FAKE_REPORT_TASK_ID",
+        "FAKE_SLEEP",
+        "FAKE_SOCKET_PROBE",
+        "FAKE_SPLIT_REPORT",
+        "FAKE_STDERR",
+        "FAKE_STOP_REASON",
+        "FAKE_STREAM_MODE",
+        "FAKE_TEXT_SIZE",
+        "FAKE_HOST_TMP_PROBE",
+        "FAKE_VERSION_TEXT",
+        "UNUSED_REMOVED",
+    }
+)
 VERSION_TOKEN = re.compile(
     r"(?<![A-Za-z0-9])v?(\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9.-]{1,32})?)(?![A-Za-z0-9])"
 )
@@ -143,7 +205,7 @@ def rotation_reason(record: dict | None, *, cwd: str, model: str, max_tasks: int
         return "cwd_changed"
     if record.get("model") != model:
         return "model_changed"
-    if record.get("sandbox") != GROK_SANDBOX_PROFILE:
+    if record.get("sandbox") != RUNTIME_SANDBOX_PROFILE:
         return "sandbox_changed"
     success_count = int(record.get("success_count", len(record.get("tasks", []))))
     if success_count >= max_tasks:
@@ -180,6 +242,7 @@ class StreamResult:
     cost_is_partial: bool | None
     usage_is_incomplete: bool | None
     protocol_error: str | None
+    report_sha256: str | None
     log_truncated: bool
     stderr_bytes: int
 
@@ -272,7 +335,7 @@ def acquire_lease(
                 "session_id": str(uuid.uuid4()) if provider == "grok" else None,
                 "cwd": cwd,
                 "model": model,
-                "sandbox": GROK_SANDBOX_PROFILE,
+                "sandbox": RUNTIME_SANDBOX_PROFILE,
                 "tasks": [],
                 "success_count": 0,
                 "created_at": utc_now(),
@@ -312,7 +375,7 @@ def provider_command(
         "--reasoning-effort",
         args.reasoning_effort,
         "--permission-mode",
-        "acceptEdits",
+        "bypassPermissions",
         "--sandbox",
         GROK_SANDBOX_PROFILE,
         "--rules",
@@ -322,7 +385,11 @@ def provider_command(
             f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
             "Treat the prompt's raw task YAML as authoritative. Write only paths "
             "matched by owns_paths, honor never_touch, do not spawn subagents, "
-            "and do not commit, merge, or push."
+            "and do not commit, merge, or push. The .agents control plane is "
+            "read-only to you. Return the canonical report in your final response "
+            f"between {REPORT_BEGIN} and {REPORT_END}; it must contain exact "
+            f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a "
+            "STATUS field."
         ),
         "--output-format",
         "streaming-json",
@@ -335,6 +402,180 @@ def provider_command(
     else:
         command[1:1] = ["--resume", session_id]
     return command
+
+
+def control_plane_root(run_dir: Path) -> Path:
+    for candidate in (run_dir, *run_dir.parents):
+        if candidate.name == ".agents":
+            return candidate
+    raise RuntimeError(f"run-dir must be inside a .agents control plane: {run_dir}")
+
+
+def provider_environment() -> dict[str, str]:
+    allowed = PROVIDER_ENV_KEYS | TEST_PROVIDER_ENV_KEYS
+    environment = {
+        key: value for key, value in os.environ.items() if key in allowed
+    }
+    environment.update(
+        {
+            "CLAUDE_LANE_AUTOMATION": "1",
+            "GROK_CLAUDE_HOOKS_ENABLED": "0",
+            "GROK_SUBAGENTS": "0",
+            "GROK_SANDBOX": GROK_SANDBOX_PROFILE,
+            "TMPDIR": "/tmp",
+        }
+    )
+    return environment
+
+
+def active_pathname_sockets() -> list[Path]:
+    sockets: set[Path] = set()
+    try:
+        lines = Path("/proc/net/unix").read_text(encoding="utf-8").splitlines()[1:]
+    except OSError:
+        return []
+    for line in lines:
+        fields = line.split(maxsplit=7)
+        if len(fields) != 8 or not fields[7].startswith("/"):
+            continue
+        path = Path(fields[7])
+        try:
+            if stat.S_ISSOCK(path.stat(follow_symlinks=False).st_mode):
+                sockets.add(path)
+        except OSError:
+            continue
+    return sorted(sockets, key=str)
+
+
+def sandbox_provider_command(
+    command: list[str], *, run_dir: Path, cwd: Path, home: Path
+) -> list[str]:
+    bwrap = shutil.which("bwrap")
+    if not bwrap:
+        raise RuntimeError(
+            "bubblewrap is required to protect the .agents control plane"
+        )
+    control_root = control_plane_root(run_dir)
+    wrapped = [
+        bwrap,
+        "--die-with-parent",
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/run",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/var/tmp",
+    ]
+    writable_paths = (home / ".grok", cwd)
+    for writable in writable_paths:
+        if writable.exists():
+            wrapped.extend(("--bind", str(writable), str(writable)))
+    wrapped.extend(("--ro-bind", str(control_root), str(control_root)))
+    for socket_path in active_pathname_sockets():
+        hidden_by_private_tmpfs = any(
+            socket_path.is_relative_to(root)
+            for root in (Path("/run"), Path("/var/run"), Path("/tmp"), Path("/var/tmp"))
+        )
+        exposed_by_writable_bind = any(
+            socket_path.is_relative_to(path) for path in writable_paths
+        )
+        if hidden_by_private_tmpfs and not exposed_by_writable_bind:
+            continue
+        wrapped.extend(("--ro-bind", "/dev/null", str(socket_path)))
+    wrapped.extend(("--chdir", str(cwd), "--", *command))
+    return wrapped
+
+
+def runtime_attempt(output: Path) -> int | None:
+    parent = output.parent
+    if parent.parent.name != "attempts" or not parent.name.isdigit():
+        return None
+    attempt = int(parent.name)
+    return attempt if attempt >= 1 else None
+
+
+def extract_lane_report(
+    response: str,
+    *,
+    task_id: str,
+    prompt_sha256: str,
+    begin_count: int,
+    end_count: int,
+) -> str:
+    if begin_count != 1 or end_count != 1:
+        if begin_count == 0:
+            raise ValueError("lane report is missing")
+        raise ValueError("lane report envelope must appear exactly once")
+    begin = response.rfind(REPORT_BEGIN)
+    content_start = begin + len(REPORT_BEGIN)
+    end = response.find(REPORT_END, content_start)
+    if end < 0:
+        raise ValueError("lane report end marker is missing")
+    if response[end + len(REPORT_END) :].strip():
+        raise ValueError("lane report must be the final response block")
+    report = response[content_start:end].strip() + "\n"
+    if "\x00" in report or len(report.encode("utf-8")) > MAX_REPORT_BYTES:
+        raise ValueError("lane report is invalid or too large")
+    task_matches = re.findall(r"(?m)^TASK_ID:\s*(\S+)\s*$", report)
+    if not task_matches:
+        raise ValueError("lane report task_id is missing")
+    if len(task_matches) != 1 or task_matches[0] != task_id:
+        raise ValueError("lane report task_id mismatch")
+    prompt_matches = re.findall(
+        r"(?m)^PROMPT_SHA256:\s*([0-9a-f]{64})\s*$", report
+    )
+    if not prompt_matches:
+        raise ValueError("lane report prompt_sha256 is missing")
+    if len(prompt_matches) != 1 or prompt_matches[0] != prompt_sha256:
+        raise ValueError("lane report prompt_sha256 mismatch")
+    status_matches = re.findall(
+        r"(?m)^STATUS:\s*(complete|partial|timeout|unavailable)\s*$", report
+    )
+    if len(status_matches) != 1:
+        raise ValueError("lane report status is missing or invalid")
+    return report
+
+
+def validate_report_path(path: Path, *, root: Path) -> None:
+    base = root.resolve(strict=True)
+    absolute = Path(os.path.abspath(path))
+    try:
+        relative = absolute.relative_to(base)
+    except ValueError as exc:
+        raise RuntimeError(f"lane report escapes run directory: {path}") from exc
+    current = base
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise RuntimeError(f"refusing symlinked lane report path: {path}")
+
+
+def materialize_lane_report(path: Path, report: str, *, root: Path) -> str:
+    validate_report_path(path, root=root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    validate_report_path(path, root=root)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temp.open("x", encoding="utf-8") as handle:
+            handle.write(report)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    finally:
+        try:
+            temp.unlink()
+        except FileNotFoundError:
+            pass
+    return hashlib.sha256(report.encode("utf-8")).hexdigest()
 
 
 def terminate_provider(process: subprocess.Popen[bytes] | None) -> None:
@@ -416,6 +657,10 @@ def stream_provider(
     output: IO[bytes],
     *,
     expected_session_id: str,
+    task_id: str,
+    prompt_sha256: str,
+    report_path: Path,
+    report_root: Path,
 ) -> StreamResult:
     assert process.stdout is not None
     assert process.stderr is not None
@@ -429,6 +674,11 @@ def stream_provider(
     end_event: dict | None = None
     saw_error = False
     stderr_bytes = 0
+    response_tail = ""
+    marker_overlap = ""
+    report_begin_count = 0
+    report_end_count = 0
+    report_sha256: str | None = None
 
     def write_log(data: bytes) -> None:
         nonlocal log_bytes, log_truncated
@@ -462,7 +712,8 @@ def stream_provider(
         visible_marker("protocol-error")
 
     def process_line(line: bytes) -> None:
-        nonlocal end_event, saw_error
+        nonlocal end_event, saw_error, response_tail, marker_overlap
+        nonlocal report_begin_count, report_end_count
         if not line.strip():
             return
         try:
@@ -487,6 +738,12 @@ def stream_provider(
                 set_protocol_error("text event data must be a string", line)
                 return
             encoded = data.encode("utf-8", errors="replace")
+            response_tail = (response_tail + data)[-MAX_REPORT_SCAN_CHARS:]
+            marker_scan = marker_overlap + data
+            report_begin_count += marker_scan.count(REPORT_BEGIN)
+            report_end_count += marker_scan.count(REPORT_END)
+            overlap_size = max(len(REPORT_BEGIN), len(REPORT_END)) - 1
+            marker_overlap = marker_scan[-overlap_size:]
             write_log(encoded)
             sys.stdout.buffer.write(encoded)
             sys.stdout.buffer.flush()
@@ -560,6 +817,20 @@ def stream_provider(
         protocol_error = "provider emitted an error event"
     if provider_exit_code == 0 and protocol_error is None and end_event is None:
         protocol_error = "stream ended without an end event"
+    if provider_exit_code == 0 and protocol_error is None:
+        try:
+            report = extract_lane_report(
+                response_tail,
+                task_id=task_id,
+                prompt_sha256=prompt_sha256,
+                begin_count=report_begin_count,
+                end_count=report_end_count,
+            )
+            report_sha256 = materialize_lane_report(
+                report_path, report, root=report_root
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            protocol_error = str(exc)
     exit_code = (
         PROTOCOL_FAILURE_EXIT
         if provider_exit_code == 0 and protocol_error is not None
@@ -589,6 +860,7 @@ def stream_provider(
         if isinstance(end.get("usage_is_incomplete"), bool)
         else None,
         protocol_error=protocol_error,
+        report_sha256=report_sha256,
         log_truncated=log_truncated,
         stderr_bytes=stderr_bytes,
     )
@@ -611,8 +883,11 @@ def write_runtime_receipt(
         "provider_version": provider_version_text,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
-        "sandbox": GROK_SANDBOX_PROFILE,
+        "sandbox": RUNTIME_SANDBOX_PROFILE,
+        "provider_sandbox": GROK_SANDBOX_PROFILE,
         "subagents_enabled": False,
+        "permission_mode": "bypassPermissions",
+        "control_plane_read_only": True,
         "task_id": args.task_id,
         "role": args.role,
         "slot": lease.slot,
@@ -622,10 +897,17 @@ def write_runtime_receipt(
         "finished_at": utc_now(),
         "provider_exit_code": result.provider_exit_code,
         "exit_code": result.exit_code,
-        "protocol_valid": result.protocol_error is None and failure_class is None,
+        "protocol_valid": (
+            result.exit_code == 0
+            and result.protocol_error is None
+            and failure_class is None
+        ),
         "log_truncated": result.log_truncated,
         "stderr_bytes": result.stderr_bytes,
     }
+    attempt = runtime_attempt(args.output)
+    if attempt is not None:
+        receipt["attempt"] = attempt
     optional = {
         "stop_reason": result.stop_reason,
         "usage": result.usage,
@@ -636,6 +918,7 @@ def write_runtime_receipt(
         "cost_is_partial": result.cost_is_partial,
         "usage_is_incomplete": result.usage_is_incomplete,
         "protocol_error": result.protocol_error,
+        "report_sha256": result.report_sha256,
         "prompt_sha256": prompt_sha256,
         "failure_class": failure_class,
     }
@@ -720,8 +1003,13 @@ def run_provider(args: argparse.Namespace) -> int:
         signal.signal(signum, handle_signal)
     try:
         prompt_sha256 = hashlib.sha256(args.prompt_file.read_bytes()).hexdigest()
-        command = provider_command(args, lease, prompt_sha256=prompt_sha256)
-        version_text = provider_version(command[0])
+        provider_argv = provider_command(args, lease, prompt_sha256=prompt_sha256)
+        version_text = provider_version(provider_argv[0])
+        provider_env = provider_environment()
+        provider_home = Path(provider_env.get("HOME", str(Path.home()))).resolve()
+        command = sandbox_provider_command(
+            provider_argv, run_dir=run_dir, cwd=cwd, home=provider_home
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
 
         print(
@@ -729,15 +1017,6 @@ def run_provider(args: argparse.Namespace) -> int:
             f"slot={lease.slot} mode={'new' if lease.is_new else 'resume'} "
             f"task={args.task_id}",
             flush=True,
-        )
-        provider_env = os.environ.copy()
-        provider_env.update(
-            {
-                "CLAUDE_LANE_AUTOMATION": "1",
-                "GROK_CLAUDE_HOOKS_ENABLED": "0",
-                "GROK_SUBAGENTS": "0",
-                "GROK_SANDBOX": GROK_SANDBOX_PROFILE,
-            }
         )
         with args.output.open("wb") as output:
             process = subprocess.Popen(
@@ -752,6 +1031,10 @@ def run_provider(args: argparse.Namespace) -> int:
                 process,
                 output,
                 expected_session_id=str(lease.record["session_id"]),
+                task_id=args.task_id,
+                prompt_sha256=prompt_sha256,
+                report_path=run_dir / "artifacts" / args.task_id / "report.md",
+                report_root=run_dir,
             )
             if result.session_id:
                 captured = result.session_id
@@ -804,6 +1087,7 @@ def run_provider(args: argparse.Namespace) -> int:
             cost_is_partial=None,
             usage_is_incomplete=None,
             protocol_error="interrupted",
+            report_sha256=None,
             log_truncated=False,
             stderr_bytes=0,
         )
@@ -861,6 +1145,7 @@ def run_provider(args: argparse.Namespace) -> int:
                 cost_is_partial=None,
                 usage_is_incomplete=None,
                 protocol_error=None,
+                report_sha256=None,
                 log_truncated=False,
                 stderr_bytes=0,
             )

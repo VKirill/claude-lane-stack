@@ -20,9 +20,10 @@ class LiveRunControllerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw_temp:
             temp = Path(raw_temp)
             repo = temp / "repo"
-            fake_bin = temp / "bin"
+            fake_home = temp / "home"
+            fake_bin = fake_home / ".grok" / "bin"
             repo.mkdir()
-            fake_bin.mkdir()
+            fake_bin.mkdir(parents=True)
             subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
             subprocess.run(
                 ["git", "config", "user.email", "controller@example.test"],
@@ -138,6 +139,7 @@ class LiveRunControllerTest(unittest.TestCase):
                 textwrap.dedent(
                     """\
                     #!/usr/bin/env python3
+                    import hashlib
                     import json
                     import re
                     import sys
@@ -155,12 +157,27 @@ class LiveRunControllerTest(unittest.TestCase):
                     target = "baseline.txt" if task_id == "001" else "second.txt"
                     (Path.cwd() / target).write_text(f"changed by {task_id}\\n", encoding="utf-8")
                     time.sleep(0.2)
-                    (prompt.parents[2] / "report.md").write_text(
-                        "STATUS: complete\\nSUMMARY: live controller smoke\\n",
-                        encoding="utf-8",
-                    )
+                    forged = prompt.parents[4] / f"provider-forged-{task_id}.json"
+                    try:
+                        forged.write_text("forged\\n", encoding="utf-8")
+                        control_write = "allowed"
+                    except OSError:
+                        control_write = "denied"
+                    prompt_sha256 = hashlib.sha256(prompt.read_bytes()).hexdigest()
                     print(json.dumps({"type": "session", "sessionId": session_id}), flush=True)
                     print(json.dumps({"type": "text", "data": "provider complete\\n"}), flush=True)
+                    print(json.dumps({
+                        "type": "text",
+                        "data": (
+                            "<<<LANE_REPORT:BEGIN>>>\\n"
+                            f"TASK_ID: {task_id}\\n"
+                            f"PROMPT_SHA256: {prompt_sha256}\\n"
+                            "STATUS: complete\\n"
+                            f"CONTROL_PLANE_WRITE: {control_write}\\n"
+                            "SUMMARY: live controller smoke\\n"
+                            "<<<LANE_REPORT:END>>>\\n"
+                        ),
+                    }), flush=True)
                     print(json.dumps({
                         "type": "end",
                         "stopReason": "EndTurn",
@@ -172,6 +189,7 @@ class LiveRunControllerTest(unittest.TestCase):
             )
             provider.chmod(0o755)
             env = os.environ.copy()
+            env["HOME"] = str(fake_home)
             env["PATH"] = f"{fake_bin}:{env['PATH']}"
             env["LANE_BG_BACKEND"] = os.environ.get(
                 "LIVE_CONTROLLER_BACKEND", "nohup"
@@ -236,6 +254,13 @@ class LiveRunControllerTest(unittest.TestCase):
             self.assertEqual(receipt["tasks"]["001"]["stage"], "accepted")
             self.assertEqual(receipt["tasks"]["002"]["stage"], "accepted")
             for task_id in ("001", "002"):
+                self.assertFalse(
+                    (run_dir / f"provider-forged-{task_id}.json").exists()
+                )
+                report = (
+                    run_dir / "artifacts" / task_id / "report.md"
+                ).read_text(encoding="utf-8")
+                self.assertIn("CONTROL_PLANE_WRITE: denied", report)
                 self.assertTrue(
                     (run_dir / "artifacts" / task_id / "acceptance.json").is_file()
                 )

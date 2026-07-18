@@ -35,18 +35,20 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
     Claude hooks are disabled for Grok and the shared native session-ledger
     exits without writing; skills, rules, and non-ledger safety hooks remain.
 13. Treat `Cancelled`, `Error`, any unknown provider terminal reason, and exit
-    zero without a root `report.md` whose `STATUS` is `complete` as retryable
-    failure, never as ready for verification.
+    zero without a valid task/prompt-bound report as retryable failure, never as
+    ready for verification. Grok never writes `.agents`; `lane-session`
+    validates the final-response envelope, materializes root `report.md`, and
+    binds it to the current attempt through `runtime.json.report_sha256`.
 
 ## Lane must
 
 1. `Read` TASK_FILE first.
 2. Work only in `PROJECT_CWD`.
 3. Edit **only** `owns_paths` (or `files`). Honor `never_touch`.
-4. Heartbeat: `lane-heartbeat --repo … --run … --task … --status running`.
-   It never edits task YAML or appends to STATUS.md.
-5. Write the canonical `ARTIFACT_DIR/report.md` and run focused checks —
-   **report body in English**. The PM independently runs structured task
+4. Do not write `.agents`; `lane-exec` owns heartbeat and lifecycle evidence.
+5. Return the exact report envelope from the writer contract after focused
+   checks — **report body in English**. The trusted runtime atomically writes
+   `ARTIFACT_DIR/report.md`; the PM independently runs structured task
    `verification` commands via `lane-ctl verify`.
 6. **Never** `git checkout main`, merge to main, or `git push` unless task says otherwise (default: never).
 7. On build errors outside owns_paths: do not fix; note in report.

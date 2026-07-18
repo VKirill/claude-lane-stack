@@ -19,6 +19,9 @@ class NightShiftTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.repo = self.root / "repo"
         self.repo.mkdir()
+        self.fake_home = self.root / "home"
+        self.grok_home = self.fake_home / ".grok"
+        self.grok_home.mkdir(parents=True)
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         (self.repo / "app.txt").write_text("initial\n", encoding="utf-8")
         subprocess.run(["git", "add", "app.txt"], cwd=self.repo, check=True)
@@ -69,13 +72,15 @@ class NightShiftTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.fake_codex.chmod(0o755)
-        self.fake_grok = self.root / "fake-grok"
+        self.fake_grok = self.grok_home / "fake-grok"
         self.fake_grok.write_text(
             textwrap.dedent(
                 """\
                 #!/usr/bin/env python3
+                import hashlib
                 import json
                 import os
+                import re
                 import sys
                 from pathlib import Path
 
@@ -84,17 +89,27 @@ class NightShiftTest(unittest.TestCase):
                     print("grok 0.2.103-test (fake)")
                     raise SystemExit(0)
                 prompt = Path(args[args.index("--prompt-file") + 1])
-                artifact = prompt.parents[2]
-                (artifact / "report.md").write_text(
-                    "# Report\\n\\nSTATUS: complete\\n\\nImplemented the bounded fix.\\n",
-                    encoding="utf-8",
-                )
+                rules = args[args.index("--rules") + 1]
+                task_id = re.search(r"task_id=([^;]+)", rules).group(1)
+                prompt_sha256 = hashlib.sha256(prompt.read_bytes()).hexdigest()
                 target = Path.cwd() / "app.txt"
                 target.write_text(target.read_text(encoding="utf-8") + "fixed\\n", encoding="utf-8")
                 session_flag = "--session-id" if "--session-id" in args else "--resume"
                 session_id = args[args.index(session_flag) + 1]
                 print(json.dumps({"type": "session", "sessionId": session_id}), flush=True)
                 print(json.dumps({"type": "text", "data": "fix complete\\n"}), flush=True)
+                print(json.dumps({
+                    "type": "text",
+                    "data": (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        "# Report\\n\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n\\n"
+                        "Implemented the bounded fix.\\n"
+                        "<<<LANE_REPORT:END>>>\\n"
+                    ),
+                }), flush=True)
                 print(json.dumps({
                     "type": "end",
                     "stopReason": "EndTurn",
@@ -134,6 +149,7 @@ class NightShiftTest(unittest.TestCase):
     def run_shift(self, *extra: str, finding: bool = False) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["LANE_BG_BACKEND"] = "nohup"
+        env["HOME"] = str(self.fake_home)
         if finding:
             env["FAKE_SHIFT_FINDING"] = "1"
         return subprocess.run(
@@ -242,7 +258,11 @@ class NightShiftTest(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
-            env={**os.environ, "LANE_BG_BACKEND": "nohup"},
+            env={
+                **os.environ,
+                "HOME": str(self.fake_home),
+                "LANE_BG_BACKEND": "nohup",
+            },
             timeout=30,
         )
         self.assertEqual(resumed.returncode, 0, resumed.stderr)

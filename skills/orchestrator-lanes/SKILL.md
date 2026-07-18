@@ -156,7 +156,11 @@ while B and C still run: accept A **now**, write its done receipt, free its slot
 next ready task if any. **Never** defer accept until the last concurrent task
 completes.
 
-1. Canonical `report.md` with `STATUS: complete` + provider evidence.
+1. Canonical `report.md` with `STATUS: complete` + provider evidence,
+   materialized by `lane-session` from the single task/prompt-bound final
+   envelope; the Grok process never writes `.agents` directly. Trust only a
+   report whose digest matches the current attempt's `runtime.json`; `lane-ctl`
+   enforces this for status, verify, and accept.
 2. Controller `check-owns-paths "$TASK_FILE" --run-scope` exit 0 +
    `owns-check.json`. The run-scoped union is required for a shared worktree;
    direct/night single-task calls stay per-task.

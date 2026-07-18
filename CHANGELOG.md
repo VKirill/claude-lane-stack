@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.5.1 — 2026-07-18
+
+### Fixed
+- **Headless Grok no longer cancels on shell approval:** writer lanes use the
+  unattended `bypassPermissions` mode required by Grok Build instead of
+  interactive `acceptEdits`, which cancelled non-auto-approved terminal calls.
+- **The control plane is kernel-enforced read-only to Grok:** an outer
+  Bubblewrap mount protects repository `.agents` while owned source paths stay
+  writable inside the same outer workspace boundary. Grok's native sandbox is
+  disabled inside it so terminal tools are not blocked by nested isolation.
+- **Host pathname endpoints are isolated from writer lanes:** `/run`, `/tmp`,
+  and `/var/tmp` are private mounts, active pathname Unix sockets exposed by a
+  writable bind are masked, and the provider receives an allowlisted
+  environment rather than SSH, D-Bus, Docker, or unrelated host variables.
+- **Reports cross a validated transport:** Grok returns one final envelope bound
+  to task ID and prompt digest; `lane-session` rejects missing, duplicate,
+  malformed, stale, cancelled, oversized, or symlink-targeted reports and
+  atomically materializes canonical `report.md` only after `EndTurn`.
+- **Acceptance is bound to the current attempt:** status, verify, and accept
+  require the current `runtime.json` prompt/report digests; retry archives the
+  old root report and acceptance receipts record `report_sha256`.
+- **Grok routing now probes Bubblewrap:** `agents-doctor` disables writer lanes
+  when the binary exists but cannot create the required sandbox.
+
 ## 1.5.0 — 2026-07-18
 
 ### Added

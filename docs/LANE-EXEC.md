@@ -15,7 +15,7 @@ The lane stack therefore separates six responsibilities:
 | `lane-supervisor` | Manual one-action lane diagnostic/recovery agent |
 | `lane-ctl` | Validates v2 contracts, builds the prompt, registers immutable state, exposes status/retry/cancel/verify/accept |
 | `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
-| `lane-session` | Run-scoped warm Grok sessions and bounded provider concurrency |
+| `lane-session` | Warm Grok sessions, provider isolation, validated report transport, and bounded concurrency |
 
 Grok is the code writer. Both Claude supervisor profiles have no `Write`,
 `Edit`, or unrestricted `Bash` capability. There is no daytime LLM review.
@@ -70,10 +70,32 @@ reconstructs or shell-evaluates a free-form command. The argv schema and prompt
 digest are revalidated, the task hash must still match, and the control plane
 permits at most two attempts. Retry writes `attempts/02` without overwriting 01.
 
+Grok runs with `bypassPermissions` because headless interactive approval cannot
+wait for an operator. This does not grant control-plane ownership: an outer
+Bubblewrap boundary mounts the repository `.agents` tree read-only only for the
+provider. To avoid nested-sandbox denial of terminal commands, Grok's native
+sandbox is `off` inside that boundary; Bubblewrap itself exposes the project,
+private temp directories, and `~/.grok` as writable, the rest of the host as
+read-only, and then over-mounts `.agents` read-only. Host `/run`, `/tmp`, and
+`/var/tmp` are not shared; active pathname Unix sockets that would reappear
+through a writable bind are masked, and the provider environment is allowlisted.
+This boundary does not claim network-egress isolation. The `owns_paths`
+contract remains the narrower behavioral boundary. The final response carries
+one task/prompt-bound report envelope; trusted `lane-session` validates it and
+atomically materializes root `report.md`.
+
 Status deliberately distinguishes `provider_incomplete`,
 `awaiting_verification`, `verified`, and `verification_failed`. Provider exit 0
-without a root report whose `STATUS` is `complete` becomes
-`provider_incomplete → retry`; it is never ready for verification.
+with a partial root report becomes `provider_incomplete → retry`. A missing,
+duplicate, malformed, oversized, wrong-task, or wrong-prompt report envelope is
+a provider protocol failure (exit 65) and is also retryable; neither case is
+ready for verification.
+
+For schema v2, `status`, `verify`, and `accept` also require the current
+attempt's trusted `runtime.json` and matching `report_sha256`. Changing a root
+report after the provider exits makes it untrusted. Retry archives that root
+report under the old attempt before launching the next one; acceptance stores
+the same digest in `acceptance.json`.
 
 ## Verify independently
 
@@ -161,7 +183,7 @@ private per-user directory under `/tmp`.
       lane-bg.supervisor.log
       lane-exec.log
       provider.out
-      runtime.json
+      runtime.json # includes prompt/report digests and isolation mode
       verification.json
     attempts/02/
       ...
@@ -193,6 +215,7 @@ allowed retry.
 Only `EndTurn` is a successful Grok terminal reason. `Cancelled`, `Error`, and
 unknown terminal reasons are protocol failures with a non-zero wrapper exit;
 raw unknown values remain sanitized in runtime receipts.
+Even a complete-looking report received before `Cancelled` is discarded.
 
 ## Compatibility tools
 
@@ -212,7 +235,7 @@ or advancing the checkpoint.
 `night-shift <repo-root>` adds the bounded repair phase. Generated v2 tasks run
 through the ordinary Grok provider pool in a dedicated worktree; deterministic
 receipts, not a Claude polling subagent, drive retry/verify/re-review/accept.
-Grok receives no-subagent and workspace-sandbox guardrails. Merge and push are
+Grok receives no-subagent and outer workspace-sandbox guardrails. Merge and push are
 off unless the target repository explicitly opts in through
 `.agents/night-shift.yaml`.
 

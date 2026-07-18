@@ -69,6 +69,37 @@ def run_version(cmd: list[str], timeout: float = 8.0) -> str:
         return f"error: {e.__class__.__name__}"
 
 
+def bubblewrap_operational(binary: str | None) -> bool:
+    if not binary:
+        return False
+    try:
+        result = subprocess.run(
+            [
+                binary,
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--unshare-pid",
+                "--proc",
+                "/proc",
+                "--tmpfs",
+                "/tmp",
+                "--",
+                "/bin/true",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=8,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 def detect() -> dict:
     tools = {}
     p = which("claude")
@@ -79,10 +110,25 @@ def detect() -> dict:
         "required": True,
     }
     p = which("grok")
+    bwrap = which("bwrap")
+    bwrap_ready = bubblewrap_operational(bwrap)
     tools["grok"] = {
-        "present": bool(p),
+        "present": bool(p and bwrap_ready),
+        "binary_present": bool(p),
         "path": p,
         "version": run_version(["grok", "--version"]) if p else None,
+        "required": False,
+        "unavailable_reason": (
+            "bubblewrap missing"
+            if p and not bwrap
+            else "bubblewrap probe failed" if p and not bwrap_ready else None
+        ),
+    }
+    tools["bubblewrap"] = {
+        "present": bool(bwrap),
+        "operational": bwrap_ready,
+        "path": bwrap,
+        "version": None,
         "required": False,
     }
     p = which("codex")
@@ -98,6 +144,12 @@ def detect() -> dict:
 def pick_profile(tools: dict) -> tuple[str, dict, list[str]]:
     notes: list[str] = []
     has = {k: tools[k]["present"] for k in ("claude", "grok", "codex")}
+    if tools["grok"].get("binary_present") and not has["grok"]:
+        reason = tools["grok"].get("unavailable_reason") or "bubblewrap unavailable"
+        notes.append(
+            "Grok disabled — bubblewrap is required for safe writer lanes "
+            f"({reason})"
+        )
     if not has["claude"]:
         notes.append("Claude Code missing — install required for PM")
         return "none", {}, notes

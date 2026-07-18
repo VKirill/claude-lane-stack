@@ -115,6 +115,7 @@ class WtMergeMainTest(unittest.TestCase):
                         "task_sha256": task_sha256,
                         "provider_exit": 0,
                         "report": "complete",
+                        "report_sha256": "a" * 64,
                         "owns_check": "passed",
                         "verification": "passed",
                         "review": "not_required",
