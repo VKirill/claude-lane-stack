@@ -8,8 +8,8 @@
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
 | Write (all risks) | **Grok 4.5** only | sole programmer lane |
-| Review (all) | Codex Sol | gpt-5.6-sol + high (nightly batch) |
-| Nightly review | Codex Sol | sol high (batch); pre-merge gate opt-in per project |
+| Review (all) | Codex Sol | gpt-5.6-sol + xhigh, read-only |
+| Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
 | Onboard **deep** (default on full) | Codex **Sol** | `gpt-5.6-sol` + `high` |
@@ -23,14 +23,15 @@
 | **Terra** `gpt-5.6-terra` | Default **scoped write**, medium features, onboard, docs refresh | Dropping effort to `low` on agent loops |
 | **Luna** `gpt-5.6-luna` | Trivia: changelog line, PR one-liner, triage | Multi-step agent write/review (falls apart) |
 
-**Effort:** agentic write/review → `high` or `xhigh`. Escalate Terra stall → Sol xhigh. Nightly review = sol high (batch, operator 2026-07-14). Gate review (opt-in, pre-merge) = sol high; escalate to xhigh when the diff touches auth/pay/schema/migrations/security/crypto/concurrency (critical paths).
+**Effort:** agentic write → `high` or `xhigh`. Escalate Terra stall → Sol xhigh.
+All review uses Sol xhigh through the read-only `night-review` profile.
 
 ## Code routing (full stack: Grok + Codex)
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
 | `risk: low` UI/wiring | **grok** | Grok 4.5 medium |
-| `risk: medium` | grok + codex-review sol high | Grok 4.5 medium + gpt-5.6-sol high |
+| `risk: medium` | grok + codex-review sol xhigh | Grok 4.5 medium + gpt-5.6-sol xhigh |
 | `risk: high` auth/pay/schema | grok + codex-review Sol xhigh | nightly (gate opt-in for pre-merge) |
 | Empty-diff / stalled Grok | re-dispatch grok once, then **codex-implementer** | — |
 
@@ -39,12 +40,13 @@
 | Tier    | Trigger                            | Review |
 |---------|-------------------------------------|--------|
 | none    | micro path / risk low               | verify field + check-owns-paths only |
-| nightly | everything else (medium/high/ship)  | night-review batch (sol): verdicts + Morning fix plan; FAIL -> morning fix task, never ignored |
+| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Grok repair; fresh re-review |
 
 Pre-merge gate is OFF by default (solo, no-user products). When a project
 serves real users or money, re-enable per project: add `gate: pre-merge` to
-PROGRESS.md Pointers (or set `gate: pre-merge` in a task YAML) — then
-codex-reviewer (sol high; xhigh for auth/pay/schema/migrations/security)
+`run.yaml` (or set it as a project default in PROGRESS.md Pointers before
+`run-init`) — then
+codex-reviewer (sol xhigh, read-only)
 must pass BEFORE merge for high-risk work in that project.
 
 ## Profile `claude-codex` (only Claude + Codex)
@@ -54,8 +56,8 @@ must pass BEFORE merge for high-risk work in that project.
 | fast_write | codex-implementer | **terra** | high |
 | main_write (medium) | codex-implementer | **terra** | xhigh |
 | main_write (high / high_risk_paths) | codex-implementer | **sol** | xhigh |
-| review (medium) | codex-reviewer | **sol** | high |
-| review / ship | codex-reviewer | **sol** | high (xhigh critical paths) |
+| review (medium) | codex-reviewer | **sol** | xhigh |
+| review / ship | codex-reviewer | **sol** | xhigh |
 | onboard (fast) | codex-onboarder | **terra** | high |
 | onboard (deep / full default) | codex-onboarder | **sol** | high |
 | docs-maintain | codex-docs-maintainer | **terra** | high |
@@ -80,6 +82,8 @@ See `profiles/claude-codex.yaml`.
 Foreground Bash dies ~**2 minutes**. Write lanes start through the typed control plane:
 
 ```bash
+run-init "$(pwd)" "$SLUG" --score "$SCORE"
+run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
 lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
 lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
 ```
@@ -103,14 +107,14 @@ an independent cold session.
 | High risk write | solo writer |
 | Human never merges | PM → `wt-merge-main` |
 
-**Progressive accept:** when task A finishes while B still runs, accept A
-immediately, free its slot, start the next ready task. Never wait for the
-slowest sibling before accepting finished ones.
+**Progressive accept:** when task A finishes while B still runs, verify A,
+produce `owns-check.json`, and run `lane-ctl accept` immediately. Its
+`acceptance.json` frees the slot; never wait for the slowest sibling.
 
 ## Instruction design
 
 1. MUST ≤ 7 hard rules 
 2. MAY = autonomy inside owns_paths 
 3. NEVER = safety + never_touch + no merge to main 
-4. DONE = report + done_when + owns check 
+4. DONE = immutable task hash + report + owns check + independent verification + acceptance receipt
 5. Model ids live in wrappers / profile YAML — not invent 5.5 

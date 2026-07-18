@@ -88,6 +88,9 @@ Leave `<!-- auto:session-ledger -->` … `<!-- /auto:session-ledger -->` alone (
 - Ideas → `agent-todos`, not PROGRESS.  
 - Active delivery → PROGRESS + runs.  
 - After wave of tasks → refresh PROGRESS once, not per micro-edit.
+- For schema-v2 runs, declare exact `progress_now`, `close_next`, and
+  `close_open` actions in run.yaml; post-merge `run-finalize` applies them and
+  records hashes/actions in finalize.json. Never guess stale checklist items.
 
 ## Night audit
 

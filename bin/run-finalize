@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+"""Deterministically finalize a merged file-contract run."""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+
+AUTO_START = "<!-- auto:session-ledger -->"
+HEX_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+class FinalizeError(RuntimeError):
+    pass
+
+
+def file_hash(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise FinalizeError(f"invalid {path.name}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise FinalizeError(f"invalid {path.name}: expected a JSON object")
+    return data
+
+
+def validate_merge(run_dir: Path) -> dict[str, Any]:
+    path = run_dir / "merge.json"
+    merge = load_json(path)
+    required = {
+        "repo",
+        "run",
+        "branch",
+        "base_sha",
+        "source_commit",
+        "merge_commit",
+        "remote",
+        "accepted_tasks",
+        "verification_summary",
+        "local_install",
+    }
+    if merge.get("schema_version") != 2 or not required.issubset(merge):
+        raise FinalizeError("invalid merge.json: schema_version 2 receipt is required")
+    if not all(isinstance(merge.get(key), str) and HEX_SHA.fullmatch(merge[key]) for key in ("base_sha", "source_commit", "merge_commit")):
+        raise FinalizeError("invalid merge.json: commit fields must be full lowercase Git SHAs")
+    if not isinstance(merge["repo"], str) or not isinstance(merge["run"], str):
+        raise FinalizeError("invalid merge.json: repo and run must be strings")
+    if Path(merge["repo"]).resolve() != Path(merge["repo"]):
+        raise FinalizeError("invalid merge.json: repo must be an absolute normalized path")
+    if merge["run"] != run_dir.name:
+        raise FinalizeError("invalid merge.json: run does not match --run-dir")
+    if not isinstance(merge["remote"], dict) or not isinstance(merge["accepted_tasks"], list):
+        raise FinalizeError("invalid merge.json: remote/accepted_tasks have the wrong type")
+    remote = merge["remote"]
+    if not {"name", "attempted", "pushed", "sha", "error"}.issubset(remote):
+        raise FinalizeError("invalid merge.json: remote summary is incomplete")
+    if not isinstance(remote["attempted"], bool) or not isinstance(remote["pushed"], bool):
+        raise FinalizeError("invalid merge.json: remote attempted/pushed must be booleans")
+    if not isinstance(merge["verification_summary"], dict) or not isinstance(merge["local_install"], dict):
+        raise FinalizeError("invalid merge.json: verification_summary/local_install have the wrong type")
+    return merge
+
+
+def mini_yaml_finalize(text: str) -> dict[str, Any]:
+    """Parse only the documented run.yaml.finalize scalar/list subset."""
+    out: dict[str, Any] = {}
+    lines = text.splitlines()
+    start = next((index for index, line in enumerate(lines) if re.fullmatch(r"finalize:\s*(?:#.*)?", line)), None)
+    if start is None:
+        return out
+    current_list: str | None = None
+    for line in lines[start + 1 :]:
+        if line and not line.startswith((" ", "\t")):
+            break
+        scalar = re.fullmatch(r"\s{2}(progress_now):\s*(.*?)\s*", line)
+        if scalar:
+            value = scalar.group(2)
+            out[scalar.group(1)] = value.strip("\"'") if value else None
+            current_list = None
+            continue
+        list_header = re.fullmatch(r"\s{2}(close_next|close_open):\s*", line)
+        if list_header:
+            current_list = list_header.group(1)
+            out[current_list] = []
+            continue
+        item = re.fullmatch(r"\s{4}-\s+(.*?)\s*", line)
+        if item and current_list:
+            out[current_list].append(item.group(1).strip("\"'"))
+    return out
+
+
+def load_defaults(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        return mini_yaml_finalize(text)
+    try:
+        data = yaml.safe_load(text) or {}
+    except Exception as exc:
+        raise FinalizeError(f"invalid run.yaml: {exc}") from exc
+    finalize = data.get("finalize", {}) if isinstance(data, dict) else {}
+    if not isinstance(finalize, dict):
+        raise FinalizeError("invalid run.yaml: finalize must be an object")
+    return finalize
+
+
+def validate_text(value: Any, option: str) -> str:
+    if not isinstance(value, str) or not value or "\n" in value or "\r" in value:
+        raise FinalizeError(f"{option} must be one non-empty line")
+    return value
+
+
+def replace_now(text: str, value: str) -> tuple[str, str]:
+    if AUTO_START in text:
+        editable, auto = text.split(AUTO_START, 1)
+        auto = AUTO_START + auto
+    else:
+        editable, auto = text, ""
+    match = re.search(r"(?m)^## Now\s*$", editable)
+    if not match:
+        raise FinalizeError("PROGRESS.md has no exact '## Now' section")
+    next_heading = re.search(r"(?m)^##\s+", editable[match.end() :])
+    end = match.end() + next_heading.start() if next_heading else len(editable)
+    replacement = f"## Now\n- {value}\n\n"
+    updated = editable[: match.start()] + replacement + editable[end:]
+    if updated == editable:
+        result = "already_applied"
+    else:
+        result = "updated"
+    return updated + auto, result
+
+
+def section_span(text: str, title: str, *, limit: int | None = None) -> tuple[int, int]:
+    searchable = text if limit is None else text[:limit]
+    match = re.search(rf"(?m)^## {re.escape(title)}\s*$", searchable)
+    if not match:
+        raise FinalizeError(f"PROGRESS.md has no exact '## {title}' section")
+    following = re.search(r"(?m)^##\s+", searchable[match.end() :])
+    end = match.end() + following.start() if following else len(searchable)
+    return match.end(), end
+
+
+def close_checkbox(
+    text: str, value: str, *, editable_start: int = 0, editable_end: int | None = None
+) -> tuple[str, str]:
+    end = len(text) if editable_end is None else editable_end
+    prefix = text[:editable_start]
+    editable = text[editable_start:end]
+    suffix = text[end:]
+    open_line = f"- [ ] {value}"
+    closed_line = f"- [x] {value}"
+    lines = editable.splitlines(keepends=True)
+    open_indexes = [index for index, line in enumerate(lines) if line.rstrip("\r\n") == open_line]
+    closed_indexes = [index for index, line in enumerate(lines) if line.rstrip("\r\n") in (closed_line, f"- [X] {value}")]
+    if len(open_indexes) > 1 or (open_indexes and closed_indexes):
+        raise FinalizeError(f"ambiguous exact checkbox: {value}")
+    if open_indexes:
+        index = open_indexes[0]
+        ending = lines[index][len(lines[index].rstrip("\r\n")) :]
+        lines[index] = closed_line + ending
+        return prefix + "".join(lines) + suffix, "closed"
+    if len(closed_indexes) == 1:
+        return text, "already_closed"
+    raise FinalizeError(f"exact unchecked checkbox not found: {value}")
+
+
+def atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+        handle.write(text)
+        temporary = Path(handle.name)
+    os.chmod(temporary, (path.stat().st_mode & 0o777) if path.exists() else 0o644)
+    temporary.replace(path)
+
+
+def run_board(repo: Path) -> list[str]:
+    command = shutil.which("run-board")
+    if not command:
+        installed = Path.home() / ".agents" / "bin" / "run-board"
+        sibling = Path(__file__).resolve().with_name("run-board")
+        command = str(installed if installed.is_file() else sibling)
+    try:
+        subprocess.run([command, str(repo)], check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise FinalizeError(f"run-board failed: {exc}") from exc
+    return [command, str(repo)]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--progress-now")
+    parser.add_argument("--close-next", action="append")
+    parser.add_argument("--close-open", action="append")
+    args = parser.parse_args()
+
+    run_dir = Path(args.run_dir).resolve()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    finalize_lock = (run_dir / ".finalize.lock").open("a+", encoding="utf-8")
+    fcntl.flock(finalize_lock.fileno(), fcntl.LOCK_EX)
+    merge: dict[str, Any] | None = None
+    repo: Path | None = None
+    receipt_context = False
+    requested: dict[str, Any] = {
+        "progress_now": args.progress_now,
+        "close_next": args.close_next or [],
+        "close_open": args.close_open or [],
+    }
+    actions: list[dict[str, str]] = []
+    before_hashes: dict[str, str | None] = {"progress": None, "open_notes": None}
+    board_command: list[str] | None = None
+    board_succeeded = False
+    progress_path: Path | None = None
+    open_path: Path | None = None
+    original_progress_text: str | None = None
+    original_open_text: str | None = None
+    try:
+        merge = validate_merge(run_dir)
+        repo = Path(merge["repo"]).resolve()
+        expected_run_dir = repo / ".agents" / "runs" / merge["run"]
+        if run_dir != expected_run_dir:
+            raise FinalizeError("invalid merge.json: --run-dir is outside its recorded repo/run path")
+        receipt_context = True
+
+        defaults = load_defaults(run_dir / "run.yaml")
+        progress_now_raw = args.progress_now if args.progress_now is not None else defaults.get("progress_now")
+        close_next_raw = args.close_next if args.close_next is not None else defaults.get("close_next", [])
+        close_open_raw = args.close_open if args.close_open is not None else defaults.get("close_open", [])
+        progress_now = validate_text(progress_now_raw, "--progress-now") if progress_now_raw is not None else None
+        if not isinstance(close_next_raw, list) or not isinstance(close_open_raw, list):
+            raise FinalizeError("finalize close_next/close_open defaults must be lists")
+        close_next = [validate_text(item, "--close-next") for item in close_next_raw]
+        close_open = [validate_text(item, "--close-open") for item in close_open_raw]
+        if len(set(close_next)) != len(close_next) or len(set(close_open)) != len(close_open):
+            raise FinalizeError("finalize checkbox targets must be unique")
+
+        progress_path = repo / "PROGRESS.md"
+        open_path = repo / ".agents" / "agent-notes" / "OPEN.md"
+        before_hashes = {"progress": file_hash(progress_path), "open_notes": file_hash(open_path)}
+        progress_text = progress_path.read_text(encoding="utf-8") if progress_path.is_file() else None
+        open_text = open_path.read_text(encoding="utf-8") if open_path.is_file() else None
+        original_progress_text = progress_text
+        original_open_text = open_text
+
+        if progress_now is not None:
+            if progress_text is None:
+                raise FinalizeError("PROGRESS.md is required for --progress-now")
+            progress_text, result = replace_now(progress_text, progress_now)
+            actions.append({"type": "progress_now", "text": progress_now, "result": result})
+        for value in close_next:
+            if progress_text is None:
+                raise FinalizeError("PROGRESS.md is required for --close-next")
+            auto_start = progress_text.find(AUTO_START)
+            section_start, section_end = section_span(
+                progress_text, "Next", limit=auto_start if auto_start >= 0 else None
+            )
+            progress_text, result = close_checkbox(
+                progress_text, value, editable_start=section_start, editable_end=section_end
+            )
+            actions.append({"type": "close_next", "text": value, "result": result})
+        for value in close_open:
+            if open_text is None:
+                raise FinalizeError(".agents/agent-notes/OPEN.md is required for --close-open")
+            open_text, result = close_checkbox(open_text, value)
+            actions.append({"type": "close_open", "text": value, "result": result})
+
+        requested = {"progress_now": progress_now, "close_next": close_next, "close_open": close_open}
+        receipt_path = run_dir / "finalize.json"
+        existing = load_json(receipt_path) if receipt_path.is_file() else None
+        if (
+            existing
+            and existing.get("schema_version") == 1
+            and existing.get("status") == "complete"
+            and existing.get("merge_commit") == merge["merge_commit"]
+            and existing.get("request") == requested
+            and existing.get("files", {}).get("progress", {}).get("after_sha256") == before_hashes["progress"]
+            and existing.get("files", {}).get("open_notes", {}).get("after_sha256") == before_hashes["open_notes"]
+        ):
+            run_board(repo)
+            print(f"FINALIZED={receipt_path}")
+            print("IDEMPOTENT=true")
+            return 0
+
+        if progress_text is not None and file_hash(progress_path) != hashlib.sha256(progress_text.encode()).hexdigest():
+            atomic_write(progress_path, progress_text)
+        if open_text is not None and file_hash(open_path) != hashlib.sha256(open_text.encode()).hexdigest():
+            atomic_write(open_path, open_text)
+        try:
+            board_command = run_board(repo)
+            board_succeeded = True
+        except FinalizeError:
+            if original_progress_text is not None and progress_path.is_file():
+                atomic_write(progress_path, original_progress_text)
+            if original_open_text is not None and open_path.is_file():
+                atomic_write(open_path, original_open_text)
+            raise
+
+        after_hashes = {"progress": file_hash(progress_path), "open_notes": file_hash(open_path)}
+        receipt = {
+            "schema_version": 1,
+            "status": "complete",
+            "repo": str(repo),
+            "run": merge["run"],
+            "merge_commit": merge["merge_commit"],
+            "request": requested,
+            "actions": actions,
+            "files": {
+                "progress": {
+                    "path": str(progress_path),
+                    "before_sha256": before_hashes["progress"],
+                    "after_sha256": after_hashes["progress"],
+                },
+                "open_notes": {
+                    "path": str(open_path),
+                    "before_sha256": before_hashes["open_notes"],
+                    "after_sha256": after_hashes["open_notes"],
+                },
+            },
+            "board": {"command": board_command, "success": True},
+        }
+        atomic_write(receipt_path, json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        print(f"FINALIZED={receipt_path}")
+        print("IDEMPOTENT=false")
+        return 0
+    except (FinalizeError, OSError) as exc:
+        if progress_path is not None and original_progress_text is not None:
+            atomic_write(progress_path, original_progress_text)
+        if open_path is not None and original_open_text is not None:
+            atomic_write(open_path, original_open_text)
+        if receipt_context and merge is not None and repo is not None:
+            progress_path = repo / "PROGRESS.md"
+            open_path = repo / ".agents" / "agent-notes" / "OPEN.md"
+            if before_hashes == {"progress": None, "open_notes": None}:
+                before_hashes = {
+                    "progress": file_hash(progress_path),
+                    "open_notes": file_hash(open_path),
+                }
+            failed_receipt = {
+                "schema_version": 1,
+                "status": "failed",
+                "repo": str(repo),
+                "run": merge["run"],
+                "merge_commit": merge["merge_commit"],
+                "request": requested,
+                "actions": actions,
+                "files": {
+                    "progress": {
+                        "path": str(progress_path),
+                        "before_sha256": before_hashes["progress"],
+                        "after_sha256": file_hash(progress_path),
+                    },
+                    "open_notes": {
+                        "path": str(open_path),
+                        "before_sha256": before_hashes["open_notes"],
+                        "after_sha256": file_hash(open_path),
+                    },
+                },
+                "board": {"command": board_command, "success": board_succeeded},
+                "error": str(exc),
+            }
+            try:
+                atomic_write(
+                    run_dir / "finalize.json",
+                    json.dumps(failed_receipt, indent=2, sort_keys=True) + "\n",
+                )
+            except OSError:
+                pass
+        print(f"run-finalize: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

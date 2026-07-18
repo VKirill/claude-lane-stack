@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
+import json
+import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -26,6 +30,11 @@ IGNORE_PREFIXES = (
     "node_modules/",
     ".git/",
 )
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+class GitCommandError(RuntimeError):
+    pass
 
 
 def load_task(path: Path) -> dict:
@@ -63,17 +72,31 @@ def match_any(path: str, patterns: list) -> bool:
 
 def run_git(cwd: Path, *args: str) -> str:
     try:
-        return subprocess.check_output(
-            ["git", *args], cwd=str(cwd), text=True, stderr=subprocess.DEVNULL
+        result = subprocess.run(
+            ["git", *args],
+            cwd=str(cwd),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
-    except Exception:
-        return ""
+    except OSError as exc:
+        raise GitCommandError(f"cannot run git {' '.join(args)}: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"exit {result.returncode}"
+        raise GitCommandError(f"git {' '.join(args)} failed: {detail}")
+    return result.stdout
 
 
 def main_ref(cwd: Path) -> str:
     for ref in ("main", "master"):
-        if run_git(cwd, "rev-parse", "--verify", ref).strip():
+        try:
+            run_git(cwd, "rev-parse", "--verify", ref)
+        except GitCommandError:
+            continue
+        else:
             return ref
+    run_git(cwd, "rev-parse", "--verify", "HEAD")
     return "HEAD"
 
 
@@ -110,20 +133,34 @@ def branch_changes(cwd: Path, base: str) -> list[str]:
     return filter_noise(files)
 
 
-def evaluate(changed: list[str], owns: list, never: list) -> int:
+def evaluate_details(changed: list[str], owns: list, never: list) -> dict:
+    violations, never_hits = [], []
+    for f in changed:
+        if match_any(f, never):
+            never_hits.append(f)
+        elif owns and not match_any(f, owns):
+            violations.append(f)
+    return {
+        "changed_files": changed,
+        "owns_paths": owns,
+        "never_touch": never,
+        "violations": violations,
+        "never_touch_hits": never_hits,
+        "status": "passed" if owns and not violations and not never_hits else ("skipped" if not owns else "failed"),
+    }
+
+
+def print_evaluation(details: dict) -> int:
+    changed = details["changed_files"]
+    owns = details["owns_paths"]
+    violations = details["violations"]
+    never_hits = details["never_touch_hits"]
     if not owns:
         print("WARN: no owns_paths/files — skip strict check")
         return 0
     if not changed:
         print("OK: no changed files to check")
         return 0
-
-    violations, never_hits = [], []
-    for f in changed:
-        if match_any(f, never):
-            never_hits.append(f)
-        elif not match_any(f, owns):
-            violations.append(f)
 
     if never_hits:
         print("FAIL never_touch:")
@@ -146,6 +183,22 @@ def evaluate(changed: list[str], owns: list, never: list) -> int:
     return 0
 
 
+def receipt_path_for(task_path: Path, task_id: str) -> Path | None:
+    if task_path.parent.name != "tasks":
+        return None
+    run_dir = task_path.parent.parent
+    if run_dir.parent.name != "runs" or run_dir.parent.parent.name != ".agents":
+        return None
+    return run_dir / "artifacts" / task_id / "owns-check.json"
+
+
+def write_receipt(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp, path)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("task_file")
@@ -156,6 +209,10 @@ def main() -> int:
 
     task_path = Path(args.task_file).resolve()
     data = load_task(task_path)
+    task_id = str(data.get("id") or task_path.stem.split("-")[0])
+    if not SAFE_NAME.fullmatch(task_id) or task_id in {".", ".."}:
+        print(f"FAIL: invalid task id: {task_id!r}", file=sys.stderr)
+        return 2
     owns = data.get("owns_paths") or data.get("files") or []
     never = data.get("never_touch") or []
     if isinstance(owns, str):
@@ -165,15 +222,46 @@ def main() -> int:
     owns, never = list(owns or []), list(never or [])
 
     cwd = Path(args.cwd or data.get("project_cwd") or ".").resolve()
-    branch = run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD").strip()
-
-    if args.uncommitted_only or (branch in ("main", "master") and not args.base):
-        print(f"(mode: uncommitted-only on {branch})")
-        return evaluate(uncommitted(cwd), owns, never)
-
-    base = args.base or main_ref(cwd)
-    print(f"(mode: vs {base}...HEAD + uncommitted on {branch})")
-    return evaluate(branch_changes(cwd, base), owns, never)
+    mode = "git inspection failed"
+    try:
+        branch = run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        if args.uncommitted_only or (branch in ("main", "master") and not args.base):
+            mode = f"uncommitted-only on {branch}"
+            changed = uncommitted(cwd)
+        else:
+            base = args.base or main_ref(cwd)
+            mode = f"vs {base}...HEAD + uncommitted on {branch}"
+            changed = branch_changes(cwd, base)
+        print(f"(mode: {mode})")
+        details = evaluate_details(changed, owns, never)
+        exit_code = print_evaluation(details)
+    except GitCommandError as exc:
+        details = {
+            "changed_files": [],
+            "owns_paths": owns,
+            "never_touch": never,
+            "violations": [],
+            "never_touch_hits": [],
+            "status": "failed",
+            "error": str(exc),
+        }
+        exit_code = 2
+        print(f"FAIL: {exc}", file=sys.stderr)
+    receipt_path = receipt_path_for(task_path, task_id)
+    if receipt_path is not None:
+        receipt = {
+            "schema_version": 2,
+            "task_id": task_id,
+            "task_sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "cwd": str(cwd),
+            "mode": mode,
+            **details,
+            "exit_code": exit_code,
+        }
+        write_receipt(receipt_path, receipt)
+        print(f"receipt: {receipt_path}")
+    return exit_code
 
 
 if __name__ == "__main__":

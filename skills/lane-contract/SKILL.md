@@ -5,38 +5,56 @@ description: File-based task contracts under .agents/runs/ with owns_paths and s
 
 # Lane contract (files only)
 
-Canonical: `/home/ubuntu/.agents/docs/FILE-CONTRACT.md`.  
+Canonical: `/home/ubuntu/.agents/docs/FILE-CONTRACT.md`.
 Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 
 ## Orchestrator must
 
-1. Write contracts before dispatch; set **`owns_paths`** + **`never_touch`** + **`done_when`**.  
-2. Paste code excerpts into `interfaces` / `objective`.  
-3. Pass `PROJECT_CWD`, `TASK_FILE`, and `RUN_DIR` (absolute) to `lane-supervisor`.
-4. Ensure parallel tasks have **disjoint** owns_paths.  
-5. After **each** lane finishes: `check-owns-paths`; accept report evidence **immediately**
-   (progressive — do not wait for other concurrent tasks).  
-6. When run complete: **merge to main** (`wt-merge-main` or commit) — human never merges.  
-7. No task CLI / orchestrator MCP for queue.  
-8. Start and observe work through typed `lane-ctl` actions. The supervisor is
-   source-read-only; the detached Grok process is the writer.
-9. Keep provider slots (default 5, range 1–10) separate from verification slots
-   (default 2, range 1–10).
+1. Create new runs with `run-init`, write strict schema-v2 tasks, then run
+   `run-validate --phase pre-dispatch` before dispatch.
+2. Set **`owns_paths`** + **`never_touch`** + behavioral `acceptance`.
+3. Paste code excerpts into `interfaces` and declare `read_first`, `invariants`,
+   `out_of_scope`, and `expected_outputs`.
+4. Pass `PROJECT_CWD`, `TASK_FILE`, and `RUN_DIR` (absolute) to `lane-supervisor`.
+5. Ensure parallel tasks have **disjoint** owns_paths.
+6. After **each** lane finishes: `check-owns-paths`; verify and accept evidence **immediately**
+   (progressive — do not wait for other concurrent tasks).
+7. Treat `tasks/*.yaml` as immutable after first start. Runtime status belongs
+   to `artifacts/<id>/state.json`; completion exists only in `acceptance.json`.
+8. Before merge run `run-validate --phase pre-merge`; then **merge to main**
+   (`wt-merge-main` or commit) — human never merges.
+9. No task CLI / orchestrator MCP for queue.
+10. Start and observe work through typed `lane-ctl` actions. The supervisor is
+    source-read-only; the detached Grok process is the writer.
+11. Keep provider slots (default 5, range 1–10) separate from verification slots
+    (default 2, range 1–10).
+12. Run automated writers/reviewers with the lane automation marker. Imported
+    Claude hooks are disabled for Grok and the shared native session-ledger
+    exits without writing; skills, rules, and non-ledger safety hooks remain.
 
 ## Lane must
 
-1. `Read` TASK_FILE first.  
-2. Work only in `PROJECT_CWD`.  
-3. Edit **only** `owns_paths` (or `files`). Honor `never_touch`.  
-4. Heartbeat: `lane-heartbeat --repo … --run … --task … --status running`.  
-5. Write `ARTIFACT_DIR/report.md` and run focused checks — **report body in English**. The PM independently runs task `verification` commands via `lane-ctl verify`.
-6. **Never** `git checkout main`, merge to main, or `git push` unless task says otherwise (default: never).  
-7. On build errors outside owns_paths: do not fix; note in report.  
+1. `Read` TASK_FILE first.
+2. Work only in `PROJECT_CWD`.
+3. Edit **only** `owns_paths` (or `files`). Honor `never_touch`.
+4. Heartbeat: `lane-heartbeat --repo … --run … --task … --status running`.
+   It never edits task YAML or appends to STATUS.md.
+5. Write the canonical `ARTIFACT_DIR/report.md` and run focused checks —
+   **report body in English**. The PM independently runs structured task
+   `verification` commands via `lane-ctl verify`.
+6. **Never** `git checkout main`, merge to main, or `git push` unless task says otherwise (default: never).
+7. On build errors outside owns_paths: do not fix; note in report.
 8. All durable files English (see LANGUAGE.md).
 
-## Minimal fields
+## Required schema-v2 task fields
 
-`id`, `title`, `risk`, `lane`, `status`, `project_cwd`, `owns_paths` (or `files`), `objective`, `verify`, `verification`/`done_when`, `acceptance`.
+`schema_version`, `id`, `title`, `risk`, `lane`, `project_cwd`, `read_first`,
+`interfaces`, `invariants`, `out_of_scope`, `expected_outputs`, `owns_paths`,
+`never_touch`, `depends_on`, `objective`, `acceptance`, `verify`, and structured
+`verification` entries (`command`, absolute `cwd`, bounded `timeout_sec`).
+
+Legacy task fields remain readable for existing runs. New runs must not include
+mutable `status`, `done_when`, or free-form verification strings.
 
 ## `verify` levels
 
@@ -46,4 +64,5 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 | smoke | Build passes / page renders / command runs once |
 | tests | Real test run evidence required in report |
 
-PM chooses `verify` at scoring time; `done_when` must match it.
+PM chooses `verify` at scoring time; the structured `verification` commands
+must provide evidence appropriate to that level.

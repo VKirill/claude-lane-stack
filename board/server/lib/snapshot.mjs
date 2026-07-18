@@ -120,7 +120,7 @@ export async function readRuns(projectPath) {
     const tasks = hasTasksDirectory ? await readTasks(tasksDirectory, entry.name) : [];
     const promotedTasks = tasks.map((task) => ({
       ...task,
-      status: promoteMergedTaskStatus(task.status, merged),
+      status: promoteMergedTaskStatus(task.status, merged, task.schemaVersion),
     }));
 
     runs.push({

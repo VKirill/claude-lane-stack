@@ -1,4 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 const TASK_STATUSES = new Set(['pending', 'running', 'done', 'blocked', 'stalled']);
@@ -29,8 +30,53 @@ export function normalizeTaskStatus(status) {
   return TASK_STATUSES.has(normalized) ? normalized : 'pending';
 }
 
-export function promoteMergedTaskStatus(status, merged) {
+export function promoteMergedTaskStatus(status, merged, schemaVersion = 1) {
+  if (schemaVersion >= 2) return status;
   return status === 'pending' && merged?.commit ? 'done' : status;
+}
+
+function runtimeStatusToBoard(status) {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (['accepted', 'done', 'failed', 'cancelled', 'verification_failed', 'blocked'].includes(normalized)) return 'blocked';
+  if (normalized === 'stalled') return 'stalled';
+  if (['starting', 'running', 'awaiting_verification', 'verifying', 'verified'].includes(normalized)) return 'running';
+  return 'pending';
+}
+
+async function readJsonObject(filePath) {
+  try {
+    const value = JSON.parse(await readFile(filePath, 'utf8'));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR' && !(error instanceof SyntaxError)) {
+      warn(`could not read ${filePath}`, error);
+    }
+    return null;
+  }
+}
+
+async function readTaskRuntime(runPath, taskId, taskSha256) {
+  const artifactPath = path.join(runPath, 'artifacts', taskId);
+  const acceptance = await readJsonObject(path.join(artifactPath, 'acceptance.json'));
+  const state = await readJsonObject(path.join(artifactPath, 'state.json'));
+  const currentAttempt = state?.current_attempt ?? state?.attempt;
+  if (
+    acceptance?.schema_version === 2
+    && acceptance?.task_id === taskId
+    && acceptance?.task_sha256 === taskSha256
+    && Number.isInteger(acceptance?.attempt)
+    && acceptance.attempt > 0
+    && acceptance.attempt === currentAttempt
+    && acceptance?.provider_exit === 0
+    && acceptance?.report === 'complete'
+    && acceptance?.owns_check === 'passed'
+    && acceptance?.verification === 'passed'
+    && ['passed', 'not_required'].includes(acceptance?.review)
+    && acceptance?.accepted === true
+    && typeof acceptance?.accepted_at === 'string'
+    && acceptance.accepted_at.length > 0
+  ) return { status: 'done', acceptance, state };
+  return state ? { status: runtimeStatusToBoard(state.status), acceptance, state } : null;
 }
 
 
@@ -42,7 +88,7 @@ export function parseTaskYaml(source, { run = '', filePath = 'task YAML' } = {})
 
   const fields = {};
   for (const line of source.split(/\r?\n/)) {
-    const match = line.match(/^\s*(id|title|status|risk|lane|verify):\s*(.*?)\s*$/i);
+    const match = line.match(/^\s*(schema_version|id|title|status|risk|lane|verify):\s*(.*?)\s*$/i);
     if (!match) continue;
     const value = scalar(match[2]);
     if (value === null) {
@@ -57,15 +103,17 @@ export function parseTaskYaml(source, { run = '', filePath = 'task YAML' } = {})
     return null;
   }
 
-  return {
+  const task = {
     id: fields.id,
     title: fields.title,
-    status: normalizeTaskStatus(fields.status),
+    status: Number(fields.schema_version) === 2 ? 'pending' : normalizeTaskStatus(fields.status),
     risk: fields.risk ?? null,
     lane: fields.lane ?? null,
     verify: fields.verify ?? null,
     run,
   };
+  if (Number(fields.schema_version) === 2) task.schemaVersion = 2;
+  return task;
 }
 
 async function readDirectory(directory) {
@@ -80,13 +128,20 @@ async function readDirectory(directory) {
 export async function readTasks(tasksDirectory, run) {
   const tasks = [];
   const entries = await readDirectory(tasksDirectory);
+  const runPath = path.dirname(tasksDirectory);
 
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isFile() || !entry.name.endsWith('.yaml')) continue;
     const filePath = path.join(tasksDirectory, entry.name);
     try {
-      const task = parseTaskYaml(await readFile(filePath, 'utf8'), { run, filePath });
-      if (task) tasks.push(task);
+      const source = await readFile(filePath, 'utf8');
+      const task = parseTaskYaml(source, { run, filePath });
+      if (task) {
+        const taskSha256 = createHash('sha256').update(source).digest('hex');
+        const runtime = await readTaskRuntime(runPath, task.id, taskSha256);
+        if (runtime) task.status = runtime.status;
+        tasks.push(task);
+      }
     } catch (error) {
       warn(`could not read ${filePath}`, error);
     }
@@ -247,6 +302,12 @@ export function parseMerge(source) {
 }
 
 export async function readMerge(runPath) {
+  const receipt = await readJsonObject(path.join(runPath, 'merge.json'));
+  if (receipt) {
+    const completedAt = typeof receipt.completed_at === 'string' ? receipt.completed_at : '';
+    const commit = typeof receipt.merge_commit === 'string' ? receipt.merge_commit : null;
+    return { date: completedAt.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null, commit };
+  }
   const filePath = path.join(runPath, 'MERGE.md');
   try {
     return parseMerge(await readFile(filePath, 'utf8'));
@@ -356,7 +417,11 @@ export async function readTaskDetail(projectPath, run, taskId) {
   const source = await readTaskSource(path.join(runPath, 'tasks'), taskId);
   if (source === null) return null;
   const detail = parseTaskDetail(source);
-  if (detail.status !== undefined) {
+  const taskSha256 = createHash('sha256').update(source).digest('hex');
+  const runtime = await readTaskRuntime(runPath, taskId, taskSha256);
+  if (runtime) {
+    detail.status = runtime.status;
+  } else if (detail.status !== undefined) {
     const merged = await readMerge(runPath);
     detail.status = promoteMergedTaskStatus(detail.status, merged);
   }

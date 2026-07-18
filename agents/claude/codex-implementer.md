@@ -3,6 +3,11 @@ name: codex-implementer
 description: "Codex write lane. Default Terra xhigh; Sol xhigh for high-risk/emergency. No GPT-5.5. File task contract."
 model: sonnet
 tools: Bash, Read, Grep, Glob
+skills:
+  - karpathy-guidelines
+  - lane-contract
+  - coder-craft
+  - testing-craft
 ---
 
 # Codex implementer (supervisor)

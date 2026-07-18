@@ -27,6 +27,13 @@ from pathlib import Path
 from typing import IO, Iterator
 
 
+BIN_DIR = Path(__file__).resolve().parent
+if str(BIN_DIR) not in sys.path:
+    sys.path.insert(0, str(BIN_DIR))
+
+from verification_safety import verification_argv, verification_error
+
+
 ROOT = Path(__file__).resolve().parents[1]
 LANE_BG = ROOT / "bin" / "lane-bg"
 LANE_EXEC = ROOT / "bin" / "lane-exec"
@@ -40,6 +47,7 @@ HARD_VERIFY_POOL = 10
 HARD_MAX_TASKS = 10
 HARD_TAIL_LINES = 1000
 HARD_VERIFY_TIMEOUT = 86400
+HARD_V2_VERIFY_TIMEOUT = 7200
 MAX_ATTEMPTS = 2
 TAIL_SOURCES = {
     "supervisor": "lane-bg.supervisor.log",
@@ -48,6 +56,22 @@ TAIL_SOURCES = {
     "report": "report.md",
     "verification": "verified.txt",
 }
+REVIEW_RECEIPT_FIELDS = {
+    "schema_version",
+    "receipt_type",
+    "task_id",
+    "task_sha256",
+    "attempt",
+    "project_cwd",
+    "base_ref",
+    "reviewed_diff_sha256",
+    "reviewed_tree_sha256",
+    "verdict",
+    "findings",
+    "reviewed_at",
+}
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT_HEX = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
 
 class ContractError(RuntimeError):
@@ -167,6 +191,121 @@ def load_task_yaml(task_file: Path) -> tuple[dict, str]:
     if not isinstance(value, dict):
         raise ContractError(f"task YAML must contain a mapping: {task_file}")
     return value, raw
+
+
+def load_yaml_mapping(path: Path, label: str) -> dict:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ContractError(f"cannot read {label} {path}: {exc}") from exc
+    try:
+        import yaml  # type: ignore
+
+        value = yaml.safe_load(raw) or {}
+    except ImportError as exc:
+        raise ContractError(f"PyYAML is required to read {label}") from exc
+    except Exception as exc:
+        raise ContractError(f"cannot parse {label} {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ContractError(f"{label} must contain a mapping: {path}")
+    return value
+
+
+def context_schema_version(context: TaskContext) -> tuple[int, dict | None]:
+    task_version = context.task.get("schema_version", 1)
+    if not isinstance(task_version, int):
+        raise ContractError("task schema_version must be an integer")
+    run_path = safe_child_file(context.run_dir, "run.yaml")
+    if not run_path.exists():
+        if task_version >= 2:
+            raise ContractError("schema_version 2 tasks require RUN_DIR/run.yaml")
+        return 1, None
+    run_contract = load_yaml_mapping(run_path, "run.yaml")
+    run_version = run_contract.get("schema_version")
+    if run_version != 2:
+        raise ContractError("run.yaml schema_version must be 2")
+    if task_version != 2:
+        raise ContractError("tasks in a schema_version 2 run must declare schema_version: 2")
+    return 2, run_contract
+
+
+def task_digest(context: TaskContext) -> str:
+    try:
+        return hashlib.sha256(context.task_file.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ContractError(f"cannot hash task YAML {context.task_file}: {exc}") from exc
+
+
+def state_path_for(artifact_dir: Path) -> Path:
+    return safe_child_file(artifact_dir, "state.json")
+
+
+def load_task_state(artifact_dir: Path) -> dict | None:
+    return read_optional_json(state_path_for(artifact_dir))
+
+
+def write_task_state(artifact_dir: Path, state: dict) -> None:
+    write_json(state_path_for(artifact_dir), state)
+
+
+def attempt_dir_for(
+    artifact_dir: Path, attempt: int, *, create: bool = False
+) -> Path:
+    if not isinstance(attempt, int) or attempt < 1 or attempt > 99:
+        raise ContractError("attempt must be between 1 and 99")
+    attempts_root = (artifact_dir / "attempts").resolve(strict=False)
+    if not is_within(attempts_root, artifact_dir):
+        raise ContractError("attempts path may not escape the task artifact root")
+    attempt_dir = (attempts_root / f"{attempt:02d}").resolve(strict=False)
+    if not is_within(attempt_dir, attempts_root):
+        raise ContractError("attempt path may not escape attempts")
+    if create:
+        try:
+            attempt_dir.mkdir(parents=True, exist_ok=False)
+        except FileExistsError as exc:
+            raise ContractError(f"attempt directory already exists: {attempt_dir}") from exc
+        except OSError as exc:
+            raise OperationError(f"cannot create attempt directory {attempt_dir}: {exc}") from exc
+    return attempt_dir
+
+
+def current_attempt_dir(artifact_dir: Path, state: dict) -> Path:
+    attempt = state.get("current_attempt", state.get("attempt"))
+    if not isinstance(attempt, int) or attempt < 1:
+        raise ContractError("state.json current_attempt is invalid")
+    return attempt_dir_for(artifact_dir, attempt)
+
+
+def require_immutable_task(context: TaskContext, state: dict) -> None:
+    if state.get("schema_version") != 2:
+        raise ContractError("state.json schema_version must be 2")
+    if state.get("task_id") != context.task_id:
+        raise ContractError("state.json task identity mismatch")
+    if state.get("task_file") != str(context.task_file):
+        raise ContractError("task file differs from immutable state")
+    expected = state.get("task_sha256")
+    actual = task_digest(context)
+    if not isinstance(expected, str) or expected != actual:
+        raise ContractError("task YAML changed after first start (sha256 mismatch)")
+
+
+def context_from_state(run_dir: Path, task_id: str, state: dict) -> TaskContext:
+    task_file = state.get("task_file")
+    project_cwd = state.get("project_cwd")
+    if not isinstance(task_file, str) or not isinstance(project_cwd, str):
+        raise ContractError("state.json is missing task_file/project_cwd")
+    context = validate_task_context(
+        run_dir_value=run_dir,
+        task_id=task_id,
+        task_file_value=task_file,
+        project_cwd_value=project_cwd,
+        create_artifact=False,
+    )
+    version, _ = context_schema_version(context)
+    if version != 2:
+        raise ContractError("state.json v2 requires a schema_version 2 contract")
+    require_immutable_task(context, state)
+    return context
 
 
 def validate_task_context(
@@ -314,8 +453,231 @@ def read_optional_json(path: Path) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
-def task_status(run_dir: Path, task_id: str) -> dict:
+def legacy_verification_receipt_trusted(
+    run_dir: Path, control: dict, verification: dict | None
+) -> bool:
+    """Reject green receipts that do not prove the recorded legacy snapshot."""
+    if not verification or verification.get("status") != "passed":
+        return False
+    attempt = control.get("attempt")
+    if verification.get("attempt") != attempt:
+        return False
+    snapshot = control.get("verification_commands")
+    records = verification.get("commands")
+    if not isinstance(snapshot, list) or not isinstance(records, list):
+        return False
+    observed: list[str] = []
+    for record in records:
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("command"), str)
+            or record.get("exit_code") != 0
+        ):
+            return False
+        observed.append(record["command"])
+    if observed != snapshot:
+        return False
+    if snapshot:
+        return True
+
+    task_file_value = control.get("task_file")
+    if not isinstance(task_file_value, str):
+        return False
+    task_file = Path(task_file_value).expanduser().resolve()
+    tasks_root = (run_dir / "tasks").resolve()
+    if not task_file.is_file() or not is_within(task_file, tasks_root):
+        return False
+    try:
+        task, _ = load_task_yaml(task_file)
+    except ContractError:
+        return False
+    return str(task.get("verify", "none")).strip().lower() == "none"
+
+
+def v2_verification_receipt_trusted(
+    state: dict, task_id: str, verification: dict | None
+) -> bool:
+    if not verification or verification.get("schema_version") != 2:
+        return False
+    attempt = state.get("current_attempt", state.get("attempt"))
+    return (
+        verification.get("task_id") == task_id
+        and verification.get("task_sha256") == state.get("task_sha256")
+        and verification.get("attempt") == attempt
+        and verification.get("task_file") == state.get("task_file")
+        and verification.get("project_cwd") == state.get("project_cwd")
+    )
+
+
+def v2_review_receipt_identity_trusted(
+    state: dict, task_id: str, review: dict | None
+) -> bool:
+    task_sha256 = state.get("task_sha256")
+    attempt = state.get("current_attempt", state.get("attempt"))
+    project_cwd = state.get("project_cwd")
+    if (
+        not review
+        or not isinstance(task_sha256, str)
+        or not isinstance(attempt, int)
+        or not isinstance(project_cwd, str)
+    ):
+        return False
+    try:
+        require_review_receipt_identity(
+            review,
+            task_id=task_id,
+            task_sha256=task_sha256,
+            attempt=attempt,
+            project_cwd=Path(project_cwd),
+        )
+    except ContractError:
+        return False
+    return True
+
+
+def task_status_v2(
+    run_dir: Path,
+    task_id: str,
+    artifact: Path,
+    state: dict,
+    *,
+    persist: bool = False,
+) -> dict:
+    attempt_dir = current_attempt_dir(artifact, state)
+    control = read_optional_json(safe_child_file(attempt_dir, "control.json")) or {}
+    pid = parse_int_file(safe_child_file(attempt_dir, "lane-bg.pid"))
+    expected_start = control.get("pid_start_time")
+    if not isinstance(expected_start, int):
+        expected_start = None
+    running = pid_alive(pid, expected_start)
+    exit_code = parse_int_file(safe_child_file(attempt_dir, "lane-bg.exit"))
+    heartbeat_path = safe_child_file(artifact, "heartbeat.json")
+    heartbeat_value = read_optional_json(heartbeat_path)
+    heartbeat = {
+        "exists": heartbeat_path.is_file(),
+        "path": str(heartbeat_path),
+        "age_seconds": (
+            max(0.0, time.time() - heartbeat_path.stat().st_mtime)
+            if heartbeat_path.exists()
+            else None
+        ),
+        "value": heartbeat_value,
+    }
+    report_path = safe_child_file(artifact, "report.md")
+    verification_path = safe_child_file(attempt_dir, "verification.json")
+    verification = read_optional_json(verification_path)
+    verification_trusted = v2_verification_receipt_trusted(
+        state, task_id, verification
+    )
+    review_path = safe_child_file(artifact, "review.json")
+    review = read_optional_json(review_path)
+    review_trusted = v2_review_receipt_identity_trusted(state, task_id, review)
+    acceptance_path = safe_child_file(artifact, "acceptance.json")
+    acceptance = read_optional_json(acceptance_path) or {}
+    accepted_review = acceptance.get("review")
+    review_binding_trusted = accepted_review == "not_required" or (
+        accepted_review == "passed" and review_trusted
+    )
+    accepted = (
+        verification_trusted
+        and verification is not None
+        and verification.get("status") == "passed"
+        and review_binding_trusted
+        and acceptance.get("schema_version") == 2
+        and acceptance.get("task_id") == task_id
+        and acceptance.get("task_sha256") == state.get("task_sha256")
+        and isinstance(acceptance.get("attempt"), int)
+        and acceptance.get("attempt")
+        == state.get("current_attempt", state.get("attempt"))
+        and acceptance.get("provider_exit") == 0
+        and acceptance.get("report") == "complete"
+        and acceptance.get("owns_check") == "passed"
+        and acceptance.get("verification") == "passed"
+        and acceptance.get("review") in {"passed", "not_required"}
+        and acceptance.get("accepted") is True
+        and isinstance(acceptance.get("accepted_at"), str)
+        and bool(acceptance.get("accepted_at"))
+    )
+
+    if accepted:
+        status = "accepted"
+    elif state.get("status") == "cancelled":
+        status = "cancelled"
+    elif state.get("status") == "stalled" and running:
+        status = "stalled"
+    elif running:
+        status = "running"
+    elif exit_code == 0:
+        if verification_trusted and verification.get("status") == "passed":
+            status = "verified"
+        elif verification_trusted and verification.get("status") == "failed":
+            status = "verification_failed"
+        elif verification_trusted and verification.get("status") == "running":
+            status = "verifying"
+        else:
+            status = "awaiting_verification"
+    elif exit_code is not None:
+        status = "failed"
+    elif control:
+        status = "unknown"
+    else:
+        status = "not_started"
+
+    if persist and (state.get("status") != status or state.get("accepted") is not accepted):
+        state = dict(state)
+        state["status"] = status
+        state["accepted"] = accepted
+        state["updated_at"] = utc_now()
+        write_task_state(artifact, state)
+
+    return {
+        "schema_version": 2,
+        "task_id": task_id,
+        "status": status,
+        "accepted": accepted,
+        "pid": pid,
+        "running": running,
+        "exit_code": exit_code,
+        "attempt": state.get("current_attempt", state.get("attempt")),
+        "artifact_dir": str(artifact),
+        "attempt_dir": str(attempt_dir),
+        "task_sha256": state.get("task_sha256"),
+        "heartbeat": heartbeat,
+        "report": {"exists": report_path.is_file(), "path": str(report_path)},
+        "verification": {
+            "exists": verification_path.is_file(),
+            "verified": bool(
+                verification_trusted and verification.get("status") == "passed"
+            ),
+            "path": str(verification_path),
+            "status": (
+                verification.get("status")
+                if verification_trusted and verification
+                else "untrusted" if verification else None
+            ),
+        },
+        "review": {
+            "exists": review_path.is_file(),
+            "trusted": review_trusted,
+            "path": str(review_path),
+            "status": (
+                review.get("verdict")
+                if review_trusted and review
+                else "untrusted" if review else None
+            ),
+        },
+        "acceptance": {
+            "exists": acceptance_path.is_file(),
+            "path": str(acceptance_path),
+        },
+    }
+
+
+def task_status(run_dir: Path, task_id: str, *, persist: bool = False) -> dict:
     artifact = artifact_dir_for(run_dir, task_id)
+    state = load_task_state(artifact)
+    if state is not None:
+        return task_status_v2(run_dir, task_id, artifact, state, persist=persist)
     control = read_optional_json(artifact / "control.json") or {}
     pid = parse_int_file(artifact / "lane-bg.pid")
     expected_start = control.get("pid_start_time")
@@ -351,6 +713,9 @@ def task_status(run_dir: Path, task_id: str) -> dict:
     verification_matches_attempt = bool(
         verification and verification.get("attempt") == current_attempt
     )
+    verification_trusted = legacy_verification_receipt_trusted(
+        run_dir, control, verification
+    )
 
     if running:
         status = "running"
@@ -359,8 +724,7 @@ def task_status(run_dir: Path, task_id: str) -> dict:
     elif exit_code == 0:
         if (
             verified_path.is_file()
-            and verification_matches_attempt
-            and verification.get("status") == "passed"
+            and verification_trusted
         ):
             status = "verified"
         elif verification_matches_attempt and verification.get("status") == "failed":
@@ -386,10 +750,19 @@ def task_status(run_dir: Path, task_id: str) -> dict:
         "report": {"exists": report_path.is_file(), "path": str(report_path)},
         "verification": {
             "exists": verification_path.is_file() and verification_matches_attempt,
-            "verified": verified_path.is_file() and verification_matches_attempt,
+            "verified": verified_path.is_file() and verification_trusted,
             "path": str(verification_path),
             "status": (
-                verification.get("status") if verification_matches_attempt else None
+                (
+                    "untrusted"
+                    if verification_matches_attempt
+                    and verification
+                    and verification.get("status") == "passed"
+                    and not verification_trusted
+                    else verification.get("status")
+                )
+                if verification_matches_attempt
+                else None
             ),
         },
     }
@@ -443,8 +816,15 @@ def command_hash(argv: list[str]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def build_launch_argv(context: TaskContext, args: argparse.Namespace) -> list[str]:
-    artifact = context.artifact_dir
+def build_launch_argv(
+    context: TaskContext,
+    args: argparse.Namespace,
+    *,
+    runtime_dir: Path | None = None,
+    heartbeat_path: Path | None = None,
+) -> list[str]:
+    artifact = runtime_dir or context.artifact_dir
+    heartbeat = heartbeat_path or (artifact / "heartbeat.json")
     session_argv = [
         str(LANE_SESSION),
         "run",
@@ -488,7 +868,7 @@ def build_launch_argv(context: TaskContext, args: argparse.Namespace) -> list[st
         "--max",
         str(args.max_runtime),
         "--heartbeat",
-        str(artifact / "heartbeat.json"),
+        str(heartbeat),
         "--log",
         str(artifact / "lane-exec.log"),
         "--label",
@@ -542,6 +922,124 @@ def finish_launch_state(
     }
 
 
+def finish_launch_v2(
+    *,
+    artifact: Path,
+    attempt_dir: Path,
+    control: dict,
+    state: dict,
+    result: subprocess.CompletedProcess[str],
+) -> dict:
+    control["launcher_exit_code"] = result.returncode
+    control["launcher_stdout"] = result.stdout
+    control["launcher_stderr"] = result.stderr
+    control["launched_at"] = utc_now()
+    pid = parse_int_file(safe_child_file(attempt_dir, "lane-bg.pid"))
+    control["pid"] = pid
+    control["pid_start_time"] = pid_start_time(pid) if pid is not None else None
+    write_json(safe_child_file(attempt_dir, "control.json"), control)
+    state = dict(state)
+    state["status"] = "running" if result.returncode == 0 else "failed"
+    state["updated_at"] = utc_now()
+    write_task_state(artifact, state)
+    return {
+        "schema_version": 2,
+        "task_id": control["task_id"],
+        "status": "started" if result.returncode == 0 else "launch_failed",
+        "pid": pid,
+        "attempt": control["attempt"],
+        "artifact_dir": str(artifact),
+        "attempt_dir": str(attempt_dir),
+    }
+
+
+def cmd_start_v2(
+    context: TaskContext, args: argparse.Namespace, run_contract: dict
+) -> int:
+    artifact = context.artifact_dir
+    if state_path_for(artifact).exists():
+        raise ContractError("lane already has state.json; use retry")
+    if safe_child_file(artifact, "control.json").exists():
+        raise ContractError("cannot start v2 over a legacy lane")
+    task_sha256 = task_digest(context)
+    verification_executables = configured_verification_executables(context.run_dir)
+    verification_snapshot = verification_entries(
+        context.task,
+        schema_version=2,
+        enforce_nonempty=False,
+        extra_executables=verification_executables,
+    )
+    attempt = 1
+    attempt_dir = attempt_dir_for(artifact, attempt, create=True)
+    prompt = prompt_for(context)
+    prompt_path = safe_child_file(attempt_dir, "prompt.md")
+    atomic_write(prompt_path, prompt)
+    heartbeat_path = safe_child_file(artifact, "heartbeat.json")
+    argv = build_launch_argv(
+        context,
+        args,
+        runtime_dir=attempt_dir,
+        heartbeat_path=heartbeat_path,
+    )
+    control = {
+        "version": 2,
+        "schema_version": 2,
+        "task_id": context.task_id,
+        "task_file": str(context.task_file),
+        "task_sha256": task_sha256,
+        "project_cwd": str(context.project_cwd),
+        "artifact_dir": str(artifact),
+        "attempt_dir": str(attempt_dir),
+        "attempt": attempt,
+        "heartbeat_file": str(heartbeat_path),
+        "prompt_file": str(prompt_path),
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "argv": argv,
+        "argv_sha256": command_hash(argv),
+        "verification_commands": verification_snapshot,
+        "verification_executables": sorted(verification_executables),
+        "created_at": utc_now(),
+    }
+    state = {
+        "version": 2,
+        "schema_version": 2,
+        "run_schema_version": run_contract.get("schema_version"),
+        "task_id": context.task_id,
+        "task_file": str(context.task_file),
+        "task_sha256": task_sha256,
+        "project_cwd": str(context.project_cwd),
+        "current_attempt": attempt,
+        "attempt": attempt,
+        "status": "launching",
+        "accepted": False,
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+    }
+    write_json(safe_child_file(attempt_dir, "control.json"), control)
+    write_task_state(artifact, state)
+    append_event(context.run_dir, "control_start", context.task_id, attempt=attempt)
+    result = launch(argv, cwd=context.project_cwd)
+    payload = finish_launch_v2(
+        artifact=artifact,
+        attempt_dir=attempt_dir,
+        control=control,
+        state=state,
+        result=result,
+    )
+    if result.returncode != 0:
+        append_event(
+            context.run_dir,
+            "control_start_failed",
+            context.task_id,
+            attempt=attempt,
+            exit_code=result.returncode,
+        )
+        print(json.dumps(payload, sort_keys=True))
+        return 1
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
 def cmd_start(args: argparse.Namespace) -> int:
     context = validate_task_context(
         run_dir_value=args.run_dir,
@@ -550,8 +1048,12 @@ def cmd_start(args: argparse.Namespace) -> int:
         project_cwd_value=args.project_cwd,
         create_artifact=True,
     )
+    schema_version, run_contract = context_schema_version(context)
     lifecycle_lock = safe_child_file(context.artifact_dir, ".lifecycle.lock")
     with locked_file(lifecycle_lock):
+        if schema_version == 2:
+            assert run_contract is not None
+            return cmd_start_v2(context, args, run_contract)
         control_path = context.artifact_dir / "control.json"
         if control_path.exists():
             raise ContractError("lane already has control.json; use retry")
@@ -607,7 +1109,12 @@ def cmd_start(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     run_dir = validate_run_dir(args.run_dir)
     validate_name(args.task_id, "task id")
-    payload = task_status(run_dir, args.task_id)
+    artifact = artifact_dir_for(run_dir, args.task_id)
+    if state_path_for(artifact).is_file():
+        with locked_file(safe_child_file(artifact, ".lifecycle.lock")):
+            payload = task_status(run_dir, args.task_id, persist=True)
+    else:
+        payload = task_status(run_dir, args.task_id)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -643,7 +1150,12 @@ def tail_lines(path: Path, count: int) -> str:
 def cmd_tail(args: argparse.Namespace) -> int:
     run_dir = validate_run_dir(args.run_dir)
     artifact = artifact_dir_for(run_dir, args.task_id)
-    path = safe_child_file(artifact, TAIL_SOURCES[args.source])
+    state = load_task_state(artifact)
+    if state is not None and args.source != "report":
+        source_root = current_attempt_dir(artifact, state)
+    else:
+        source_root = artifact
+    path = safe_child_file(source_root, TAIL_SOURCES[args.source])
     sys.stdout.write(tail_lines(path, args.lines))
     return 0
 
@@ -699,26 +1211,49 @@ def terminate_tree(pid: int, grace_seconds: float = 3.0) -> None:
 
 def load_control_for(run_dir: Path, task_id: str) -> tuple[Path, dict]:
     artifact = artifact_dir_for(run_dir, task_id)
-    control = read_json(artifact / "control.json")
-    if control.get("task_id") != task_id or control.get("artifact_dir") != str(artifact):
+    state = load_task_state(artifact)
+    control_root = current_attempt_dir(artifact, state) if state is not None else artifact
+    control = read_json(safe_child_file(control_root, "control.json"))
+    if control.get("task_id") != task_id:
+        raise ContractError("control.json task identity mismatch")
+    if state is None and control.get("artifact_dir") != str(artifact):
         raise ContractError("control.json task/artifact identity mismatch")
-    return artifact, control
+    if state is not None:
+        if control.get("artifact_dir") != str(artifact):
+            raise ContractError("control.json task artifact identity mismatch")
+        if control.get("attempt_dir") != str(control_root):
+            raise ContractError("control.json attempt identity mismatch")
+        if control.get("task_sha256") != state.get("task_sha256"):
+            raise ContractError("control.json task_sha256 does not match state")
+        if control.get("attempt") != state.get(
+            "current_attempt", state.get("attempt")
+        ):
+            raise ContractError("control.json attempt does not match state")
+    return control_root, control
 
 
 def cmd_cancel(args: argparse.Namespace) -> int:
     run_dir = validate_run_dir(args.run_dir)
     validate_name(args.task_id, "task id")
-    artifact = artifact_dir_for(run_dir, args.task_id)
-    with locked_file(safe_child_file(artifact, ".lifecycle.lock")):
-        artifact, control = load_control_for(run_dir, args.task_id)
-        pid = parse_int_file(artifact / "lane-bg.pid")
+    task_artifact = artifact_dir_for(run_dir, args.task_id)
+    with locked_file(safe_child_file(task_artifact, ".lifecycle.lock")):
+        state = load_task_state(task_artifact)
+        runtime_dir, control = load_control_for(run_dir, args.task_id)
+        pid = parse_int_file(safe_child_file(runtime_dir, "lane-bg.pid"))
         expected_start = control.get("pid_start_time")
         if not isinstance(expected_start, int):
             expected_start = None
         was_running = pid_alive(pid, expected_start)
-        control["cancel_requested_at"] = utc_now()
-        control["state"] = "cancelled"
-        write_json(artifact / "control.json", control)
+        if state is not None:
+            state = dict(state)
+            state["status"] = "cancelled"
+            state["cancel_requested_at"] = utc_now()
+            state["updated_at"] = utc_now()
+            write_task_state(task_artifact, state)
+        else:
+            control["cancel_requested_at"] = utc_now()
+            control["state"] = "cancelled"
+            write_json(safe_child_file(runtime_dir, "control.json"), control)
         append_event(run_dir, "cancel", args.task_id, pid=pid, was_running=was_running)
         if was_running and pid is not None:
             terminate_tree(pid)
@@ -814,7 +1349,9 @@ def validate_recorded_argv(
     require_recorded_options(
         exec_options,
         {
-            "--heartbeat": str(artifact / "heartbeat.json"),
+            "--heartbeat": str(
+                control.get("heartbeat_file", artifact / "heartbeat.json")
+            ),
             "--log": str(artifact / "lane-exec.log"),
             "--label": task_id,
             "--event-log": str(run_dir / "events.jsonl"),
@@ -894,12 +1431,118 @@ def validate_recorded_argv(
     return argv
 
 
+def relocate_attempt_argv(argv: list[str], old_dir: Path, new_dir: Path) -> list[str]:
+    old_prefix = str(old_dir)
+    new_prefix = str(new_dir)
+    relocated: list[str] = []
+    for token in argv:
+        if token == old_prefix:
+            relocated.append(new_prefix)
+        elif token.startswith(old_prefix + os.sep):
+            relocated.append(new_prefix + token[len(old_prefix) :])
+        else:
+            relocated.append(token)
+    return relocated
+
+
+def cmd_retry_v2(
+    run_dir: Path, task_id: str, artifact: Path, state: dict
+) -> tuple[int, dict]:
+    context = context_from_state(run_dir, task_id, state)
+    current = task_status(run_dir, task_id)
+    if current["running"]:
+        raise ContractError("cannot retry a running lane")
+    state = read_json(state_path_for(artifact))
+    if state.get("accepted") or state.get("status") == "done":
+        raise ContractError("cannot retry an accepted task")
+    attempt = state.get("current_attempt", state.get("attempt"))
+    if not isinstance(attempt, int) or attempt < 1:
+        raise ContractError("state.json current_attempt is invalid")
+    if attempt >= MAX_ATTEMPTS:
+        raise ContractError(f"retry limit reached: maximum {MAX_ATTEMPTS} attempts")
+
+    old_dir, old_control = load_control_for(run_dir, task_id)
+    old_argv = validate_recorded_argv(
+        old_control.get("argv"),
+        artifact=old_dir,
+        run_dir=run_dir,
+        task_id=task_id,
+        control=old_control,
+    )
+    old_prompt = safe_child_file(old_dir, "prompt.md")
+    try:
+        prompt_bytes = old_prompt.read_bytes()
+    except OSError as exc:
+        raise ContractError(f"cannot read recorded prompt: {exc}") from exc
+    if hashlib.sha256(prompt_bytes).hexdigest() != old_control.get("prompt_sha256"):
+        raise ContractError("recorded prompt checksum mismatch")
+
+    next_attempt = attempt + 1
+    new_dir = attempt_dir_for(artifact, next_attempt, create=True)
+    new_prompt = safe_child_file(new_dir, "prompt.md")
+    atomic_write(new_prompt, prompt_bytes)
+    new_argv = relocate_attempt_argv(old_argv, old_dir, new_dir)
+    control = dict(old_control)
+    for key in (
+        "launcher_exit_code",
+        "launcher_stdout",
+        "launcher_stderr",
+        "launched_at",
+        "pid",
+        "pid_start_time",
+    ):
+        control.pop(key, None)
+    control.update(
+        {
+            "attempt": next_attempt,
+            "attempt_dir": str(new_dir),
+            "prompt_file": str(new_prompt),
+            "argv": new_argv,
+            "argv_sha256": command_hash(new_argv),
+            "created_at": utc_now(),
+            "retry_of_attempt": attempt,
+        }
+    )
+    validate_recorded_argv(
+        new_argv,
+        artifact=new_dir,
+        run_dir=run_dir,
+        task_id=task_id,
+        control=control,
+    )
+    write_json(safe_child_file(new_dir, "control.json"), control)
+    state = dict(state)
+    state["current_attempt"] = next_attempt
+    state["attempt"] = next_attempt
+    state["status"] = "launching"
+    state["accepted"] = False
+    state["updated_at"] = utc_now()
+    write_task_state(artifact, state)
+    append_event(run_dir, "control_retry", task_id, attempt=next_attempt)
+    result = launch(new_argv, cwd=context.project_cwd)
+    payload = finish_launch_v2(
+        artifact=artifact,
+        attempt_dir=new_dir,
+        control=control,
+        state=state,
+        result=result,
+    )
+    return (0 if result.returncode == 0 else 1), payload
+
+
 def cmd_retry(args: argparse.Namespace) -> int:
     run_dir = validate_run_dir(args.run_dir)
     validate_name(args.task_id, "task id")
     artifact = artifact_dir_for(run_dir, args.task_id)
     lifecycle_lock = safe_child_file(artifact, ".lifecycle.lock")
     with locked_file(lifecycle_lock):
+        state = load_task_state(artifact)
+        if state is not None:
+            exit_code, payload = cmd_retry_v2(
+                run_dir, args.task_id, artifact, state
+            )
+            print(json.dumps(payload, sort_keys=True))
+            return exit_code
         artifact, control = load_control_for(run_dir, args.task_id)
         current = task_status(run_dir, args.task_id)
         if current["running"]:
@@ -1009,6 +1652,257 @@ def verification_commands(task: dict) -> list[str]:
     return list(value)
 
 
+def configured_verification_executables(run_dir: Path) -> set[str]:
+    policy_path = run_dir.parent.parent / "night-shift.yaml"
+    if not policy_path.is_file():
+        return set()
+    policy, _ = load_task_yaml(policy_path)
+    value = policy.get("verification_executables", [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item and "/" not in item for item in value
+    ):
+        raise ContractError("verification_executables must be executable basenames")
+    return set(value)
+
+
+def recorded_verification_executables(control: dict) -> set[str]:
+    value = control.get("verification_executables", [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item and "/" not in item for item in value
+    ):
+        raise ContractError("recorded verification executable allowlist is invalid")
+    return set(value)
+
+
+def verification_entries(
+    task: dict,
+    *,
+    schema_version: int,
+    enforce_nonempty: bool,
+    extra_executables: set[str] | None = None,
+) -> list[dict]:
+    value = task.get("verification", [])
+    if value is None:
+        value = []
+    if not isinstance(value, list):
+        raise ContractError("task verification must be a list")
+    verify_level = str(task.get("verify", "none")).lower()
+    if enforce_nonempty and verify_level in {"smoke", "tests"} and not value:
+        raise ContractError(
+            f"verify level {verify_level!r} requires at least one verification command"
+        )
+
+    if schema_version < 2:
+        commands = verification_commands({"verification": value})
+        return [
+            {"command": command, "cwd": ".", "timeout_sec": 1800}
+            for command in commands
+        ]
+
+    entries: list[dict] = []
+    for index, item in enumerate(value):
+        if isinstance(item, str):
+            raise ContractError(
+                "string verification commands are legacy-only; schema_version 2 "
+                "requires {command, cwd, timeout_sec} entries"
+            )
+        if not isinstance(item, dict):
+            raise ContractError(f"verification[{index}] must be a mapping")
+        if set(item) != {"command", "cwd", "timeout_sec"}:
+            raise ContractError(
+                f"verification[{index}] must contain exactly command, cwd, timeout_sec"
+            )
+        command = item.get("command")
+        cwd = item.get("cwd")
+        timeout_sec = item.get("timeout_sec")
+        if not isinstance(command, str) or not command.strip() or "\0" in command:
+            raise ContractError(f"verification[{index}].command is invalid")
+        safety_error = verification_error(command, extra_executables or set())
+        if safety_error is not None:
+            raise ContractError(f"verification[{index}]: {safety_error}")
+        if (
+            not isinstance(cwd, str)
+            or not cwd
+            or "\0" in cwd
+            or not Path(cwd).is_absolute()
+        ):
+            raise ContractError(
+                f"verification[{index}].cwd must be an absolute path"
+            )
+        if (
+            not isinstance(timeout_sec, int)
+            or isinstance(timeout_sec, bool)
+            or timeout_sec < 1
+            or timeout_sec > HARD_V2_VERIFY_TIMEOUT
+        ):
+            raise ContractError(
+                f"verification[{index}].timeout_sec must be between 1 and "
+                f"{HARD_V2_VERIFY_TIMEOUT}"
+            )
+        entries.append(
+            {"command": command, "cwd": cwd, "timeout_sec": timeout_sec}
+        )
+    return entries
+
+
+def resolve_verification_cwd(project_cwd: Path, value: str) -> Path:
+    path = Path(value).resolve()
+    if not is_within(path, project_cwd) or not path.is_dir():
+        raise ContractError(
+            f"structured verification cwd must stay in project_cwd and exist: {value}"
+        )
+    return path
+
+
+def cmd_verify_v2(
+    context: TaskContext, args: argparse.Namespace, state: dict
+) -> int:
+    require_immutable_task(context, state)
+    artifact = context.artifact_dir
+    result_dir = current_attempt_dir(artifact, state)
+    result_path = safe_child_file(result_dir, "verification.json")
+    verified_path = safe_child_file(result_dir, "verified.txt")
+    lifecycle_lock = safe_child_file(artifact, ".lifecycle.lock")
+
+    with verification_slot(context.run_dir, args.verify_pool_size) as slot:
+        with locked_file(lifecycle_lock):
+            state = read_json(state_path_for(artifact))
+            require_immutable_task(context, state)
+            result_dir, control = load_control_for(context.run_dir, context.task_id)
+            attempt = state.get("current_attempt", state.get("attempt"))
+            if control.get("attempt") != attempt:
+                raise ContractError("current attempt control does not match state.json")
+            current = task_status(context.run_dir, context.task_id)
+            if current["running"]:
+                raise ContractError("cannot verify while the provider is running")
+            if current["exit_code"] != 0:
+                raise ContractError("verification requires a completed provider exit code 0")
+            snapshot = control.get("verification_commands")
+            extra_executables = recorded_verification_executables(control)
+            entries = verification_entries(
+                {
+                    "verification": snapshot,
+                    "verify": context.task.get("verify", "none"),
+                },
+                schema_version=2,
+                enforce_nonempty=True,
+                extra_executables=extra_executables,
+            )
+            prepared_entries = [
+                (
+                    entry,
+                    resolve_verification_cwd(context.project_cwd, entry["cwd"]),
+                    verification_argv(entry["command"], extra_executables),
+                )
+                for entry in entries
+            ]
+            started_at = utc_now()
+            running = {
+                "version": 2,
+                "schema_version": 2,
+                "task_id": context.task_id,
+                "task_sha256": state.get("task_sha256"),
+                "task_file": str(context.task_file),
+                "project_cwd": str(context.project_cwd),
+                "attempt": attempt,
+                "pool_size": args.verify_pool_size,
+                "slot": slot,
+                "status": "running",
+                "started_at": started_at,
+                "commands": [],
+            }
+            write_json(result_path, running)
+            state["status"] = "verifying"
+            state["updated_at"] = utc_now()
+            write_task_state(artifact, state)
+            append_event(
+                context.run_dir,
+                "verify_start",
+                context.task_id,
+                slot=slot,
+                attempt=attempt,
+                command_count=len(entries),
+            )
+
+            command_results: list[dict] = []
+            evidence: list[str] = []
+            passed = True
+            for entry, command_cwd, command_argv in prepared_entries:
+                command = entry["command"]
+                timeout_sec = entry["timeout_sec"]
+                command_started = utc_now()
+                try:
+                    completed = subprocess.run(
+                        command_argv,
+                        cwd=command_cwd,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        timeout=timeout_sec,
+                        check=False,
+                    )
+                    exit_code = completed.returncode
+                    output = completed.stdout
+                except subprocess.TimeoutExpired as exc:
+                    exit_code = 124
+                    partial = exc.stdout or ""
+                    if isinstance(partial, bytes):
+                        partial = partial.decode("utf-8", errors="replace")
+                    output = str(partial) + (
+                        f"verification command timed out after {timeout_sec}s\n"
+                    )
+                except OSError as exc:
+                    exit_code = 127
+                    output = f"cannot execute verification command: {exc}\n"
+                passed = passed and exit_code == 0
+                record = {
+                    **entry,
+                    "resolved_cwd": str(command_cwd),
+                    "started_at": command_started,
+                    "ended_at": utc_now(),
+                    "exit_code": exit_code,
+                    "output": output,
+                }
+                command_results.append(record)
+                evidence.extend(
+                    [
+                        f"$ (cd {entry['cwd']} && {command})\n",
+                        output,
+                        "" if output.endswith("\n") or not output else "\n",
+                        f"[exit {exit_code}]\n\n",
+                    ]
+                )
+
+            payload = {
+                **running,
+                "status": "passed" if passed else "failed",
+                "ended_at": utc_now(),
+                "commands": command_results,
+            }
+            write_json(result_path, payload)
+            if passed:
+                atomic_write(
+                    verified_path,
+                    f"attempt={attempt}\n" + "".join(evidence),
+                )
+            else:
+                verified_path.unlink(missing_ok=True)
+            state["status"] = "verified" if passed else "verification_failed"
+            state["updated_at"] = utc_now()
+            write_task_state(artifact, state)
+            append_event(
+                context.run_dir,
+                "verify_exit",
+                context.task_id,
+                slot=slot,
+                attempt=attempt,
+                status=payload["status"],
+                exit_code=0 if passed else 1,
+            )
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0 if passed else 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     context = validate_task_context(
         run_dir_value=args.run_dir,
@@ -1017,6 +1911,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
         project_cwd_value=args.project_cwd,
         create_artifact=False,
     )
+    schema_version, _ = context_schema_version(context)
+    state = load_task_state(context.artifact_dir)
+    if schema_version == 2:
+        if state is None:
+            raise ContractError("schema_version 2 verification requires state.json")
+        return cmd_verify_v2(context, args, state)
     registered_artifact, _ = load_control_for(context.run_dir, context.task_id)
     if registered_artifact != context.artifact_dir:
         raise ContractError("verification artifact identity mismatch")
@@ -1044,7 +1944,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
             command_snapshot = control.get("verification_commands")
             if not isinstance(command_snapshot, list):
                 raise ContractError("control.json is missing the verification snapshot")
-            commands = verification_commands({"verification": command_snapshot})
+            entries = verification_entries(
+                {
+                    "verification": command_snapshot,
+                    "verify": context.task.get("verify", "none"),
+                },
+                schema_version=schema_version,
+                enforce_nonempty=True,
+            )
+            commands = [entry["command"] for entry in entries]
             started_at = utc_now()
             running = {
                 "version": 1,
@@ -1141,6 +2049,302 @@ def cmd_verify(args: argparse.Namespace) -> int:
             )
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if passed else 1
+
+
+def markdown_field(path: Path, fields: tuple[str, ...]) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    names = "|".join(re.escape(field) for field in fields)
+    match = re.search(
+        rf"(?im)^\s*(?:{names})\s*:\s*([A-Za-z_-]+)\b", text
+    )
+    return match.group(1).lower() if match else None
+
+
+def review_is_required(task: dict, run_contract: dict) -> bool:
+    value = task.get("review_gate", run_contract.get("review_gate"))
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"required", "require", "on", "true", "passed"}:
+            return True
+        if normalized in {"not_required", "none", "off", "false"}:
+            return False
+        raise ContractError(f"unsupported review_gate value: {value!r}")
+    risk_requires_review = str(task.get("risk", "")).lower() in {
+        "high",
+        "critical",
+    }
+    run_gate = run_contract.get("gate")
+    if run_gate == "none":
+        return False
+    if run_gate not in (None, "pre-merge"):
+        raise ContractError(f"unsupported run gate value: {run_gate!r}")
+    return risk_requires_review
+
+
+def require_review_receipt_identity(
+    review: dict,
+    *,
+    task_id: str,
+    task_sha256: str,
+    attempt: int,
+    project_cwd: Path,
+) -> None:
+    if set(review) != REVIEW_RECEIPT_FIELDS:
+        missing = sorted(REVIEW_RECEIPT_FIELDS - set(review))
+        extra = sorted(set(review) - REVIEW_RECEIPT_FIELDS)
+        raise ContractError(
+            f"review.json fields do not match schema v2; missing={missing}, extra={extra}"
+        )
+    if review.get("schema_version") != 2:
+        raise ContractError("review.json schema_version must be 2")
+    if review.get("receipt_type") != "task_re_review":
+        raise ContractError("review.json receipt_type must be task_re_review")
+    if review.get("task_id") != task_id:
+        raise ContractError("review.json task_id does not match task")
+    if review.get("task_sha256") != task_sha256:
+        raise ContractError("review.json task_sha256 does not match state")
+    if review.get("attempt") != attempt:
+        raise ContractError("review.json attempt is not current")
+    if review.get("project_cwd") != str(project_cwd):
+        raise ContractError("review.json project_cwd does not match task")
+    base_ref = review.get("base_ref")
+    if not isinstance(base_ref, str) or not GIT_COMMIT_HEX.fullmatch(base_ref):
+        raise ContractError("review.json base_ref must be a full commit SHA")
+    for field in ("reviewed_diff_sha256", "reviewed_tree_sha256"):
+        value = review.get(field)
+        if not isinstance(value, str) or not SHA256_HEX.fullmatch(value):
+            raise ContractError(f"review.json {field} must be a SHA-256 digest")
+    if review.get("verdict") != "passed" or review.get("findings") != []:
+        raise ContractError("accept requires review.json verdict passed with no findings")
+    reviewed_at = review.get("reviewed_at")
+    if not isinstance(reviewed_at, str) or not reviewed_at:
+        raise ContractError("review.json reviewed_at must be a timestamp")
+    try:
+        parsed_at = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ContractError("review.json reviewed_at must be an ISO-8601 timestamp") from exc
+    if parsed_at.tzinfo is None:
+        raise ContractError("review.json reviewed_at must include a timezone")
+
+
+def git_read(project_cwd: Path, *args: str) -> bytes:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_cwd), *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        raise ContractError(f"cannot inspect reviewed Git worktree: {exc}") from exc
+    if result.returncode != 0:
+        error = result.stderr.decode("utf-8", errors="replace").strip()
+        raise ContractError(
+            f"cannot inspect reviewed Git worktree: {error or 'git failed'}"
+        )
+    return result.stdout
+
+
+def reviewed_worktree_digests(
+    project_cwd: Path, run_dir: Path, base_ref: str
+) -> tuple[str, str]:
+    root_raw = git_read(project_cwd, "rev-parse", "--show-toplevel")
+    try:
+        git_root = Path(os.fsdecode(root_raw.rstrip(b"\n"))).resolve()
+    except (OSError, ValueError) as exc:
+        raise ContractError("cannot resolve reviewed Git worktree root") from exc
+    if git_root != project_cwd:
+        raise ContractError("review project_cwd must be the Git worktree root")
+
+    resolved_base = git_read(
+        project_cwd, "rev-parse", "--verify", f"{base_ref}^{{commit}}"
+    ).decode("ascii", errors="strict").strip()
+    if resolved_base != base_ref:
+        raise ContractError("review.json base_ref must be an immutable full commit SHA")
+
+    runtime_relative: Path | None = None
+    try:
+        runtime_relative = run_dir.relative_to(project_cwd)
+    except ValueError:
+        pass
+    diff_args = [
+        "diff",
+        "--no-ext-diff",
+        "--binary",
+        "--full-index",
+        base_ref,
+        "--",
+    ]
+    if runtime_relative is not None:
+        runtime_path = runtime_relative.as_posix().rstrip("/")
+        diff_args.extend([".", f":(exclude){runtime_path}/**"])
+    diff = git_read(project_cwd, *diff_args)
+
+    raw_untracked = git_read(
+        project_cwd, "ls-files", "--others", "--exclude-standard", "-z"
+    ).split(b"\0")
+    tree = hashlib.sha256()
+    tree.update(b"lane-review-tree-v1\0")
+    tree.update(base_ref.encode("ascii") + b"\0")
+    tree.update(len(diff).to_bytes(8, "big"))
+    tree.update(diff)
+    for raw_path in sorted(path for path in raw_untracked if path):
+        relative = Path(os.fsdecode(raw_path))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ContractError("Git returned an unsafe untracked path")
+        if runtime_relative is not None and (
+            relative == runtime_relative or runtime_relative in relative.parents
+        ):
+            continue
+        path = project_cwd / relative
+        try:
+            if path.is_symlink():
+                kind = b"l"
+                content = os.fsencode(os.readlink(path))
+            else:
+                stat = path.stat()
+                if not path.is_file():
+                    raise ContractError(
+                        f"untracked review path is not a regular file: {relative}"
+                    )
+                kind = b"x" if stat.st_mode & 0o111 else b"f"
+                content = path.read_bytes()
+        except OSError as exc:
+            raise ContractError(
+                f"cannot hash untracked review path {relative}: {exc}"
+            ) from exc
+        tree.update(len(raw_path).to_bytes(8, "big"))
+        tree.update(raw_path)
+        tree.update(kind)
+        tree.update(len(content).to_bytes(8, "big"))
+        tree.update(content)
+    return hashlib.sha256(diff).hexdigest(), tree.hexdigest()
+
+
+def cmd_accept(args: argparse.Namespace) -> int:
+    run_dir = validate_run_dir(args.run_dir)
+    supplied_context: TaskContext | None = None
+    if args.task_file is not None or args.project_cwd is not None:
+        if args.task_file is None or args.project_cwd is None:
+            raise ContractError("accept requires both --task-file and --project-cwd")
+        supplied_context = validate_task_context(
+            run_dir_value=run_dir,
+            task_id=args.task_id,
+            task_file_value=args.task_file,
+            project_cwd_value=args.project_cwd,
+            create_artifact=False,
+        )
+        task_id = supplied_context.task_id
+    else:
+        if args.task_id is None:
+            raise ContractError(
+                "accept requires --task-id or --task-file with --project-cwd"
+            )
+        task_id = validate_name(args.task_id, "task id")
+    artifact = artifact_dir_for(run_dir, task_id)
+    with locked_file(safe_child_file(artifact, ".lifecycle.lock")):
+        state = load_task_state(artifact)
+        if state is None:
+            raise ContractError("accept requires a schema_version 2 state.json")
+        context = supplied_context or context_from_state(run_dir, task_id, state)
+        require_immutable_task(context, state)
+        _, run_contract = context_schema_version(context)
+        assert run_contract is not None
+        current = task_status(run_dir, task_id)
+        state = read_json(state_path_for(artifact))
+        require_immutable_task(context, state)
+        attempt = state.get("current_attempt", state.get("attempt"))
+        if not isinstance(attempt, int) or attempt < 1:
+            raise ContractError("state.json current_attempt is invalid")
+        if current["running"] or current["exit_code"] != 0:
+            raise ContractError("accept requires current provider exit code 0")
+
+        report_path = safe_child_file(artifact, "report.md")
+        if markdown_field(report_path, ("STATUS",)) != "complete":
+            raise ContractError("accept requires root report.md STATUS: complete")
+
+        owns_path = safe_child_file(artifact, "owns-check.json")
+        owns = read_json(owns_path)
+        if (
+            owns.get("schema_version") != 2
+            or owns.get("status") != "passed"
+            or owns.get("exit_code") != 0
+        ):
+            raise ContractError("accept requires owns-check.json status passed")
+        if owns.get("task_sha256") != state.get("task_sha256"):
+            raise ContractError("owns-check.json task_sha256 does not match state")
+        if Path(str(owns.get("cwd", ""))).resolve() != context.project_cwd:
+            raise ContractError("owns-check.json cwd does not match project_cwd")
+
+        attempt_dir = current_attempt_dir(artifact, state)
+        verification_path = safe_child_file(attempt_dir, "verification.json")
+        verification = read_json(verification_path)
+        if (
+            not v2_verification_receipt_trusted(state, task_id, verification)
+            or verification.get("status") != "passed"
+        ):
+            raise ContractError(
+                "accept requires current verification passed for the immutable task"
+            )
+
+        if review_is_required(context.task, run_contract):
+            review_path = safe_child_file(artifact, "review.json")
+            review = read_json(review_path)
+            require_review_receipt_identity(
+                review,
+                task_id=task_id,
+                task_sha256=state["task_sha256"],
+                attempt=attempt,
+                project_cwd=context.project_cwd,
+            )
+            diff_sha256, tree_sha256 = reviewed_worktree_digests(
+                context.project_cwd, context.run_dir, review["base_ref"]
+            )
+            if (
+                review["reviewed_diff_sha256"] != diff_sha256
+                or review["reviewed_tree_sha256"] != tree_sha256
+            ):
+                raise ContractError(
+                    "reviewed worktree digest does not match current diff/tree state"
+                )
+            review_status = "passed"
+        else:
+            review_status = "not_required"
+
+        accepted_at = utc_now()
+        receipt = {
+            "schema_version": 2,
+            "task_id": task_id,
+            "task_sha256": state.get("task_sha256"),
+            "attempt": attempt,
+            "provider_exit": 0,
+            "report": "complete",
+            "owns_check": "passed",
+            "verification": "passed",
+            "review": review_status,
+            "accepted": True,
+            "accepted_at": accepted_at,
+        }
+        write_json(safe_child_file(artifact, "acceptance.json"), receipt)
+        state["status"] = "accepted"
+        state["accepted"] = True
+        state["accepted_at"] = accepted_at
+        state["updated_at"] = accepted_at
+        write_task_state(artifact, state)
+        append_event(
+            run_dir,
+            "accepted",
+            task_id,
+            attempt=attempt,
+            task_sha256=state.get("task_sha256"),
+        )
+    print(json.dumps(receipt, indent=2, sort_keys=True))
+    return 0
 
 
 def add_run_selector(parser: argparse.ArgumentParser, *, task_required: bool = True) -> None:
@@ -1264,6 +2468,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum seconds for each verification command (default: 1800)",
     )
     verify.set_defaults(handler=cmd_verify)
+
+    accept = sub.add_parser("accept", help="apply the schema v2 acceptance gate")
+    add_run_selector(accept, task_required=False)
+    accept.add_argument("--task-file")
+    accept.add_argument("--project-cwd")
+    accept.set_defaults(handler=cmd_accept)
     return parser
 
 

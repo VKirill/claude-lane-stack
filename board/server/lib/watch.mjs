@@ -38,10 +38,19 @@ export async function projectSignal(project) {
     if (!run.isDirectory()) continue;
     const runPath = path.join(runsPath, run.name);
     await addStat(parts, path.join(runPath, 'MERGE.md'));
+    await addStat(parts, path.join(runPath, 'merge.json'));
     const tasksPath = path.join(runPath, 'tasks');
     await addStat(parts, tasksPath);
     for (const task of await readDirectory(tasksPath)) {
       if (task.isFile() && task.name.endsWith('.yaml')) await addStat(parts, path.join(tasksPath, task.name));
+    }
+    const artifactsPath = path.join(runPath, 'artifacts');
+    await addStat(parts, artifactsPath);
+    for (const artifact of await readDirectory(artifactsPath)) {
+      if (!artifact.isDirectory()) continue;
+      const artifactPath = path.join(artifactsPath, artifact.name);
+      await addStat(parts, path.join(artifactPath, 'state.json'));
+      await addStat(parts, path.join(artifactPath, 'acceptance.json'));
     }
   }
 

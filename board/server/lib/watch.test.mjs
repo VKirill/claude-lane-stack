@@ -29,3 +29,23 @@ test('emits a project refresh when a source file signal changes', async () => {
   assert.deepEqual(refreshed, ['fixture-project']);
   watcher.stop();
 });
+
+test('emits a project refresh when a task state receipt changes', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-watch-state-'));
+  fixtures.push(root);
+  const artifact = path.join(root, '.agents', 'runs', 'demo', 'artifacts', '001');
+  await mkdir(artifact, { recursive: true });
+  await writeFile(path.join(artifact, 'state.json'), '{"status":"running"}\n');
+
+  const project = { id: 'fixture-project', name: 'fixture', path: root };
+  const refreshed = [];
+  const watcher = createProjectWatcher({ getProjects: async () => [project] });
+  watcher.subscribe((projectId) => refreshed.push(projectId));
+
+  await watcher.poll();
+  await writeFile(path.join(artifact, 'state.json'), '{"status":"awaiting_verification","attempt":1}\n');
+  await watcher.poll();
+
+  assert.deepEqual(refreshed, ['fixture-project']);
+  watcher.stop();
+});

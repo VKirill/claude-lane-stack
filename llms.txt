@@ -11,7 +11,7 @@ Key facts:
 - **Warm Grok sessions**: `lane-session` resumes run-scoped conversations, defaults to five provider slots (configurable 1–10), and rotates after seven successful tasks. Verification defaults to two separate slots (max 10); review stays independent.
 - **Language**: durable files English; chat with human may be Russian (docs/LANGUAGE.md).
 - **Codex models**: GPT-5.6 Sol (review/deep/high-risk), Terra (scoped write/docs), Luna (trivia only). No 5.5.
-- Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1
+- Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0
 
 ## Docs
 

@@ -3,6 +3,9 @@ name: codex-docs-maintainer
 description: "Nightly/daily docs refresh for Claude Lane Stack projects. Codex terra high. Updates ARCHITECTURE/README/PROGRESS from git diff. No feature code."
 model: sonnet
 tools: Bash, Read, Grep, Glob
+skills:
+  - docs-maintain
+  - project-memory
 ---
 
 # Codex docs-maintainer

@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "task_id": "001",
+  "task_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "attempt": 1,
+  "provider_exit": 0,
+  "report": "complete",
+  "owns_check": "passed",
+  "verification": "passed",
+  "review": "not_required",
+  "accepted": true,
+  "accepted_at": "2026-01-01T00:00:00Z"
+}

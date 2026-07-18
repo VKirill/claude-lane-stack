@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""Create a strict, versioned lane run without overwriting existing state."""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMA = ROOT / "schemas" / "run-v2.schema.json"
+TEMPLATES = ROOT / "templates" / "run-contract"
+SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+class ContractError(RuntimeError):
+    pass
+
+
+def bounded_pool(value: str) -> int:
+    try:
+        pool = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("pool must be an integer from 1 to 10") from exc
+    if not 1 <= pool <= 10:
+        raise argparse.ArgumentTypeError("pool must be from 1 to 10")
+    return pool
+
+
+def nonnegative_score(value: str) -> int:
+    try:
+        score = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("score must be a non-negative integer") from exc
+    if score < 0:
+        raise argparse.ArgumentTypeError("score must be a non-negative integer")
+    return score
+
+
+def git_head(repo: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--verify", "HEAD"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "HEAD is unavailable"
+        raise ContractError(f"cannot determine base SHA for {repo}: {detail}")
+    return result.stdout.strip()
+
+
+def render_template(name: str, values: dict[str, str]) -> str:
+    path = TEMPLATES / name
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ContractError(f"cannot read template {path}: {exc}") from exc
+    for key, value in values.items():
+        content = content.replace("{{" + key + "}}", value)
+    return content
+
+
+def validate_generated(data: dict[str, object]) -> None:
+    try:
+        import jsonschema
+    except ImportError as exc:
+        raise ContractError("jsonschema is required to create v2 run contracts") from exc
+    try:
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        jsonschema.Draft202012Validator(schema).validate(data)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"cannot load run schema {SCHEMA}: {exc}") from exc
+    except jsonschema.ValidationError as exc:
+        raise ContractError(f"generated run contract is invalid: {exc.message}") from exc
+
+
+def adopt_worktree(run_dir: Path, repo: Path, slug: str) -> tuple[Path, str]:
+    if not run_dir.is_dir():
+        raise ContractError(f"worktree run does not exist: {run_dir}")
+    entries = {path.name for path in run_dir.iterdir()}
+    initialized_entries = entries.intersection(
+        {"run.yaml", "PLAN.md", "SPEC.md", "STATUS.md", "tasks", "artifacts"}
+    )
+    if initialized_entries:
+        raise ContractError(f"run already initialized: {run_dir}")
+    if entries != {"worktree.json"}:
+        detail = ", ".join(sorted(entries - {"worktree.json"})) or "worktree.json is missing"
+        raise ContractError(f"cannot adopt non-pristine run directory: {detail}")
+
+    metadata_path = run_dir / "worktree.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"cannot read worktree metadata {metadata_path}: {exc}") from exc
+    if not isinstance(metadata, dict):
+        raise ContractError("worktree metadata must be a JSON object")
+    expected = {
+        "slug": slug,
+        "repo": str(repo),
+        "branch": f"agent/{slug}",
+    }
+    for key, value in expected.items():
+        if metadata.get(key) != value:
+            raise ContractError(f"worktree metadata {key} must be {value!r}")
+
+    raw_path = metadata.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise ContractError("worktree metadata path must be a non-empty string")
+    worktree = Path(raw_path).expanduser().resolve()
+    expected_path = (repo / ".worktrees" / slug).resolve()
+    if worktree != expected_path:
+        raise ContractError(f"worktree metadata path must be {expected_path}")
+    if not worktree.is_dir():
+        raise ContractError(f"worktree path is not a directory: {worktree}")
+
+    raw_base = metadata.get("base")
+    if not isinstance(raw_base, str) or not re.fullmatch(r"[0-9a-fA-F]{40,64}", raw_base):
+        raise ContractError("worktree metadata base must be a 40-64 character git SHA")
+    return worktree, raw_base
+
+
+def create_run(args: argparse.Namespace) -> Path:
+    if not SLUG_RE.fullmatch(args.slug) or args.slug in {".", ".."}:
+        raise ContractError("slug must contain only letters, digits, dot, underscore, or dash")
+
+    repo = Path(args.repo).expanduser().resolve()
+    if not repo.is_dir():
+        raise ContractError(f"repo is not a directory: {repo}")
+    runs_root = repo / ".agents" / "runs"
+    runs_root.mkdir(parents=True, exist_ok=True)
+    run_dir = runs_root / args.slug
+    adopted = False
+    if args.adopt_worktree:
+        project_cwd, base_sha = adopt_worktree(run_dir, repo, args.slug)
+        adopted = True
+        if args.project_cwd:
+            requested_cwd = Path(args.project_cwd).expanduser().resolve()
+            if requested_cwd != project_cwd:
+                raise ContractError(
+                    f"project_cwd {requested_cwd} does not match adopted worktree {project_cwd}"
+                )
+    else:
+        project_cwd = Path(args.project_cwd).expanduser().resolve() if args.project_cwd else repo
+        if not project_cwd.is_dir():
+            raise ContractError(f"project_cwd is not a directory: {project_cwd}")
+        base_sha = git_head(repo)
+    created_at = datetime.now(timezone.utc).isoformat()
+    data: dict[str, object] = {
+        "schema_version": 2,
+        "slug": args.slug,
+        "repo": str(repo),
+        "project_cwd": str(project_cwd),
+        "base_sha": base_sha,
+        "created_at": created_at,
+        "score": args.score,
+        "pools": {
+            "provider": args.provider_pool,
+            "verification": args.verification_pool,
+        },
+        "gate": args.gate,
+        "finalize": {
+            "progress_now": None,
+            "close_next": [],
+            "close_open": [],
+        },
+    }
+    validate_generated(data)
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ContractError("PyYAML is required to create v2 run contracts") from exc
+
+    if not adopted:
+        try:
+            run_dir.mkdir()
+        except FileExistsError as exc:
+            raise ContractError(f"run already exists: {run_dir}") from exc
+
+    values = {
+        "slug": args.slug,
+        "repo": str(repo),
+        "project_cwd": str(project_cwd),
+        "project_cwd_yaml": json.dumps(str(project_cwd)),
+        "created_at": created_at,
+        "base_sha": base_sha,
+    }
+    try:
+        (run_dir / "run.yaml").write_text(
+            yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        for name in ("PLAN.md", "SPEC.md", "STATUS.md"):
+            (run_dir / name).write_text(render_template(name, values), encoding="utf-8")
+        (run_dir / "tasks").mkdir()
+        (run_dir / "artifacts").mkdir()
+        (run_dir / "tasks" / "001.yaml").write_text(
+            render_template("task-v2.yaml", values), encoding="utf-8"
+        )
+    except Exception:
+        if adopted:
+            for name in ("run.yaml", "PLAN.md", "SPEC.md", "STATUS.md"):
+                (run_dir / name).unlink(missing_ok=True)
+            for name in ("tasks", "artifacts"):
+                path = run_dir / name
+                if path.exists():
+                    shutil.rmtree(path)
+        else:
+            shutil.rmtree(run_dir)
+        raise
+    return run_dir
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="create a lane run contract v2")
+    parser.add_argument("repo")
+    parser.add_argument("slug")
+    parser.add_argument("--score", type=nonnegative_score, default=0)
+    parser.add_argument("--project-cwd", default="")
+    parser.add_argument(
+        "--adopt-worktree",
+        action="store_true",
+        help="initialize a pristine run directory created by wt-create",
+    )
+    parser.add_argument("--provider-pool", type=bounded_pool, default=5)
+    parser.add_argument("--verification-pool", type=bounded_pool, default=2)
+    parser.add_argument("--gate", choices=("none", "pre-merge"), default="none")
+    args = parser.parse_args()
+    try:
+        run_dir = create_run(args)
+    except (ContractError, OSError) as exc:
+        print(f"run-init: {exc}", file=sys.stderr)
+        return 2
+    print(run_dir)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

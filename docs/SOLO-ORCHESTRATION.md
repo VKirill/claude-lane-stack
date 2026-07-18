@@ -6,28 +6,39 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 
 ## Non-negotiables
 
-1. **Orchestrator owns `main`.** Workers never push/merge to main. PM merges when the run is green. If the repo has a remote (origin), PM pushes main immediately after merge/commit — merge without push is an unfinished ship. No remote -> local main is the end state. 
-2. **You never merge.** If PM asks you to merge, PM is wrong — fix the skill. 
-3. **Parallel only with ownership.** Disjoint `owns_paths` or serial. 
-4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree. 
+1. **Orchestrator owns `main`.** Workers never push/merge to main. PM merges when the run is green. If the repo has a remote (origin), PM pushes main immediately after merge/commit — merge without push is an unfinished ship. No remote -> local main is the end state.
+2. **You never merge.** If PM asks you to merge, PM is wrong — fix the skill.
+3. **Parallel only with ownership.** Disjoint `owns_paths` or serial.
+4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.
 5. **Bounded warm writer context.** Each task gets a fresh Claude supervisor spawn, while Grok resume only the session pool owned by that exact run. Rotate after seven successful tasks; review stays fresh.
-6. **Board is truth.** `.agents/runs/BOARD.md` + run `STATUS.md`. 
-7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane. 
+6. **Receipts are truth.** Task YAML is immutable; `state.json` drives live
+   STATUS/BOARD and only `acceptance.json` means done.
+7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
 8. **Event-driven progressive accept.** `lane-supervisor` starts a detached
    Grok process and returns; PM reacts to events, verifies separately, and never
    join-waits the slowest concurrent lane.
 9. **Bounded pools.** Provider default 5/max 10; verification default 2/max 10.
+10. **Fail-closed ship.** Commit, validation, finalize, then push; branch and
+    worktree stay recoverable on any failure.
 
-Daytime: micro/medium ship fast. Night: `night-review` batch. Morning: fix tasks from `REVIEW-<date>.md`.
-Automation: night-review runs from cron (03:00) per repo; morning `resume-project` surfaces REVIEW-<date>.md with the fix plan.
+Daytime: micro/medium ship fast. Night: `night-shift` performs typed Codex Sol
+xhigh review and prepares verified Grok fixes in an isolated worktree. Morning:
+`resume-project` surfaces canonical findings and any repair run still awaiting
+human or merge policy action.
+
+Automatic nightly merge/push is disabled by default. A repository must opt in
+through `.agents/night-shift.yaml`; high/critical fixes still require the
+configured pre-merge gate. The runner is resumable and retries a failed writer
+at most once.
 
 ## Micro path
 
 Applies when score 0–2, risk low, ≤2 files, and no `high_risk_paths`. PM
-skips the full run ceremony and ships in minutes.
+keeps the generated v2 files concise and ships in minutes.
 
-- Skips: PLAN.md, worktree, `run-board`, `STATUS.md`, `lane-heartbeat`, reviewer.
-- Keeps: minimal task YAML, `lane-bg` for the CLI call, `check-owns-paths`, PM commit to main.
+- Skips: worktree, heartbeat ceremony, reviewer.
+- Keeps: strict generated task, validation, `lane-bg`, ownership/verification/
+  acceptance receipts, PM commit to main.
 - Commit: `<type>(<area>): <title> [micro:<slug>]`.
 
 ## Review tiers
@@ -35,12 +46,13 @@ skips the full run ceremony and ships in minutes.
 | Tier    | Trigger                            | Review |
 |---------|-------------------------------------|--------|
 | none    | micro path / risk low               | verify field + check-owns-paths only |
-| nightly | everything else (medium/high/ship)  | night-review batch (sol): verdicts + Morning fix plan; FAIL -> morning fix task, never ignored |
+| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Grok repair; fresh re-review |
 
 Pre-merge gate is OFF by default (solo, no-user products). When a project
 serves real users or money, re-enable per project: add `gate: pre-merge` to
-PROGRESS.md Pointers (or set `gate: pre-merge` in a task YAML) — then
-codex-reviewer (sol high; xhigh for auth/pay/schema/migrations/security)
+`run.yaml` (or set it as a project default in PROGRESS.md Pointers before
+`run-init`) — then
+codex-reviewer (sol xhigh, read-only)
 must pass BEFORE merge for high-risk work in that project.
 
 ## End-state of every run
@@ -49,7 +61,9 @@ must pass BEFORE merge for high-risk work in that project.
 main ← contains the feature (merged by PM)
 origin/main <- in sync (pushed by PM when remote exists)
 .worktrees/<slug> ← gone
+.agents/runs/<slug>/merge.json ← machine merge/push/install receipt
 .agents/runs/<slug>/MERGE.md ← how/when merged
+.agents/runs/<slug>/finalize.json ← applied PROGRESS/BOARD/OPEN actions
 PROGRESS.md ← Now/Next updated
 ```
 
@@ -59,23 +73,30 @@ PROGRESS.md ← Now/Next updated
 |---------|------|
 | `project-memory-init` | new repo once |
 | `resume-project` | cold start / new session |
+| `run-init <repo> <slug>` | create a strict schema-v2 run |
+| `run-validate --phase pre-dispatch\|pre-merge` | validate schema, DAG, scopes, and receipts |
 | `wt-create <repo> <slug>` | start isolated run |
 | `lane-heartbeat …` | worker or supervisor pulse |
 | `lane-ctl start/status/events/tail` | typed detached lifecycle control |
 | `lane-ctl retry/cancel` | bounded recovery from recorded control state |
 | `lane-ctl verify` | exact task checks under the separate verification semaphore |
+| `lane-ctl accept` | write the sole technical done receipt |
 | `lane-session status --run-dir …` | inspect run-owned Grok session IDs and rotations |
 | `run-board <repo>` | refresh BOARD.md |
 | `lane-stall-check <repo>` | find zombies |
 | `check-owns-paths <task.yaml>` | after write lane |
 | `wt-merge-main <repo> <slug>` | ship to main (PM only) |
+| `run-finalize --run-dir …` | deterministic PROGRESS/BOARD/OPEN refresh |
 | `night-audit <repo>` | overnight audit file |
+| `night-review <repo>` | typed read-only review + canonical findings |
+| `night-shift <repo>` | review + isolated bounded Grok repair loop |
+| `night-shift-all` | discover configured projects and run the night shift |
 
 ## Human UX
 
-- Talk only to **dev-orchestrator**. 
-- Say what you want; do not manage branches. 
-- Cold start: `/resume-project` or «продолжи» → PM reads BOARD + PROGRESS. 
+- Talk only to **dev-orchestrator**.
+- Say what you want; do not manage branches.
+- Cold start: `/resume-project` or «продолжи» → PM reads BOARD + PROGRESS.
 - If something stuck >5 min: «проверь stall» → PM runs stall-check + re-dispatch.
 
 ## Language

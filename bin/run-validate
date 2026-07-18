@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""Strict read-only validation for Claude Lane Stack run contracts v2."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMAS = ROOT / "schemas"
+MAX_VERIFICATION_TIMEOUT = 7200
+GLOB_CHARS = frozenset("*?[")
+
+
+class ContractError(RuntimeError):
+    pass
+
+
+def load_yaml(path: Path, label: str) -> dict[str, Any]:
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ContractError("PyYAML is required for strict run validation") from exc
+    try:
+        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ContractError(f"cannot read {label} {path}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ContractError(f"cannot parse {label} {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ContractError(f"{label} must contain a YAML mapping: {path}")
+    return value
+
+
+def load_json(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ContractError(f"cannot read {label} {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ContractError(f"cannot parse {label} {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ContractError(f"{label} must contain a JSON object: {path}")
+    return value
+
+
+def load_schema(name: str) -> dict[str, Any]:
+    path = SCHEMAS / name
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError(f"cannot load schema {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ContractError(f"schema must contain a JSON object: {path}")
+    return value
+
+
+def schema_errors(value: object, schema: dict[str, Any], label: str) -> list[str]:
+    try:
+        import jsonschema
+    except ImportError as exc:
+        raise ContractError("jsonschema is required for strict run validation") from exc
+    validator = jsonschema.Draft202012Validator(
+        schema, format_checker=jsonschema.FormatChecker()
+    )
+    failures = sorted(
+        validator.iter_errors(value),
+        key=lambda item: ([str(part) for part in item.absolute_path], item.message),
+    )
+    errors = []
+    for failure in failures:
+        location = ".".join(str(part) for part in failure.absolute_path) or "<root>"
+        errors.append(f"{label} schema {location}: {failure.message}")
+    return errors
+
+
+def is_within(path: Path, parent: Path) -> bool:
+    return path == parent or parent in path.parents
+
+
+def normalize_scope(raw: str) -> str:
+    value = raw.replace("\\", "/")
+    while value.startswith("./"):
+        value = value[2:]
+    while "//" in value:
+        value = value.replace("//", "/")
+    return value.rstrip("/") or "."
+
+
+def scope_error(raw: str) -> str | None:
+    normalized = normalize_scope(raw)
+    path = PurePosixPath(normalized)
+    if path.is_absolute():
+        return "must be project-relative"
+    if ".." in path.parts:
+        return "must not contain '..'"
+    return None
+
+
+def placeholder_locations(value: Any, prefix: str = "") -> list[str]:
+    locations: list[str] = []
+    if isinstance(value, str) and "REPLACE_ME" in value:
+        locations.append(prefix or "<root>")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            locations.extend(placeholder_locations(item, f"{prefix}[{index}]"))
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            child = f"{prefix}.{key}" if prefix else str(key)
+            locations.extend(placeholder_locations(item, child))
+    return locations
+
+
+def literal_prefix(pattern: str) -> str:
+    normalized = normalize_scope(pattern)
+    positions = [normalized.find(char) for char in GLOB_CHARS]
+    positions = [position for position in positions if position >= 0]
+    return normalized[: min(positions)] if positions else normalized
+
+
+def has_glob(pattern: str) -> bool:
+    return any(char in pattern for char in GLOB_CHARS)
+
+
+def tuple_prefix(left: tuple[str, ...], right: tuple[str, ...]) -> bool:
+    return len(left) <= len(right) and right[: len(left)] == left
+
+
+def scopes_overlap(left: str, right: str) -> bool:
+    """Conservatively decide whether two project-relative scopes may intersect."""
+    left_n = normalize_scope(left)
+    right_n = normalize_scope(right)
+    if not has_glob(left_n) and not has_glob(right_n):
+        left_parts = tuple(left_n.split("/"))
+        right_parts = tuple(right_n.split("/"))
+        return tuple_prefix(left_parts, right_parts) or tuple_prefix(
+            right_parts, left_parts
+        )
+    left_prefix = literal_prefix(left_n)
+    right_prefix = literal_prefix(right_n)
+    if not left_prefix or not right_prefix:
+        return True
+    return left_prefix.startswith(right_prefix) or right_prefix.startswith(left_prefix)
+
+
+def dependency_errors(tasks: dict[str, dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    for task_id, task in tasks.items():
+        for dependency in task["depends_on"]:
+            if dependency not in tasks:
+                errors.append(f"task {task_id}: unknown dependency {dependency!r}")
+
+    state: dict[str, int] = {task_id: 0 for task_id in tasks}
+    stack: list[str] = []
+
+    def visit(task_id: str) -> None:
+        if state[task_id] == 2:
+            return
+        if state[task_id] == 1:
+            start = stack.index(task_id)
+            cycle = stack[start:] + [task_id]
+            errors.append("dependency cycle: " + " -> ".join(cycle))
+            return
+        state[task_id] = 1
+        stack.append(task_id)
+        for dependency in tasks[task_id]["depends_on"]:
+            if dependency in tasks:
+                visit(dependency)
+        stack.pop()
+        state[task_id] = 2
+
+    for task_id in tasks:
+        if state[task_id] == 0:
+            visit(task_id)
+    return errors
+
+
+def validate_acceptances(
+    run_dir: Path,
+    task_files: dict[str, Path],
+    acceptance_schema: dict[str, Any],
+    run_contract: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    for task_id, task_path in task_files.items():
+        acceptance_path = run_dir / "artifacts" / task_id / "acceptance.json"
+        if not acceptance_path.is_file():
+            errors.append(f"task {task_id}: missing {acceptance_path}")
+            continue
+        try:
+            acceptance = load_json(acceptance_path, f"task {task_id} acceptance.json")
+        except ContractError as exc:
+            errors.append(str(exc))
+            continue
+        failures = schema_errors(
+            acceptance, acceptance_schema, f"task {task_id} acceptance.json"
+        )
+        errors.extend(failures)
+        if failures:
+            continue
+        if acceptance["task_id"] != task_id:
+            errors.append(
+                f"task {task_id}: acceptance.json task_id is {acceptance['task_id']!r}"
+            )
+        current_hash = hashlib.sha256(task_path.read_bytes()).hexdigest()
+        if acceptance["task_sha256"] != current_hash:
+            errors.append(f"task {task_id}: acceptance task_sha256 is stale")
+        state_path = run_dir / "artifacts" / task_id / "state.json"
+        if not state_path.is_file():
+            errors.append(f"task {task_id}: missing {state_path}")
+        else:
+            try:
+                state = load_json(state_path, f"task {task_id} state.json")
+            except ContractError as exc:
+                errors.append(str(exc))
+            else:
+                current_attempt = state.get("current_attempt", state.get("attempt"))
+                if current_attempt != acceptance["attempt"]:
+                    errors.append(
+                        f"task {task_id}: acceptance attempt is stale "
+                        f"({acceptance['attempt']} != {current_attempt!r})"
+                    )
+                if state.get("task_sha256") != current_hash:
+                    errors.append(f"task {task_id}: state task_sha256 is stale")
+        task = load_yaml(task_path, f"task {task_id}")
+        if (
+            run_contract.get("gate") == "pre-merge"
+            and str(task.get("risk", "")).lower() in {"high", "critical"}
+            and acceptance["review"] != "passed"
+        ):
+            errors.append(
+                f"task {task_id}: pre-merge gate requires review: passed"
+            )
+    return errors
+
+
+def validate_run(run_dir: Path, phase: str) -> int:
+    if not run_dir.is_dir():
+        raise ContractError(f"run_dir is not a directory: {run_dir}")
+    run_path = run_dir / "run.yaml"
+    run = load_yaml(run_path, "run contract")
+    version = run.get("schema_version", 1)
+    if version != 2:
+        raise ContractError(
+            f"schema v{version} unsupported for strict validation; expected schema v2"
+        )
+
+    run_schema = load_schema("run-v2.schema.json")
+    task_schema = load_schema("task-v2.schema.json")
+    acceptance_schema = load_schema("acceptance-v2.schema.json")
+    errors = schema_errors(run, run_schema, "run.yaml")
+    if errors:
+        raise ContractError("\n".join(errors))
+
+    project_cwd = Path(run["project_cwd"])
+    if not project_cwd.is_absolute():
+        errors.append("run.yaml project_cwd must be absolute")
+    project_cwd = project_cwd.resolve(strict=False)
+    if not project_cwd.is_dir():
+        errors.append(f"run.yaml project_cwd does not exist: {project_cwd}")
+    repo = Path(run["repo"]).resolve(strict=False)
+    if not repo.is_dir():
+        errors.append(f"run.yaml repo does not exist: {repo}")
+    if run["slug"] != run_dir.name:
+        errors.append(
+            f"run.yaml slug {run['slug']!r} does not match directory {run_dir.name!r}"
+        )
+    task_paths = sorted((run_dir / "tasks").glob("*.yaml"))
+    if not task_paths:
+        errors.append("run has no task contracts under tasks/*.yaml")
+
+    tasks: dict[str, dict[str, Any]] = {}
+    task_files: dict[str, Path] = {}
+    task_entries: list[tuple[str, dict[str, Any]]] = []
+    for task_path in task_paths:
+        try:
+            task = load_yaml(task_path, "task contract")
+        except ContractError as exc:
+            errors.append(str(exc))
+            continue
+        failures = schema_errors(task, task_schema, str(task_path))
+        errors.extend(failures)
+        if failures:
+            continue
+        task_id = task["id"]
+        if task_id in tasks:
+            errors.append(
+                f"duplicate task id {task_id!r}: {task_files[task_id]} and {task_path}"
+            )
+            continue
+        tasks[task_id] = task
+        task_files[task_id] = task_path
+        task_entries.append((task_id, task))
+
+        for location in placeholder_locations(task):
+            errors.append(f"task {task_id}: unresolved placeholder at {location}")
+
+        task_cwd_raw = Path(task["project_cwd"])
+        task_cwd = task_cwd_raw.resolve(strict=False)
+        if not task_cwd_raw.is_absolute():
+            errors.append(f"task {task_id}: project_cwd must be absolute")
+        elif not task_cwd.is_dir():
+            errors.append(f"task {task_id}: project_cwd does not exist: {task_cwd}")
+        elif task_cwd != project_cwd:
+            errors.append(f"task {task_id}: project_cwd must equal run project_cwd")
+
+        for field in ("owns_paths", "never_touch"):
+            for scope in task[field]:
+                detail = scope_error(scope)
+                if detail:
+                    errors.append(f"task {task_id}: {field} entry {scope!r} {detail}")
+
+        for index, verification in enumerate(task["verification"]):
+            cwd_raw = Path(verification["cwd"])
+            if not cwd_raw.is_absolute():
+                errors.append(
+                    f"task {task_id}: verification[{index}].cwd must be absolute"
+                )
+                continue
+            cwd = cwd_raw.resolve(strict=False)
+            if not cwd.is_dir():
+                errors.append(
+                    f"task {task_id}: verification[{index}].cwd does not exist: {cwd}"
+                )
+            elif not is_within(cwd, project_cwd):
+                errors.append(
+                    f"task {task_id}: verification[{index}].cwd escapes project_cwd"
+                )
+            timeout = verification["timeout_sec"]
+            if not 1 <= timeout <= MAX_VERIFICATION_TIMEOUT:
+                errors.append(
+                    f"task {task_id}: verification[{index}].timeout_sec must be 1-{MAX_VERIFICATION_TIMEOUT}"
+                )
+
+    owners = [
+        (task_id, scope)
+        for task_id, task in task_entries
+        for scope in task["owns_paths"]
+    ]
+    for index, (left_id, left_scope) in enumerate(owners):
+        for right_id, right_scope in owners[index + 1 :]:
+            if left_id != right_id and scopes_overlap(left_scope, right_scope):
+                errors.append(
+                    "owns_paths overlap: "
+                    f"task {left_id} {left_scope!r} and task {right_id} {right_scope!r}"
+                )
+
+    protected = [
+        (task_id, scope)
+        for task_id, task in task_entries
+        for scope in task["never_touch"]
+    ]
+    for owner_id, owner_scope in owners:
+        for protector_id, protected_scope in protected:
+            if scopes_overlap(owner_scope, protected_scope):
+                errors.append(
+                    "never_touch conflict: "
+                    f"task {owner_id} owns {owner_scope!r}, "
+                    f"task {protector_id} protects {protected_scope!r}"
+                )
+
+    errors.extend(dependency_errors(tasks))
+    if phase == "pre-merge":
+        errors.extend(
+            validate_acceptances(
+                run_dir, task_files, acceptance_schema, run_contract=run
+            )
+        )
+
+    if errors:
+        raise ContractError("\n".join(dict.fromkeys(errors)))
+    print(f"run-validate: valid {phase} tasks={len(tasks)} run_dir={run_dir}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="strictly validate a lane run v2")
+    parser.add_argument("--run-dir", required=True)
+    parser.add_argument(
+        "--phase", required=True, choices=("pre-dispatch", "pre-merge")
+    )
+    args = parser.parse_args()
+    run_dir = Path(args.run_dir).expanduser().resolve(strict=False)
+    try:
+        return validate_run(run_dir, args.phase)
+    except ContractError as exc:
+        for line in str(exc).splitlines():
+            print(f"run-validate: {line}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Refresh .agents/runs/BOARD.md from all run STATUS/task YAML."""
+"""Refresh BOARD.md and contract-v2 STATUS.md views from machine state."""
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import os
 import re
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,10 +17,12 @@ try:
 except ImportError:
     yaml = None
 
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
 
 def parse_simple_yaml_status(text: str) -> dict:
     out = {}
-    for key in ("id", "title", "status", "lane", "risk"):
+    for key in ("schema_version", "id", "title", "status", "lane", "risk"):
         m = re.search(rf"^{key}:\s*[\"']?([^\"'\n#]+)", text, re.M)
         if m:
             out[key] = m.group(1).strip().strip('"').strip("'")
@@ -33,6 +39,114 @@ def load_task(path: Path) -> dict:
         except Exception:
             pass
     return parse_simple_yaml_status(text)
+
+
+def load_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def board_status(value: object) -> str:
+    status = str(value or "").strip().lower()
+    if status in ("accepted", "done", "failed", "cancelled", "verification_failed", "blocked"):
+        return "blocked"
+    if status == "stalled":
+        return "stalled"
+    if status in ("starting", "running", "awaiting_verification", "verifying", "verified"):
+        return "running"
+    return "pending"
+
+
+def atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False
+    ) as handle:
+        handle.write(text)
+        temporary = Path(handle.name)
+    os.chmod(temporary, (path.stat().st_mode & 0o777) if path.exists() else 0o644)
+    temporary.replace(path)
+
+
+def task_view(run_dir: Path, task_path: Path, data: dict) -> dict:
+    task_id = str(data.get("id") or task_path.stem.split("-")[0])
+    if not SAFE_NAME.fullmatch(task_id) or task_id in {".", ".."}:
+        raise ValueError(f"invalid task id {task_id!r} in {task_path}")
+    artifact = run_dir / "artifacts" / task_id
+    acceptance = load_json(artifact / "acceptance.json")
+    state = load_json(artifact / "state.json")
+    contract_v2 = str(data.get("schema_version") or "") == "2"
+    task_sha256 = hashlib.sha256(task_path.read_bytes()).hexdigest()
+    acceptance_valid = (
+        acceptance.get("schema_version") == 2
+        and acceptance.get("task_id") == task_id
+        and acceptance.get("task_sha256") == task_sha256
+        and isinstance(acceptance.get("attempt"), int)
+        and acceptance.get("attempt", 0) > 0
+        and acceptance.get("provider_exit") == 0
+        and acceptance.get("report") == "complete"
+        and acceptance.get("owns_check") == "passed"
+        and acceptance.get("verification") == "passed"
+        and acceptance.get("review") in ("passed", "not_required")
+        and acceptance.get("accepted") is True
+        and isinstance(acceptance.get("accepted_at"), str)
+        and bool(acceptance.get("accepted_at"))
+    )
+    try:
+        attempt = int(state.get("current_attempt", state.get("attempt", 0)) or 0)
+    except (TypeError, ValueError):
+        attempt = 0
+    verification = (
+        load_json(artifact / "attempts" / f"{attempt:02d}" / "verification.json")
+        if attempt > 0
+        else {}
+    )
+    acceptance_valid = acceptance_valid and bool(state) and acceptance.get("attempt") == attempt
+    if acceptance_valid:
+        status = "done"
+    elif state:
+        status = board_status(state.get("status"))
+    elif contract_v2:
+        status = "pending"
+    else:
+        status = str(data.get("status") or "?")
+    return {
+        "id": task_id,
+        "status": status,
+        "lane": str(data.get("lane") or ""),
+        "title": str(data.get("title") or task_path.stem)[:60],
+        "state": state,
+        "acceptance": acceptance,
+        "acceptance_valid": acceptance_valid,
+        "verification": verification,
+        "report": (artifact / "report.md").is_file(),
+    }
+
+
+def write_run_status(run_dir: Path, tasks: list[dict]) -> None:
+    lines = [
+        f"# STATUS `{run_dir.name}`",
+        "",
+        f"_Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} by run-board from state.json and acceptance.json._",
+        "",
+        "| Task | Status | Attempt | Report | Verification | Acceptance |",
+        "|------|--------|---------|--------|--------------|------------|",
+    ]
+    for task in tasks:
+        state = task["state"]
+        acceptance = task["acceptance"]
+        attempt = state.get("attempt", "-")
+        verification = task["verification"].get("status", "-")
+        accepted = "passed" if task["acceptance_valid"] else "pending"
+        lines.append(
+            f"| {task['id']} | **{task['status']}** | {attempt} | "
+            f"{'yes' if task['report'] else 'no'} | {verification} | {accepted} |"
+        )
+    lines.extend(["", "Lifecycle history: `events.jsonl`.", ""])
+    atomic_write(run_dir / "STATUS.md", "\n".join(lines))
 
 
 def main() -> int:
@@ -60,15 +174,25 @@ def main() -> int:
             tasks_dir = run_dir / "tasks"
             if not tasks_dir.is_dir():
                 continue
+            run_config = load_task(run_dir / "run.yaml") if (run_dir / "run.yaml").is_file() else {}
+            run_tasks = []
             for task in sorted(tasks_dir.glob("*.yaml")):
                 data = load_task(task)
-                tid = str(data.get("id") or task.stem.split("-")[0])
-                status = str(data.get("status") or "?")
-                lane = str(data.get("lane") or "")
-                title = str(data.get("title") or task.stem)[:60]
+                try:
+                    view = task_view(run_dir, task, data)
+                except ValueError as exc:
+                    print(f"run-board: {exc}", file=sys.stderr)
+                    continue
+                run_tasks.append(view)
+                tid = view["id"]
+                status = view["status"]
+                lane = view["lane"]
+                title = view["title"]
                 lines.append(f"| `{slug}` | {tid} | **{status}** | {lane} | {title} |")
                 if status in ("running", "stalled", "blocked", "review", "pending"):
                     active.append((slug, tid, status, title))
+            if str(run_config.get("schema_version") or "") == "2":
+                write_run_status(run_dir, run_tasks)
 
     lines.append("")
     lines.append("## Needs attention")
@@ -88,7 +212,7 @@ def main() -> int:
     lines.append("```")
     lines.append("")
 
-    board.write_text("\n".join(lines), encoding="utf-8")
+    atomic_write(board, "\n".join(lines))
     print(board)
     return 0
 

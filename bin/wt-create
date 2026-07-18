@@ -24,9 +24,11 @@ WT_ROOT="$REPO/.worktrees"
 WT_PATH="$WT_ROOT/$SLUG"
 
 mkdir -p "$WT_ROOT"
-# ignore worktrees in git if possible
-if [[ -f .gitignore ]] && ! grep -qxF '.worktrees/' .gitignore 2>/dev/null; then
-  echo '.worktrees/' >> .gitignore || true
+# Keep machine-local worktrees out of status without modifying tracked files.
+EXCLUDE_FILE="$(git rev-parse --git-path info/exclude)"
+mkdir -p "$(dirname "$EXCLUDE_FILE")"
+if ! grep -qxF '.worktrees/' "$EXCLUDE_FILE" 2>/dev/null; then
+  echo '.worktrees/' >> "$EXCLUDE_FILE"
 fi
 
 if [[ -d "$WT_PATH" ]]; then

@@ -10,5 +10,6 @@ metamcp.env
 PROGRESS.md
 LESSONS.md
 .claude/
+.claude-bridge/
 /AGENTS.md
 /CLAUDE.md

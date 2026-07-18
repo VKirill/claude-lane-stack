@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Run typed Codex review, prepare isolated Grok fixes, then resume receipts."""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+ENGINE = ROOT / "bin" / "night-review-engine"
+WT_CREATE = ROOT / "bin" / "wt-create"
+RUNNER = ROOT / "bin" / "night-fix-runner"
+RUNNABLE = frozenset({"open", "in_progress"})
+
+
+class ShiftError(RuntimeError):
+    pass
+
+
+def run(argv: list[str], *, timeout: int = 7200) -> subprocess.CompletedProcess[str]:
+    try:
+        result = subprocess.run(
+            argv,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ShiftError(f"cannot complete {argv[0]}: {exc}") from exc
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+        raise ShiftError(f"{' '.join(argv[:4])}: {detail}")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    return result
+
+
+def runnable_findings(repo: Path) -> list[str]:
+    result: list[str] = []
+    for path in sorted((repo / ".agents" / "findings").glob("*.json")):
+        try:
+            finding = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ShiftError(f"cannot read canonical finding {path}: {exc}") from exc
+        if not isinstance(finding, dict):
+            raise ShiftError(f"canonical finding is not an object: {path}")
+        if finding.get("actionable") is True and finding.get("status") in RUNNABLE:
+            result.append(path.stem)
+    return result
+
+
+def execute(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if probe.returncode != 0 or Path(probe.stdout.strip()).resolve() != repo:
+        raise ShiftError(f"repo must be a git checkout root: {repo}")
+    slug = args.run_slug or f"night-fixes-{args.day}"
+    review = [str(ENGINE), "review", str(repo), "--day", args.day, "--run-slug", slug]
+    if args.since:
+        review.extend(["--since", args.since])
+    if args.codex_bin:
+        review.extend(["--codex-bin", args.codex_bin])
+    if args.max_chunk_bytes:
+        review.extend(["--max-chunk-bytes", str(args.max_chunk_bytes)])
+    if args.dry_run:
+        review.append("--dry-run")
+        run(review)
+        return 0
+
+    run(review)
+    pending = runnable_findings(repo)
+    if not pending:
+        print("night-shift: no runnable findings; no worktree created")
+        return 0
+
+    run([str(WT_CREATE), str(repo), slug], timeout=300)
+    run(
+        [
+            str(ENGINE),
+            "compile-fixes",
+            str(repo),
+            "--day",
+            args.day,
+            "--run-slug",
+            slug,
+        ],
+        timeout=300,
+    )
+    run_dir = repo / ".agents" / "runs" / slug
+    task_files = sorted((run_dir / "tasks").glob("*.yaml"))
+    if not task_files:
+        print("night-shift: findings require human scope resolution; no Grok task dispatched")
+        return 0
+    if args.prepare_only:
+        print(f"night-shift: prepared {len(task_files)} task(s) in {run_dir}")
+        return 0
+
+    runner = [str(RUNNER), str(repo), "--run-dir", str(run_dir)]
+    if not args.no_auto_merge:
+        runner.append("--auto-merge")
+    if args.codex_bin:
+        runner.extend(["--codex-bin", args.codex_bin])
+    if args.grok_bin:
+        runner.extend(["--grok-bin", args.grok_bin])
+    if args.poll_interval is not None:
+        runner.extend(["--poll-interval", str(args.poll_interval)])
+    if args.provider_timeout is not None:
+        runner.extend(["--provider-timeout", str(args.provider_timeout)])
+    run(runner, timeout=max(7200, (args.provider_timeout or 7200) * len(task_files) * 2))
+    return 0
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def nonnegative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
+def parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description="typed nightly review and bounded repair")
+    ap.add_argument("repo")
+    ap.add_argument("--day", default=date.today().isoformat())
+    ap.add_argument("--since")
+    ap.add_argument("--run-slug")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--prepare-only", action="store_true")
+    ap.add_argument("--no-auto-merge", action="store_true")
+    ap.add_argument("--codex-bin")
+    ap.add_argument("--grok-bin")
+    ap.add_argument("--max-chunk-bytes", type=positive_int)
+    ap.add_argument("--poll-interval", type=nonnegative_float)
+    ap.add_argument("--provider-timeout", type=positive_int)
+    return ap
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        return execute(args)
+    except ShiftError as exc:
+        print(f"night-shift: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

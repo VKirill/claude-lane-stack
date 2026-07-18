@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Discover active lane-stack repositories and run bounded night shifts."""
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import json
+import os
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+NIGHT_SHIFT = ROOT / "bin" / "night-shift"
+UNRESOLVED = frozenset({"open", "needs_human", "in_progress"})
+
+
+def discover(roots: list[Path]) -> list[Path]:
+    projects: set[Path] = set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for current, directories, files in os.walk(root):
+            path = Path(current)
+            if len(path.relative_to(root).parts) > 2:
+                directories[:] = []
+                continue
+            if ".git" not in directories and ".git" not in files:
+                continue
+            if (
+                (path / ".agents" / "runs").is_dir()
+                or (path / ".agents" / "routing.profile.yaml").is_file()
+                or (
+                    (path / "CLAUDE.md").is_file()
+                    and "Claude Lane Stack"
+                    in (path / "CLAUDE.md").read_text(encoding="utf-8", errors="ignore")
+                )
+            ):
+                projects.add(path.resolve())
+            directories[:] = [name for name in directories if name != ".git"]
+    return sorted(projects)
+
+
+def active(project: Path) -> bool:
+    recent = subprocess.run(
+        ["git", "-C", str(project), "log", "--since=24 hours ago", "--oneline", "-1"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if recent.stdout.strip():
+        return True
+    for path in (project / ".agents" / "findings").glob("*.json"):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return True
+        if isinstance(value, dict) and value.get("status") in UNRESOLVED:
+            return True
+    return False
+
+
+def run_project(project: Path, args: argparse.Namespace) -> tuple[Path, int, str, str]:
+    argv = [str(NIGHT_SHIFT), str(project), "--day", args.day]
+    if args.dry_run:
+        argv.append("--dry-run")
+    if args.prepare_only:
+        argv.append("--prepare-only")
+    if args.no_auto_merge:
+        argv.append("--no-auto-merge")
+    if args.codex_bin:
+        argv.extend(["--codex-bin", args.codex_bin])
+    if args.grok_bin:
+        argv.extend(["--grok-bin", args.grok_bin])
+    result = subprocess.run(
+        argv,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    return project, result.returncode, result.stdout, result.stderr
+
+
+def bounded_jobs(value: str) -> int:
+    parsed = int(value)
+    if not 1 <= parsed <= 10:
+        raise argparse.ArgumentTypeError("jobs must be from 1 to 10")
+    return parsed
+
+
+def execute(args: argparse.Namespace) -> int:
+    if args.root:
+        roots = [Path(value).expanduser().resolve() for value in args.root]
+    else:
+        configured = os.environ.get("NIGHT_REVIEW_ROOTS", "")
+        roots = (
+            [Path(value).expanduser().resolve() for value in configured.split(os.pathsep) if value]
+            if configured
+            else [Path.home() / name for name in ("apps", "sites", "tools")]
+        )
+    projects = discover(roots)
+    selected = [project for project in projects if active(project)]
+    failures = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        futures = [executor.submit(run_project, project, args) for project in selected]
+        for future in futures:
+            project, returncode, stdout, stderr = future.result()
+            print(f"===== {project} =====")
+            if stdout:
+                print(stdout, end="")
+            if stderr:
+                print(stderr, end="", file=sys.stderr)
+            if returncode != 0:
+                failures += 1
+    print(f"Processed {len(selected)} of {len(projects)} lane-stack projects.")
+    return 0 if failures == 0 else 1
+
+
+def parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description="run typed night shifts across active projects")
+    ap.add_argument("--root", action="append")
+    ap.add_argument("--day", default=date.today().isoformat())
+    ap.add_argument("--jobs", type=bounded_jobs, default=1)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--prepare-only", action="store_true")
+    ap.add_argument("--no-auto-merge", action="store_true")
+    ap.add_argument("--codex-bin")
+    ap.add_argument("--grok-bin")
+    return ap
+
+
+if __name__ == "__main__":
+    raise SystemExit(execute(parser().parse_args()))

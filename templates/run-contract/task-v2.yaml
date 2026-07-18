@@ -1,0 +1,28 @@
+schema_version: 2
+id: "001"
+title: "REPLACE_ME concrete outcome"
+risk: medium
+lane: grok
+project_cwd: {{project_cwd_yaml}}
+read_first:
+  - "AGENTS.md"
+interfaces: []
+invariants:
+  - "Preserve unrelated user work"
+out_of_scope: []
+expected_outputs:
+  - "REPLACE_ME product or code output created by this task"
+owns_paths:
+  - "REPLACE_ME/product-surface/**"
+never_touch:
+  - ".env*"
+depends_on: []
+objective: |
+  REPLACE_ME requested behavior and smallest acceptable implementation.
+acceptance:
+  - "REPLACE_ME observable completion condition"
+verify: tests
+verification:
+  - command: "REPLACE_ME verification command"
+    cwd: {{project_cwd_yaml}}
+    timeout_sec: 600

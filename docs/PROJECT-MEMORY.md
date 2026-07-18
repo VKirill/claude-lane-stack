@@ -12,12 +12,20 @@ Files every serious agent project should keep so a cold session is useful in min
 | `.agents/routing.profile.yaml` | which CLIs / lanes | `agents-doctor --apply` |
 | `.agents/session-log/` | Auto handoff evidence (files/shell/git) | Hooks |
 | `.agents/agent-notes/OPEN.md` | Open debt from code TODOs | Hooks + agents |
+| `.agents/findings/` | Canonical typed review findings, including prior-programmer context | `night-review` |
+| `.agents/night-review/checkpoint.json` | Last completely reviewed source boundary | `night-review` |
+| `.agents/runs/<slug>/night-fix-state.json` | Resumable dispatch/verify/re-review state | `night-fix-runner` |
+| `.agents/runs/<slug>/artifacts/<task>/review.json` | Identity-bound Codex re-review receipt | `night-review-engine` |
+| `.agents/runs/<slug>/artifacts/<task>/attempts/<n>/runtime.json` | Sanitized Grok protocol/runtime receipt | `lane-session` |
+| `.agents/night-fix-current.json` | Pointer to current/last repair state | `night-fix-runner` |
 | `.agents/todos/` | Ideas backlog | Humans + PM agents |
-| `.agents/runs/` | Task contracts + reports | Orchestrator + lanes |
-| `.agents/runs/BOARD.md` | Live multi-run board | `run-board` |
+| `.agents/runs/` | Immutable task specs + machine receipts + reports | Orchestrator + lanes |
+| `.agents/runs/BOARD.md` | Generated multi-run board | `run-board` |
 | `docs/` wiki (if any) | Architecture truth | Humans + wiki pipeline / docs-maintain |
 
 **Solo:** orchestrator auto-merges worktrees to `main` (`wt-merge-main`). See `SOLO-ORCHESTRATION.md`.  
+`run-finalize` applies declared PROGRESS/BOARD/OPEN updates after merge and
+records them in `finalize.json`; it never guesses which checklist lines are stale.
 **Language:** all of the above agent-written files are **English** (`LANGUAGE.md`).
 
 ## Init a repo
@@ -45,7 +53,15 @@ project-onboard /path/to/repo --deep
 ~/.agents/bin/resume-project /path/to/repo
 ~/.agents/bin/night-audit /path/to/repo
 # → .agents/session-log/AUDIT-YYYY-MM-DD.md
+~/.agents/bin/night-shift /path/to/repo
+# → typed findings + optional isolated Grok repair run
 ```
+
+Review observations must not remain only in a transcript. A concrete or
+systemic defect is stored once under `.agents/findings/` and linked from its
+daily report, OPEN projection, TODO, generated fix task, and closure receipt.
+This makes the next reviewer start from prior evidence instead of rediscovering
+the same failure.
 
 ## Community names
 

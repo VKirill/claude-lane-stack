@@ -5,6 +5,7 @@ set -euo pipefail
 REPO="${1:-.}"
 REPO="$(cd "$REPO" && pwd)"
 export PATH="/home/ubuntu/.agents/bin:$PATH"
+BIN_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 echo "======== RESUME PROJECT ========"
 echo "REPO: $REPO"
@@ -18,8 +19,10 @@ if [[ -d "$REPO/.git" ]] || git -C "$REPO" rev-parse --is-inside-work-tree >/dev
   echo
 fi
 
-if [[ -x /home/ubuntu/.agents/bin/run-board ]]; then
-  /home/ubuntu/.agents/bin/run-board "$REPO" >/dev/null 2>&1 || true
+if [[ -x "$BIN_ROOT/run-board" ]]; then
+  "$BIN_ROOT/run-board" "$REPO" >/dev/null 2>&1 || true
+elif command -v run-board >/dev/null 2>&1; then
+  run-board "$REPO" >/dev/null 2>&1 || true
 fi
 
 for f in PROGRESS.md LESSONS.md docs/decisions.md .agents/agent-notes/OPEN.md .agents/runs/BOARD.md; do
@@ -84,8 +87,10 @@ else
 fi
 
 echo "======== stall check ========"
-if [[ -x /home/ubuntu/.agents/bin/lane-stall-check ]]; then
-  /home/ubuntu/.agents/bin/lane-stall-check "$REPO" --minutes 5 || true
+if [[ -x "$BIN_ROOT/lane-stall-check" ]]; then
+  "$BIN_ROOT/lane-stall-check" "$REPO" --minutes 5 || true
+elif command -v lane-stall-check >/dev/null 2>&1; then
+  lane-stall-check "$REPO" --minutes 5 || true
 fi
 
 echo "======== next actions for PM ========"

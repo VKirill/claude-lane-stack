@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/task-review-receipt-v2.schema.json",
+  "title": "Claude Lane Stack task re-review receipt v2",
+  "description": "Control-plane receipt that binds a Codex re-review to one immutable task attempt and the exact reviewed Git worktree state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_type",
+    "task_id",
+    "task_sha256",
+    "attempt",
+    "project_cwd",
+    "base_ref",
+    "reviewed_diff_sha256",
+    "reviewed_tree_sha256",
+    "verdict",
+    "findings",
+    "reviewed_at"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "receipt_type": {"const": "task_re_review"},
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "task_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "attempt": {"type": "integer", "minimum": 1},
+    "project_cwd": {"type": "string", "pattern": "^/"},
+    "base_ref": {
+      "description": "Immutable full Git commit object id; symbolic or abbreviated refs are forbidden.",
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "reviewed_diff_sha256": {
+      "description": "SHA-256 of the exact stdout bytes from git diff --no-ext-diff --binary --full-index BASE_REF --. If RUN_DIR is inside project_cwd, both reviewer and accept exclude its relative subtree with a Git exclude pathspec.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "reviewed_tree_sha256": {
+      "description": "SHA-256 of the canonical lane-review-tree-v1 payload: header plus NUL, ASCII base_ref plus NUL, 8-byte big-endian diff length, exact reviewed diff bytes, then git-visible untracked files sorted by raw path bytes. Each untracked record is 8-byte path length, raw path, one-byte kind (f regular, x executable, l symlink), 8-byte content length, and file bytes or symlink-target bytes. RUN_DIR is excluded when nested in project_cwd.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "verdict": {"enum": ["passed", "failed"]},
+    "findings": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "reviewed_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "passed"}}},
+      "then": {"properties": {"findings": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "failed"}}},
+      "then": {"properties": {"findings": {"minItems": 1}}}
+    }
+  ]
+}

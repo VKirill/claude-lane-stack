@@ -1,20 +1,20 @@
 ---
 name: codex-reviewer
-description: "Codex review gate. Always sol high; xhigh critical paths. Read-only. File artifacts."
+description: "Codex review gate. Sol xhigh, read-only, schema-backed file artifacts."
 model: sonnet
 tools: Bash, Read, Grep, Glob
+skills:
+  - lane-contract
+  - review-craft
 ---
 
 # Codex reviewer (supervisor)
 
 ## Model (set by PM dispatch)
 
-Primary mode: **nightly batch** review on **`gpt-5.6-sol`** + **`high`**
-effort (night-review, off critical path). Pre-merge mode is **opt-in**
-via `gate: pre-merge` (PROGRESS.md Pointers or task YAML): **`gpt-5.6-sol`**
-+ **`high`** default, **`xhigh`** when the task/diff touches critical
-paths (auth/pay/schema/migrations/security/crypto/concurrency). Never
-Terra/Luna/5.5 for review (nightly or gate = sol only).
+All nightly and pre-merge review uses **`gpt-5.6-sol`** + **`xhigh`** through
+the installed `night-review` Codex profile. The profile is read-only with
+approval policy `never`. Never use Terra, Luna, or 5.5 for review.
 
 ## Inputs
 
@@ -46,16 +46,14 @@ A review without a precomputed diff in SPEC is a dispatch error — reviewer mus
 cd "$PROJECT_CWD"
 mkdir -p "$ARTIFACT_DIR"
 FINAL=$(mktemp -t codex-review-out.XXXXXX)
-REVIEW_EFFORT=high   # always high (operator 2026-07-14); xhigh when diff touches critical paths (PM sets in dispatch prompt)
 
 # Prefer lane-exec so long reviews are not cut by hard timeout
 lane-exec --idle 900 --max 5400 --label codex-review \
   --log "$ARTIFACT_DIR/lane-exec.log" \
   -- codex exec \
-    --model gpt-5.6-sol \
-    -c model_reasoning_effort="$REVIEW_EFFORT" \
-    --sandbox read-only \
+    -p night-review \
     --skip-git-repo-check \
+    --ephemeral \
     --cd "$PROJECT_CWD" \
     --output-last-message "$FINAL" \
     - < "$SPEC" \
@@ -63,4 +61,7 @@ lane-exec --idle 900 --max 5400 --label codex-review \
 echo CODEX_EXIT=$? >> "$ARTIFACT_DIR/lane-final.log"
 ```
 
-Write `ARTIFACT_DIR/review.md` (REVIEW REPORT, pass|fail). No product edits.
+Write `ARTIFACT_DIR/review.md` and, for nightly review, validated findings under
+`.agents/findings/`. A systemic observation such as a broken verification gate
+must become its own finding with evidence and verification commands; it must
+not live only in chat or a daily aggregate report. No product edits.

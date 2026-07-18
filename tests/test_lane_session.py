@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -42,8 +43,28 @@ class LaneSessionTest(unittest.TestCase):
                 from pathlib import Path
 
                 args = sys.argv[1:]
+                if "--version" in args:
+                    print(os.environ.get("FAKE_VERSION_TEXT", "grok 0.2.103-test (fake)"))
+                    raise SystemExit(0)
+                streaming = "--output-format" in args and args[
+                    args.index("--output-format") + 1
+                ] == "streaming-json"
+
+                def emit(payload):
+                    print(json.dumps(payload), flush=True)
+
                 if os.environ.get("FAKE_PID_FILE"):
                     Path(os.environ["FAKE_PID_FILE"]).write_text(str(os.getpid()), encoding="utf-8")
+                if os.environ.get("FAKE_ENV_LOG"):
+                    Path(os.environ["FAKE_ENV_LOG"]).write_text(
+                        ",".join(
+                            (
+                                os.environ.get("GROK_CLAUDE_HOOKS_ENABLED", "<unset>"),
+                                os.environ.get("CLAUDE_LANE_AUTOMATION", "<unset>"),
+                            )
+                        ),
+                        encoding="utf-8",
+                    )
                 if os.environ.get("FAKE_CHILD_PID_FILE"):
                     child = subprocess.Popen(
                         [sys.executable, "-c", "import time; time.sleep(30)"]
@@ -69,13 +90,60 @@ class LaneSessionTest(unittest.TestCase):
                     if pulse > 0:
                         deadline = time.monotonic() + duration
                         while time.monotonic() < deadline:
-                            print("provider pulse", flush=True)
+                            if streaming:
+                                emit({"type": "thought", "data": "provider pulse"})
+                            else:
+                                print("provider pulse", flush=True)
                             time.sleep(min(pulse, max(0, deadline - time.monotonic())))
                     else:
                         time.sleep(duration)
 
-                print("provider complete")
-                raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
+                exit_code = int(os.environ.get("FAKE_EXIT", "0"))
+                if os.environ.get("FAKE_STDERR"):
+                    print(os.environ["FAKE_STDERR"], file=sys.stderr, flush=True)
+                if streaming:
+                    mode = os.environ.get("FAKE_STREAM_MODE", "valid")
+                    session_flag = "--session-id" if "--session-id" in args else "--resume"
+                    session_id = args[args.index(session_flag) + 1]
+                    model = args[args.index("--model") + 1]
+                    if mode == "malformed":
+                        print("not-json", flush=True)
+                    else:
+                        text_size = int(os.environ.get("FAKE_TEXT_SIZE", "0"))
+                        text_data = "x" * text_size if text_size else "provider complete"
+                        emit({"type": "text", "data": text_data})
+                        if exit_code != 0 or mode == "error":
+                            emit({"type": "error", "message": "provider failed"})
+                        elif mode != "missing-end":
+                            emit(
+                                {
+                                    "type": "end",
+                                    "stopReason": os.environ.get("FAKE_STOP_REASON", "EndTurn"),
+                                    "sessionId": session_id,
+                                    "requestId": "request-test",
+                                    "num_turns": 2,
+                                    "usage": {
+                                        "input_tokens": 10,
+                                        "cache_read_input_tokens": 3,
+                                        "output_tokens": 4,
+                                        "reasoning_tokens": 2,
+                                        "total_tokens": 17,
+                                    },
+                                    "modelUsage": {
+                                        model: {
+                                            "inputTokens": 10,
+                                            "outputTokens": 4,
+                                            "modelCalls": 2,
+                                            "costUSD": 0.01,
+                                        }
+                                    },
+                                    "total_cost_usd": 0.01,
+                                    "total_cost_usd_ticks": 100000000,
+                                }
+                            )
+                else:
+                    print("provider complete")
+                raise SystemExit(exit_code)
                 """
             ),
             encoding="utf-8",
@@ -94,6 +162,7 @@ class LaneSessionTest(unittest.TestCase):
         exit_code: int = 0,
         run_dir: Path | None = None,
         extra_env: dict[str, str] | None = None,
+        binary: Path | None = None,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         prompt = self.root / f"task-{task_id}.md"
@@ -131,7 +200,7 @@ class LaneSessionTest(unittest.TestCase):
             "--output",
             str(output),
             "--binary",
-            str(self.fake_provider),
+            str(binary or self.fake_provider),
             "--model",
             "test-model",
             "--max-tasks",
@@ -191,6 +260,15 @@ class LaneSessionTest(unittest.TestCase):
 
         first, second, third = self._calls()
         self.assertIn("--no-auto-update", first)
+        self.assertIn("--no-subagents", first)
+        self.assertEqual(first[first.index("--sandbox") + 1], "workspace")
+        self.assertEqual(first[first.index("--output-format") + 1], "streaming-json")
+        rules = first[first.index("--rules") + 1]
+        self.assertIn("task_id=001", rules)
+        self.assertIn(f"workspace={self.cwd}", rules)
+        expected_prompt_sha = hashlib.sha256(b"Implement task 001\n").hexdigest()
+        self.assertIn(f"prompt_sha256={expected_prompt_sha}", rules)
+        self.assertIn("owns_paths", rules)
         self.assertIn("--prompt-file", first)
         self.assertNotIn("--single", first)
         first_id = first[first.index("--session-id") + 1]
@@ -280,6 +358,21 @@ class LaneSessionTest(unittest.TestCase):
         self.assertFalse((self.run_dir / ".sessions.lock").exists())
         self.assertFalse((self.run_dir / ".session-locks").exists())
 
+    def test_session_without_workspace_sandbox_is_rotated(self) -> None:
+        self._run("grok", "001")
+        state_path = self.run_dir / "sessions.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        first_id = state["sessions"]["grok:grok:0"]["session_id"]
+        state["sessions"]["grok:grok:0"].pop("sandbox", None)
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+        self._run("grok", "002")
+
+        active = self._state()["sessions"]["grok:grok:0"]
+        self.assertNotEqual(active["session_id"], first_id)
+        self.assertEqual(active["sandbox"], "workspace")
+        self.assertEqual(self._state()["history"][0]["rotation_reason"], "sandbox_changed")
+
     def test_two_runs_in_same_worktree_never_resume_each_others_session(self) -> None:
         second_run = self.root / ".agents" / "runs" / "vk-bot"
         second_run.mkdir(parents=True)
@@ -317,6 +410,147 @@ class LaneSessionTest(unittest.TestCase):
     def test_provider_output_is_streamed_through_wrapper_stdout(self) -> None:
         result = self._run("grok", "001")
         self.assertIn("provider complete", result.stdout)
+
+    def test_grok_writer_disables_claude_compat_hooks(self) -> None:
+        env_log = self.root / "provider-env.txt"
+
+        result = self._run(
+            "grok",
+            "hooks-001",
+            extra_env={"FAKE_ENV_LOG": str(env_log)},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(env_log.read_text(encoding="utf-8"), "0,1")
+
+    def test_streaming_result_writes_sanitized_runtime_receipt(self) -> None:
+        result = self._run("grok", "receipt-001")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["schema_version"], 1)
+        self.assertEqual(receipt["provider"], "grok")
+        self.assertEqual(receipt["provider_version"], "0.2.103-test")
+        self.assertEqual(receipt["model"], "test-model")
+        self.assertEqual(receipt["reasoning_effort"], "high")
+        self.assertEqual(receipt["sandbox"], "workspace")
+        self.assertFalse(receipt["subagents_enabled"])
+        self.assertEqual(receipt["session_id"], self._state()["sessions"]["grok:grok:0"]["session_id"])
+        self.assertEqual(receipt["provider_exit_code"], 0)
+        self.assertEqual(receipt["exit_code"], 0)
+        self.assertEqual(receipt["stop_reason"], "EndTurn")
+        self.assertEqual(receipt["usage"]["total_tokens"], 17)
+        self.assertEqual(receipt["total_cost_usd_ticks"], 100000000)
+        self.assertNotIn("request_id", receipt)
+
+    def test_provider_control_strings_cannot_leak_into_runtime_artifacts(self) -> None:
+        secret = "secret-customer-token"
+        result = self._run(
+            "grok",
+            "control-string-001",
+            extra_env={
+                "FAKE_VERSION_TEXT": f"grok 9.8.7 {secret}",
+                "FAKE_STOP_REASON": secret,
+            },
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt_source = (self.root / "runtime.json").read_text(encoding="utf-8")
+        receipt = json.loads(receipt_source)
+        diagnostic = (self.root / "task-control-string-001.log").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(receipt["provider_version"], "9.8.7")
+        self.assertEqual(receipt["stop_reason"], "Other")
+        self.assertNotIn(secret, receipt_source)
+        self.assertNotIn(secret, diagnostic)
+
+    def test_malformed_stream_fails_closed_and_invalidates_session(self) -> None:
+        result = self._run(
+            "grok",
+            "malformed-001",
+            extra_env={"FAKE_STREAM_MODE": "malformed"},
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 65, result.stderr)
+        active = self._state()["sessions"]["grok:grok:0"]
+        self.assertTrue(active["invalid"])
+        self.assertEqual(active["invalid_reason"], "provider_exit_65")
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertEqual(receipt["provider_exit_code"], 0)
+        self.assertEqual(receipt["exit_code"], 65)
+        self.assertEqual(receipt["protocol_error"], "malformed streaming-json")
+        diagnostic = (self.root / "task-malformed-001.log").read_text(encoding="utf-8")
+        self.assertIn("grok protocol error", diagnostic)
+        self.assertNotIn("not-json", diagnostic)
+
+    def test_missing_end_event_fails_closed(self) -> None:
+        result = self._run(
+            "grok",
+            "missing-end-001",
+            extra_env={"FAKE_STREAM_MODE": "missing-end"},
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 65, result.stderr)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["protocol_error"], "stream ended without an end event")
+
+    def test_provider_stderr_is_diagnostic_not_structured_output(self) -> None:
+        result = self._run(
+            "grok",
+            "stderr-001",
+            extra_env={"FAKE_STDERR": "provider warning with sensitive detail"},
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertTrue(receipt["protocol_valid"])
+        diagnostic = (self.root / "task-stderr-001.log").read_text(encoding="utf-8")
+        self.assertIn("grok stderr", diagnostic)
+        self.assertNotIn("sensitive detail", diagnostic)
+
+    def test_launch_exception_writes_sanitized_failure_receipt(self) -> None:
+        broken_provider = self.root / "broken-provider-secret-token"
+        broken_provider.write_text("not an executable format\n", encoding="utf-8")
+        broken_provider.chmod(0o755)
+
+        result = self._run(
+            "grok",
+            "launch-failure-001",
+            binary=broken_provider,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        active = self._state()["sessions"]["grok:grok:0"]
+        self.assertTrue(active["invalid"])
+        self.assertEqual(active["invalid_reason"], "provider_exit_125")
+        receipt_path = self.root / "runtime.json"
+        self.assertTrue(receipt_path.is_file())
+        receipt_source = receipt_path.read_text(encoding="utf-8")
+        receipt = json.loads(receipt_source)
+        self.assertEqual(receipt["provider_exit_code"], 125)
+        self.assertEqual(receipt["exit_code"], 125)
+        self.assertEqual(receipt["failure_class"], "OSError")
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertNotIn("failure_message", receipt)
+        self.assertNotIn("secret-token", receipt_source)
+        self.assertNotIn("Exec format", receipt_source)
+
+    def test_provider_log_is_bounded_without_hiding_live_output(self) -> None:
+        result = self._run(
+            "grok",
+            "large-output-001",
+            extra_env={"FAKE_TEXT_SIZE": str(1024 * 1024 + 100)},
+        )
+
+        self.assertIn("x" * 100, result.stdout)
+        self.assertLessEqual((self.root / "task-large-output-001.log").stat().st_size, 1024 * 1024)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertTrue(receipt["log_truncated"])
 
     def test_repeated_task_id_still_counts_toward_rotation_limit(self) -> None:
         self._run("grok", "001", max_tasks=2)
@@ -456,7 +690,8 @@ class LaneSessionTest(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("provider pulse", result.stdout)
+        self.assertIn("GROK_EVENT thought", result.stdout)
+        self.assertNotIn("provider pulse", result.stdout)
         self.assertNotIn("IDLE timeout", result.stderr)
 
 if __name__ == "__main__":

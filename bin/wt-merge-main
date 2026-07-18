@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# PM-only: merge agent/<slug> worktree branch into main, remove worktree.
+# PM-only: merge agent/<slug> worktree branch into main and record the ship.
 set -euo pipefail
 
 REPO="${1:-.}"
 SLUG="${2:-}"
 if [[ -z "$SLUG" ]]; then
   echo "Usage: wt-merge-main <repo> <slug>" >&2
+  exit 2
+fi
+if [[ ! "$SLUG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || [[ "$SLUG" == "." || "$SLUG" == ".." ]]; then
+  echo "wt-merge-main: invalid run slug: $SLUG" >&2
   exit 2
 fi
 
@@ -23,62 +27,495 @@ RUN_DIR="$REPO/.agents/runs/$SLUG"
 META="$RUN_DIR/worktree.json"
 
 if [[ -f "$META" ]]; then
-  # prefer path from json if jq/python available
-  if command -v python3 >/dev/null; then
-    WT_PATH="$(python3 -c "import json;print(json.load(open('$META')).get('path','$WT_PATH'))" 2>/dev/null || echo "$WT_PATH")"
-    BRANCH="$(python3 -c "import json;print(json.load(open('$META')).get('branch','$BRANCH'))" 2>/dev/null || echo "$BRANCH")"
+  WT_PATH="$(python3 - "$META" "$WT_PATH" <<'PY'
+import json
+import sys
+
+try:
+    value = json.load(open(sys.argv[1], encoding="utf-8")).get("path", sys.argv[2])
+except (OSError, ValueError, AttributeError):
+    value = sys.argv[2]
+print(value)
+PY
+)"
+  BRANCH="$(python3 - "$META" "$BRANCH" <<'PY'
+import json
+import sys
+
+try:
+    value = json.load(open(sys.argv[1], encoding="utf-8")).get("branch", sys.argv[2])
+except (OSError, ValueError, AttributeError):
+    value = sys.argv[2]
+print(value)
+PY
+)"
+fi
+
+RUN_SCHEMA_VERSION="$(python3 - "$RUN_DIR/run.yaml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.is_file():
+    print("legacy")
+    raise SystemExit
+try:
+    import yaml
+    value = yaml.safe_load(path.read_text(encoding="utf-8"))
+except Exception as exc:
+    print(f"wt-merge-main: cannot parse {path}: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+if not isinstance(value, dict):
+    print(f"wt-merge-main: {path} must contain a YAML mapping", file=sys.stderr)
+    raise SystemExit(2)
+version = value.get("schema_version", 1)
+if version not in (1, 2):
+    print(f"wt-merge-main: unsupported run schema_version: {version!r}", file=sys.stderr)
+    raise SystemExit(2)
+print(version)
+PY
+)"
+
+EXPECTED_BRANCH="agent/${SLUG}"
+EXPECTED_WT_PATH="$REPO/.worktrees/$SLUG"
+if [[ "$BRANCH" != "$EXPECTED_BRANCH" ]]; then
+  echo "wt-merge-main: worktree metadata branch must be $EXPECTED_BRANCH, got $BRANCH" >&2
+  exit 1
+fi
+NORMALIZED_WT_PATH="$(python3 - "$WT_PATH" <<'PY'
+import sys
+from pathlib import Path
+print(Path(sys.argv[1]).resolve())
+PY
+)"
+if [[ "$NORMALIZED_WT_PATH" != "$EXPECTED_WT_PATH" ]]; then
+  echo "wt-merge-main: worktree metadata path must be $EXPECTED_WT_PATH, got $NORMALIZED_WT_PATH" >&2
+  exit 1
+fi
+WT_PATH="$NORMALIZED_WT_PATH"
+
+# Schema-v2 work must already be committed by the acceptance runner. Legacy
+# runs retain the historical auto-commit behavior for compatibility.
+if [[ -d "$WT_PATH" && -n "$(git -C "$WT_PATH" status --porcelain)" ]]; then
+  if [[ "$RUN_SCHEMA_VERSION" == "2" ]]; then
+    echo "wt-merge-main: schema-v2 source worktree is dirty; refusing unreviewed auto-commit" >&2
+    exit 1
+  fi
+  git -C "$WT_PATH" add -A
+  STAGED_TREE="$(git -C "$WT_PATH" write-tree)"
+  git -C "$WT_PATH" commit -m "wip(${SLUG}): auto-commit before merge to ${MAIN_REF}"
+  if [[ -n "$(git -C "$WT_PATH" status --porcelain)" ]]; then
+    echo "wt-merge-main: worktree remains dirty after auto-commit" >&2
+    exit 1
+  fi
+  if [[ "$(git -C "$WT_PATH" rev-parse 'HEAD^{tree}')" != "$STAGED_TREE" ]]; then
+    echo "wt-merge-main: committed tree differs from the staged source snapshot" >&2
+    exit 1
   fi
 fi
 
-# Commit any leftover changes inside worktree
-if [[ -d "$WT_PATH" ]]; then
-  (
-    cd "$WT_PATH"
-    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-      git add -A
-      git commit -m "wip(${SLUG}): auto-commit before merge to ${MAIN_REF}" || true
-    fi
-  )
+if ! git rev-parse --verify "${BRANCH}^{commit}" >/dev/null 2>&1; then
+  echo "wt-merge-main: branch does not exist: $BRANCH" >&2
+  exit 1
+fi
+SOURCE_COMMIT="$(git rev-parse "${BRANCH}^{commit}")"
+
+if [[ "$RUN_SCHEMA_VERSION" == "2" ]]; then
+  RUN_VALIDATE_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-validate"
+  if [[ ! -x "$RUN_VALIDATE_BIN" ]]; then
+    RUN_VALIDATE_BIN="$(command -v run-validate || true)"
+  fi
+  if [[ -z "$RUN_VALIDATE_BIN" ]]; then
+    echo "wt-merge-main: run-validate executable not found" >&2
+    exit 1
+  fi
+  "$RUN_VALIDATE_BIN" --run-dir "$RUN_DIR" --phase pre-merge
+else
+  python3 - "$RUN_DIR" <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError as exc:
+    print(f"wt-merge-main: PyYAML is required to inspect task contracts: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+tasks_dir = Path(sys.argv[1]) / "tasks"
+for task_path in sorted(tasks_dir.glob("*.yaml")) if tasks_dir.is_dir() else []:
+    try:
+        task = yaml.safe_load(task_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"wt-merge-main: cannot parse {task_path}: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    if isinstance(task, dict) and task.get("schema_version") == 2:
+        print(
+            f"wt-merge-main: schema-v2 task {task_path.name} requires a schema-v2 run.yaml",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+PY
 fi
 
-# Ensure we're not mid-merge on main
-if [[ -d .git/rebase-merge || -d .git/MERGE_HEAD ]]; then
+if [[ "$(git rev-parse "${BRANCH}^{commit}")" != "$SOURCE_COMMIT" ]]; then
+  echo "wt-merge-main: source branch changed while validating; retry the merge gate" >&2
+  exit 1
+fi
+
+BASE_SHA="$(python3 - "$RUN_DIR/run.yaml" "$META" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_yaml = Path(sys.argv[1])
+meta = Path(sys.argv[2])
+if run_yaml.is_file():
+    try:
+        import yaml
+        run = yaml.safe_load(run_yaml.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"wt-merge-main: cannot parse {run_yaml}: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+    value = run.get("base_sha") if isinstance(run, dict) else None
+    if isinstance(value, str) and value:
+        print(value)
+        raise SystemExit
+if meta.is_file():
+    try:
+        value = json.loads(meta.read_text(encoding="utf-8")).get("base")
+    except (OSError, ValueError, AttributeError):
+        value = None
+    if isinstance(value, str) and value:
+        print(value)
+PY
+)"
+if [[ -n "$BASE_SHA" ]]; then
+  if ! BASE_SHA="$(git rev-parse "${BASE_SHA}^{commit}" 2>/dev/null)"; then
+    echo "wt-merge-main: recorded base_sha is not a commit" >&2
+    exit 1
+  fi
+else
+  BASE_SHA="$(git merge-base "$MAIN_REF" "$BRANCH")"
+fi
+
+if [[ -d .git/rebase-merge ]] || git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
   echo "Repo mid-rebase/merge — resolve first" >&2
+  exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "wt-merge-main: main checkout is dirty; refusing to merge over user work" >&2
   exit 1
 fi
 
 git checkout "$MAIN_REF"
-git merge --no-ff "$BRANCH" -m "merge(${SLUG}): auto-merge agent worktree to ${MAIN_REF}"
+git merge --no-ff "$SOURCE_COMMIT" -m "merge(${SLUG}): auto-merge agent worktree to ${MAIN_REF}"
+MERGE_COMMIT="$(git rev-parse HEAD)"
 
-# remove worktree
-if [[ -d "$WT_PATH" ]]; then
-  git worktree remove --force "$WT_PATH" 2>/dev/null || rm -rf "$WT_PATH"
+REMOTE_NAME=""
+REMOTE_ATTEMPTED="false"
+REMOTE_PUSHED="false"
+REMOTE_SHA=""
+REMOTE_ERROR_FILE="$(mktemp)"
+FINALIZE_OUT_FILE="$(mktemp)"
+FINALIZE_ERROR_FILE="$(mktemp)"
+trap 'rm -f "$REMOTE_ERROR_FILE" "$FINALIZE_OUT_FILE" "$FINALIZE_ERROR_FILE"' EXIT
+
+if git remote get-url origin >/dev/null 2>&1; then
+  REMOTE_NAME="origin"
+else
+  REMOTE_NAME="$(git remote | head -n 1 || true)"
 fi
 
-# optional: keep branch for history (default delete local agent branch)
-git branch -d "$BRANCH" 2>/dev/null || git branch -D "$BRANCH" 2>/dev/null || true
-
 mkdir -p "$RUN_DIR"
-SHA="$(git rev-parse --short HEAD)"
+export REPO SLUG BRANCH BASE_SHA SOURCE_COMMIT MERGE_COMMIT RUN_SCHEMA_VERSION
+export REMOTE_NAME REMOTE_ATTEMPTED REMOTE_PUSHED REMOTE_SHA REMOTE_ERROR_FILE
+python3 - "$RUN_DIR" <<'PY'
+import json
+import os
+import tempfile
+from pathlib import Path
+
+run_dir = Path(os.sys.argv[1])
+v2_task_ids = set()
+tasks_dir = run_dir / "tasks"
+if os.environ["RUN_SCHEMA_VERSION"] == "2":
+    import yaml
+
+    for task_path in sorted(tasks_dir.glob("*.yaml")) if tasks_dir.is_dir() else []:
+        task = yaml.safe_load(task_path.read_text(encoding="utf-8"))
+        if isinstance(task, dict) and task.get("schema_version") == 2:
+            v2_task_ids.add(str(task["id"]))
+accepted_tasks = []
+artifacts = run_dir / "artifacts"
+if artifacts.is_dir():
+    for receipt_path in sorted(artifacts.glob("*/acceptance.json")):
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if (
+            receipt_path.parent.name not in v2_task_ids
+            or receipt.get("schema_version") != 2
+            or receipt.get("accepted") is not True
+        ):
+            continue
+        accepted_tasks.append(
+            {
+                key: receipt.get(key)
+                for key in (
+                    "task_id",
+                    "attempt",
+                    "task_sha256",
+                    "provider_exit",
+                    "report",
+                    "owns_check",
+                    "verification",
+                    "review",
+                    "accepted",
+                    "accepted_at",
+                )
+            }
+        )
+
+passed = sum(task.get("verification") == "passed" for task in accepted_tasks)
+verification_summary = {
+    "total": len(accepted_tasks),
+    "passed": passed,
+    "failed": len(accepted_tasks) - passed,
+    "review_passed": sum(task.get("review") == "passed" for task in accepted_tasks),
+    "review_not_required": sum(task.get("review") == "not_required" for task in accepted_tasks),
+}
+
+install_path = Path.home() / ".agents" / "install.json"
+install = {}
+try:
+    loaded = json.loads(install_path.read_text(encoding="utf-8"))
+    if isinstance(loaded, dict):
+        install = loaded
+except (OSError, ValueError):
+    pass
+source_sha = install.get("source_sha") if isinstance(install.get("source_sha"), str) else None
+source_dirty = install.get("source_dirty") is True
+local_install = {
+    "installed_at": install.get("installed_at") if isinstance(install.get("installed_at"), str) else None,
+    "source_sha": source_sha,
+    "source_dirty": source_dirty,
+    "matches_merge": source_sha == os.environ["MERGE_COMMIT"] and not source_dirty,
+}
+
+remote_name = os.environ.get("REMOTE_NAME") or None
+remote_pushed = os.environ["REMOTE_PUSHED"] == "true"
+error = None
+if remote_name and os.environ["REMOTE_ATTEMPTED"] == "true" and not remote_pushed:
+    try:
+        error = Path(os.environ["REMOTE_ERROR_FILE"]).read_text(encoding="utf-8", errors="replace").strip() or "push failed"
+    except OSError:
+        error = "push failed"
+
+receipt = {
+    "schema_version": 2,
+    "repo": os.environ["REPO"],
+    "run": os.environ["SLUG"],
+    "branch": os.environ["BRANCH"],
+    "base_sha": os.environ["BASE_SHA"],
+    "source_commit": os.environ["SOURCE_COMMIT"],
+    "merge_commit": os.environ["MERGE_COMMIT"],
+    "published_commit": None,
+    "completed_at": None,
+    "remote": {
+        "name": remote_name,
+        "attempted": os.environ["REMOTE_ATTEMPTED"] == "true",
+        "pushed": remote_pushed,
+        "sha": os.environ.get("REMOTE_SHA") or None,
+        "error": error,
+    },
+    "accepted_tasks": accepted_tasks,
+    "verification_summary": verification_summary,
+    "local_install": local_install,
+    "finalize": {"attempted": False, "status": "pending", "receipt": None, "error": None},
+}
+
+target = run_dir / "merge.json"
+with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=run_dir, delete=False) as handle:
+    json.dump(receipt, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+    temporary = Path(handle.name)
+temporary.replace(target)
+PY
+
+SHORT_SHA="${MERGE_COMMIT:0:12}"
+REMOTE_VIEW="not configured"
+if [[ "$REMOTE_PUSHED" == "true" ]]; then
+  REMOTE_VIEW="$REMOTE_NAME/$MAIN_REF at $SHORT_SHA"
+elif [[ "$REMOTE_ATTEMPTED" == "true" ]]; then
+  REMOTE_VIEW="$REMOTE_NAME push failed"
+fi
 cat > "$RUN_DIR/MERGE.md" <<EOF
 # MERGE \`$SLUG\`
 
-- **into:** \`$MAIN_REF\`
-- **from:** \`$BRANCH\`
-- **commit:** \`$SHA\`
-- **at:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
-- **by:** orchestrator (wt-merge-main)
-
-Human did not merge. Worktree removed.
+- Into: \`$MAIN_REF\`
+- From: \`$BRANCH\`
+- Merge commit: \`$SHORT_SHA\`
+- Remote: $REMOTE_VIEW
+- Receipt: \`merge.json\`
 EOF
 
-# refresh board if available
-if command -v run-board >/dev/null 2>&1; then
-  run-board "$REPO" || true
-elif [[ -x /home/ubuntu/.agents/bin/run-board ]]; then
-  /home/ubuntu/.agents/bin/run-board "$REPO" || true
+FINALIZE_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-finalize"
+if [[ ! -x "$FINALIZE_BIN" ]]; then
+  FINALIZE_BIN="$(command -v run-finalize || true)"
+fi
+FINALIZE_STATUS="failed"
+if [[ -n "$FINALIZE_BIN" ]] && "$FINALIZE_BIN" --run-dir "$RUN_DIR" >"$FINALIZE_OUT_FILE" 2>"$FINALIZE_ERROR_FILE"; then
+  FINALIZE_STATUS="complete"
+  cat "$FINALIZE_OUT_FILE"
+elif [[ -z "$FINALIZE_BIN" ]]; then
+  echo "run-finalize executable not found" >"$FINALIZE_ERROR_FILE"
 fi
 
-echo "MERGED=$SHA"
+export FINALIZE_STATUS FINALIZE_ERROR_FILE
+python3 - "$RUN_DIR/merge.json" "$RUN_DIR/finalize.json" <<'PY'
+import json
+import os
+import tempfile
+from pathlib import Path
+
+merge_path = Path(os.sys.argv[1])
+finalize_path = Path(os.sys.argv[2])
+receipt = json.loads(merge_path.read_text(encoding="utf-8"))
+error = None
+if os.environ["FINALIZE_STATUS"] != "complete":
+    error = Path(os.environ["FINALIZE_ERROR_FILE"]).read_text(
+        encoding="utf-8", errors="replace"
+    ).strip() or "run-finalize failed"
+receipt["finalize"] = {
+    "attempted": True,
+    "status": os.environ["FINALIZE_STATUS"],
+    "receipt": str(finalize_path) if finalize_path.is_file() else None,
+    "error": error,
+}
+with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=merge_path.parent, delete=False) as handle:
+    json.dump(receipt, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+    temporary = Path(handle.name)
+temporary.replace(merge_path)
+PY
+
+if [[ "$FINALIZE_STATUS" != "complete" ]]; then
+  echo "wt-merge-main: local merge succeeded but run-finalize failed; remote and worktree were preserved" >&2
+  cat "$FINALIZE_ERROR_FILE" >&2
+  exit 1
+fi
+
+# Finalize may update tracked PROGRESS/OPEN files. Publish those changes in the
+# same ship, while leaving ignored/local machine receipts out of the commit.
+git add -u
+if ! git diff --cached --quiet; then
+  if ! git commit -m "chore(${SLUG}): finalize orchestration receipts"; then
+    echo "wt-merge-main: finalize commit failed; remote and worktree were preserved" >&2
+    exit 1
+  fi
+fi
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "wt-merge-main: tracked main checkout changed during finalize; refusing to push" >&2
+  exit 1
+fi
+PUBLISHED_COMMIT="$(git rev-parse HEAD)"
+
+if [[ -n "$REMOTE_NAME" ]]; then
+  REMOTE_ATTEMPTED="true"
+  if git push "$REMOTE_NAME" "$MAIN_REF:$MAIN_REF" 2>"$REMOTE_ERROR_FILE"; then
+    REMOTE_PUSHED="true"
+    REMOTE_SHA="$PUBLISHED_COMMIT"
+  else
+    python3 - "$REMOTE_ERROR_FILE" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8", errors="replace")
+text = re.sub(r"(?<=://)[^/@\s]+@", "***@", text)
+text = re.sub(
+    r"([?&](?:access_token|auth|key|password|signature|token)=)[^&\s]+",
+    r"\1***",
+    text,
+    flags=re.IGNORECASE,
+)
+path.write_text(text, encoding="utf-8")
+PY
+  fi
+fi
+
+export PUBLISHED_COMMIT REMOTE_ATTEMPTED REMOTE_PUSHED REMOTE_SHA
+python3 - "$RUN_DIR/merge.json" <<'PY'
+import json
+import os
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+merge_path = Path(os.sys.argv[1])
+receipt = json.loads(merge_path.read_text(encoding="utf-8"))
+remote_name = os.environ.get("REMOTE_NAME") or None
+remote_pushed = os.environ["REMOTE_PUSHED"] == "true"
+error = None
+if remote_name and os.environ["REMOTE_ATTEMPTED"] == "true" and not remote_pushed:
+    try:
+        error = Path(os.environ["REMOTE_ERROR_FILE"]).read_text(
+            encoding="utf-8", errors="replace"
+        ).strip() or "push failed"
+    except OSError:
+        error = "push failed"
+receipt["published_commit"] = os.environ["PUBLISHED_COMMIT"]
+receipt["completed_at"] = datetime.now(timezone.utc).isoformat()
+receipt["remote"] = {
+    "name": remote_name,
+    "attempted": os.environ["REMOTE_ATTEMPTED"] == "true",
+    "pushed": remote_pushed,
+    "sha": os.environ.get("REMOTE_SHA") or None,
+    "error": error,
+}
+with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=merge_path.parent, delete=False) as handle:
+    json.dump(receipt, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+    temporary = Path(handle.name)
+temporary.replace(merge_path)
+PY
+
+SHORT_SHA="${MERGE_COMMIT:0:12}"
+PUBLISHED_SHORT_SHA="${PUBLISHED_COMMIT:0:12}"
+REMOTE_VIEW="not configured"
+if [[ "$REMOTE_PUSHED" == "true" ]]; then
+  REMOTE_VIEW="$REMOTE_NAME/$MAIN_REF at $PUBLISHED_SHORT_SHA"
+elif [[ "$REMOTE_ATTEMPTED" == "true" ]]; then
+  REMOTE_VIEW="$REMOTE_NAME push failed"
+fi
+cat > "$RUN_DIR/MERGE.md" <<EOF
+# MERGE \`$SLUG\`
+
+- Into: \`$MAIN_REF\`
+- From: \`$BRANCH\`
+- Merge commit: \`$SHORT_SHA\`
+- Published commit: \`$PUBLISHED_SHORT_SHA\`
+- Remote: $REMOTE_VIEW
+- Receipt: \`merge.json\`
+EOF
+
+echo "MERGED=$MERGE_COMMIT"
+echo "PUBLISHED=$PUBLISHED_COMMIT"
+echo "MERGE_JSON=$RUN_DIR/merge.json"
 echo "MERGE_MD=$RUN_DIR/MERGE.md"
+if [[ "$REMOTE_ATTEMPTED" == "true" && "$REMOTE_PUSHED" != "true" ]]; then
+  echo "wt-merge-main: local merge/finalize succeeded but push to $REMOTE_NAME failed; worktree was preserved" >&2
+  cat "$REMOTE_ERROR_FILE" >&2
+  exit 1
+fi
+
+if [[ -d "$WT_PATH" ]]; then
+  if ! git worktree remove "$WT_PATH" 2>/dev/null; then
+    echo "wt-merge-main: merge shipped, but clean worktree removal failed: $WT_PATH" >&2
+    exit 1
+  fi
+fi
+git branch -d "$BRANCH"
 echo "On $MAIN_REF — human has nothing to merge."

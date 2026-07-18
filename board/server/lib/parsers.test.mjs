@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { after, test } from 'node:test';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -55,6 +56,127 @@ test('reads flat task YAML and skips malformed task files', async () => {
     verify: 'node --test',
     run: 'lane-board',
   }]);
+});
+
+test('v2 task status comes from state and acceptance receipts, not mutable YAML', async () => {
+  const root = await fixtureDirectory('lane-board-v2-state-');
+  const runPath = path.join(root, 'contract-v2');
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  await mkdir(tasksDirectory, { recursive: true });
+  await mkdir(artifactDirectory, { recursive: true });
+  const taskSource = [
+    'schema_version: 2',
+    'id: "001"',
+    'title: Immutable task',
+    'status: done',
+    'risk: low',
+    'lane: grok',
+    'verify: tests',
+  ].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    status: 'awaiting_verification',
+    attempt: 1,
+  }));
+
+  let tasks = await readTasks(tasksDirectory, 'contract-v2');
+  assert.equal(tasks[0].status, 'running');
+  assert.equal(tasks[0].schemaVersion, 2);
+
+  await writeFile(path.join(artifactDirectory, 'acceptance.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: createHash('sha256').update(taskSource).digest('hex'),
+    attempt: 1,
+    provider_exit: 0,
+    report: 'complete',
+    owns_check: 'passed',
+    verification: 'passed',
+    review: 'not_required',
+    accepted: true,
+    accepted_at: '2026-07-18T00:00:00Z',
+  }));
+  tasks = await readTasks(tasksDirectory, 'contract-v2');
+  assert.equal(tasks[0].status, 'done');
+
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    status: 'running',
+    attempt: 2,
+  }));
+  tasks = await readTasks(tasksDirectory, 'contract-v2');
+  assert.equal(tasks[0].status, 'running');
+
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    status: 'awaiting_verification',
+    attempt: 1,
+  }));
+
+  await writeFile(path.join(artifactDirectory, 'acceptance.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: '0'.repeat(64),
+    attempt: 1,
+    provider_exit: 0,
+    report: 'complete',
+    owns_check: 'passed',
+    verification: 'passed',
+    review: 'not_required',
+    accepted: true,
+    accepted_at: '2026-07-18T00:00:00Z',
+  }));
+  tasks = await readTasks(tasksDirectory, 'contract-v2');
+  assert.equal(tasks[0].status, 'running');
+});
+
+test('accepted v2 task has identical done status in list and detail views', async () => {
+  const project = await fixtureDirectory('lane-board-v2-parity-');
+  const run = 'accepted-run';
+  const runPath = path.join(project, '.agents', 'runs', run);
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  await mkdir(tasksDirectory, { recursive: true });
+  await mkdir(artifactDirectory, { recursive: true });
+  const taskSource = [
+    'schema_version: 2',
+    'id: "001"',
+    'title: Accepted task',
+    'risk: low',
+    'lane: grok',
+    'verify: tests',
+  ].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    status: 'awaiting_verification',
+    attempt: 1,
+  }));
+  await writeFile(path.join(artifactDirectory, 'acceptance.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: createHash('sha256').update(taskSource).digest('hex'),
+    attempt: 1,
+    provider_exit: 0,
+    report: 'complete',
+    owns_check: 'passed',
+    verification: 'passed',
+    review: 'not_required',
+    accepted: true,
+    accepted_at: '2026-07-18T00:00:00Z',
+  }));
+
+  const [listed] = await readTasks(tasksDirectory, run);
+  const detail = await readTaskDetail(project, run, '001');
+
+  assert.equal(listed.status, 'done');
+  assert.equal(detail.status, listed.status);
 });
 
 test('parses progress headings and joins wrapped bullet text', () => {
@@ -169,6 +291,26 @@ test('parses merge receipts with merge commits preferred over feature commits', 
   assert.deepEqual(parseMerge('hotfix closed (no source change, dist rebuild only)\n'), { date: null, commit: null });
 });
 
+test('reads machine merge receipt before the legacy markdown view', async () => {
+  const runPath = await fixtureDirectory('lane-board-merge-json-');
+  await writeFile(path.join(runPath, 'merge.json'), JSON.stringify({
+    schema_version: 2,
+    completed_at: '2026-07-18T01:30:00+00:00',
+    merge_commit: 'abcdef1234567890',
+  }));
+  await writeFile(path.join(runPath, 'MERGE.md'), [
+    '# legacy view',
+    '- merge commit on main: 1111111',
+    '- when: 2026-07-17',
+  ].join('\n'));
+
+  const { readMerge } = await import('./parsers.mjs');
+  assert.deepEqual(await readMerge(runPath), {
+    date: '2026-07-18',
+    commit: 'abcdef1234567890',
+  });
+});
+
 test('parses a task detail scalar mix, block objectives, and only the done_when list', () => {
   const detail = parseTaskDetail([
     'id: "008"',
@@ -263,4 +405,3 @@ test('readTaskDetail promotes pending task to done if run is merged', async () =
   const detail4 = await readTaskDetail(project, 'run-merged', '004');
   assert.equal(detail4.status, 'blocked');
 });
-

@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Write heartbeat for a task under .agents/runs/<run>/artifacts/<task>/heartbeat.json"""
+"""Write heartbeat data; STATUS.md is a generated run-board view."""
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def main() -> int:
@@ -21,6 +26,9 @@ def main() -> int:
     )
     ap.add_argument("--note", default="")
     args = ap.parse_args()
+    for label, value in (("run slug", args.run), ("task id", args.task)):
+        if not SAFE_NAME.fullmatch(value) or value in {".", ".."}:
+            ap.error(f"invalid {label}: {value!r}")
 
     start = Path(args.repo).resolve()
     root = start
@@ -39,7 +47,10 @@ def main() -> int:
         root = start
 
     task_id = args.task
-    art = agents / "runs" / args.run / "artifacts" / task_id
+    artifacts_root = (agents / "runs" / args.run / "artifacts").resolve(strict=False)
+    art = (artifacts_root / task_id).resolve(strict=False)
+    if artifacts_root not in art.parents:
+        ap.error("heartbeat artifact path escapes the run")
     art.mkdir(parents=True, exist_ok=True)
     hb = {
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -51,24 +62,9 @@ def main() -> int:
         "repo": str(root),
     }
     path = art / "heartbeat.json"
-    path.write_text(json.dumps(hb, indent=2) + "\n", encoding="utf-8")
-
-    # also stamp STATUS snippet file
-    status_path = agents / "runs" / args.run / "STATUS.md"
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    line = f"- `{task_id}` heartbeat **{args.status}** @ {hb['ts'][:19]}Z {args.note}\n"
-    if status_path.exists():
-        text = status_path.read_text(encoding="utf-8", errors="replace")
-        if "## Heartbeats" not in text:
-            text = text.rstrip() + "\n\n## Heartbeats\n\n" + line
-        else:
-            text = text.rstrip() + "\n" + line
-        status_path.write_text(text + "\n", encoding="utf-8")
-    else:
-        status_path.write_text(
-            f"# STATUS `{args.run}`\n\n## Heartbeats\n\n{line}",
-            encoding="utf-8",
-        )
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(hb, indent=2) + "\n", encoding="utf-8")
+    os.replace(temp, path)
 
     print(path)
     return 0

@@ -31,6 +31,32 @@ HARD_MAX_TASKS = 10
 DEFAULT_POOL_SIZE = 5
 HARD_MAX_POOL = 10
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+GROK_SANDBOX_PROFILE = "workspace"
+PROTOCOL_FAILURE_EXIT = 65
+MAX_PROVIDER_LOG_BYTES = 1024 * 1024
+MAX_EVENT_NAME = 80
+VERSION_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9])v?(\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9.-]{1,32})?)(?![A-Za-z0-9])"
+)
+SAFE_STOP_REASONS = frozenset(
+    {"EndTurn", "MaxTurns", "Stop", "Completed", "Cancelled", "Error"}
+)
+TOKEN_FIELDS = {
+    "input_tokens",
+    "cache_read_input_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+    "total_tokens",
+}
+MODEL_USAGE_FIELDS = {
+    "inputTokens",
+    "cacheReadInputTokens",
+    "outputTokens",
+    "reasoningTokens",
+    "totalTokens",
+    "modelCalls",
+    "costUSD",
+}
 
 
 def utc_now() -> str:
@@ -114,6 +140,8 @@ def rotation_reason(record: dict | None, *, cwd: str, model: str, max_tasks: int
         return "cwd_changed"
     if record.get("model") != model:
         return "model_changed"
+    if record.get("sandbox") != GROK_SANDBOX_PROFILE:
+        return "sandbox_changed"
     success_count = int(record.get("success_count", len(record.get("tasks", []))))
     if success_count >= max_tasks:
         return "task_limit"
@@ -133,6 +161,24 @@ class LaneInterrupted(Exception):
     def __init__(self, signum: int) -> None:
         super().__init__(f"interrupted by signal {signum}")
         self.signum = signum
+
+
+@dataclass
+class StreamResult:
+    provider_exit_code: int
+    exit_code: int
+    session_id: str | None
+    stop_reason: str | None
+    usage: dict | None
+    model_usage: dict | None
+    num_turns: int | None
+    total_cost_usd: int | float | None
+    total_cost_usd_ticks: int | None
+    cost_is_partial: bool | None
+    usage_is_incomplete: bool | None
+    protocol_error: str | None
+    log_truncated: bool
+    stderr_bytes: int
 
 
 def acquire_lease(
@@ -223,6 +269,7 @@ def acquire_lease(
                 "session_id": str(uuid.uuid4()) if provider == "grok" else None,
                 "cwd": cwd,
                 "model": model,
+                "sandbox": GROK_SANDBOX_PROFILE,
                 "tasks": [],
                 "success_count": 0,
                 "created_at": utc_now(),
@@ -243,16 +290,17 @@ def acquire_lease(
         return Lease(key, selected_slot, selected_handle, record, is_new)
 
 
-
-def provider_command(args: argparse.Namespace, lease: Lease) -> list[str]:
+def provider_command(
+    args: argparse.Namespace, lease: Lease, *, prompt_sha256: str
+) -> list[str]:
     if args.provider != "grok":
         raise RuntimeError(f"unsupported provider {args.provider!r}; only grok is supported")
     binary = args.binary or shutil.which(args.provider)
     if not binary:
         raise RuntimeError(f"{args.provider} binary not found")
-
     command = [
         binary,
+        "--no-subagents",
         "--no-auto-update",
         "--prompt-file",
         str(args.prompt_file),
@@ -262,8 +310,19 @@ def provider_command(args: argparse.Namespace, lease: Lease) -> list[str]:
         args.reasoning_effort,
         "--permission-mode",
         "acceptEdits",
+        "--sandbox",
+        GROK_SANDBOX_PROFILE,
+        "--rules",
+        (
+            "Lane runtime task boundary (non-negotiable): "
+            f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
+            f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
+            "Treat the prompt's raw task YAML as authoritative. Write only paths "
+            "matched by owns_paths, honor never_touch, do not spawn subagents, "
+            "and do not commit, merge, or push."
+        ),
         "--output-format",
-        "plain",
+        "streaming-json",
         "--cwd",
         str(args.cwd),
     ]
@@ -292,38 +351,289 @@ def terminate_provider(process: subprocess.Popen[bytes] | None) -> None:
         process.wait(timeout=3)
 
 
+def safe_scalar(value: object) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    return value
+
+
+def sanitized_usage(value: object, allowed: set[str]) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    result = {
+        key: scalar
+        for key in allowed
+        if (scalar := safe_scalar(value.get(key))) is not None
+    }
+    return result or None
+
+
+def sanitized_model_usage(value: object) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, dict] = {}
+    for model, metrics in list(value.items())[:20]:
+        if not isinstance(model, str) or not SAFE_NAME.fullmatch(model.replace("/", "-")):
+            continue
+        clean = sanitized_usage(metrics, MODEL_USAGE_FIELDS)
+        if clean:
+            result[model] = clean
+    return result or None
+
+
+def provider_version(binary: str) -> str | None:
+    try:
+        result = subprocess.run(
+            [binary, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    line = (result.stdout or "").splitlines()[0:1]
+    if not line:
+        return None
+    match = VERSION_TOKEN.search(line[0])
+    return match.group(1) if match else None
+
+
+def sanitized_stop_reason(value: object) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return value if value in SAFE_STOP_REASONS else "Other"
+
+
 def stream_provider(
     process: subprocess.Popen[bytes],
     output: IO[bytes],
-) -> tuple[int, str | None]:
+    *,
+    expected_session_id: str,
+) -> StreamResult:
     assert process.stdout is not None
-    fd = process.stdout.fileno()
+    assert process.stderr is not None
+    stdout_fd = process.stdout.fileno()
+    stderr_fd = process.stderr.fileno()
+    open_fds = {stdout_fd, stderr_fd}
+    pending = b""
+    log_bytes = 0
+    log_truncated = False
+    protocol_error: str | None = None
+    end_event: dict | None = None
+    saw_error = False
+    stderr_bytes = 0
 
-    while True:
-        ready, _, _ = select.select([fd], [], [], 0.1)
-        if ready:
+    def write_log(data: bytes) -> None:
+        nonlocal log_bytes, log_truncated
+        remaining = MAX_PROVIDER_LOG_BYTES - log_bytes
+        if remaining <= 0:
+            log_truncated = True
+            return
+        chunk = data[:remaining]
+        output.write(chunk)
+        output.flush()
+        log_bytes += len(chunk)
+        if len(chunk) < len(data):
+            log_truncated = True
+
+    def visible_marker(event_type: str) -> None:
+        marker = f"GROK_EVENT {event_type}\n".encode("utf-8")
+        sys.stdout.buffer.write(marker)
+        sys.stdout.buffer.flush()
+
+    def set_protocol_error(reason: str, line: bytes) -> None:
+        nonlocal protocol_error
+        if protocol_error is not None:
+            return
+        protocol_error = reason
+        digest = hashlib.sha256(line).hexdigest()[:16]
+        write_log(
+            f"\n[grok protocol error: {reason}; bytes={len(line)}; sha256={digest}]\n".encode(
+                "utf-8"
+            )
+        )
+        visible_marker("protocol-error")
+
+    def process_line(line: bytes) -> None:
+        nonlocal end_event, saw_error
+        if not line.strip():
+            return
+        try:
+            event = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            set_protocol_error("malformed streaming-json", line)
+            return
+        if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+            set_protocol_error("event must be an object with a string type", line)
+            return
+        event_type = event["type"]
+        if len(event_type) > MAX_EVENT_NAME or not SAFE_NAME.fullmatch(event_type):
+            set_protocol_error("event type is invalid", line)
+            return
+        if end_event is not None:
+            set_protocol_error("event received after end", line)
+            return
+
+        if event_type == "text":
+            data = event.get("data")
+            if not isinstance(data, str):
+                set_protocol_error("text event data must be a string", line)
+                return
+            encoded = data.encode("utf-8", errors="replace")
+            write_log(encoded)
+            sys.stdout.buffer.write(encoded)
+            sys.stdout.buffer.flush()
+        elif event_type == "thought":
+            if not isinstance(event.get("data"), str):
+                set_protocol_error("thought event data must be a string", line)
+                return
+            write_log(b"\n[grok event: thought]\n")
+            visible_marker("thought")
+        elif event_type == "error":
+            if not isinstance(event.get("message"), str):
+                set_protocol_error("error event message must be a string", line)
+                return
+            saw_error = True
+            write_log(b"\n[grok event: error]\n")
+            visible_marker("error")
+        elif event_type == "end":
+            session_id = event.get("sessionId")
+            stop_reason = event.get("stopReason")
+            if not isinstance(session_id, str) or session_id != expected_session_id:
+                set_protocol_error("end event sessionId mismatch", line)
+                return
+            if not isinstance(stop_reason, str) or not stop_reason:
+                set_protocol_error("end event stopReason must be a non-empty string", line)
+                return
+            safe_stop_reason = sanitized_stop_reason(stop_reason)
+            end_event = dict(event)
+            end_event["stopReason"] = safe_stop_reason
+            write_log(f"\n[grok end: {safe_stop_reason}]\n".encode("utf-8"))
+            visible_marker("end")
+        else:
+            write_log(f"\n[grok event: {event_type}]\n".encode("utf-8"))
+            visible_marker(event_type)
+
+    def consume(chunk: bytes) -> None:
+        nonlocal pending
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            process_line(line)
+
+    def consume_stderr(chunk: bytes) -> None:
+        nonlocal stderr_bytes
+        stderr_bytes += len(chunk)
+        digest = hashlib.sha256(chunk).hexdigest()[:16]
+        write_log(
+            f"\n[grok stderr: bytes={len(chunk)}; sha256={digest}]\n".encode("utf-8")
+        )
+        visible_marker("stderr")
+
+    while open_fds:
+        ready, _, _ = select.select(list(open_fds), [], [], 0.1)
+        for fd in ready:
             chunk = os.read(fd, 65536)
             if chunk:
-                output.write(chunk)
-                output.flush()
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
-            elif process.poll() is not None:
-                break
-        if process.poll() is not None:
-            while True:
-                ready, _, _ = select.select([fd], [], [], 0)
-                if not ready:
-                    break
-                chunk = os.read(fd, 65536)
-                if not chunk:
-                    break
-                output.write(chunk)
-                output.flush()
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
-            break
-    return process.wait(), None
+                if fd == stdout_fd:
+                    consume(chunk)
+                else:
+                    consume_stderr(chunk)
+            else:
+                open_fds.discard(fd)
+    if pending:
+        process_line(pending)
+
+    provider_exit_code = process.wait()
+    if provider_exit_code == 0 and protocol_error is None and saw_error:
+        protocol_error = "provider emitted an error event"
+    if provider_exit_code == 0 and protocol_error is None and end_event is None:
+        protocol_error = "stream ended without an end event"
+    exit_code = (
+        PROTOCOL_FAILURE_EXIT
+        if provider_exit_code == 0 and protocol_error is not None
+        else provider_exit_code
+    )
+    end = end_event or {}
+    num_turns = end.get("num_turns")
+    if isinstance(num_turns, bool) or not isinstance(num_turns, int) or num_turns < 0:
+        num_turns = None
+    ticks = end.get("total_cost_usd_ticks")
+    if isinstance(ticks, bool) or not isinstance(ticks, int) or ticks < 0:
+        ticks = None
+    return StreamResult(
+        provider_exit_code=provider_exit_code,
+        exit_code=exit_code,
+        session_id=end.get("sessionId") if isinstance(end.get("sessionId"), str) else None,
+        stop_reason=end.get("stopReason") if isinstance(end.get("stopReason"), str) else None,
+        usage=sanitized_usage(end.get("usage"), TOKEN_FIELDS),
+        model_usage=sanitized_model_usage(end.get("modelUsage")),
+        num_turns=num_turns,
+        total_cost_usd=safe_scalar(end.get("total_cost_usd")),
+        total_cost_usd_ticks=ticks,
+        cost_is_partial=end.get("cost_is_partial")
+        if isinstance(end.get("cost_is_partial"), bool)
+        else None,
+        usage_is_incomplete=end.get("usage_is_incomplete")
+        if isinstance(end.get("usage_is_incomplete"), bool)
+        else None,
+        protocol_error=protocol_error,
+        log_truncated=log_truncated,
+        stderr_bytes=stderr_bytes,
+    )
+
+
+def write_runtime_receipt(
+    *,
+    path: Path,
+    args: argparse.Namespace,
+    lease: Lease,
+    prompt_sha256: str | None,
+    provider_version_text: str | None,
+    started_at: str,
+    result: StreamResult,
+    failure_class: str | None = None,
+) -> None:
+    receipt: dict[str, object] = {
+        "schema_version": 1,
+        "provider": args.provider,
+        "provider_version": provider_version_text,
+        "model": args.model,
+        "reasoning_effort": args.reasoning_effort,
+        "sandbox": GROK_SANDBOX_PROFILE,
+        "subagents_enabled": False,
+        "task_id": args.task_id,
+        "role": args.role,
+        "slot": lease.slot,
+        "mode": "new" if lease.is_new else "resume",
+        "session_id": result.session_id or lease.record.get("session_id"),
+        "started_at": started_at,
+        "finished_at": utc_now(),
+        "provider_exit_code": result.provider_exit_code,
+        "exit_code": result.exit_code,
+        "protocol_valid": result.protocol_error is None and failure_class is None,
+        "log_truncated": result.log_truncated,
+        "stderr_bytes": result.stderr_bytes,
+    }
+    optional = {
+        "stop_reason": result.stop_reason,
+        "usage": result.usage,
+        "model_usage": result.model_usage,
+        "num_turns": result.num_turns,
+        "total_cost_usd": result.total_cost_usd,
+        "total_cost_usd_ticks": result.total_cost_usd_ticks,
+        "cost_is_partial": result.cost_is_partial,
+        "usage_is_incomplete": result.usage_is_incomplete,
+        "protocol_error": result.protocol_error,
+        "prompt_sha256": prompt_sha256,
+        "failure_class": failure_class,
+    }
+    receipt.update({key: value for key, value in optional.items() if value is not None})
+    save_state(path, receipt)
 
 
 def finish_lease(
@@ -389,6 +699,10 @@ def run_provider(args: argparse.Namespace) -> int:
     completed = False
     captured: str | None = lease.record.get("session_id")
     process: subprocess.Popen[bytes] | None = None
+    result: StreamResult | None = None
+    version_text: str | None = None
+    prompt_sha256: str | None = None
+    started_at = utc_now()
     old_handlers: dict[int, signal.Handlers] = {}
 
     def handle_signal(signum: int, _frame: object) -> None:
@@ -398,7 +712,9 @@ def run_provider(args: argparse.Namespace) -> int:
         old_handlers[signum] = signal.getsignal(signum)
         signal.signal(signum, handle_signal)
     try:
-        command = provider_command(args, lease)
+        prompt_sha256 = hashlib.sha256(args.prompt_file.read_bytes()).hexdigest()
+        command = provider_command(args, lease, prompt_sha256=prompt_sha256)
+        version_text = provider_version(command[0])
         args.output.parent.mkdir(parents=True, exist_ok=True)
 
         print(
@@ -407,22 +723,32 @@ def run_provider(args: argparse.Namespace) -> int:
             f"task={args.task_id}",
             flush=True,
         )
+        provider_env = os.environ.copy()
+        provider_env.update(
+            {
+                "CLAUDE_LANE_AUTOMATION": "1",
+                "GROK_CLAUDE_HOOKS_ENABLED": "0",
+                "GROK_SUBAGENTS": "0",
+                "GROK_SANDBOX": GROK_SANDBOX_PROFILE,
+            }
+        )
         with args.output.open("wb") as output:
             process = subprocess.Popen(
                 command,
                 cwd=cwd,
+                env=provider_env,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.PIPE,
                 start_new_session=True,
             )
-            exit_code, detected = stream_provider(process, output)
-            if detected:
-                captured = detected
-            trailer = (
-                f"\n{args.provider.upper()}_EXIT={exit_code} "
-                f"WARM_SESSION={captured or 'unavailable'} SLOT={lease.slot}\n"
+            result = stream_provider(
+                process,
+                output,
+                expected_session_id=str(lease.record["session_id"]),
             )
-            output.write(trailer.encode("utf-8"))
+            if result.session_id:
+                captured = result.session_id
+            exit_code = result.exit_code
 
         record = finish_lease(
             run_dir=run_dir,
@@ -430,6 +756,15 @@ def run_provider(args: argparse.Namespace) -> int:
             task_id=args.task_id,
             exit_code=exit_code,
             captured_session_id=captured,
+        )
+        write_runtime_receipt(
+            path=args.output.with_name("runtime.json"),
+            args=args,
+            lease=lease,
+            prompt_sha256=prompt_sha256,
+            provider_version_text=version_text,
+            started_at=started_at,
+            result=result,
         )
         completed = True
         print(
@@ -449,6 +784,31 @@ def run_provider(args: argparse.Namespace) -> int:
             exit_code=exit_code,
             captured_session_id=captured,
         )
+        result = StreamResult(
+            provider_exit_code=exit_code,
+            exit_code=exit_code,
+            session_id=captured,
+            stop_reason=None,
+            usage=None,
+            model_usage=None,
+            num_turns=None,
+            total_cost_usd=None,
+            total_cost_usd_ticks=None,
+            cost_is_partial=None,
+            usage_is_incomplete=None,
+            protocol_error="interrupted",
+            log_truncated=False,
+            stderr_bytes=0,
+        )
+        write_runtime_receipt(
+            path=args.output.with_name("runtime.json"),
+            args=args,
+            lease=lease,
+            prompt_sha256=prompt_sha256,
+            provider_version_text=version_text,
+            started_at=started_at,
+            result=result,
+        )
         completed = True
         print(
             f"LANE_SESSION interrupted provider={args.provider} slot={lease.slot} "
@@ -457,8 +817,15 @@ def run_provider(args: argparse.Namespace) -> int:
             flush=True,
         )
         return exit_code
-    except BaseException:
-        terminate_provider(process)
+    except BaseException as exc:
+        try:
+            terminate_provider(process)
+        except Exception as cleanup_exc:
+            print(
+                "lane-session: provider cleanup failed "
+                f"({type(cleanup_exc).__name__})",
+                file=sys.stderr,
+            )
         if not completed:
             try:
                 finish_lease(
@@ -470,7 +837,41 @@ def run_provider(args: argparse.Namespace) -> int:
                 )
             except Exception as state_exc:
                 print(
-                    f"lane-session: failed to invalidate session: {state_exc}",
+                    "lane-session: failed to invalidate session "
+                    f"({type(state_exc).__name__})",
+                    file=sys.stderr,
+                )
+            failure = StreamResult(
+                provider_exit_code=125,
+                exit_code=125,
+                session_id=captured,
+                stop_reason=None,
+                usage=None,
+                model_usage=None,
+                num_turns=None,
+                total_cost_usd=None,
+                total_cost_usd_ticks=None,
+                cost_is_partial=None,
+                usage_is_incomplete=None,
+                protocol_error=None,
+                log_truncated=False,
+                stderr_bytes=0,
+            )
+            try:
+                write_runtime_receipt(
+                    path=args.output.with_name("runtime.json"),
+                    args=args,
+                    lease=lease,
+                    prompt_sha256=prompt_sha256,
+                    provider_version_text=version_text,
+                    started_at=started_at,
+                    result=failure,
+                    failure_class=type(exc).__name__,
+                )
+            except Exception as receipt_exc:
+                print(
+                    "lane-session: failed to write runtime receipt "
+                    f"({type(receipt_exc).__name__})",
                     file=sys.stderr,
                 )
         raise

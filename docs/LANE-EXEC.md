@@ -11,7 +11,7 @@ The lane stack therefore separates four responsibilities:
 | Component | Responsibility |
 |-----------|----------------|
 | `lane-supervisor` | Source-read-only Claude control agent; issues one typed action and returns |
-| `lane-ctl` | Validates paths, builds the prompt, registers immutable control state, exposes status/retry/cancel/verify |
+| `lane-ctl` | Validates v2 contracts, builds the prompt, registers immutable state, exposes status/retry/cancel/verify/accept |
 | `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
 | `lane-session` | Run-scoped warm Grok sessions and bounded provider concurrency |
 
@@ -23,15 +23,18 @@ unrestricted `Bash` capability.
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 
+run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
+
 lane-ctl start \
   --run-dir "$RUN_DIR" \
   --task-file "$TASK_FILE" \
   --project-cwd "$PROJECT_CWD"
 ```
 
-`start` returns after the detached job is registered. It creates the task
-artifact directory, builds `prompt.md` from the canonical Grok writer contract
-plus the raw task YAML, writes `control.json`, and launches this low-level chain:
+`start` returns after the detached job is registered. It hashes the immutable
+task YAML, creates `state.json` plus `attempts/01/`, builds the attempt prompt
+from the canonical Grok writer contract plus the raw task YAML, writes the
+attempt control receipt, and launches this low-level chain:
 
 ```text
 lane-bg → lane-exec → lane-session → grok
@@ -56,9 +59,11 @@ lane-ctl cancel --run-dir "$RUN_DIR" --task-id "$TASK_ID"
 
 Normal orchestration reacts to compact `events.jsonl` records. `tail` is for an
 error, stall, or explicit diagnostic request, not a continuous token-expensive
-log loop. A retry reuses the recorded argv array from `control.json`; it never
+log loop. A retry reuses the recorded argv array from the current attempt's
+`control.json`; it never
 reconstructs or shell-evaluates a free-form command. The argv schema and prompt
-digest are revalidated, and the control plane permits at most two attempts.
+digest are revalidated, the task hash must still match, and the control plane
+permits at most two attempts. Retry writes `attempts/02` without overwriting 01.
 
 Status deliberately distinguishes `awaiting_verification`, `verified`, and
 `verification_failed`. Provider exit 0 is never reported as accepted work.
@@ -74,13 +79,30 @@ lane-ctl verify \
   --project-cwd "$PROJECT_CWD"
 ```
 
-At `start`, the control plane snapshots the exact `verification` commands from
-the trusted task YAML. `verify` can run only after the matching provider attempt
-exits 0, uses that immutable snapshot, and applies a per-command timeout (30
-minutes by default, configurable with `--command-timeout`). It has a separate
+At `start`, the control plane snapshots exact structured `verification` entries
+(`command`, absolute `cwd`, bounded `timeout_sec`) from the trusted task YAML.
+`verify` rejects empty smoke/tests suites, can run only after the matching
+provider attempt exits 0, and uses that immutable snapshot. It has a separate
 file-lock semaphore: default 2 concurrent checks, configurable from 1–10.
-Results are bound to the attempt in `verification.json` and `verified.txt`.
+Results are bound to the attempt in `attempts/NN/verification.json`.
 Provider completion alone is never task acceptance.
+
+## Accept independently
+
+After verification, the PM produces the ownership receipt and invokes the
+technical gate:
+
+```bash
+check-owns-paths "$TASK_FILE"
+lane-ctl accept \
+  --run-dir "$RUN_DIR" \
+  --task-file "$TASK_FILE" \
+  --project-cwd "$PROJECT_CWD"
+```
+
+`accept` checks the unchanged task hash, provider exit 0, canonical report
+status, `owns-check.json`, current-attempt verification, and required review.
+Only then does it write root `acceptance.json` and set state to accepted.
 
 ## Concurrency
 
@@ -105,17 +127,24 @@ private per-user directory under `/tmp`.
   events.jsonl
   sessions.json
   artifacts/<task-id>/
-    control.json
-    prompt.md
-    lane-bg.pid
-    lane-bg.exit
-    lane-bg.supervisor.log
-    lane-exec.log
-    provider.out
+    state.json
     heartbeat.json
-    verification.json
-    verified.txt
     report.md
+    owns-check.json
+    acceptance.json
+    review.json
+    attempts/01/
+      control.json
+      prompt.md
+      lane-bg.pid
+      lane-bg.exit
+      lane-bg.supervisor.log
+      lane-exec.log
+      provider.out
+      runtime.json
+      verification.json
+    attempts/02/
+      ...
 ```
 
 `lane-exec` appends atomic single-write JSONL records for start, timeout,
@@ -123,8 +152,9 @@ interruption, and exit. The final exit record and log line are written before
 the log file is closed, so a successful child exits 0 instead of being masked by
 supervisor cleanup.
 
-Registered control artifacts and events distinguish live work from historical
-task YAML. A run with `MERGE.md` is complete and must not be reported as stalled.
+Registered state and events distinguish live work from immutable task YAML.
+`STATUS.md` is rebuilt from state/acceptance by `run-board`; heartbeat never
+appends to it. A run with merge.json/MERGE.md is terminal and is not stalled.
 
 ## Timeouts
 
@@ -147,6 +177,27 @@ for older runs. New orchestration uses `lane-ctl` and `lane-supervisor`.
 
 ## Night review
 
-`night-review <repo-root>` remains a detached, read-only batch review and may be
-started through `lane-bg`. It is not part of the writer session or verification
-pool.
+`night-review <repo-root>` is the compatibility entry point for a typed,
+read-only Codex batch. It reviews bounded chunks with the installed
+`night-review` profile (`gpt-5.6-sol`, `xhigh`, read-only, approval `never`),
+passes an API-compatible projection of the output schema, then validates the
+result against the full local JSON Schema before persisting canonical findings
+or advancing the checkpoint.
+
+`night-shift <repo-root>` adds the bounded repair phase. Generated v2 tasks run
+through the ordinary Grok provider pool in a dedicated worktree; deterministic
+receipts, not a Claude polling subagent, drive retry/verify/re-review/accept.
+Grok receives no-subagent and workspace-sandbox guardrails. Merge and push are
+off unless the target repository explicitly opts in through
+`.agents/night-shift.yaml`.
+
+Automated Grok and Codex subprocesses carry a lane automation marker consumed
+by the shared session-ledger hook, so neither writer nor read-only reviewer can
+create `PROGRESS.md` or session-log files in the worktree. Grok additionally
+disables imported Claude compatibility hooks while preserving shared skills,
+rules, and native non-ledger safety hooks.
+
+The fresh `review.json` is an identity-bound schema-v2 receipt, not only a model
+verdict. It records the task hash, current attempt, full base commit and exact
+reviewed diff/tree digests. `lane-ctl accept` recomputes the same state and
+rejects stale receipts or any post-review tracked/untracked mutation.

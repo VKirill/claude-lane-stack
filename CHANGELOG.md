@@ -1,8 +1,57 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 — 2026-07-18
 
 ### Changed
+- **Typed autonomous night shift:** `night-shift` now runs bounded Codex Sol
+  xhigh review chunks, validates JSON-schema output, persists deduplicated
+  `.agents/findings/`, and compiles actionable findings into immutable v2 Grok
+  tasks in an isolated worktree. `night-shift-all --jobs 1..10` coordinates
+  active repositories.
+- **Bounded repair and closure:** `night-fix-runner` resumes from machine
+  receipts, retries Grok at most once, rejects unsafe generated verification,
+  runs ownership + independent verification, requires a fresh Codex re-review,
+  and records standardized finding closure links. Night merge/push is opt-in
+  through `.agents/night-shift.yaml`.
+- **Dedicated Codex reviewer profile:** installer adds
+  `~/.codex/night-review.config.toml` with `gpt-5.6-sol`, `xhigh`, read-only
+  sandbox, and approval policy `never`; unattended invocations ignore unrelated
+  base user config and MCP startup.
+- **Structured Grok runtime:** `lane-session` uses streaming JSON,
+  `--no-subagents`, workspace sandbox rules, bounded logs, protocol fail-closed,
+  and an attempt-local sanitized `runtime.json` while preserving warm-session
+  reuse and the 1–10 slot pool.
+- **Live E2E hardening:** automated Grok and Codex lanes mark their hook
+  processes as orchestration work, preventing global session-ledger hooks from
+  mutating reviewed worktrees. Codex receives an API-compatible projection of
+  the result schema while the engine retains full local JSON Schema validation.
+- **Role-specific skills:** every Claude control/review/fallback subagent now
+  declares a narrow skill allowlist; the dev-orchestrator list is duplicate-free.
+- **Verification is fail-closed:** legacy and v2 `smoke/tests` tasks with an
+  empty recorded command list can no longer receive a passed receipt.
+- **V2 verification is shell-free:** `lane-ctl` validates the executable,
+  arguments, package subcommand, and worktree boundary before provider launch,
+  snapshots the project allowlist into the attempt control receipt, and later
+  executes the parsed argv directly instead of invoking `/bin/bash -c`.
+- **Deterministic bin install:** `install.sh` copies only regular executable
+  files, so local `__pycache__` directories cannot trigger the fallback copy,
+  leak runtime caches into `~/.agents/bin`, or drift installed permissions.
+- **Night-shift release hardening:** stale empty legacy receipts are untrusted,
+  recurring fixed findings reopen, reviewer input is treated as untrusted data,
+  and generated verification rejects shell expansion, globbing, package
+  fetch/install, and worktree escapes.
+- **Versioned run contracts:** `run-init` now generates schema-v2 `run.yaml`,
+  PLAN/SPEC/STATUS views, and a complete task template; `run-validate` gates
+  dispatch and merge with schema, DAG, path-ownership, and receipt checks.
+- **Immutable task lifecycle:** task YAML is hashed at first start; runtime
+  state moved to `state.json`, retries preserve `attempts/NN`, and completion
+  is represented only by `acceptance.json`.
+- **Machine delivery receipts:** ownership, verification, acceptance, merge,
+  local install, and deterministic finalization now have JSON receipts while
+  Markdown files remain concise human views.
+- **Generated status views:** heartbeat no longer appends to STATUS.md;
+  `run-board` rebuilds v2 STATUS/BOARD from state and acceptance, with legacy
+  run fallback in CLI and Lane Board APIs.
 - **Event-driven Grok control plane:** added a source-read-only
   `lane-supervisor` and typed `lane-ctl` actions for detached start, compact
   status/events/tail, recorded-argv retry, cancel, and independent verify.
@@ -68,7 +117,7 @@ Nightly-only review, micro path, Lane Board dashboard, warm sessions.
 - **Nightly review automation**: `bin/night-review` (per-repo batch review of the day's merged work -> REVIEW-<date>.md with per-run verdicts + Morning fix plan) and `bin/night-review-all` (auto-discovers lane-stack repos, reviews only those active in the last 24h; cron example included); `resume-project` surfaces the newest REVIEW report at session start.
 
 ### Changed
-- **Pre-merge review gate removed by default**: solo, no-user-facing context — all review now runs in the nightly `night-review` batch (`none`/`nightly` tiers only); synchronous pre-merge review becomes opt-in per project via `gate: pre-merge` in PROGRESS.md Pointers or a task YAML. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`, `agents/claude/dev-orchestrator.md`, `agents/claude/codex-reviewer.md`.
+- **Pre-merge review gate removed by default**: solo, no-user-facing context — all review now runs in the nightly `night-review` batch (`none`/`nightly` tiers only); synchronous pre-merge review becomes opt-in per run via `gate: pre-merge` in `run.yaml` (or a project default in PROGRESS.md Pointers before `run-init`). See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`, `agents/claude/dev-orchestrator.md`, `agents/claude/codex-reviewer.md`.
 
 ### Fixed
 - Provider output is streamed through `lane-exec` for correct idle detection; interrupted lanes terminate the complete provider process group before releasing a session slot.

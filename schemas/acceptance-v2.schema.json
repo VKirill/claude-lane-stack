@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/acceptance-v2.schema.json",
+  "title": "Claude Lane Stack task acceptance v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "task_sha256",
+    "attempt",
+    "provider_exit",
+    "report",
+    "owns_check",
+    "verification",
+    "review",
+    "accepted",
+    "accepted_at"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "task_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "provider_exit": {"const": 0},
+    "report": {"const": "complete"},
+    "owns_check": {"const": "passed"},
+    "verification": {"const": "passed"},
+    "review": {"enum": ["passed", "not_required"]},
+    "accepted": {"const": true},
+    "accepted_at": {"type": "string", "format": "date-time"}
+  }
+}

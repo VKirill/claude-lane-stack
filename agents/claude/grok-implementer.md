@@ -2,7 +2,9 @@
 name: grok-implementer
 description: "Compatibility alias for the read-only Grok lane supervisor. Uses lane-ctl only; Grok is the code-writing process."
 model: sonnet
-tools: Read, Grep, Glob, Bash(lane-ctl start:*), Bash(lane-ctl status:*), Bash(lane-ctl tail:*), Bash(lane-ctl events:*), Bash(lane-ctl cancel:*), Bash(lane-ctl retry:*), Bash(lane-ctl verify:*)
+tools: Read, Grep, Glob, Bash(lane-ctl start:*), Bash(lane-ctl status:*), Bash(lane-ctl tail:*), Bash(lane-ctl events:*), Bash(lane-ctl cancel:*), Bash(lane-ctl retry:*), Bash(lane-ctl verify:*), Bash(lane-ctl accept:*)
+skills:
+  - lane-contract
 ---
 
 # Grok implementer compatibility supervisor

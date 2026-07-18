@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Find running tasks with stale heartbeats; optionally mark stalled in YAML."""
+"""Find stale heartbeats; mark v2 state or legacy task status when requested."""
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def parse_status(text: str) -> str:
@@ -19,6 +24,21 @@ def set_status(text: str, status: str) -> str:
     if re.search(r"^status:", text, re.M):
         return re.sub(r"^status:\s*.*$", f"status: {status}", text, count=1, flags=re.M)
     return f"status: {status}\n" + text
+
+
+def read_state(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def write_state(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp, path)
 
 
 def main() -> int:
@@ -45,11 +65,17 @@ def main() -> int:
             continue
         for task in tasks_dir.glob("*.yaml"):
             text = task.read_text(encoding="utf-8", errors="replace")
-            st = parse_status(text)
+            contract_v2 = bool(re.search(r"^schema_version:\s*[\"']?2\b", text, re.M))
+            tid_m = re.search(r"^id:\s*[\"']?([\w.-]+)", text, re.M)
+            tid = tid_m.group(1) if tid_m else task.stem.split("-")[0]
+            if not SAFE_NAME.fullmatch(tid) or tid in {".", ".."}:
+                print(f"WARN: skip invalid task id {tid!r} in {task}", file=sys.stderr)
+                continue
+            state_path = run_dir / "artifacts" / tid / "state.json"
+            state = read_state(state_path)
+            st = str(state.get("status") or ("pending" if contract_v2 else parse_status(text)))
             if st not in ("running", "review", "stalled"):
                 continue
-            tid_m = re.search(r"^id:\s*[\"']?(\w+)", text, re.M)
-            tid = tid_m.group(1) if tid_m else task.stem.split("-")[0]
             hb_path = run_dir / "artifacts" / tid / "heartbeat.json"
             age_min = None
             if hb_path.exists():
@@ -66,7 +92,26 @@ def main() -> int:
             if age_min is not None and age_min >= args.minutes and st == "running":
                 stale.append((run_dir.name, tid, age_min, task))
                 if args.mark:
-                    task.write_text(set_status(text, "stalled"), encoding="utf-8")
+                    if contract_v2 or state:
+                        lock_path = state_path.parent / ".lifecycle.lock"
+                        lock_path.parent.mkdir(parents=True, exist_ok=True)
+                        with lock_path.open("a+", encoding="utf-8") as lock:
+                            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                            current = read_state(state_path)
+                            if str(current.get("status") or "pending") != "running":
+                                continue
+                            current.update(
+                                {
+                                    "schema_version": 2,
+                                    "task_id": tid,
+                                    "status": "stalled",
+                                    "updated_at": now.isoformat(),
+                                    "stall_reason": f"no heartbeat for {age_min:.1f} minutes",
+                                }
+                            )
+                            write_state(state_path, current)
+                    else:
+                        task.write_text(set_status(text, "stalled"), encoding="utf-8")
 
     if not stale:
         print("OK: no stalled running tasks")

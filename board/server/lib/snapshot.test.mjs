@@ -139,5 +139,19 @@ test('promotes task status to done in merged runs', async () => {
 
   const runInvalidMerge = detail.runs.find((r) => r.slug === 'run-invalid-merge');
   assert.equal(runInvalidMerge.tasks.find((t) => t.id === '004').status, 'pending');
-});
 
+  // 4. Contract v2 never derives done from merge alone; acceptance.json is authoritative.
+  await mkdir(path.join(root, '.agents', 'runs', 'run-v2', 'tasks'), { recursive: true });
+  await writeFile(path.join(root, '.agents', 'runs', 'run-v2', 'tasks', '005.yaml'), [
+    'schema_version: 2', 'id: 005', 'title: V2 task without acceptance',
+  ].join('\n'));
+  await writeFile(path.join(root, '.agents', 'runs', 'run-v2', 'merge.json'), JSON.stringify({
+    schema_version: 2,
+    completed_at: '2026-07-18T01:30:00+00:00',
+    merge_commit: 'abcdef1234567890',
+  }));
+
+  const refreshed = projectDetail(await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root }));
+  const runV2 = refreshed.runs.find((r) => r.slug === 'run-v2');
+  assert.equal(runV2.tasks.find((t) => t.id === '005').status, 'pending');
+});

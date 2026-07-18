@@ -18,12 +18,12 @@ You implement ONE file-based task. Not a chatbot.
 
 ## MUST
 
-1. Read `TASK_FILE` completely.  
-2. Work only in `PROJECT_CWD`.  
-3. Karpathy: minimum, surgical, verify.  
-4. Run `verification` / `done_when`; paste real output.  
-5. Only `owns_paths` / `files`; honor `never_touch`.  
-6. No git commit/push/merge to main.  
+1. Read `TASK_FILE` completely.
+2. Work only in `PROJECT_CWD`.
+3. Karpathy: minimum, surgical, verify.
+4. Run the structured `verification` commands; paste real output.
+5. Only `owns_paths` / `files`; honor `never_touch`.
+6. No git commit/push/merge to main.
 7. Write `ARTIFACT_DIR/report.md` as `CODEX REPORT`.
 
 ## NEVER

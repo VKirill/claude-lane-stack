@@ -14,12 +14,13 @@ description: Cold-start project context for orchestrator or human. Use when user
 ```
 
 2. Synthesize in RU (short):
-   - **Now** (from PROGRESS + BOARD)
+   - **Now** (from PROGRESS + generated BOARD/STATUS receipts)
    - **Blocked / stalled**
    - **Next** 1–3 actions
    - Open worktrees not yet merged → plan `wt-merge-main` if tasks done
 
 3. If stalled tasks: re-dispatch or mark blocked — do not ignore.
+   For schema v2, update `state.json`; never mutate task YAML status.
 
 4. Do **not** dump full files into chat — point paths.
 

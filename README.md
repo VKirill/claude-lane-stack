@@ -4,14 +4,14 @@
 
 # 🏭 Claude Lane Stack
 
-### A small AI coding factory for one person · **v1.3.1**
+### A small AI coding factory for one person · **v1.4.0**
 
 **Multi-agent orchestration for Claude Code** — you talk to one AI project manager,
 it dispatches optional workers (Grok / Codex), reviews their output
 and **merges finished code to `main`**. No five chats. No manual merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Start%20here-Beginner%20guide-brightgreen)](docs/BEGINNER.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -86,8 +86,8 @@ flowchart LR
         E["🔍 Codex — review gate"]
     end
     A --> B
-    B --> C & D
-    C & D --> E
+    B --> D
+    D --> E
     E -->|checks passed| F[("📦 main")]
     E -->|issues| B
 ```
@@ -96,7 +96,7 @@ flowchart LR
 |------|-----|--------------|
 | 👑 Owner | **You** | Say *what* you want (chat may be any language) |
 | 🤖 Project manager | Claude Code agent `dev-orchestrator` | Plans, dispatches, verifies, **merges** |
-| ⚡🔧 Write lanes |, Grok *(optional)* | Implement task cards (detached via `lane-bg`) |
+| 🔧 Write lane | Grok *(optional)* | Implement task cards (detached via `lane-bg`) |
 | 🔍 Review / write / onboard | Codex *(optional)* | Review gate, emergency write, **project passport** |
 | 🗂️ Task cards | YAML in `.agents/runs/` | Factory floor — fully inspectable |
 | 📦 Official code | Git branch **`main`** | Where every successful job ends |
@@ -115,7 +115,7 @@ flowchart LR
 ```bash
 # 1️⃣  Install the stack — once per computer
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.3.1 # or: main
+cd claude-lane-stack && git checkout v1.4.0 # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH" # or open a new terminal
 
@@ -138,7 +138,7 @@ Then in chat:
 > [!IMPORTANT]
 > `/resume-project` is a *"welcome back"* command — **not** an installation step.
 
-📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.3.1](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1)**
+📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.4.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0)**
 
 ---
 
@@ -184,14 +184,18 @@ Claude Code **kills foreground Bash around ~2 minutes**. That is a **host** limi
 Long Grok jobs start through the typed control plane:
 
 ```bash
+RUN_DIR="$(run-init "$(pwd)" "$SLUG" --score 7)"
+run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
 lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
 lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
 lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
+check-owns-paths "$TASK_FILE"
+lane-ctl accept --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
 ```
 
 | Tool | Role |
 |------|------|
-| **`lane-ctl`** | typed start/status/events/tail/retry/cancel/verify control plane |
+| **`lane-ctl`** | typed start/status/events/tail/retry/cancel/verify/accept control plane |
 | **`lane-bg`** | low-level transient user-systemd service; explicit nohup fallback |
 | **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
 | **`lane-session`** | resumes run-scoped Grok context; provider default 5/max 10 |
@@ -206,6 +210,35 @@ Sessions rotate after seven successful tasks by default, on failure, or when the
 worktree/model changes. Codex review stays independent and does not reuse writer
 context.
 
+### Typed night shift
+
+The unattended path is a receipt-driven review and repair loop:
+
+```bash
+night-shift /path/to/project          # one repository
+night-shift-all --jobs 2              # active repositories, bounded 1–10
+```
+
+Codex uses the installed `night-review` profile: `gpt-5.6-sol`, `xhigh`,
+read-only, approval `never`. It reviews bounded diff chunks and stores every
+concrete or systemic issue under `.agents/findings/<fingerprint>.json`; daily
+REVIEW, OPEN, and TODO files are projections. Grok is the only normal repair
+writer and runs without subagents in an isolated worktree. A finding closes
+only after registered verification, ownership checks, a fresh Codex re-review,
+and `acceptance.json`.
+
+Night merge/push is disabled unless the project opts in:
+
+```yaml
+# .agents/night-shift.yaml
+auto_merge: false
+verification_executables: [] # optional project-specific executable basenames
+```
+
+Unsafe generated shell commands become `needs_human`; they are never executed.
+Schema-v2 verification is also enforced by `lane-ctl` itself: the allowlist is
+snapshotted at start and the parsed argv runs directly without a shell.
+
 ---
 
 ## ⚡ Event-driven accept — no join-wait
@@ -214,8 +247,8 @@ Multi-task runs no longer wait for the **slowest** concurrent lane before accept
 
 1. Source-read-only **`lane-supervisor`** calls `lane-ctl start` and returns immediately.
 2. Detached `lane-bg → lane-exec → lane-session → grok` owns process lifetime.
-3. PM reacts to compact lifecycle events, then runs independent verification.
-4. Accept now and refill the next ready task (provider default 5/max 10).
+3. PM reacts to compact lifecycle events, then runs independent verification and ownership checks.
+4. `acceptance.json` is written now; refill the next ready task (provider default 5/max 10).
 
 Claude does not spend one live subagent per provider process. See [docs/LANE-EXEC.md](docs/LANE-EXEC.md) · [skills/orchestrator-lanes](skills/orchestrator-lanes/SKILL.md).
 
@@ -228,16 +261,31 @@ Claude does not spend one live subagent per provider process. See [docs/LANE-EXE
 Every job is a small **YAML contract** in `.agents/runs/` — created by the PM, obeyed by workers (**English**):
 
 ```yaml
-task: add-dark-mode
-goal: Dark theme toggle on the settings page
+schema_version: 2
+id: "001"
+title: Add dark mode
+risk: low
+lane: grok             # only write programmer
+project_cwd: /absolute/path/to/worktree
+read_first: [AGENTS.md]
+interfaces: ["ThemeToggle(settings)"]
+invariants: ["Existing light theme remains the default"]
+out_of_scope: ["Server-side account preferences"]
+expected_outputs: ["Persistent accessible theme toggle"]
+objective: Dark theme toggle on the settings page
 owns_paths: # 🔒 the ONLY files this worker may touch
   - src/settings/**
   - src/theme.css
-verify:
-  - npm test
-  - npm run lint
-lane: grok             # only write programmer
-review: codex-reviewer # who gates the merge
+never_touch:
+  - .env*
+depends_on: []
+acceptance:
+  - Theme choice persists across reloads
+verify: tests
+verification:
+  - command: npm test
+    cwd: /absolute/path/to/worktree
+    timeout_sec: 600
 ```
 
 - 🔒 `owns_paths` — parallel workers **can't collide**: `check-owns-paths` fails the task if a worker strays 
@@ -284,16 +332,19 @@ Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 | Command | What it is |
 |---------|------------|
 | `run-board` | Job scoreboard |
+| `run-init` / `run-validate` / `run-finalize` | Versioned run contract lifecycle |
 | `lane-session status --run-dir .agents/runs/<slug>` | Inspect that run's Grok session pool |
 | `wt-create` / `wt-merge-main` | Worktree + **merge into `main`** |
 | `check-owns-paths` | Did the worker stay in its file list? |
-| **`lane-ctl`** | Typed detached lifecycle control + independent verify |
+| **`lane-ctl`** | Typed detached lifecycle control + verify + acceptance receipt |
 | `lane-bg` / `lane-exec` / `lane-session` | Low-level process lifetime, activity timeouts, and warm provider pool |
 | `lane-heartbeat` / `lane-stall-check` | Alive? Silent? |
 | `project-onboard` | Shell seed + deep-scan (Codex fills) |
 | `docs-maintain-project` | Nightly/daily docs honesty |
 | `project-memory-init` | PROGRESS / LESSONS |
 | `night-audit` | Housekeeping |
+| `night-review` | Typed read-only review + canonical findings |
+| `night-shift` / `night-shift-all` | Resumable review → Grok repair → re-review |
 
 </details>
 
@@ -421,7 +472,7 @@ Each CLI talks only to its own vendor. No extra servers. Don't put secrets in ta
 | 📝 Ideas backlog | [docs/TODOS.md](docs/TODOS.md) |<!-- guardian: allow — link to existing docs/TODOS.md file, not a new TODO marker -->
 | 🔌 MCP (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Release v1.3.1 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.3.1) |
+| 🚀 Release v1.4.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0) |
 | 🤝 Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | 🔐 Security | [SECURITY.md](SECURITY.md) |
 

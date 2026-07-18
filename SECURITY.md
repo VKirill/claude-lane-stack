@@ -14,4 +14,6 @@ Open a **private** security advisory on GitHub or email the maintainer via GitHu
 - Hooks intentionally block force-push, hook bypass, and some destructive SQL patterns.
 - `never_touch` should list `.env*`, credential paths, and irreversible migration dirs when relevant.
 - Prefer Codex (or another review lane) for auth, payments, and schema changes.
-- `install.sh` only writes under `~/.agents` and `~/.claude` — review the script before running on shared machines.
+- `install.sh` writes under `~/.agents`, `~/.claude`, and the dedicated
+  `~/.codex/night-review.config.toml` profile — review the script before running
+  on shared machines.

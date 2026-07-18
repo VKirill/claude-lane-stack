@@ -3,6 +3,10 @@ name: codex-onboarder
 description: "Project onboard via Codex. Dual scenario minimal|full + dual depth fast|deep forensic. CLAUDE.md, docs pack, memory. Not features."
 model: sonnet
 tools: Bash, Read, Grep, Glob
+skills:
+  - project-onboard
+  - project-docs
+  - project-memory
 ---
 
 # Codex onboarder

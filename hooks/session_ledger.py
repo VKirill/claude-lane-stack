@@ -25,6 +25,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+if os.environ.get("CLAUDE_LANE_AUTOMATION") == "1":
+    sys.exit(0)
+
 STATE_DIR = Path(os.environ.get("AGENT_LEDGER_STATE", f"/tmp/agent-session-ledger-{os.getuid()}"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 

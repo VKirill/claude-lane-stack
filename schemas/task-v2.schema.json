@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/task-v2.schema.json",
+  "title": "Claude Lane Stack task contract v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "risk",
+    "lane",
+    "project_cwd",
+    "read_first",
+    "interfaces",
+    "invariants",
+    "out_of_scope",
+    "expected_outputs",
+    "owns_paths",
+    "never_touch",
+    "depends_on",
+    "objective",
+    "acceptance",
+    "verify",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "title": {"type": "string", "minLength": 1},
+    "risk": {"enum": ["low", "medium", "high", "critical"]},
+    "lane": {"type": "string", "minLength": 1},
+    "project_cwd": {"type": "string", "pattern": "^/"},
+    "read_first": {"$ref": "#/$defs/stringList"},
+    "interfaces": {"$ref": "#/$defs/stringList"},
+    "invariants": {"$ref": "#/$defs/stringList"},
+    "out_of_scope": {"$ref": "#/$defs/stringList"},
+    "expected_outputs": {"$ref": "#/$defs/nonEmptyStringList"},
+    "owns_paths": {"$ref": "#/$defs/nonEmptyStringList"},
+    "never_touch": {"$ref": "#/$defs/stringList"},
+    "depends_on": {"$ref": "#/$defs/stringList"},
+    "objective": {"type": "string", "minLength": 1},
+    "acceptance": {"$ref": "#/$defs/nonEmptyStringList"},
+    "verify": {"enum": ["none", "smoke", "tests"]},
+    "verification": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/verificationCommand"}
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "nonEmptyStringList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "verificationCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "cwd", "timeout_sec"],
+      "properties": {
+        "command": {"type": "string", "minLength": 1},
+        "cwd": {"type": "string", "pattern": "^/"},
+        "timeout_sec": {"type": "integer", "minimum": 1, "maximum": 7200}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verify": {"enum": ["smoke", "tests"]}}},
+      "then": {"properties": {"verification": {"minItems": 1}}}
+    }
+  ]
+}
