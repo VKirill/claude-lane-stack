@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.6 — 2026-07-19
+
+### Fixed
+- **Large verification receipts no longer deadlock the run controller:**
+  asynchronous `verify` and `accept` actions spool stdout and stderr to
+  temporary files instead of unread pipes, so output larger than the kernel
+  pipe buffer still advances immediately from verification to acceptance.
+
 ## 1.5.5 — 2026-07-19
 
 ### Fixed

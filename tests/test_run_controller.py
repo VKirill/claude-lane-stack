@@ -187,6 +187,7 @@ class RunControllerTest(unittest.TestCase):
                     payload = {
                         "status": "failed" if exit_code else "passed",
                         "task_id": task_id,
+                        "detail": "x" * int(plan.get("verify_output_bytes", 0)),
                     }
                 elif action == "accept":
                     if task_id in plan.get("accept_error", []):
@@ -360,6 +361,25 @@ class RunControllerTest(unittest.TestCase):
         accept_002 = actions.index({"action": "accept", "task_id": "002"})
         self.assertLess(accept_001, start_003)
         self.assertLess(start_003, accept_002)
+
+    def test_large_verification_result_does_not_block_acceptance(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.fake_plan.write_text(
+            json.dumps(
+                {
+                    "finish_after": {"001": 1},
+                    "verify_output_bytes": 2_000_000,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["stage"], "accepted")
 
     def test_pre_dispatch_validation_fails_before_provider_start(self) -> None:
         self.write_run(provider_slots=1)

@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -333,16 +334,46 @@ def decode_action_result(
 
 
 def launch_action(argv: list[str], *, label: str, json_output: bool) -> dict[str, Any]:
+    stdout_capture = tempfile.TemporaryFile(mode="w+b")
+    stderr_capture = tempfile.TemporaryFile(mode="w+b")
     try:
         process = subprocess.Popen(
             argv,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout_capture,
+            stderr=stderr_capture,
         )
     except OSError as exc:
+        stdout_capture.close()
+        stderr_capture.close()
         raise ControllerError(f"cannot execute {label}: {exc}") from exc
-    return {"process": process, "label": label, "json_output": json_output}
+    return {
+        "process": process,
+        "label": label,
+        "json_output": json_output,
+        "stdout_capture": stdout_capture,
+        "stderr_capture": stderr_capture,
+    }
+
+
+def finish_action(launched: dict[str, Any]) -> subprocess.CompletedProcess[str]:
+    process = launched["process"]
+    process.wait()
+    stdout_capture = launched["stdout_capture"]
+    stderr_capture = launched["stderr_capture"]
+    try:
+        stdout_capture.seek(0)
+        stderr_capture.seek(0)
+        stdout = stdout_capture.read().decode("utf-8", errors="replace")
+        stderr = stderr_capture.read().decode("utf-8", errors="replace")
+    finally:
+        stdout_capture.close()
+        stderr_capture.close()
+    return subprocess.CompletedProcess(
+        process.args,
+        process.returncode,
+        stdout,
+        stderr,
+    )
 
 
 def stop_actions(actions: dict[str, dict[str, Any]]) -> None:
@@ -353,10 +384,12 @@ def stop_actions(actions: dict[str, dict[str, Any]]) -> None:
     for launched in actions.values():
         process = launched["process"]
         try:
-            process.communicate(timeout=1)
+            process.wait(timeout=1)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.communicate()
+            process.wait()
+        launched["stdout_capture"].close()
+        launched["stderr_capture"].close()
 
 
 def validate_run_contract(binary: Path, run_dir: Path) -> None:
@@ -486,13 +519,7 @@ def run_controller(args: argparse.Namespace) -> int:
                 process = launched["process"]
                 if process.poll() is None:
                     continue
-                stdout, stderr = process.communicate()
-                result = subprocess.CompletedProcess(
-                    process.args,
-                    process.returncode,
-                    stdout,
-                    stderr,
-                )
+                result = finish_action(launched)
                 phase = launched["phase"]
                 task = task_by_id[task_id]
                 task_state = receipt["tasks"][task_id]
