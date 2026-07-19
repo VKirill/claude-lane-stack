@@ -1083,9 +1083,21 @@ def watch_controller(args: argparse.Namespace) -> int:
     receipt_path = Path(args.run_dir).expanduser().resolve() / "controller.json"
     deadline = time.monotonic() + args.timeout
     current: dict[str, Any] | None = None
+    last_observation: str | None = None
     while True:
         if receipt_path.is_file():
             current = observed_receipt(receipt_path.parent)
+        if current is not None and not args.json:
+            observation = {
+                "type": "watch",
+                "stage": current.get("stage"),
+                "counts": current.get("counts"),
+                "last_event": current.get("last_event"),
+            }
+            encoded = json.dumps(observation, sort_keys=True)
+            if encoded != last_observation:
+                print(encoded, flush=True)
+                last_observation = encoded
         if current is not None and current.get("stage") in {"accepted", "blocked", "failed"}:
             code = 0 if current.get("stage") == "accepted" else 1
             break

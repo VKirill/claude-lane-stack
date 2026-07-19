@@ -16,6 +16,9 @@ if sed -n '1,/^---$/p' "$RUN_SUPERVISOR" | grep -Eq '(^|, )(Write|Edit|Bash)(,|$
   echo "FAIL: run-supervisor frontmatter grants source write or generic Bash"
   exit 1
 fi
+grep -q 'PM-side `until`/`while` polling' "$ROOT/agents/claude/dev-orchestrator.md" || {
+  echo "FAIL: dev-orchestrator must forbid PM-side controller polling"; exit 1;
+}
 
 # Manual lane supervisor remains typed and source-read-only.
 SUPERVISOR="$ROOT/agents/claude/lane-supervisor.md"

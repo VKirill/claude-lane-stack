@@ -86,6 +86,8 @@ all accepted → PM pre-merge validation → merge/commit → finalize → push
 **Forbidden:**
 - a live Claude subagent per provider process;
 - generic `Bash`, `Write`, or `Edit` on the supervisor profile;
+- PM-side `until`/`while` polling or direct `run-controller status/watch` after
+  dispatch; wait for the single `run-supervisor` terminal digest;
 - simultaneous writers with overlapping `owns_paths`;
 - recursive agent fleets.
 

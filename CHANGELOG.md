@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.7 — 2026-07-20
+
+### Fixed
+- **Daytime run progress is visible while Grok works:** human-readable
+  `run-controller watch` calls now stream observed controller transitions
+  immediately while preserving the single-receipt JSON mode for automation.
+- **The PM cannot replace the visible supervisor with a silent polling loop:**
+  the dev-orchestrator contract requires the terminal `run-supervisor` digest.
+
 ## 1.5.6 — 2026-07-19
 
 ### Fixed

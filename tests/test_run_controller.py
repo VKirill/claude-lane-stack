@@ -1051,6 +1051,60 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(json.loads(watched.stdout)["stage"], "accepted")
         self.assertGreaterEqual(time.monotonic() - started_at, 0.15)
 
+    def test_human_watch_streams_observed_progress_before_terminal(self) -> None:
+        receipt_path = self.run_dir / "controller.json"
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "stage": "running",
+                    "counts": {"total": 1, "accepted": 0},
+                    "last_event": {"event": "task_started", "task_id": "001"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        watched = subprocess.Popen(
+            [
+                str(CONTROLLER),
+                "watch",
+                "--run-dir",
+                str(self.run_dir),
+                "--timeout",
+                "1",
+                "--poll-interval",
+                "0.01",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.addCleanup(lambda: watched.poll() is None and watched.kill())
+        assert watched.stdout is not None
+        first = json.loads(watched.stdout.readline())
+
+        self.assertIsNone(watched.poll())
+        self.assertEqual(first["type"], "watch")
+        self.assertEqual(first["last_event"]["event"], "task_started")
+
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "stage": "accepted",
+                    "next_action": "complete",
+                    "counts": {"total": 1, "accepted": 1},
+                    "tasks": {"001": {"stage": "accepted"}},
+                    "last_event": {"event": "run_accepted"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        stdout, stderr = watched.communicate(timeout=2)
+
+        self.assertEqual(watched.returncode, 0, stderr)
+        self.assertIn('"event": "run_accepted"', stdout)
+
     def test_start_persists_failed_receipt_for_stale_exit_and_requires_reset(self) -> None:
         self.write_run(provider_slots=1)
         self.write_task("001")
