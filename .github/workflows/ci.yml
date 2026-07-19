@@ -20,6 +20,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends bubblewrap
+          # Ubuntu hosted runners restrict unprivileged uid maps. Bubblewrap's
+          # supported setuid mode keeps the tests unprivileged while allowing
+          # their real namespace boundary to run in this ephemeral VM.
+          sudo chmod u+s "$(command -v bwrap)"
+          bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc \
+            --tmpfs /tmp -- /bin/true
           python3 -m pip install --disable-pip-version-check \
             PyYAML==6.0.3 \
             jsonschema==4.26.0
