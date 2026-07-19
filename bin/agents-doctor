@@ -100,6 +100,77 @@ def bubblewrap_operational(binary: str | None) -> bool:
     return result.returncode == 0
 
 
+def resolver_mount_args() -> list[str]:
+    try:
+        resolver_target = Path("/etc/resolv.conf").resolve(strict=True)
+    except OSError:
+        return []
+    runtime_root = Path("/run")
+    if not resolver_target.is_file() or not resolver_target.is_relative_to(
+        runtime_root
+    ):
+        return []
+
+    mounts: list[str] = []
+    parent = runtime_root
+    for part in resolver_target.parent.relative_to(runtime_root).parts:
+        parent /= part
+        mounts.extend(("--dir", str(parent)))
+    mounts.extend(("--ro-bind", str(resolver_target), str(resolver_target)))
+    return mounts
+
+
+def bubblewrap_resolver_operational(binary: str | None) -> bool:
+    if not binary:
+        return False
+    command = [
+        binary,
+        "--die-with-parent",
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/run",
+        "--tmpfs",
+        "/tmp",
+        "--tmpfs",
+        "/var/tmp",
+    ]
+    command.extend(resolver_mount_args())
+    command.extend(
+        (
+            "--",
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "p=Path('/etc/resolv.conf').resolve(strict=True); "
+                "lines=p.read_text(encoding='utf-8').splitlines(); "
+                "raise SystemExit(0 if any(line.strip().startswith('nameserver ') "
+                "for line in lines) else 1)"
+            ),
+        )
+    )
+    try:
+        result = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=8,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 def detect() -> dict:
     tools = {}
     p = which("claude")
@@ -112,8 +183,9 @@ def detect() -> dict:
     p = which("grok")
     bwrap = which("bwrap")
     bwrap_ready = bubblewrap_operational(bwrap)
+    resolver_ready = bubblewrap_resolver_operational(bwrap) if bwrap_ready else False
     tools["grok"] = {
-        "present": bool(p and bwrap_ready),
+        "present": bool(p and bwrap_ready and resolver_ready),
         "binary_present": bool(p),
         "path": p,
         "version": run_version(["grok", "--version"]) if p else None,
@@ -121,12 +193,17 @@ def detect() -> dict:
         "unavailable_reason": (
             "bubblewrap missing"
             if p and not bwrap
-            else "bubblewrap probe failed" if p and not bwrap_ready else None
+            else "bubblewrap probe failed"
+            if p and not bwrap_ready
+            else "bubblewrap resolver unavailable"
+            if p and not resolver_ready
+            else None
         ),
     }
     tools["bubblewrap"] = {
         "present": bool(bwrap),
         "operational": bwrap_ready,
+        "resolver_operational": resolver_ready,
         "path": bwrap,
         "version": None,
         "required": False,

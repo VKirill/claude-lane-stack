@@ -535,6 +535,27 @@ def active_pathname_sockets() -> list[Path]:
     return sorted(sockets, key=str)
 
 
+def resolver_mount_args() -> list[str]:
+    """Keep a /run-backed resolv.conf target readable in the private runtime."""
+    try:
+        resolver_target = Path("/etc/resolv.conf").resolve(strict=True)
+    except OSError:
+        return []
+    runtime_root = Path("/run")
+    if not resolver_target.is_file() or not resolver_target.is_relative_to(
+        runtime_root
+    ):
+        return []
+
+    mounts: list[str] = []
+    parent = runtime_root
+    for part in resolver_target.parent.relative_to(runtime_root).parts:
+        parent /= part
+        mounts.extend(("--dir", str(parent)))
+    mounts.extend(("--ro-bind", str(resolver_target), str(resolver_target)))
+    return mounts
+
+
 def sandbox_provider_command(
     command: list[str],
     *,
@@ -579,6 +600,7 @@ def sandbox_provider_command(
         "--tmpfs",
         "/var/tmp",
     ]
+    wrapped.extend(resolver_mount_args())
     writable_paths = (
         (home / ".grok", cwd)
         if provider == "grok"
@@ -831,7 +853,17 @@ def classify_grok_failure(
     patterns: tuple[tuple[str, tuple[str, ...], bool], ...] = (
         (
             "grok_bootstrap_transient",
-            ("settings fetch failed", "failed to load settings", "settings unavailable"),
+            (
+                "settings fetch failed",
+                "failed to load settings",
+                "settings unavailable",
+                "failed to fetch oidc discovery",
+                "oidc token refresh failed",
+                "re-authentication required",
+                "dns error",
+                "temporary failure in name resolution",
+                "failed to lookup address information",
+            ),
             True,
         ),
         (

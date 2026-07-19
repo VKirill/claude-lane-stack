@@ -83,8 +83,11 @@ provider. To avoid nested-sandbox denial of terminal commands, Grok's native
 sandbox is `off` inside that boundary; Bubblewrap itself exposes the project,
 private temp directories, and `~/.grok` as writable, the rest of the host as
 read-only, and then over-mounts `.agents` read-only. Host `/run`, `/tmp`, and
-`/var/tmp` are not shared; active pathname Unix sockets that would reappear
-through a writable bind are masked, and the provider environment is allowlisted.
+`/var/tmp` are not shared; when `/etc/resolv.conf` targets a file below `/run`,
+only that resolved file is restored with a read-only bind so OIDC and provider
+DNS continue to work. Active pathname Unix sockets that would reappear through
+a writable bind are masked, and the provider environment is allowlisted.
+`agents-doctor` reproduces this structural resolver probe before routing Grok.
 This boundary does not claim network-egress isolation. The `owns_paths`
 contract remains the narrower behavioral boundary. The final response carries
 one task/prompt-bound report envelope; trusted `lane-session` validates it and

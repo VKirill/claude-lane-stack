@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import runpy
 import shutil
 import signal
 import socket
@@ -713,6 +714,45 @@ class LaneSessionTest(unittest.TestCase):
         self.assertIn("CONTROL_PLANE_WRITE: denied", report_text)
         self.assertIn("PROC_CONTROL_WRITE: denied", report_text)
 
+    def test_sandbox_preserves_systemd_resolved_resolver_target(self) -> None:
+        resolver_target = Path("/etc/resolv.conf").resolve(strict=True)
+        if not resolver_target.is_relative_to(Path("/run/systemd/resolve")):
+            self.skipTest("host resolv.conf does not target systemd-resolved under /run")
+        lane_session = runpy.run_path(
+            str(LANE_SESSION), run_name="lane_session_dns_regression"
+        )
+        sandboxed = lane_session["sandbox_provider_command"](
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import json; from pathlib import Path; "
+                    "print(json.dumps({"
+                    "'resolv_conf_readable': Path('/etc/resolv.conf').is_file(), "
+                    f"'resolver_target_readable': Path({str(resolver_target)!r}).is_file()"
+                    "}))"
+                ),
+            ],
+            provider="grok",
+            run_dir=self.run_dir,
+            cwd=self.cwd,
+            home=self.fake_home,
+        )
+
+        result = subprocess.run(
+            sandboxed,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        probe = json.loads(result.stdout)
+        self.assertTrue(probe["resolver_target_readable"])
+        self.assertTrue(probe["resolv_conf_readable"])
+
     def test_provider_cannot_reach_host_socket_tmp_or_unsafe_environment(self) -> None:
         socket_path = self.grok_home / "host-control.sock"
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -894,6 +934,33 @@ class LaneSessionTest(unittest.TestCase):
         self.assertNotIn(
             secret,
             (self.root / "task-settings-failure.log").read_text(encoding="utf-8"),
+        )
+
+    def test_dns_oidc_bootstrap_failure_is_fallback_eligible_without_leaking_detail(self) -> None:
+        secret = "customer-secret-token"
+        result = self._run(
+            "grok",
+            "dns-oidc-failure",
+            exit_code=1,
+            extra_env={
+                "FAKE_STDERR": (
+                    "Failed to fetch OIDC discovery document: DNS error: "
+                    f"temporary failure in name resolution {secret}"
+                )
+            },
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        receipt_source = (self.root / "runtime.json").read_text(encoding="utf-8")
+        receipt = json.loads(receipt_source)
+        self.assertEqual(receipt["failure_class"], "grok_bootstrap_transient")
+        self.assertTrue(receipt["failure_retryable"])
+        self.assertTrue(receipt["fallback_eligible"])
+        self.assertNotIn(secret, receipt_source)
+        self.assertNotIn(
+            secret,
+            (self.root / "task-dns-oidc-failure.log").read_text(encoding="utf-8"),
         )
 
     def test_zero_exit_rate_limit_error_event_is_fallback_eligible(self) -> None:

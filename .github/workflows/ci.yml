@@ -13,15 +13,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bubblewrap
+          python3 -m pip install --disable-pip-version-check \
+            PyYAML==6.0.3 \
+            jsonschema==4.26.0
       - name: Compile hooks and doctor
         run: |
           python3 -m py_compile hooks/*.py bin/agents-doctor bin/check-owns-paths bin/lane-stall-check bin/lane-heartbeat bin/lane-session bin/run-board
           python3 bin/agents-doctor --json || true
-      - name: Unit tests
-        run: python3 -m unittest discover -s tests -v
       - name: Shell scripts syntax
+        if: always()
         run: |
           bash -n install.sh
-          for f in bin/wt-create bin/wt-merge-main bin/resume-project bin/project-memory-init bin/night-audit; do
-            [[ -f "$f" ]] && bash -n "$f"
-          done
+          while IFS= read -r -d '' file; do
+            [[ "$(head -n 1 "$file")" == '#!/usr/bin/env bash' ]] || continue
+            bash -n "$file"
+          done < <(find bin -maxdepth 1 -type f -print0)
+      - name: Python unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Board Node tests
+        if: always()
+        run: node --test board/server/lib/*.test.mjs board/web/js/*.test.mjs

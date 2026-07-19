@@ -124,7 +124,7 @@ else
 fi
 
 echo ""
-echo "Done. (v1.5.4+) Start PM:"
+echo "Done. (v1.5.5+) Start PM:"
 echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
 echo " claude --agent dev-orchestrator"
 echo "Onboard: /project-onboard or project-onboard . [--deep|--fast]"

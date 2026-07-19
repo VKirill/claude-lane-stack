@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.5 — 2026-07-19
+
+### Fixed
+- **Grok lanes retain DNS inside the outer sandbox:** when the host
+  `/etc/resolv.conf` points into `/run`, `lane-session` recreates only the
+  required parent directories and read-only binds the resolved file target.
+  Private runtime directories, host sockets, and the `.agents` control plane
+  remain isolated.
+- **DNS/OIDC startup failures enter typed recovery:** bounded provider evidence
+  for resolver and token-refresh failures is classified as an eligible Grok
+  bootstrap failure, allowing the existing retry-once and Codex Sol high
+  recovery path without storing raw stderr.
+- **Doctor verifies the real resolver boundary:** Grok routing now requires a
+  structural resolver probe under the same Bubblewrap namespace shape instead
+  of accepting a `/bin/true` sandbox false positive.
+- **CI is a release-quality gate:** GitHub Actions installs runtime test
+  prerequisites and runs Python, shell, and Lane Board suites.
+
 ## 1.5.4 — 2026-07-18
 
 ### Fixed
