@@ -1,6 +1,6 @@
 ---
 name: dev-orchestrator
-description: "Solo PM. Durable daytime Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
+description: "Solo PM. Durable daytime AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
 tools: Agent(run-supervisor, lane-supervisor, grok-implementer, codex-reviewer, codex-implementer, codex-onboarder, codex-docs-maintainer), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: default
 model: fable
@@ -63,15 +63,15 @@ Claude **foreground Bash dies ~2 minutes**. That is **not** `lane-exec` idle/max
 | **run-supervisor** | One visible, source-read-only agent per run. It starts the durable controller, watches bounded intervals, and returns only on accepted or blocked. |
 | **run-controller** | Deterministic background process. Dispatches the DAG, retries once, performs progressive ownership/verification/acceptance, and persists `controller.json`. |
 | **lane-supervisor** | Manual one-action diagnostic/recovery profile only; never the normal daytime liveness owner. |
-| **Grok** | Sole normal code writer in its task worktree. `lane-bg` / `lane-exec` keep it alive independently of Claude. |
+| **AGY/Grok** | Switchable normal code writer in its task worktree. `lane-bg` / `lane-exec` keep it alive independently of Claude. |
 | **You (PM)** | Dispatch one `run-supervisor`, wait for its terminal digest, then validate, merge/commit, finalize, and push. |
-| Stall/failure | The controller records evidence, schedules one exact Grok retry, then permits one Codex Sol high attempt only for a second eligible availability failure. |
+| Stall/failure | The controller records evidence, schedules one exact same-provider retry, then permits one Codex Sol high attempt only for a second eligible availability failure. |
 
 ### Progressive event protocol (mandatory when ≥2 write tasks)
 
 ```text
 run-validate --phase pre-dispatch
-run-controller start --run-dir RUN_DIR --project-cwd PROJECT_CWD
+run-controller start --run-dir RUN_DIR --project-cwd PROJECT_CWD --provider agy|grok
 Agent run-supervisor:
   bounded watch until terminal while the detached controller remains durable
 controller loop:
@@ -95,15 +95,15 @@ One run-level supervisor is required for operator visibility. It only watches
 the deterministic controller; it does not rediscover code or decide acceptance.
 
 `lane-ctl start` builds the provider prompt deterministically from the canonical
-Grok writer contract plus the raw immutable task YAML. A Claude supervisor must
+writer contract plus the raw immutable task YAML. A Claude supervisor must
 not spend turns rediscovering the code or composing a second specification.
 
-`lane-session` resumes related run-scoped Grok conversations. Up to ten slots
+`lane-session` resumes related run-scoped AGY or Grok conversations. Up to ten slots
 are supported (five by default); each slot is serial, rotates after seven
 successful tasks, and is never reused for review. `Cancelled`, `Error`, an
 unknown terminal reason, or exit zero without a complete report are failures,
 never an invitation to verification.
-After two Grok attempts, only a sanitized runtime failure marked
+After two selected-provider attempts, only a sanitized runtime failure marked
 `fallback_eligible` may start the one-shot `gpt-5.6-sol` + `high` Codex adapter.
 It is a writer attempt, not daytime review, and must pass the same report digest,
 ownership, verification, and acceptance gates.
@@ -117,11 +117,12 @@ night shift below.
 `night-shift` is deterministic control-plane automation, not a long-lived model
 supervisor. Codex Sol xhigh reviews bounded chunks read-only and persists typed
 findings first. Each actionable finding is then compiled into an immutable v2
-Grok task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
+writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 
 - Codex never writes product code during the night shift.
-- Grok is the only normal writer and receives `--no-subagents`.
-- The runner polls `lane-ctl` receipts, retries Grok once, and may use one Sol
+- AGY or Grok is the selected normal writer. Grok receives `--no-subagents`;
+  AGY uses the `agy-writer` tool allowlist with subagent tools excluded.
+- The runner polls `lane-ctl` receipts, retries the selected provider once, and may use one Sol
   high recovery attempt only after a second typed availability failure. It then
   runs ownership and registered verification checks and requests a fresh Codex
   xhigh re-review before acceptance.

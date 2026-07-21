@@ -87,7 +87,7 @@ GLOBAL_TODO_ROOT = ~/.agents/todos else or user says global
 
 ## Spawn hint (when promoted to run)
 - risk: low|medium|high
-- lane: grok | -coder | grok | codex
+- lane: agy | -coder | agy | grok | codex
 - seed tasks:
   - [ ] …
 - verification ideas:

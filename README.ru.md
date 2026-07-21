@@ -4,15 +4,15 @@
 
 # 🏭 Claude Lane Stack
 
-### Маленький ИИ-завод для одного человека · **v1.5.7**
+### Маленький ИИ-завод для одного человека · **v1.6.0**
 
 **Мульти-агентная оркестрация для Claude Code** — вы говорите с одним ИИ-менеджером проекта,
-он ведёт долговечные задачи Grok до приёмки, **сам мержит готовый код в
+он ведёт долговечные задачи AGY или Grok до приёмки, **сам мержит готовый код в
 `main`**, а независимое ревью/исправление выполняет ночью. Без пяти чатов. Без
 ручных merge.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.7)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Старт-Гайд%20для%20новичков-brightgreen)](docs/BEGINNER.ru.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -43,11 +43,11 @@
 |---------------|---------------|
 | Каждый раз заново объясняете контекст | Один PM держит контекст, воркеры получают **карточки** |
 | Модели затирают чужие файлы | У карточки список **своих путей** — воркер не лезет чужое |
-| Никто не ревьюит код ИИ | Типизированный **ночной review/fix-контур** Codex → Grok → re-review |
+| Никто не ревьюит код ИИ | Типизированный **ночной review/fix-контур** Codex → AGY/Grok → re-review |
 | Merge руками | PM мержит в **`main`** после проверок |
 | Утром: «а что мы делали?» | `/resume-project` — Сейчас / Блок / Дальше |
 | Онборд = пустой CLAUDE | **Deep forensic-паспорт** на взрослых репо |
-| Grok умирают через ~2 мин | **`run-controller` + user-systemd** — весь run переживает cleanup хоста |
+| Пишущий провайдер умирает через ~2 мин | **`run-controller` + user-systemd** — весь run переживает cleanup хоста |
 | Непонятно, идёт ли работа | Один видимый **`run-supervisor`** + точные стадии в Board |
 | Параллель ждёт самую долгую задачу | **Progressive accept** — отдельные provider/verify-пулы |
 
@@ -80,21 +80,21 @@ flowchart LR
         B["План → карточки<br/>.agents/runs/"]
     end
     subgraph lanes ["👷 Линии (опционально)"]
-        D["🔧 Grok — тяжёлые правки"]
+        D["🔧 AGY / Grok — тяжёлые правки"]
         E["🌙 Codex — ночное ревью"]
     end
     A --> B
     B --> D
     D -->|точные проверки| F[("📦 main")]
     F -.-> E
-    E -.->|findings / исправления Grok| B
+    E -.->|findings / исправления writer| B
 ```
 
 | Роль | Кто | Что делает |
 |------|-----|------------|
 | 👑 Владелец | **Вы** | Говорите *что* нужно (в чате — на русском) |
 | 🤖 PM | Claude Code `dev-orchestrator` | Планирует, диспатчит, проверяет, **мержит** |
-| 🔧 Пишущий | Grok *(опц.)* | Делает карточки (через `lane-bg`) |
+| 🔧 Пишущий | AGY 3.6 или Grok *(опц.)* | Делает карточки (через `lane-bg`) |
 | 🔍 Ревью / онборд | Codex *(опц.)* | Ночное ревью/re-review, emergency-write, **паспорт проекта** |
 | 🗂️ Карточки | YAML в `.agents/runs/` | Пол цеха — всё видно в git |
 | 📦 Официальный код | ветка **`main`** | Куда падает успешная работа |
@@ -105,7 +105,7 @@ flowchart LR
 
 > [!NOTE]
 > **Обязателен только Claude Code.** Остальное опционально — `agents-doctor` подстроит профиль, вплоть до `claude-only`.
-> Для пишущих Grok-лейнов на Linux также нужен `bubblewrap` (`sudo apt install
+> Для пишущих AGY/Grok-лейнов на Linux также нужен `bubblewrap` (`sudo apt install
 > bubblewrap` в Ubuntu): он обеспечивает read-only границу для `.agents`.
 
 ---
@@ -115,7 +115,7 @@ flowchart LR
 ```bash
 # 1️⃣  Установить завод — один раз на машину
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.5.7 # или main
+cd claude-lane-stack && git checkout v1.6.0 # или main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 
@@ -138,7 +138,7 @@ claude --agent dev-orchestrator
 > [!IMPORTANT]
 > `/resume-project` — это «с возвращением», **не** шаг установки.
 
-📖 Гайд: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)** · Релиз: **[v1.5.7](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.7)**
+📖 Гайд: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)** · Релиз: **[v1.6.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0)**
 
 ---
 
@@ -197,13 +197,13 @@ run-controller status --run-dir "$RUN_DIR" --json
 | **`lane-ctl`** | start/status/events/tail/retry/cancel/verify/accept |
 | **`lane-bg`** | transient user-systemd service; явный nohup fallback |
 | **`lane-exec`** | idle/max на **отцепленном** процессе |
-| **`lane-session`** | продолжает контекст Grok; provider-пул 5 по умолчанию, максимум 10 |
+| **`lane-session`** | продолжает контекст AGY/Grok; provider-пул 5 по умолчанию, максимум 10 |
 
 Один read-only `run-supervisor` остаётся видимым до accepted/blocked;
 `lane-supervisor` теперь служит для одиночной диагностики. Verify-пул отдельный,
 2 по умолчанию, максимум 10. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
 
-Grok больше не изучает репозиторий заново перед каждой задачей одного run.
+AGY и Grok больше не изучают репозиторий заново перед каждой задачей одного run.
 Первая задача создаёт conversation, следующие связанные задачи продолжают её.
 Занятая conversation не используется одновременно: параллельная задача получает
 другой слот (5 по умолчанию, настраивается 1–10). По умолчанию сессия ротируется после семи успешных задач,
@@ -224,7 +224,7 @@ Codex запускается через профиль `night-review`: `gpt-5.6-
 read-only, approval `never`. Он проверяет ограниченные diff-чанки и сохраняет
 каждую конкретную или системную ошибку в
 `.agents/findings/<fingerprint>.json`; REVIEW, OPEN и TODO являются проекциями.
-Grok остаётся единственным обычным пишущим агентом, работает без субагентов и в
+Выбранный AGY/Grok остаётся обычным пишущим агентом, работает без субагентов и в
 отдельном worktree. Finding закрывается только после registered verification,
 ownership check, свежего Codex re-review и `acceptance.json`.
 
@@ -251,7 +251,7 @@ schema_version: 2
 id: "001"
 title: Add dark mode
 risk: low
-lane: grok
+lane: agy # по умолчанию; grok поддерживается
 project_cwd: /absolute/path/to/worktree
 read_first: [AGENTS.md]
 interfaces: ["ThemeToggle(settings)"]
@@ -318,7 +318,7 @@ verification:
 | `run-board` | Табло задач |
 | `run-init` / `run-validate` / `run-finalize` | Жизненный цикл versioned run-контракта |
 | **`run-controller start/watch/status`** | Долговечный дневной цикл и точный live-статус |
-| `lane-session status --run-dir .agents/runs/<slug>` | Сессии Grok только этого run |
+| `lane-session status --run-dir .agents/runs/<slug>` | Сессии AGY/Grok только этого run |
 | `wt-create` / `wt-merge-main` | Worktree + **merge в main** |
 | `check-owns-paths` | Не вышел ли воркер за owns |
 | **`lane-ctl`** | Lifecycle control + verification + acceptance receipt |
@@ -329,7 +329,7 @@ verification:
 | `project-memory-init` | PROGRESS / LESSONS |
 | `night-audit` | Ночная уборка |
 | `night-review` | Typed read-only review + canonical findings |
-| `night-shift` / `night-shift-all` | Resumable review → Grok repair → re-review |
+| `night-shift` / `night-shift-all` | Resumable review → AGY/Grok repair → re-review |
 
 </details>
 
@@ -339,8 +339,8 @@ verification:
 
 | Профиль | Есть | Пишет | Ревью |
 |---------|------|-------|-------|
-| `full` | Grok + Codex | Grok | Codex Sol |
-| `claude-` |  |  | Claude |
+| `full` | AGY и/или Grok + Codex | AGY по умолчанию; Grok выбирается | Codex Sol |
+| `claude-agy` | AGY | AGY | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |
 | `claude-only` | только Claude | subagents | subagents |
@@ -358,7 +358,7 @@ agents-doctor --apply .
 
 ```text
 claude-lane-stack/
-├── agents/ # PM + grok/codex (implementers, onboard, review)
+├── agents/ # PM + agy/grok/codex (implementers, onboard, review)
 ├── bin/ # agents-doctor, project-onboard, lane-ctl, lane-bg, lane-exec, lane-session, …
 ├── skills/ # orchestration, contracts, memory, onboard, …
 ├── profiles/ # full → claude-only
@@ -387,7 +387,7 @@ your-app/
 ## ❓ FAQ
 
 <details>
-<summary><b>Нужны ли сразу, Grok и Codex?</b></summary>
+<summary><b>Нужны ли сразу AGY, Grok и Codex?</b></summary>
 
 Нет — **достаточно Claude Code**. Остальное опционально.
 
@@ -452,7 +452,7 @@ service. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md). После апдейта
 | 📝 Идеи | [docs/TODOS.md](docs/TODOS.md) |
 | 🔌 MCP | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Релиз v1.5.7 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.5.7) |
+| 🚀 Релиз v1.6.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0) |
 
 ---
 

@@ -103,7 +103,7 @@ def execute(args: argparse.Namespace) -> int:
     run_dir = repo / ".agents" / "runs" / slug
     task_files = sorted((run_dir / "tasks").glob("*.yaml"))
     if not task_files:
-        print("night-shift: findings require human scope resolution; no Grok task dispatched")
+        print("night-shift: findings require human scope resolution; no writer task dispatched")
         return 0
     if args.prepare_only:
         print(f"night-shift: prepared {len(task_files)} task(s) in {run_dir}")
@@ -114,8 +114,11 @@ def execute(args: argparse.Namespace) -> int:
         runner.append("--auto-merge")
     if args.codex_bin:
         runner.extend(["--codex-bin", args.codex_bin])
-    if args.grok_bin:
-        runner.extend(["--grok-bin", args.grok_bin])
+    provider = "grok" if args.grok_bin else args.provider
+    provider_bin = args.provider_bin or args.grok_bin
+    runner.extend(["--provider", provider])
+    if provider_bin:
+        runner.extend(["--provider-bin", provider_bin])
     if args.poll_interval is not None:
         runner.extend(["--poll-interval", str(args.poll_interval)])
     if args.provider_timeout is not None:
@@ -148,7 +151,9 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--prepare-only", action="store_true")
     ap.add_argument("--no-auto-merge", action="store_true")
     ap.add_argument("--codex-bin")
-    ap.add_argument("--grok-bin")
+    ap.add_argument("--provider", choices=("agy", "grok"), default="agy")
+    ap.add_argument("--provider-bin")
+    ap.add_argument("--grok-bin", help=argparse.SUPPRESS)
     ap.add_argument("--max-chunk-bytes", type=positive_int)
     ap.add_argument("--poll-interval", type=nonnegative_float)
     ap.add_argument("--provider-timeout", type=positive_int)

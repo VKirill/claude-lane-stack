@@ -6,12 +6,13 @@ STACK_ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEST="${HOME}/.agents"
 CLAUDE="${HOME}/.claude"
 CODEX="${CODEX_HOME:-${HOME}/.codex}"
+AGY="${HOME}/.gemini/config"
 
 echo "==> Claude Lane Stack install"
 echo " from: $STACK_ROOT"
 echo " to: $DEST"
 
-mkdir -p "$DEST"/{bin,docs,hooks,templates,skills,schemas,agents,grok/instructions,codex/instructions}
+mkdir -p "$DEST"/{bin,docs,hooks,templates,skills,schemas,agents,agy/instructions,grok/instructions,codex/instructions}
 mkdir -p "$CLAUDE"/{agents,skills,commands}
 mkdir -p "$CODEX"
 
@@ -54,8 +55,13 @@ done
 
 # platform agents
 rsync -a "$STACK_ROOT"/agents/ "$DEST/agents/"
+rsync -a "$STACK_ROOT"/agents/agy/ "$DEST/agy/instructions/"
 rsync -a "$STACK_ROOT"/agents/grok/ "$DEST/grok/instructions/"
 rsync -a "$STACK_ROOT"/agents/codex/ "$DEST/codex/instructions/"
+
+# AGY writer profile: explicit tool allowlist excludes all subagent tools.
+mkdir -p "$AGY/agents/agy-writer"
+install -m 0644 "$STACK_ROOT/agents/agy/agent.md" "$AGY/agents/agy-writer/agent.md"
 
 # Claude agents
 cp -a "$STACK_ROOT"/agents/claude/*.md "$CLAUDE/agents/"
@@ -133,9 +139,9 @@ echo "Daytime runs: one visible run-supervisor watches durable run-controller"
 echo "Run controller: run-controller start/watch/status (survives Claude exit)"
 echo "Long lanes: lane-ctl + lane-bg user-systemd backend (never foreground Bash)"
 echo "Control plane: lane-ctl start/status/events/tail/retry/cancel/verify/accept"
-echo "Manual lane recovery: lane-supervisor (Grok remains the code writer)"
+echo "Manual lane recovery: lane-supervisor (AGY or Grok writer)"
 echo "Pools: provider default 5/max 10; verification default 2/max 10"
-echo "Warm lanes: lane-session resumes run-scoped Grok conversations"
-echo "Night shift: night-shift-all (Codex Sol xhigh review; Grok-primary repair with typed Sol fallback)"
+echo "Warm lanes: lane-session resumes run-scoped AGY or Grok conversations"
+echo "Night shift: night-shift-all (Codex Sol xhigh review; selectable AGY/Grok repair with typed Sol fallback)"
 echo "Beginner: docs/BEGINNER.md · RU: docs/BEGINNER.ru.md"
 echo "Docs: $DEST/docs/ (ONBOARD-SCENARIOS, LANE-EXEC, ROUTING, LANGUAGE)"

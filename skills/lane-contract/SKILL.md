@@ -27,23 +27,25 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
    (`wt-merge-main` or commit) — human never merges.
 9. No task CLI / orchestrator MCP for queue.
 10. Normal daytime work flows through `run-controller` and its typed `lane-ctl`
-    actions. The run supervisor is source-read-only; Grok is the primary
+    actions. The run supervisor is source-read-only; AGY is the default and
+    Grok is a selectable
     detached writer. One Codex Sol high writer attempt is allowed only after
-    two classified fallback-eligible Grok availability failures. There is no
+    two classified fallback-eligible primary-provider availability failures. There is no
     daytime LLM review.
 11. Keep provider slots (default 5, range 1–10) separate from verification slots
     (default 2, range 1–10).
 12. Run automated writers/reviewers with the lane automation marker. Imported
-    Claude hooks are disabled for Grok and the shared native session-ledger
+    Claude hooks are disabled for AGY/Grok and the shared native session-ledger
     exits without writing; skills, rules, and non-ledger safety hooks remain.
 13. Treat `Cancelled`, `Error`, any unknown provider terminal reason, and exit
     zero without a valid task/prompt-bound report as retryable failure, never as
-    ready for verification. Grok never writes `.agents`; `lane-session`
+    ready for verification. AGY/Grok never writes `.agents`; `lane-session`
     validates the final-response envelope, materializes root `report.md`, and
     binds it to the current attempt through `runtime.json.report_sha256`.
 14. Preserve provider identity across receipts. The controller persists a
-    retry deadline, replays Grok once, and may call typed `lane-ctl fallback`
-    only when the second Grok runtime has `fallback_eligible: true`. Attempt 3
+    retry deadline, replays the selected provider once, and may call typed
+    `lane-ctl fallback` only when the second primary runtime has
+    `fallback_eligible: true`. Attempt 3
     is fixed to `codex` / `gpt-5.6-sol` / `high`; no fourth attempt exists.
 
 ## Lane must

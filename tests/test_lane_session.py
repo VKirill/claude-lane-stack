@@ -35,6 +35,10 @@ class LaneSessionTest(unittest.TestCase):
             "grok-secret-file\n", encoding="utf-8"
         )
         (self.fake_home / ".codex").mkdir()
+        (self.fake_home / ".gemini" / "antigravity-cli").mkdir(parents=True)
+        agy_agent = self.fake_home / ".gemini" / "config" / "agents" / "agy-writer"
+        agy_agent.mkdir(parents=True)
+        shutil.copyfile(ROOT / "agents" / "agy" / "agent.md", agy_agent / "agent.md")
         (self.fake_home / ".codex" / "auth.json").write_text(
             "{}\n", encoding="utf-8"
         )
@@ -86,6 +90,9 @@ class LaneSessionTest(unittest.TestCase):
                 streaming = "--output-format" in args and args[
                     args.index("--output-format") + 1
                 ] == "streaming-json"
+                agy_streaming = "--output-format" in args and args[
+                    args.index("--output-format") + 1
+                ] == "stream-json"
 
                 def emit(payload):
                     print(json.dumps(payload), flush=True)
@@ -182,6 +189,66 @@ class LaneSessionTest(unittest.TestCase):
                                 "cached_input_tokens": 2,
                                 "output_tokens": 7,
                                 "reasoning_output_tokens": 3,
+                            },
+                        }
+                    )
+                    raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
+
+                if os.environ.get("FAKE_PROVIDER_KIND") == "agy":
+                    prompt = args[args.index("--print") + 1]
+                    task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
+                    prompt_sha256 = re.search(
+                        r"prompt_sha256=([0-9a-f]{64})", prompt
+                    ).group(1)
+                    conversation_id = (
+                        args[args.index("--conversation") + 1]
+                        if "--conversation" in args
+                        else "agy-conversation-test"
+                    )
+                    report = (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n"
+                        "SUMMARY: fake AGY report\\n"
+                        "<<<LANE_REPORT:END>>>"
+                    )
+                    emit(
+                        {
+                            "event": "init",
+                            "conversation_id": conversation_id,
+                            "init": {
+                                "model": args[args.index("--model") + 1],
+                                "agent": "agy-writer",
+                                "tools": ["view_file", "run_command", "write_to_file"],
+                                "permission_mode": "always-proceed",
+                            },
+                        }
+                    )
+                    emit(
+                        {
+                            "event": "step_update",
+                            "step_update": {
+                                "conversation_id": conversation_id,
+                                "step_type": "agent_response",
+                                "text_delta": report,
+                            },
+                        }
+                    )
+                    emit(
+                        {
+                            "event": "result",
+                            "result": {
+                                "conversation_id": conversation_id,
+                                "status": "SUCCESS",
+                                "response": report,
+                                "num_turns": 1,
+                                "usage": {
+                                    "input_tokens": 10,
+                                    "output_tokens": 5,
+                                    "thinking_tokens": 2,
+                                    "total_tokens": 17,
+                                },
                             },
                         }
                     )
@@ -413,6 +480,55 @@ class LaneSessionTest(unittest.TestCase):
         rejected = self._run("grok", "too-wide", pool_size=11, check=False)
         self.assertEqual(rejected.returncode, 2)
         self.assertIn("pool-size must be between 1 and 10", rejected.stderr)
+
+    def test_agy_36_uses_typed_stream_and_reuses_conversation(self) -> None:
+        for task_id in ("agy-001", "agy-002"):
+            result = self._run(
+                "agy", task_id, model="gemini-3.6-flash-high", pool_size=1
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        first, second = self._calls()
+        self.assertIn("--output-format", first)
+        self.assertEqual(first[first.index("--output-format") + 1], "stream-json")
+        self.assertIn("--dangerously-skip-permissions", first)
+        self.assertEqual(first[first.index("--agent") + 1], "agy-writer")
+        self.assertNotIn("--conversation", first)
+        self.assertEqual(
+            second[second.index("--conversation") + 1], "agy-conversation-test"
+        )
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider"], "agy")
+        self.assertEqual(receipt["model"], "gemini-3.6-flash-high")
+        self.assertEqual(receipt["permission_mode"], "always-proceed")
+        self.assertTrue(receipt["protocol_valid"])
+
+    def test_agy_rejects_tampered_agent_tool_allowlist_before_launch(self) -> None:
+        agent = (
+            self.fake_home
+            / ".gemini"
+            / "config"
+            / "agents"
+            / "agy-writer"
+            / "agent.md"
+        )
+        agent.write_text(
+            agent.read_text(encoding="utf-8").replace(
+                "  - search_web\n", "  - search_web\n  - invoke_subagent\n"
+            ),
+            encoding="utf-8",
+        )
+
+        result = self._run(
+            "agy",
+            "agy-tampered-agent",
+            model="gemini-3.6-flash-high",
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("AGY agent definition tool allowlist mismatch", result.stderr)
+        self.assertFalse(self.args_log.exists())
 
     def test_read_only_xdg_runtime_falls_back_to_user_tmp(self) -> None:
         unusable = self.root / "runtime-is-a-file"

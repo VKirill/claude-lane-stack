@@ -935,7 +935,7 @@ def compile_fix_tasks(
             "id": task_id,
             "title": finding["title"],
             "risk": RISK_FOR_SEVERITY[finding["severity"]],
-            "lane": "grok",
+            "lane": "agy",
             "project_cwd": str(project_cwd),
             "read_first": evidence_paths,
             "interfaces": [

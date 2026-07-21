@@ -34,6 +34,7 @@ TERMINAL_FAILURES = frozenset(
 )
 RUNNING_STATUSES = frozenset({"launching", "running", "unknown", "verifying"})
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
+PRIMARY_MODELS = {"agy": "gemini-3.6-flash-high", "grok": "grok-4.5"}
 
 
 class ControllerError(RuntimeError):
@@ -408,7 +409,14 @@ def validate_run_contract(binary: Path, run_dir: Path) -> None:
         raise ControllerError(f"run-validate failed: {detail}")
 
 
-def initial_receipt(run_dir: Path, project_cwd: Path, tasks: list[dict[str, Any]]) -> dict[str, Any]:
+def initial_receipt(
+    run_dir: Path,
+    project_cwd: Path,
+    tasks: list[dict[str, Any]],
+    *,
+    provider: str,
+    model: str,
+) -> dict[str, Any]:
     now = utc_now()
     return {
         "schema_version": 1,
@@ -429,8 +437,8 @@ def initial_receipt(run_dir: Path, project_cwd: Path, tasks: list[dict[str, Any]
                 "last_status": None,
                 "retries": 0,
                 "fallbacks": 0,
-                "provider": "grok",
-                "model": "grok-4.5",
+                "provider": provider,
+                "model": model,
                 "last_failure_class": None,
                 "retry_not_before": None,
                 "updated_at": now,
@@ -446,6 +454,7 @@ def run_controller(args: argparse.Namespace) -> int:
         raise ControllerError(f"run directory does not exist: {run_dir}")
     if not 0 <= args.retry_backoff <= 300:
         raise ControllerError("retry backoff must be between 0 and 300 seconds")
+    writer_model = args.model or PRIMARY_MODELS[args.provider]
     project_cwd, provider_slots, verification_slots, gate, tasks = discover(
         run_dir, args.project_cwd
     )
@@ -464,7 +473,9 @@ def run_controller(args: argparse.Namespace) -> int:
             receipt = load_json(receipt_path)
             validate_receipt_structure(receipt)
         except ControllerError as exc:
-            receipt = initial_receipt(run_dir, project_cwd, tasks)
+            receipt = initial_receipt(
+                run_dir, project_cwd, tasks, provider=args.provider, model=writer_model
+            )
             receipt["stage"] = "failed"
             transition(
                 receipt_path,
@@ -474,7 +485,9 @@ def run_controller(args: argparse.Namespace) -> int:
             )
             return 1
     else:
-        receipt = initial_receipt(run_dir, project_cwd, tasks)
+        receipt = initial_receipt(
+            run_dir, project_cwd, tasks, provider=args.provider, model=writer_model
+        )
     expected = {task["id"]: task["path"] for task in tasks}
     recorded = {task_id: task.get("task_file") for task_id, task in receipt.get("tasks", {}).items()}
     if recorded != expected:
@@ -724,12 +737,16 @@ def run_controller(args: argparse.Namespace) -> int:
                     provider = {}
                 provider_name = provider.get("name")
                 provider_model = provider.get("model")
-                if provider_name in {"grok", "codex"}:
+                if provider_name in {"agy", "grok", "codex"}:
                     task_state["provider"] = provider_name
                 if isinstance(provider_model, str) and provider_model:
                     task_state["model"] = provider_model
                 attempt = status.get("attempt")
-                if isinstance(attempt, int) and attempt > 1 and provider_name == "grok":
+                if (
+                    isinstance(attempt, int)
+                    and attempt > 1
+                    and provider_name in PRIMARY_MODELS
+                ):
                     task_state["retries"] = max(
                         task_state["retries"], min(1, attempt - 1)
                     )
@@ -838,7 +855,7 @@ def run_controller(args: argparse.Namespace) -> int:
                         progress = True
                     elif (
                         task_state["fallbacks"] < 1
-                        and provider_name == "grok"
+                        and provider_name in PRIMARY_MODELS
                         and provider.get("fallback_eligible") is True
                     ):
                         action(
@@ -942,6 +959,10 @@ def run_controller(args: argparse.Namespace) -> int:
                         str(project_cwd),
                         "--pool-size",
                         str(provider_slots),
+                        "--provider",
+                        args.provider,
+                        "--model",
+                        writer_model,
                     ],
                     label=f"start {task['id']}",
                 )
@@ -952,8 +973,8 @@ def run_controller(args: argparse.Namespace) -> int:
                     task_id=task["id"],
                     stage="running",
                 )
-                task_state["provider"] = "grok"
-                task_state["model"] = "grok-4.5"
+                task_state["provider"] = args.provider
+                task_state["model"] = writer_model
                 provider_active += 1
                 progress = True
 
@@ -996,7 +1017,11 @@ def worker_argv(args: argparse.Namespace) -> list[str]:
         str(args.heartbeat_interval),
         "--retry-backoff",
         str(args.retry_backoff),
+        "--provider",
+        args.provider,
     ]
+    if args.model:
+        argv.extend(["--model", args.model])
     if args.project_cwd:
         argv.extend(["--project-cwd", str(Path(args.project_cwd).expanduser().resolve())])
     return argv
@@ -1137,7 +1162,13 @@ def record_controller_failure(args: argparse.Namespace, error: str) -> None:
         try:
             run_dir = Path(args.run_dir).expanduser().resolve()
             project_cwd, _, _, _, tasks = discover(run_dir, args.project_cwd)
-            receipt = initial_receipt(run_dir, project_cwd, tasks)
+            receipt = initial_receipt(
+                run_dir,
+                project_cwd,
+                tasks,
+                provider=args.provider,
+                model=args.model or PRIMARY_MODELS[args.provider],
+            )
             receipt["stage"] = "failed"
             payload = {
                 "type": "transition",
@@ -1164,6 +1195,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--poll-interval", type=float, default=1.0)
     run.add_argument("--heartbeat-interval", type=float, default=30.0)
     run.add_argument("--retry-backoff", type=float, default=30.0)
+    run.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="agy")
+    run.add_argument("--model")
     start = sub.add_parser("start", help="durably start the controller through lane-bg")
     start.add_argument("--run-dir", required=True)
     start.add_argument("--project-cwd")
@@ -1174,6 +1207,8 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--poll-interval", type=float, default=1.0)
     start.add_argument("--heartbeat-interval", type=float, default=30.0)
     start.add_argument("--retry-backoff", type=float, default=30.0)
+    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="agy")
+    start.add_argument("--model")
     status = sub.add_parser("status", help="read the current controller receipt")
     status.add_argument("--run-dir", required=True)
     status.add_argument("--json", action="store_true", required=True)

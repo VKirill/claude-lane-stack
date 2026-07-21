@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.0 — 2026-07-21
+
+### Added
+- **Switchable writer provider:** daytime and night repair runs accept
+  `--provider agy|grok`; AGY defaults to `gemini-3.6-flash-high`, while the
+  existing Grok 4.5 path and historical receipts remain supported.
+- **Typed AGY runtime:** AGY runs through `stream-json`, resumes its
+  run-scoped conversation, validates the exact model and permission mode, and
+  verifies the installed custom-agent allowlist before every launch.
+- **AGY capability checks:** `agents-doctor` requires the exact 3.6 model, the
+  installed `agy-writer` profile, and the existing Bubblewrap boundary before
+  routing work to AGY.
+
 ## 1.5.7 — 2026-07-20
 
 ### Fixed

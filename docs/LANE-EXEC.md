@@ -15,9 +15,9 @@ The lane stack therefore separates six responsibilities:
 | `lane-supervisor` | Manual one-action lane diagnostic/recovery agent |
 | `lane-ctl` | Validates v2 contracts, builds the prompt, registers immutable state, exposes status/retry/cancel/verify/accept |
 | `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
-| `lane-session` | Warm Grok plus one-shot Codex fallback, provider isolation, validated report transport, and bounded concurrency |
+| `lane-session` | Warm AGY/Grok plus one-shot Codex fallback, provider isolation, validated report transport, and bounded concurrency |
 
-Grok is the primary code writer. A classified second availability failure may
+AGY 3.6 is the default code writer and Grok remains selectable. A classified second availability failure may
 use one Codex Sol high writer attempt; that is recovery, not daytime review.
 Both Claude supervisor profiles have no `Write`,
 `Edit`, or unrestricted `Bash` capability. There is no daytime LLM review.
@@ -30,7 +30,8 @@ export PATH="$HOME/.agents/bin:$PATH"
 run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
 run-controller start \
   --run-dir "$RUN_DIR" \
-  --project-cwd "$PROJECT_CWD"
+  --project-cwd "$PROJECT_CWD" \
+  --provider agy # or: grok
 run-controller watch --run-dir "$RUN_DIR" --timeout 240
 run-controller status --run-dir "$RUN_DIR" --json
 ```
@@ -43,7 +44,7 @@ The controller releases ready DAG tasks through `lane-ctl`, which hashes the
 immutable task YAML, creates `state.json` plus `attempts/01/`, and launches:
 
 ```text
-lane-bg → lane-exec → lane-session → grok
+lane-bg → lane-exec → lane-session → agy|grok
 ```
 
 One `run-supervisor` remains visible and repeats bounded `watch` calls until a
@@ -71,23 +72,25 @@ log loop. A retry reuses the recorded argv array from the current attempt's
 `control.json`; it never
 reconstructs or shell-evaluates a free-form command. The argv schema and prompt
 digest are revalidated, the task hash must still match, and the control plane
-permits two Grok attempts. Retry writes `attempts/02` without overwriting 01.
-After a second sanitized `fallback_eligible` Grok failure, the controller alone
+permits two attempts by the selected primary provider. Retry writes
+`attempts/02` without overwriting 01. After a second sanitized
+`fallback_eligible` primary-provider failure, the controller alone
 may create `attempts/03` with fixed provider/model/effort: `codex`,
 `gpt-5.6-sol`, `high`. No fourth attempt is permitted.
 
-Grok runs with `bypassPermissions` because headless interactive approval cannot
+Grok runs with `bypassPermissions`; AGY runs with `always-proceed` because headless interactive approval cannot
 wait for an operator. This does not grant control-plane ownership: an outer
 Bubblewrap boundary mounts the repository `.agents` tree read-only only for the
-provider. To avoid nested-sandbox denial of terminal commands, Grok's native
+provider. To avoid nested-sandbox denial of terminal commands, the primary provider's native
 sandbox is `off` inside that boundary; Bubblewrap itself exposes the project,
-private temp directories, and `~/.grok` as writable, the rest of the host as
+private temp directories, and only its conversation state (`~/.grok` or
+`~/.gemini/antigravity-cli`) as writable, the rest of the host as
 read-only, and then over-mounts `.agents` read-only. Host `/run`, `/tmp`, and
 `/var/tmp` are not shared; when `/etc/resolv.conf` targets a file below `/run`,
 only that resolved file is restored with a read-only bind so OIDC and provider
 DNS continue to work. Active pathname Unix sockets that would reappear through
 a writable bind are masked, and the provider environment is allowlisted.
-`agents-doctor` reproduces this structural resolver probe before routing Grok.
+`agents-doctor` reproduces this structural resolver probe before routing AGY or Grok.
 This boundary does not claim network-egress isolation. The `owns_paths`
 contract remains the narrower behavioral boundary. The final response carries
 one task/prompt-bound report envelope; trusted `lane-session` validates it and

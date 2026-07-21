@@ -72,11 +72,12 @@ class RunControllerTest(unittest.TestCase):
                         record("start")
                         print("forced start failure", file=sys.stderr)
                         raise SystemExit(7)
+                    selected_provider = args[args.index("--provider") + 1]
                     state[task_id] = {
                         "status": "running",
                         "attempt": 1,
                         "polls": 0,
-                        "provider": "grok",
+                        "provider": selected_provider,
                     }
                     record("start")
                     payload = {"status": "started", "task_id": task_id, "attempt": 1}
@@ -97,7 +98,7 @@ class RunControllerTest(unittest.TestCase):
                                 item["status"] = "cancelled"
                             elif item.get("provider") == "codex" and task_id in plan.get("fallback_fail", []):
                                 item["status"] = "failed"
-                            elif item.get("provider") == "grok" and task_id in plan.get("fail_always", []):
+                            elif item.get("provider") in {"agy", "grok"} and task_id in plan.get("fail_always", []):
                                 item["status"] = "failed"
                             elif task_id in plan.get("fail_first", []) and item["attempt"] == 1:
                                 item["status"] = "provider_failed"
@@ -112,11 +113,17 @@ class RunControllerTest(unittest.TestCase):
                         "attempt": item["attempt"],
                         "provider": {
                             "name": item.get("provider", "grok"),
-                            "model": "gpt-5.6-sol" if item.get("provider") == "codex" else "grok-4.5",
+                            "model": (
+                                "gpt-5.6-sol"
+                                if item.get("provider") == "codex"
+                                else "gemini-3.6-flash-high"
+                                if item.get("provider") == "agy"
+                                else "grok-4.5"
+                            ),
                             "failure_class": (
-                                "grok_bootstrap_transient"
+                                f"{item.get('provider')}_bootstrap_transient"
                                 if item["status"] == "failed"
-                                and item.get("provider") == "grok"
+                                and item.get("provider") in {"agy", "grok"}
                                 and task_id in plan.get("eligible_failure", [])
                                 else "codex_provider_failed"
                                 if item["status"] == "failed" and item.get("provider") == "codex"
@@ -125,7 +132,7 @@ class RunControllerTest(unittest.TestCase):
                             "failure_retryable": item["status"] == "failed",
                             "fallback_eligible": (
                                 item["status"] == "failed"
-                                and item.get("provider") == "grok"
+                                and item.get("provider") in {"agy", "grok"}
                                 and task_id in plan.get("eligible_failure", [])
                             ),
                         },
@@ -345,6 +352,10 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads((self.run_dir / "controller.json").read_text())
         self.assertEqual(receipt["stage"], "accepted")
+        self.assertEqual(receipt["tasks"]["001"]["provider"], "agy")
+        self.assertEqual(
+            receipt["tasks"]["001"]["model"], "gemini-3.6-flash-high"
+        )
         self.assertEqual(receipt["counts"], {"total": 3, "accepted": 3, "blocked": 0, "running": 0, "pending": 0})
         actions = self.actions()
         active: set[str] = set()
@@ -361,6 +372,17 @@ class RunControllerTest(unittest.TestCase):
         accept_002 = actions.index({"action": "accept", "task_id": "002"})
         self.assertLess(accept_001, start_003)
         self.assertLess(start_003, accept_002)
+
+    def test_explicit_grok_writer_remains_selectable(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+
+        result = self.run_controller("--provider", "grok")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["tasks"]["001"]["provider"], "grok")
+        self.assertEqual(receipt["tasks"]["001"]["model"], "grok-4.5")
 
     def test_large_verification_result_does_not_block_acceptance(self) -> None:
         self.write_run(provider_slots=1)

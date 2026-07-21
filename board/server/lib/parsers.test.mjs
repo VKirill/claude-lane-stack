@@ -31,8 +31,10 @@ async function writeTrustedProviderReport({
   taskSource,
   attempt = 1,
   provider = 'grok',
-  model = provider === 'codex' ? 'gpt-5.6-sol' : 'grok-4.5',
-  reasoningEffort = provider === 'codex' ? 'high' : 'medium',
+  model = provider === 'codex'
+    ? 'gpt-5.6-sol'
+    : provider === 'agy' ? 'gemini-3.6-flash-high' : 'grok-4.5',
+  reasoningEffort = provider === 'codex' || provider === 'agy' ? 'high' : 'medium',
 }) {
   const attemptDirectory = path.join(artifactDirectory, 'attempts', String(attempt).padStart(2, '0'));
   const taskSha256 = createHash('sha256').update(taskSource).digest('hex');
@@ -65,10 +67,12 @@ async function writeTrustedProviderReport({
     provider_exit_code: 0,
     exit_code: 0,
     protocol_valid: true,
-    stop_reason: provider === 'codex' ? 'TurnCompleted' : 'EndTurn',
+    stop_reason: provider === 'grok' ? 'EndTurn' : 'TurnCompleted',
     sandbox: 'bubblewrap-workspace',
     provider_sandbox: provider === 'codex' ? 'workspace-write' : 'off',
-    permission_mode: provider === 'codex' ? 'never' : 'bypassPermissions',
+    permission_mode: provider === 'codex'
+      ? 'never'
+      : provider === 'agy' ? 'always-proceed' : 'bypassPermissions',
     subagents_enabled: false,
     control_plane_read_only: true,
     prompt_sha256: promptSha256,
@@ -327,7 +331,12 @@ test('finished provider lifecycle distinguishes incomplete report and verificati
   const tasksDirectory = path.join(runPath, 'tasks');
   await mkdir(tasksDirectory, { recursive: true });
 
-  async function writePhase(id, { report = null, verification = null, stateStatus = 'running' } = {}) {
+  async function writePhase(id, {
+    report = null,
+    verification = null,
+    stateStatus = 'running',
+    provider = 'grok',
+  } = {}) {
     const source = ['schema_version: 2', `id: "${id}"`, `title: Phase ${id}`].join('\n');
     const artifact = path.join(runPath, 'artifacts', id);
     const attempt = path.join(artifact, 'attempts', '01');
@@ -348,6 +357,7 @@ test('finished provider lifecycle distinguishes incomplete report and verificati
         artifactDirectory: artifact,
         taskId: id,
         taskSource: source,
+        provider,
       });
     } else {
       await writeFile(path.join(attempt, 'control.json'), JSON.stringify({ attempt: 1 }));
@@ -368,7 +378,7 @@ test('finished provider lifecycle distinguishes incomplete report and verificati
   }
 
   await writePhase('001');
-  await writePhase('002', { report: 'STATUS: complete\n' });
+  await writePhase('002', { report: 'STATUS: complete\n', provider: 'agy' });
   await writePhase('003', { report: 'STATUS: complete\n', verification: 'running' });
   await writePhase('004', { stateStatus: 'blocked' });
 

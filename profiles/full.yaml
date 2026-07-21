@@ -1,8 +1,8 @@
-# Claude + Grok write + Codex review
+# Claude + AGY write (Grok selectable) + Codex review
 pm: claude
 profile: full
 lanes:
-  fast_write: grok         # run-supervisor watches the durable Grok controller
-  main_write: grok         # run-supervisor watches the durable Grok controller
+  fast_write: agy          # run-supervisor passes --provider agy
+  main_write: agy          # use --provider grok to switch
   review: codex            # codex-reviewer
   emergency_write: codex   # codex-implementer

@@ -13,6 +13,86 @@ DOCTOR = ROOT / "bin" / "agents-doctor"
 
 
 class AgentsDoctorTest(unittest.TestCase):
+    def test_agy_requires_gemini_36_and_is_preferred_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            (fake_bin / "python3").symlink_to(sys.executable)
+            (fake_bin / "bash").symlink_to("/usr/bin/bash")
+            for name in ("claude", "codex", "bwrap"):
+                executable = fake_bin / name
+                executable.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+                executable.chmod(0o755)
+            agy = fake_bin / "agy"
+            agy.write_text(
+                "#!/usr/bin/env bash\n"
+                "[[ \"${1:-}\" == models ]] && echo gemini-3.6-flash-high && exit 0\n"
+                "[[ \"${1:-}\" == agents ]] && echo agy-writer && exit 0\n"
+                "echo 'agy 1.1.5'\n",
+                encoding="utf-8",
+            )
+            agy.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = str(fake_bin)
+            result = subprocess.run(
+                [str(DOCTOR), "--json", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = __import__("json").loads(result.stdout)
+            self.assertTrue(payload["tools"]["agy"]["present"])
+            self.assertEqual(payload["lanes"]["fast_write"], "agy")
+
+            agy.write_text(
+                "#!/usr/bin/env bash\n"
+                "[[ \"${1:-}\" == models ]] && echo gemini-3.5-flash-high && exit 0\n"
+                "[[ \"${1:-}\" == agents ]] && echo agy-writer && exit 0\n"
+                "echo 'agy 1.1.5'\n",
+                encoding="utf-8",
+            )
+            missing = subprocess.run(
+                [str(DOCTOR), "--json", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            missing_payload = __import__("json").loads(missing.stdout)
+            self.assertFalse(missing_payload["tools"]["agy"]["present"])
+            self.assertEqual(
+                missing_payload["tools"]["agy"]["unavailable_reason"],
+                "gemini-3.6-flash-high unavailable",
+            )
+
+            agy.write_text(
+                "#!/usr/bin/env bash\n"
+                "[[ \"${1:-}\" == models ]] && echo gemini-3.6-flash-high && exit 0\n"
+                "[[ \"${1:-}\" == agents ]] && echo consult && exit 0\n"
+                "echo 'agy 1.1.5'\n",
+                encoding="utf-8",
+            )
+            missing_agent = subprocess.run(
+                [str(DOCTOR), "--json", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            missing_agent_payload = __import__("json").loads(missing_agent.stdout)
+            self.assertFalse(missing_agent_payload["tools"]["agy"]["present"])
+            self.assertEqual(
+                missing_agent_payload["tools"]["agy"]["unavailable_reason"],
+                "agy-writer agent unavailable",
+            )
+
     def test_bubblewrap_probe_matches_lane_network_namespace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -121,7 +201,7 @@ class AgentsDoctorTest(unittest.TestCase):
             env = os.environ.copy()
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             result = subprocess.run(
-                [str(DOCTOR), "--apply", str(repo)],
+                [str(DOCTOR), "--apply", "--writer-provider", "grok", str(repo)],
                 text=True,
                 capture_output=True,
                 env=env,

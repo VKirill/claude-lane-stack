@@ -7,7 +7,7 @@
 | Role | Who | Default model |
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
-| Write (all risks) | **Grok 4.5** only | sole programmer lane |
+| Write (all risks) | **AGY 3.6** (default) or **Grok 4.5** | selected programmer lane |
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
 | Fallback write | Codex | see claude-codex table |
@@ -27,14 +27,14 @@
 **Effort:** agentic write → `high` or `xhigh`. Escalate Terra stall → Sol xhigh.
 All review uses Sol xhigh through the read-only `night-review` profile.
 
-## Code routing (full stack: Grok + Codex)
+## Code routing (full stack)
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
-| `risk: low` UI/wiring | **grok** | Grok 4.5 medium |
-| `risk: medium` | Grok daytime → Codex night shift | Grok 4.5 medium + gpt-5.6-sol xhigh nightly |
-| `risk: high` auth/pay/schema | Grok solo daytime → Codex night shift | no silent daytime reviewer |
-| Grok model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |
+| `risk: low` UI/wiring | **agy** by default; `grok` selectable | Gemini 3.6 Flash high or Grok 4.5 medium |
+| `risk: medium` | selected writer → Codex night shift | same receipt chain + gpt-5.6-sol xhigh nightly |
+| `risk: high` auth/pay/schema | selected writer solo → Codex night shift | no silent daytime reviewer |
+| Selected model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |
 | Empty-diff / task/protocol failure | retry once, then block; manual **codex-implementer** only by operator | — |
 
 ## Review tiers
@@ -42,7 +42,7 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 | Tier    | Trigger                            | Review |
 |---------|-------------------------------------|--------|
 | none    | micro path / risk low               | verify field + check-owns-paths only |
-| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Grok repair; fresh re-review |
+| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded AGY/Grok repair; fresh re-review |
 
 There is no daytime LLM review. Historical or explicitly configured
 `gate: pre-merge` runs stop for an operator decision instead of silently
@@ -93,12 +93,12 @@ See [LANE-EXEC.md](LANE-EXEC.md). One source-read-only `run-supervisor` stays
 visible through bounded watches; the detached deterministic controller remains
 alive independently and makes all lifecycle decisions.
 
-Grok write tasks within the same run use `lane-session` affinity. The
+AGY and Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
 slots (five by default, configurable 1–10). Default rotation: seven successful tasks; review remains
 an independent cold session.
 Classified provider availability failures are sanitized in `runtime.json`. The
-controller waits 30 seconds by default, retries the exact Grok model once, then
+controller waits 30 seconds by default, retries the exact selected model once, then
 may use one ephemeral `gpt-5.6-sol` + `high` writer attempt. It cannot switch on
 ownership, verification, cancellation, or an unknown failure.
 
@@ -106,7 +106,7 @@ ownership, verification, cancellation, or an unknown failure.
 
 | Situation | Policy |
 |-----------|--------|
-| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, durable controller around one detached **Grok** lane, no daytime reviewer |
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, durable controller around one detached **AGY/Grok** lane, no daytime reviewer |
 | 1 low-risk write | main tree OK; typed `run-controller start` |
 | ≥2 writes OR score ≥ 4 | worktree; provider pool default 5 / max 10; durable progressive accept; disjoint owns_paths |
 | Verification | separate pool default 2 / max 10; exact task commands only |

@@ -31,9 +31,9 @@ owner. `run-supervisor` plus `run-controller` own the closed loop; `lane-bg`,
 5. Run `verify` only after provider exit 0. It uses the immutable command
    snapshot registered from the trusted task contract at `start`, under a
    separate bounded verification pool.
-6. Retry a failed or stalled Grok task once. Attempt 3 is reserved for the
+6. Retry a failed or stalled AGY/Grok task once. Attempt 3 is reserved for the
    fixed Codex Sol high adapter and `fallback` is allowed only when the second
-   Grok runtime receipt says `fallback_eligible: true`. Otherwise return
+   selected provider runtime receipt says `fallback_eligible: true`. Otherwise return
    `blocked`; never choose a provider or model ad hoc.
 7. Never commit, push, merge, deploy, edit source, or claim the run shipped.
 8. Run `accept` only after the PM has produced `owns-check.json` and any

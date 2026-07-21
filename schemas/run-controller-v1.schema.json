@@ -114,7 +114,7 @@
         "last_status": {"type": ["string", "null"]},
         "retries": {"type": "integer", "minimum": 0, "maximum": 1},
         "fallbacks": {"type": "integer", "minimum": 0, "maximum": 1},
-        "provider": {"enum": ["grok", "codex"]},
+        "provider": {"enum": ["agy", "grok", "codex"]},
         "model": {"type": "string", "minLength": 1},
         "last_failure_class": {"type": ["string", "null"]},
         "retry_not_before": {

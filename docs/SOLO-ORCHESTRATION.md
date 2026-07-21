@@ -11,26 +11,26 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 3. **Parallel only with ownership.** Disjoint `owns_paths` or serial.
 4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.
 5. **One visible supervisor per run.** `run-supervisor` watches one durable
-   deterministic controller; Grok resumes only the writer session pool owned by
+   deterministic controller; AGY or Grok resumes only the writer session pool owned by
    that run and rotates after seven successful tasks.
 6. **Receipts are truth.** Task YAML is immutable; `state.json` drives live
    STATUS/BOARD and only `acceptance.json` means done.
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
-8. **Durable progressive accept.** `run-controller` dispatches detached Grok
+8. **Durable progressive accept.** `run-controller` dispatches detached AGY/Grok
    processes, reacts to receipts, and accepts each ready task without waiting
    for the slowest concurrent lane. The controller survives Claude restarts.
 9. **Bounded pools.** Provider default 5/max 10; verification default 2/max 10.
 10. **Fail-closed ship.** Commit, validation, finalize, then push; branch and
     worktree stay recoverable on any failure.
-11. **Typed provider recovery.** Retry exact Grok once after a persisted
+11. **Typed provider recovery.** Retry the exact selected provider once after a persisted
     deadline; only a second classified availability failure may use one
     ephemeral Codex Sol high writer attempt through the same receipts.
 
 Daytime: micro/medium ship fast with exact checks and **no daytime LLM review**.
 Night: `night-shift` performs typed Codex Sol
-xhigh review and prepares verified Grok-primary fixes in an isolated worktree.
+xhigh review and prepares verified AGY/Grok fixes in an isolated worktree.
 The same typed one-shot Sol high recovery is available after two classified
-Grok availability failures; the independent xhigh re-review remains mandatory.
+primary-provider availability failures; the independent xhigh re-review remains mandatory.
 Morning: `resume-project` surfaces canonical findings and any repair run still
 awaiting human or merge policy action.
 
@@ -54,7 +54,7 @@ keeps the generated v2 files concise and ships in minutes.
 | Tier    | Trigger                            | Review |
 |---------|-------------------------------------|--------|
 | none    | micro path / risk low               | verify field + check-owns-paths only |
-| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Grok repair; fresh re-review |
+| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded AGY/Grok repair; fresh re-review |
 
 Normal daytime runs never invoke an LLM reviewer. Historical or explicitly
 configured `gate: pre-merge` runs stop for an operator decision instead of
@@ -87,7 +87,7 @@ PROGRESS.md ← Now/Next updated
 | `lane-ctl retry/cancel` | bounded recovery from recorded control state |
 | `lane-ctl verify` | exact task checks under the separate verification semaphore |
 | `lane-ctl accept` | write the sole technical done receipt |
-| `lane-session status --run-dir …` | inspect run-owned Grok session IDs and rotations |
+| `lane-session status --run-dir …` | inspect run-owned AGY/Grok session IDs and rotations |
 | `run-board <repo>` | refresh BOARD.md |
 | `lane-stall-check <repo>` | find zombies |
 | `check-owns-paths <task.yaml>` | after write lane |
@@ -95,7 +95,7 @@ PROGRESS.md ← Now/Next updated
 | `run-finalize --run-dir …` | deterministic PROGRESS/BOARD/OPEN refresh |
 | `night-audit <repo>` | overnight audit file |
 | `night-review <repo>` | typed read-only review + canonical findings |
-| `night-shift <repo>` | review + isolated bounded Grok repair loop |
+| `night-shift <repo>` | review + isolated bounded AGY/Grok repair loop |
 | `night-shift-all` | discover configured projects and run the night shift |
 
 ## Human UX

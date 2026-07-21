@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Detect Claude + optional write/review CLIs; write routing profile.
 
-PM is always Claude. Write programmer is Grok only.
+PM is always Claude. AGY and Grok are switchable write providers.
 Review/onboard/docs may use Codex. Claude-only fallback if neither present.
 """
 from __future__ import annotations
@@ -16,10 +16,16 @@ from pathlib import Path
 
 PROFILES = {
     "full": {
-        "fast_write": "grok",
-        "main_write": "grok",
+        "fast_write": "agy",
+        "main_write": "agy",
         "review": "codex",
         "emergency_write": "codex",
+    },
+    "claude-agy": {
+        "fast_write": "agy",
+        "main_write": "agy",
+        "review": "claude-reviewer",
+        "emergency_write": "agy",
     },
     "claude-codex": {
         "fast_write": "codex",
@@ -48,6 +54,7 @@ PROFILES = {
 }
 
 AGENT_MAP = {
+    "agy": "run-supervisor",
     "grok": "run-supervisor",
     "codex": "codex-implementer",
     "claude-worker": "general-purpose",
@@ -67,6 +74,15 @@ def run_version(cmd: list[str], timeout: float = 8.0) -> str:
         return (out or "").strip().splitlines()[0][:120]
     except Exception as e:
         return f"error: {e.__class__.__name__}"
+
+
+def command_lines(cmd: list[str], timeout: float = 8.0) -> list[str]:
+    try:
+        return subprocess.check_output(
+            cmd, stderr=subprocess.STDOUT, text=True, timeout=timeout
+        ).splitlines()
+    except Exception:
+        return []
 
 
 def bubblewrap_operational(binary: str | None) -> bool:
@@ -180,10 +196,43 @@ def detect() -> dict:
         "version": run_version(["claude", "--version"]) if p else None,
         "required": True,
     }
-    p = which("grok")
     bwrap = which("bwrap")
     bwrap_ready = bubblewrap_operational(bwrap)
     resolver_ready = bubblewrap_resolver_operational(bwrap) if bwrap_ready else False
+    p = which("agy")
+    agy_models = command_lines(["agy", "models"]) if p else []
+    agy_agents = command_lines(["agy", "agents"]) if p else []
+    agy_model_ready = "gemini-3.6-flash-high" in agy_models
+    agy_agent_ready = any(line.strip() == "agy-writer" for line in agy_agents)
+    tools["agy"] = {
+        "present": bool(
+            p
+            and agy_model_ready
+            and agy_agent_ready
+            and bwrap_ready
+            and resolver_ready
+        ),
+        "binary_present": bool(p),
+        "model_present": agy_model_ready,
+        "agent_present": agy_agent_ready,
+        "path": p,
+        "version": run_version(["agy", "--version"]) if p else None,
+        "required": False,
+        "unavailable_reason": (
+            "gemini-3.6-flash-high unavailable"
+            if p and not agy_model_ready
+            else "agy-writer agent unavailable"
+            if p and not agy_agent_ready
+            else "bubblewrap missing"
+            if p and not bwrap
+            else "bubblewrap probe failed"
+            if p and not bwrap_ready
+            else "bubblewrap resolver unavailable"
+            if p and not resolver_ready
+            else None
+        ),
+    }
+    p = which("grok")
     tools["grok"] = {
         "present": bool(p and bwrap_ready and resolver_ready),
         "binary_present": bool(p),
@@ -218,9 +267,21 @@ def detect() -> dict:
     return tools
 
 
-def pick_profile(tools: dict) -> tuple[str, dict, list[str]]:
+def pick_profile(
+    tools: dict, writer_provider: str = "auto"
+) -> tuple[str, dict, list[str]]:
     notes: list[str] = []
-    has = {k: tools[k]["present"] for k in ("claude", "grok", "codex")}
+    has = {k: tools[k]["present"] for k in ("claude", "agy", "grok", "codex")}
+    writer = (
+        writer_provider
+        if writer_provider != "auto" and has[writer_provider]
+        else "agy" if has["agy"] else "grok" if has["grok"] else None
+    )
+    if writer_provider != "auto" and not has[writer_provider]:
+        notes.append(f"Requested writer {writer_provider} unavailable; using {writer or 'fallback'}")
+    if tools["agy"].get("binary_present") and not has["agy"]:
+        reason = tools["agy"].get("unavailable_reason") or "unavailable"
+        notes.append(f"AGY disabled ({reason})")
     if tools["grok"].get("binary_present") and not has["grok"]:
         reason = tools["grok"].get("unavailable_reason") or "bubblewrap unavailable"
         notes.append(
@@ -231,19 +292,25 @@ def pick_profile(tools: dict) -> tuple[str, dict, list[str]]:
         notes.append("Claude Code missing — install required for PM")
         return "none", {}, notes
 
-    if has["grok"] and has["codex"]:
+    if writer and has["codex"]:
         name = "full"
-    elif has["grok"]:
-        name = "claude-grok"
+        lanes = dict(PROFILES[name])
+        lanes["fast_write"] = writer
+        lanes["main_write"] = writer
+    elif writer:
+        name = f"claude-{writer}"
+        lanes = dict(PROFILES[name])
         notes.append("Codex missing → review falls back to Claude reviewer")
     elif has["codex"]:
         name = "claude-codex"
-        notes.append("Grok missing — write + review via Codex")
+        lanes = dict(PROFILES[name])
+        notes.append("AGY/Grok missing — write + review via Codex")
     else:
         name = "claude-only"
-        notes.append("No Grok/Codex — Claude subagents only")
+        lanes = dict(PROFILES[name])
+        notes.append("No AGY/Grok/Codex — Claude subagents only")
 
-    return name, dict(PROFILES[name]), notes
+    return name, lanes, notes
 
 
 def write_outputs(
@@ -296,10 +363,16 @@ def main() -> int:
         action="store_true",
         help="write .agents/capabilities.json + routing.profile.yaml",
     )
+    ap.add_argument(
+        "--writer-provider",
+        choices=("auto", "agy", "grok"),
+        default="auto",
+        help="preferred writer provider (default: auto, AGY before Grok)",
+    )
     args = ap.parse_args()
 
     tools = detect()
-    profile, lanes, notes = pick_profile(tools)
+    profile, lanes, notes = pick_profile(tools, args.writer_provider)
 
     if args.json:
         print(

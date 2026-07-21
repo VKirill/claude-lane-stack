@@ -18,12 +18,15 @@ so the operator can see that the run is still supervised.
 
 ## Inputs
 
-`RUN_DIR`, optional `PROJECT_CWD`, and optional provider/verification pool sizes.
+`RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`agy` or `grok`),
+and optional provider/verification pool sizes. If `WRITER_PROVIDER` is absent,
+use `main_write` from `.agents/routing.profile.yaml`, falling back to `agy`.
 
 ## Required loop
 
 1. Read `RUN_DIR/run.yaml` only to confirm the run identity.
-2. Run one direct `run-controller start ...` command. It is idempotent and
+2. Run one direct `run-controller start ... --provider WRITER_PROVIDER` command.
+   It is idempotent and
    returns the durable controller PID and evidence paths.
 3. If `start` is already terminal, skip to the matching status step. Otherwise,
    run one direct `run-controller watch --run-dir RUN_DIR --timeout 240` command.
@@ -37,7 +40,7 @@ so the operator can see that the run is still supervised.
 ## Hard rules
 
 - Never edit source, task YAML, reports, receipts, or project memory directly.
-- Never run Grok, verification commands, Git, merge, commit, push, deploy, or
+- Never run AGY/Grok, verification commands, Git, merge, commit, push, deploy, or
   review tools directly. Only the typed controller commands above are allowed.
 - Never spawn another agent and never create one supervisor per lane.
 - Never perform daytime LLM review. The independent night shift remains the

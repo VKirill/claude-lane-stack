@@ -271,6 +271,8 @@ class LaneCtlTest(unittest.TestCase):
             str(self.project_cwd),
             "--binary",
             str(self.provider),
+            "--provider",
+            "grok",
             "--pool-size",
             "1",
             "--idle",

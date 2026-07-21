@@ -271,8 +271,8 @@ def build_plan(
         if not isinstance(task_id, str) or not task_id or task_id in seen:
             raise RunnerError(f"invalid or duplicate task id in {task_path}")
         seen.add(task_id)
-        if task.get("schema_version") != 2 or task.get("lane") != "grok":
-            raise RunnerError(f"night fix task {task_id} must be schema v2 lane grok")
+        if task.get("schema_version") != 2 or task.get("lane") not in {"agy", "grok"}:
+            raise RunnerError(f"night fix task {task_id} must be schema v2 lane agy/grok")
         if Path(str(task.get("project_cwd", ""))).resolve() != worktree:
             raise RunnerError(f"task {task_id} project_cwd does not match worktree")
         verification = task.get("verification")
@@ -835,8 +835,14 @@ def process_task(
     poll_interval: float,
     provider_timeout: int,
     codex_bin: str | None,
-    grok_bin: str | None,
+    primary_provider: str = "agy",
+    provider_bin: str | None = None,
+    grok_bin: str | None = None,
 ) -> bool:
+    if provider_bin is None:
+        provider_bin = grok_bin
+    if grok_bin is not None:
+        primary_provider = "grok"
     task_id = task["id"]
     task_file = Path(task["path"])
     task_state = state["tasks"][task_id]
@@ -895,9 +901,11 @@ def process_task(
                     str(task_file),
                     "--project-cwd",
                     str(worktree),
+                    "--provider",
+                    primary_provider,
                 ]
-            if grok_bin:
-                start_argv.extend(["--binary", grok_bin])
+            if provider_bin:
+                start_argv.extend(["--binary", provider_bin])
             started = run_command(
                 start_argv,
                 timeout=120,
@@ -923,13 +931,13 @@ def process_task(
         if status.get("status") in {"awaiting_verification", "verified"}:
             break
         attempt = int(status.get("attempt") or task_state.get("attempts") or 1)
-        provider = status.get("provider")
+        provider_receipt = status.get("provider")
         if attempt >= 2:
             if (
                 attempt == 2
-                and isinstance(provider, dict)
-                and provider.get("name") == "grok"
-                and provider.get("fallback_eligible") is True
+                and isinstance(provider_receipt, dict)
+                and provider_receipt.get("name") in {"agy", "grok"}
+                and provider_receipt.get("fallback_eligible") is True
             ):
                 fallback_argv = [
                     str(LANE_CTL),
@@ -964,8 +972,8 @@ def process_task(
                     attempts=3,
                     provider="codex",
                     model="gpt-5.6-sol",
-                    fallback_from="grok",
-                    fallback_failure_class=provider.get("failure_class"),
+                    fallback_from=provider_receipt.get("name"),
+                    fallback_failure_class=provider_receipt.get("failure_class"),
                 )
                 status = wait_for_provider(
                     run_dir,
@@ -1034,7 +1042,8 @@ def process_task(
                         poll_interval=poll_interval,
                         provider_timeout=provider_timeout,
                         codex_bin=codex_bin,
-                        grok_bin=grok_bin,
+                        primary_provider=primary_provider,
+                        provider_bin=provider_bin,
                     )
             set_stage(repo, state, task_id, "blocked", error="verification failed")
             return False
@@ -1160,7 +1169,8 @@ def run_fix_plan(args: argparse.Namespace) -> int:
                 poll_interval=args.poll_interval,
                 provider_timeout=args.provider_timeout,
                 codex_bin=args.codex_bin,
-                grok_bin=args.grok_bin,
+                primary_provider="grok" if args.grok_bin else args.provider,
+                provider_bin=args.provider_bin or args.grok_bin,
             ):
                 failures += 1
         except RunnerError as exc:
@@ -1231,8 +1241,10 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--auto-merge", action="store_true")
     ap.add_argument("--poll-interval", type=nonnegative_float, default=5.0)
     ap.add_argument("--provider-timeout", type=positive_int, default=7200)
+    ap.add_argument("--provider", choices=("agy", "grok"), default="agy")
+    ap.add_argument("--provider-bin")
     ap.add_argument("--codex-bin")
-    ap.add_argument("--grok-bin")
+    ap.add_argument("--grok-bin", help=argparse.SUPPRESS)
     return ap
 
 

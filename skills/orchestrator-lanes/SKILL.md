@@ -1,6 +1,6 @@
 ---
 name: orchestrator-lanes
-description: Solo file-based multi-lane orchestration. Durable daytime Grok controller, no daytime LLM review, nightly Codex review/fix, PM auto-merges to main.
+description: Solo file-based multi-lane orchestration. Durable switchable AGY/Grok controller, no daytime LLM review, nightly Codex review/fix, PM auto-merges to main.
 ---
 
 # Orchestrator lanes — solo operator
@@ -37,7 +37,8 @@ commit to main.
 
 Micro commit format: `<type>(<area>): <title> [micro:<slug>]`.
 
-Default writer is Grok 4.5. The controller retries Grok once after a persisted
+Default writer is AGY `gemini-3.6-flash-high`; Grok 4.5 remains selectable with
+`--provider grok`. The controller retries the selected provider once after a persisted
 backoff; a second classified model/catalog/quota/auth/transport failure uses one
 integrated `gpt-5.6-sol` + `high` Codex attempt through the same receipt chain.
 
@@ -103,7 +104,7 @@ and non-ledger safety hooks remain available.
 ```
 
 Required run dispatch fields are `RUN_DIR` and `PROJECT_CWD`. `lane-ctl start`
-builds each writer prompt from `agents/grok/writer.md` plus the raw task YAML,
+builds each writer prompt from the shared `agents/grok/writer.md` contract plus the raw task YAML,
 registers immutable argv in
 `attempts/<nn>/control.json`, and appends lifecycle records to run-level
 `events.jsonl`.
@@ -112,13 +113,13 @@ registers immutable argv in
 You are run-supervisor.
 RUN_DIR: /absolute/repo/.agents/runs/<slug>
 PROJECT_CWD: /absolute/worktree
-Run `run-controller start`, then bounded `watch` calls until accepted/blocked.
+Run `run-controller start --provider agy|grok`, then bounded `watch` calls until accepted/blocked.
 Never edit source and never return while the controller is still running.
 ```
 
 | `lane` | Agent |
 |--------|--------|
-| grok | one run-supervisor (read-only watch); Grok processes are writers |
+| agy / grok | one run-supervisor (read-only watch); selected provider processes are writers |
 | codex fallback | automatic Sol high write only after two eligible Grok failures |
 | codex-implementer | manual emergency recovery after the typed controller blocks |
 | codex-review-medium | codex-reviewer (sol xhigh) |
@@ -127,7 +128,7 @@ Never edit source and never return while the controller is still running.
 ### Control-plane commands
 
 ```bash
-run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD"
+run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD" --provider agy
 run-controller watch --run-dir "$RUN_DIR" --timeout 240
 run-controller status --run-dir "$RUN_DIR" --json
 lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"

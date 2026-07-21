@@ -217,6 +217,8 @@ class LiveRunControllerTest(unittest.TestCase):
                     str(repo),
                     "--poll-interval",
                     "0.05",
+                    "--provider",
+                    "grok",
                 ],
                 text=True,
                 stdout=subprocess.PIPE,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Typed control plane for detached Grok lanes.
+"""Typed control plane for detached AGY/Grok lanes.
 
 The CLI deliberately exposes lifecycle operations, not a generic command
 runner. Provider launches are assembled here from validated task contracts;
@@ -48,8 +48,9 @@ HARD_MAX_TASKS = 10
 HARD_TAIL_LINES = 1000
 HARD_VERIFY_TIMEOUT = 86400
 HARD_V2_VERIFY_TIMEOUT = 7200
-MAX_GROK_ATTEMPTS = 2
+MAX_PRIMARY_ATTEMPTS = 2
 MAX_ATTEMPTS = 3
+PRIMARY_MODELS = {"agy": "gemini-3.6-flash-high", "grok": "grok-4.5"}
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 CODEX_FALLBACK_REASONING = "high"
 TAIL_SOURCES = {
@@ -569,13 +570,18 @@ def trusted_provider_report(
     provider = runtime.get("provider")
     expected_provider = expected_control.get("provider", "grok")
     provider_identity_valid = (
-        provider in {"grok", "codex"}
+        provider in {"agy", "grok", "codex"}
         and provider == expected_provider
         and runtime.get("model") == expected_control.get("model", runtime.get("model"))
         and runtime.get("reasoning_effort")
         == expected_control.get("reasoning_effort", runtime.get("reasoning_effort"))
     )
     provider_policy_valid = (
+        provider == "agy"
+        and runtime.get("stop_reason") == "TurnCompleted"
+        and runtime.get("provider_sandbox") == "off"
+        and runtime.get("permission_mode") == "always-proceed"
+    ) or (
         provider == "grok"
         and runtime.get("stop_reason") == "EndTurn"
         and runtime.get("provider_sandbox") == "off"
@@ -1216,6 +1222,8 @@ def cmd_start_v2(
 
 
 def cmd_start(args: argparse.Namespace) -> int:
+    if args.model is None:
+        args.model = PRIMARY_MODELS[args.provider]
     context = validate_task_context(
         run_dir_value=args.run_dir,
         task_id=args.task_id,
@@ -1568,7 +1576,7 @@ def validate_recorded_argv(
         argv[session + 2 :], allowed=session_allowed, label="lane-session"
     )
     recorded_provider = control.get("provider", "grok")
-    if recorded_provider not in {"grok", "codex"}:
+    if recorded_provider not in {"agy", "grok", "codex"}:
         raise ContractError("recorded provider is unsupported")
     required = {
         "--provider": recorded_provider,
@@ -1675,14 +1683,14 @@ def cmd_retry_v2(
     attempt = state.get("current_attempt", state.get("attempt"))
     if not isinstance(attempt, int) or attempt < 1:
         raise ContractError("state.json current_attempt is invalid")
-    if attempt >= MAX_GROK_ATTEMPTS:
+    if attempt >= MAX_PRIMARY_ATTEMPTS:
         raise ContractError(
-            f"Grok retry limit reached: maximum {MAX_GROK_ATTEMPTS} attempts"
+            f"writer retry limit reached: maximum {MAX_PRIMARY_ATTEMPTS} attempts"
         )
 
     old_dir, old_control = load_control_for(run_dir, task_id)
-    if old_control.get("provider", "grok") != "grok":
-        raise ContractError("retry replays Grok only; Codex fallback is one-shot")
+    if old_control.get("provider", "grok") not in PRIMARY_MODELS:
+        raise ContractError("retry replays AGY/Grok only; Codex fallback is one-shot")
     old_argv = validate_recorded_argv(
         old_control.get("argv"),
         artifact=old_dir,
@@ -1768,9 +1776,9 @@ def cmd_fallback_v2(
     if state.get("accepted") or state.get("status") == "done":
         raise ContractError("cannot fallback an accepted task")
     attempt = state.get("current_attempt", state.get("attempt"))
-    if attempt != MAX_GROK_ATTEMPTS:
+    if attempt != MAX_PRIMARY_ATTEMPTS:
         raise ContractError(
-            f"Codex fallback requires exactly {MAX_GROK_ATTEMPTS} completed Grok attempts"
+            f"Codex fallback requires exactly {MAX_PRIMARY_ATTEMPTS} completed writer attempts"
         )
 
     old_dir, old_control = load_control_for(run_dir, task_id)
@@ -1781,16 +1789,17 @@ def cmd_fallback_v2(
         task_id=task_id,
         control=old_control,
     )
-    if old_control.get("provider", "grok") != "grok":
-        raise ContractError("Codex fallback may only replace a Grok attempt")
+    primary_provider = old_control.get("provider", "grok")
+    if primary_provider not in PRIMARY_MODELS:
+        raise ContractError("Codex fallback may only replace an AGY/Grok attempt")
     runtime = read_json(safe_child_file(old_dir, "runtime.json"))
     if (
-        runtime.get("provider") != "grok"
+        runtime.get("provider") != primary_provider
         or runtime.get("fallback_eligible") is not True
         or runtime.get("exit_code") == 0
         or not isinstance(runtime.get("failure_class"), str)
     ):
-        raise ContractError("current Grok failure is not eligible for Codex fallback")
+        raise ContractError("current writer failure is not eligible for Codex fallback")
 
     old_prompt = safe_child_file(old_dir, "prompt.md")
     try:
@@ -1842,7 +1851,7 @@ def cmd_fallback_v2(
             "argv_sha256": command_hash(new_argv),
             "created_at": utc_now(),
             "fallback_of_attempt": attempt,
-            "fallback_from_provider": "grok",
+            "fallback_from_provider": primary_provider,
             "fallback_failure_class": runtime["failure_class"],
         }
     )
@@ -1921,9 +1930,9 @@ def cmd_retry(args: argparse.Namespace) -> int:
         attempt = control.get("attempt")
         if not isinstance(attempt, int) or attempt < 1:
             raise ContractError("recorded attempt is invalid")
-        if attempt >= MAX_GROK_ATTEMPTS:
+        if attempt >= MAX_PRIMARY_ATTEMPTS:
             raise ContractError(
-                f"Grok retry limit reached: maximum {MAX_GROK_ATTEMPTS} attempts"
+                f"writer retry limit reached: maximum {MAX_PRIMARY_ATTEMPTS} attempts"
             )
         argv = validate_recorded_argv(
             control.get("argv"),
@@ -2772,17 +2781,17 @@ def add_run_selector(parser: argparse.ArgumentParser, *, task_required: bool = T
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Typed lifecycle control for detached Grok lanes"
+        description="Typed lifecycle control for detached AGY/Grok lanes"
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    start = sub.add_parser("start", help="validate and detach one Grok lane")
+    start = sub.add_parser("start", help="validate and detach one AGY/Grok lane")
     add_run_selector(start, task_required=False)
     start.add_argument("--task-file", required=True)
     start.add_argument("--project-cwd", required=True)
-    start.add_argument("--provider", choices=("grok",), default="grok")
+    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="agy")
     start.add_argument("--binary", help="provider binary override for tests")
-    start.add_argument("--model", type=validate_model, default="grok-4.5")
+    start.add_argument("--model", type=validate_model)
     start.add_argument(
         "--reasoning-effort", choices=("low", "medium", "high"), default="medium"
     )

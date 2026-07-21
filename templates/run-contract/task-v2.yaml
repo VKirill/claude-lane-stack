@@ -2,7 +2,7 @@ schema_version: 2
 id: "001"
 title: "REPLACE_ME concrete outcome"
 risk: medium
-lane: grok
+lane: agy
 project_cwd: {{project_cwd_yaml}}
 read_first:
   - "AGENTS.md"
