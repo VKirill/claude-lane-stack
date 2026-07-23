@@ -1584,8 +1584,8 @@ def validate_recorded_argv(
     session_options = parse_recorded_options(
         argv[session + 2 :], allowed=session_allowed, label="lane-session"
     )
-    recorded_provider = control.get("provider", "grok")
-    if recorded_provider not in {"agy", "grok", "codex"}:
+    recorded_provider = control.get("provider", "qwen")
+    if recorded_provider not in {"agy", "grok", "codex", "qwen"}:
         raise ContractError("recorded provider is unsupported")
     required = {
         "--provider": recorded_provider,
@@ -1698,8 +1698,8 @@ def cmd_retry_v2(
         )
 
     old_dir, old_control = load_control_for(run_dir, task_id)
-    if old_control.get("provider", "grok") not in PRIMARY_MODELS:
-        raise ContractError("retry replays AGY/Grok only; Codex fallback is one-shot")
+    if old_control.get("provider", "qwen") not in PRIMARY_MODELS:
+        raise ContractError("retry replays primary writers only; Codex fallback is one-shot")
     old_argv = validate_recorded_argv(
         old_control.get("argv"),
         artifact=old_dir,

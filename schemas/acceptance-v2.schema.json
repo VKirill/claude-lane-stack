@@ -27,7 +27,7 @@
     "task_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "attempt": {"type": "integer", "minimum": 1},
     "provider_exit": {"const": 0},
-    "provider": {"enum": ["agy", "grok", "codex"]},
+    "provider": {"enum": ["agy", "grok", "codex", "qwen"]},
     "model": {"type": "string", "minLength": 1},
     "report": {"const": "complete"},
     "report_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},

@@ -271,8 +271,8 @@ def build_plan(
         if not isinstance(task_id, str) or not task_id or task_id in seen:
             raise RunnerError(f"invalid or duplicate task id in {task_path}")
         seen.add(task_id)
-        if task.get("schema_version") != 2 or task.get("lane") not in {"agy", "grok"}:
-            raise RunnerError(f"night fix task {task_id} must be schema v2 lane agy/grok")
+        if task.get("schema_version") != 2 or task.get("lane") not in {"agy", "grok", "qwen"}:
+            raise RunnerError(f"night fix task {task_id} must be schema v2 lane agy/grok/qwen")
         if Path(str(task.get("project_cwd", ""))).resolve() != worktree:
             raise RunnerError(f"task {task_id} project_cwd does not match worktree")
         verification = task.get("verification")
@@ -936,7 +936,7 @@ def process_task(
             if (
                 attempt == 2
                 and isinstance(provider_receipt, dict)
-                and provider_receipt.get("name") in {"agy", "grok"}
+                and provider_receipt.get("name") in {"agy", "grok", "qwen"}
                 and provider_receipt.get("fallback_eligible") is True
             ):
                 fallback_argv = [
