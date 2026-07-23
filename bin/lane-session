@@ -620,7 +620,6 @@ def provider_environment(provider: str) -> dict[str, str]:
             {
                 "QWEN_CODE_SUPPRESS_YOLO_WARNING": "1",
                 "QWEN_CODE_NO_RELAUNCH": "1",
-                "QWEN_SANDBOX": QWEN_SANDBOX_PROFILE,
             }
         )
     return environment

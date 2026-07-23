@@ -594,6 +594,27 @@ class LaneSessionTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
 
+    def test_qwen_environment_does_not_set_invalid_sandbox(self) -> None:
+        # qwen only accepts QWEN_SANDBOX in {docker, podman, sandbox-exec};
+        # "off" makes it loop on "Invalid sandbox command" before init. The
+        # external bubblewrap provides the sandbox, so it must stay unset.
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+
+        name = "lane_session_under_test"
+        loader = SourceFileLoader(name, str(LANE_SESSION))
+        spec = importlib.util.spec_from_loader(name, loader)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            loader.exec_module(module)
+        finally:
+            sys.modules.pop(name, None)
+        env = module.provider_environment("qwen")
+        self.assertNotIn("QWEN_SANDBOX", env)
+        self.assertEqual(env["QWEN_CODE_SUPPRESS_YOLO_WARNING"], "1")
+        self.assertEqual(env["QWEN_CODE_NO_RELAUNCH"], "1")
+
     def test_agy_rejects_tampered_agent_tool_allowlist_before_launch(self) -> None:
         agent = (
             self.fake_home
