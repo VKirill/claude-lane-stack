@@ -60,7 +60,7 @@ Claude **foreground Bash dies ~2 minutes**. That is **not** `lane-exec` idle/max
 
 | Who | Rule |
 |-----|------|
-| **run-supervisor** | One visible, source-read-only agent per run. It starts the durable controller, watches bounded intervals, and returns only on accepted or blocked. |
+| **run-supervisor** | One visible, source-read-only agent per run. It starts the durable controller, streams a one-line progress message per task stage change, and returns the terminal digest only on accepted or blocked. |
 | **run-controller** | Deterministic background process. Dispatches the DAG, retries once, performs progressive ownership/verification/acceptance, and persists `controller.json`. |
 | **lane-supervisor** | Manual one-action diagnostic/recovery profile only; never the normal daytime liveness owner. |
 | **Qwen/AGY/Grok** | Switchable normal code writer in its task worktree. `lane-bg` / `lane-exec` keep it alive independently of Claude. |
@@ -177,8 +177,12 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 1a. score 0–2 & low risk & ≤2 files & no `high_risk_paths` → **Micro path**:
 one strict **Qwen** task, same receipts, commit main — keep generated docs short.
 3. `wt-create` if needed ·
-4. Dispatch exactly one `run-supervisor` for the run. It starts/resumes the
-durable controller and does not return while status is non-terminal ·
+4. Dispatch exactly one `run-supervisor` for the run, passing `PM_NAME=dev-orchestrator`
+so it can stream progress. It starts/resumes the durable controller and does not
+return while status is non-terminal. As it watches, it sends you one short
+`▸ <run> · <task_id> <stage> · <accepted>/<total>` message per task stage change —
+surface each one to the operator as a single line so the run is visibly progressing;
+do not go silent until the terminal digest ·
 5. Controller progressively dispatches, checks ownership, verifies, accepts,
 and retries the writer once; a second eligible availability failure gets one typed
 Codex Sol high attempt. PM receives accepted/blocked plus exact evidence; no daytime LLM review ·
