@@ -30,6 +30,14 @@ IGNORE_PREFIXES = (
     "node_modules/",
     ".git/",
 )
+# Root-level living-memory files are maintained by orchestration tooling (the
+# shared session-ledger hook flushes PROGRESS.md from any concurrent session,
+# project-memory/night-audit touch both), never by a task writer. Checking them
+# would turn an unrelated session flush into a false owns_paths violation.
+IGNORE_FILES = (
+    "PROGRESS.md",
+    "LESSONS.md",
+)
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
@@ -108,6 +116,8 @@ def filter_noise(files: list[str]) -> list[str]:
     out = []
     for f in files:
         if any(f.startswith(p) for p in IGNORE_PREFIXES):
+            continue
+        if f.lstrip("./") in IGNORE_FILES:
             continue
         out.append(f)
     return sorted(set(out))

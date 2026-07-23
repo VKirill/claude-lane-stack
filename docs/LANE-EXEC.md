@@ -157,6 +157,12 @@ the gate checks the union of every repeatedly pre-dispatch-validated, disjoint
 while still rejecting every change outside the run contract. Direct and night
 single-task calls remain strict per-task checks.
 
+Independently of scope, the gate ignores the `.agents/` control plane and the
+root living-memory files (`PROGRESS.md`, `LESSONS.md`). The shared
+session-ledger hook flushes `PROGRESS.md` from any concurrent orchestrator or
+supervisor session in the same worktree, so treating those files as writer
+changes would create false `owns_paths` violations during a clean task.
+
 ## Concurrency
 
 - Provider pool: default 5, configurable 1–10.

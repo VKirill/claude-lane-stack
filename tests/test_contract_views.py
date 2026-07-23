@@ -242,6 +242,42 @@ class ContractViewTests(unittest.TestCase):
             self.assertEqual(receipt["scope_task_ids"], ["001", "002"])
             self.assertEqual(receipt["changed_files"], ["a.txt", "b.txt"])
 
+    def test_owns_check_ignores_living_memory_files(self) -> None:
+        # A concurrent session-ledger flush rewrites root PROGRESS.md/LESSONS.md
+        # in the same worktree; the gate must not treat that as a writer stray.
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run("git", "init", "-b", "main", cwd=repo)
+            run("git", "config", "user.email", "test@example.com", cwd=repo)
+            run("git", "config", "user.name", "Test", cwd=repo)
+            owned = repo / "src" / "owned.txt"
+            owned.parent.mkdir(parents=True)
+            owned.write_text("base\n", encoding="utf-8")
+            (repo / "PROGRESS.md").write_text("base progress\n", encoding="utf-8")
+            (repo / "LESSONS.md").write_text("base lessons\n", encoding="utf-8")
+            run("git", "add", "src/owned.txt", "PROGRESS.md", "LESSONS.md", cwd=repo)
+            run("git", "commit", "-m", "base", cwd=repo)
+            owned.write_text("changed\n", encoding="utf-8")
+            (repo / "PROGRESS.md").write_text("session ledger flush\n", encoding="utf-8")
+            (repo / "LESSONS.md").write_text("night audit touch\n", encoding="utf-8")
+            task_dir = repo / ".agents" / "runs" / "demo" / "tasks"
+            task_dir.mkdir(parents=True)
+            task = task_dir / "001.yaml"
+            task.write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\nowns_paths:\n  - src/owned.txt\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+
+            result = run(str(ROOT / "bin" / "check-owns-paths"), str(task), "--cwd", str(repo))
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            receipt = json.loads(
+                (repo / ".agents" / "runs" / "demo" / "artifacts" / "001" / "owns-check.json").read_text()
+            )
+            self.assertEqual(receipt["status"], "passed")
+            self.assertEqual(receipt["changed_files"], ["src/owned.txt"])
+            self.assertEqual(receipt["violations"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
