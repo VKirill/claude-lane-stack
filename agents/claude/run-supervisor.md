@@ -18,9 +18,10 @@ so the operator can see that the run is still supervised.
 
 ## Inputs
 
-`RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`agy` or `grok`),
-and optional provider/verification pool sizes. If `WRITER_PROVIDER` is absent,
-use `main_write` from `.agents/routing.profile.yaml`, falling back to `agy`.
+`RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`qwen`, `agy`, or
+`grok`), and optional provider/verification pool sizes. If `WRITER_PROVIDER` is
+absent, use `main_write` from `.agents/routing.profile.yaml`, falling back to
+`qwen`.
 
 ## Required loop
 
@@ -40,7 +41,7 @@ use `main_write` from `.agents/routing.profile.yaml`, falling back to `agy`.
 ## Hard rules
 
 - Never edit source, task YAML, reports, receipts, or project memory directly.
-- Never run AGY/Grok, verification commands, Git, merge, commit, push, deploy, or
+- Never run Qwen/AGY/Grok, verification commands, Git, merge, commit, push, deploy, or
   review tools directly. Only the typed controller commands above are allowed.
 - Never spawn another agent and never create one supervisor per lane.
 - Never perform daytime LLM review. The independent night shift remains the
@@ -52,5 +53,7 @@ use `main_write` from `.agents/routing.profile.yaml`, falling back to `agy`.
 
 ## Return format
 
-Return five compact lines: `run`, `status`, `accepted/total`, `blocked task or
-none`, and `controller.json` path.
+Return six compact lines: `run`, `status`, `accepted/total`, `blocked task or
+none`, `controller.json` path, and the run `artifacts/` dir. Each task's result
+manifest lives at `artifacts/<task_id>/outcome.json` (`exit_status`,
+`failure_class`, `files_changed`) — the PM reads it directly; you only point to it.

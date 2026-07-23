@@ -151,7 +151,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--prepare-only", action="store_true")
     ap.add_argument("--no-auto-merge", action="store_true")
     ap.add_argument("--codex-bin")
-    ap.add_argument("--provider", choices=("agy", "grok"), default="agy")
+    ap.add_argument("--provider", choices=("agy", "grok"), default="grok")
     ap.add_argument("--provider-bin")
     ap.add_argument("--grok-bin", help=argparse.SUPPRESS)
     ap.add_argument("--max-chunk-bytes", type=positive_int)

@@ -13,7 +13,7 @@ DOCTOR = ROOT / "bin" / "agents-doctor"
 
 
 class AgentsDoctorTest(unittest.TestCase):
-    def test_agy_requires_gemini_36_and_is_preferred_when_available(self) -> None:
+    def test_grok_is_preferred_and_agy_requires_gemini_36(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fake_bin = root / "bin"
@@ -22,7 +22,7 @@ class AgentsDoctorTest(unittest.TestCase):
             repo.mkdir()
             (fake_bin / "python3").symlink_to(sys.executable)
             (fake_bin / "bash").symlink_to("/usr/bin/bash")
-            for name in ("claude", "codex", "bwrap"):
+            for name in ("claude", "grok", "codex", "bwrap"):
                 executable = fake_bin / name
                 executable.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
                 executable.chmod(0o755)
@@ -49,7 +49,7 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = __import__("json").loads(result.stdout)
             self.assertTrue(payload["tools"]["agy"]["present"])
-            self.assertEqual(payload["lanes"]["fast_write"], "agy")
+            self.assertEqual(payload["lanes"]["fast_write"], "grok")
 
             agy.write_text(
                 "#!/usr/bin/env bash\n"

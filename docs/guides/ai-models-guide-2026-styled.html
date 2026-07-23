@@ -1,0 +1,2240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<title>Какую нейросеть выбрать в 2026</title>
+<style>/* =========================================================
+   AI Models Guide 2026 — print design system
+   Style: Minimalism & Swiss (documentation)
+   Palette: Knowledge Base / Documentation (ui-ux-pro-max)
+   ========================================================= */
+
+:root {
+  /* Semantic tokens — Knowledge Base palette */
+  --color-primary: #0f172a;
+  --color-on-primary: #ffffff;
+  --color-secondary: #475569;
+  --color-accent: #2563eb;
+  --color-on-accent: #ffffff;
+  --color-background: #ffffff;
+  --color-surface: #f8fafc;
+  --color-foreground: #1e293b;
+  --color-muted: #f1f5f9;
+  --color-muted-fg: #64748b;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
+  --color-success-fg: #065f46;
+  --color-success-accent: #059669;
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+  --color-info-fg: #1e3a8a;
+  --color-info-accent: #2563eb;
+  --color-warn-bg: #fffbeb;
+  --color-warn-border: #fde68a;
+  --color-warn-fg: #92400e;
+  --color-warn-accent: #d97706;
+  --color-tip-bg: #f5f3ff;
+  --color-tip-border: #ddd6fe;
+  --color-tip-fg: #5b21b6;
+  --color-tip-accent: #7c3aed;
+  --color-table-header: #0f172a;
+  --color-table-stripe: #f8fafc;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+}
+
+@page {
+  size: A4;
+  margin: 18mm 16mm 20mm 16mm;
+}
+
+@page :first {
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+body {
+  font-family: "DejaVu Sans", "Liberation Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Cover (dark slate + accent) ---------- */
+.cover {
+  page-break-after: always;
+  min-height: 297mm;
+  width: 210mm;
+  margin: 0;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 85% 55% at 0% 0%, rgba(37, 99, 235, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(14, 165, 233, 0.12), transparent 50%),
+    linear-gradient(168deg, #0b1220 0%, #0f172a 48%, #111827 100%);
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
+
+.cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cover-inner {
+  position: relative;
+  z-index: 1;
+  padding: 26mm 18mm 18mm;
+  display: flex;
+  flex-direction: column;
+  min-height: 297mm;
+  justify-content: space-between;
+}
+
+.cover-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  font-size: 8.5pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+  width: fit-content;
+  font-weight: 600;
+}
+
+.cover-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.22);
+}
+
+.cover h1 {
+  margin: 28px 0 14px;
+  font-size: 30pt;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  border: none;
+  padding: 0;
+}
+
+.cover h1 span {
+  display: block;
+  color: #ffffff;
+}
+
+.cover .subtitle {
+  font-size: 11.5pt;
+  line-height: 1.5;
+  color: #94a3b8;
+  max-width: 92%;
+  margin: 0 0 24px;
+  font-weight: 400;
+}
+
+.cover-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.chip {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 8.2pt;
+  font-weight: 600;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  color: #dbeafe;
+}
+
+.cover-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.cover-meta .item {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.cover-meta .label {
+  font-size: 7.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.cover-meta .value {
+  font-size: 10pt;
+  color: #f1f5f9;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cover-footer {
+  margin-top: 14px;
+  font-size: 8pt;
+  color: #64748b;
+}
+
+/* ---------- Content ---------- */
+.page-content {
+  padding: 0;
+  max-width: 100%;
+}
+
+h1, h2, h3, h4 {
+  color: var(--color-primary);
+  font-weight: 700;
+  line-height: 1.28;
+  page-break-after: avoid;
+}
+
+h1 {
+  font-size: 16.5pt;
+  margin: 1.35em 0 0.5em;
+  padding: 0 0 0.4em;
+  border-bottom: 2px solid var(--color-accent);
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 12.5pt;
+  margin: 1.2em 0 0.4em;
+  padding-left: 10px;
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-primary);
+}
+
+h3 {
+  font-size: 11pt;
+  margin: 1em 0 0.35em;
+  color: var(--color-secondary);
+  font-weight: 650;
+}
+
+p {
+  margin: 0.4em 0 0.65em;
+  orphans: 3;
+  widows: 3;
+  color: var(--color-foreground);
+}
+
+strong {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+em {
+  color: var(--color-secondary);
+  font-style: italic;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+ul, ol {
+  margin: 0.35em 0 0.75em;
+  padding-left: 1.2em;
+}
+
+li {
+  margin: 0.2em 0;
+  color: var(--color-foreground);
+}
+
+li::marker {
+  color: var(--color-accent);
+}
+
+/* ---------- Callouts — light surfaces, forced contrast ---------- */
+.okbox,
+.callout,
+.warnbox,
+.tipbox,
+.rule-hero {
+  border-radius: var(--radius);
+  padding: 12px 14px 12px 16px;
+  margin: 12px 0 14px;
+  page-break-inside: avoid;
+  border: 1px solid var(--color-border);
+  /* reset inheritance traps */
+  color: var(--color-foreground);
+}
+
+/* Force ALL descendants readable — fixes black italic on blue */
+.okbox,
+.okbox *,
+.callout,
+.callout *,
+.warnbox,
+.warnbox *,
+.tipbox,
+.tipbox *,
+.rule-hero,
+.rule-hero * {
+  color: inherit;
+}
+
+.okbox strong,
+.callout strong,
+.warnbox strong,
+.tipbox strong,
+.rule-hero strong {
+  font-weight: 700;
+}
+
+.okbox em,
+.callout em,
+.warnbox em,
+.tipbox em,
+.rule-hero em {
+  font-style: normal;
+  font-weight: 650;
+}
+
+/* Rule hero: light info surface (NOT gradient with mixed text) */
+.rule-hero {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  box-shadow: inset 4px 0 0 var(--color-info-accent);
+  color: var(--color-info-fg);
+}
+
+.rule-hero .label {
+  font-size: 7.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--color-info-accent);
+  margin: 0 0 6px;
+}
+
+.rule-hero strong {
+  color: var(--color-primary);
+}
+
+.rule-hero em {
+  color: var(--color-info-accent);
+  background: rgba(37, 99, 235, 0.08);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.okbox {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  box-shadow: inset 4px 0 0 var(--color-success-accent);
+  color: var(--color-success-fg);
+}
+
+.okbox strong { color: #064e3b; }
+.okbox em { color: var(--color-success-accent); }
+
+.callout {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  box-shadow: inset 4px 0 0 var(--color-info-accent);
+  color: var(--color-info-fg);
+}
+
+.callout strong { color: #1e3a8a; }
+.callout em { color: var(--color-info-accent); }
+
+.warnbox {
+  background: var(--color-warn-bg);
+  border-color: var(--color-warn-border);
+  box-shadow: inset 4px 0 0 var(--color-warn-accent);
+  color: var(--color-warn-fg);
+}
+
+.warnbox strong { color: #78350f; }
+.warnbox em { color: #b45309; }
+
+.tipbox {
+  background: var(--color-tip-bg);
+  border-color: var(--color-tip-border);
+  box-shadow: inset 4px 0 0 var(--color-tip-accent);
+  color: var(--color-tip-fg);
+}
+
+.tipbox strong { color: #4c1d95; }
+.tipbox em { color: var(--color-tip-accent); }
+
+/* ---------- Tables ---------- */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 10px 0 16px;
+  font-size: 8.8pt;
+  line-height: 1.4;
+  page-break-inside: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+}
+
+thead {
+  display: table-header-group;
+}
+
+th {
+  background: var(--color-table-header);
+  color: #ffffff !important;
+  font-weight: 650;
+  text-align: left;
+  padding: 8px 9px;
+  border: none;
+  font-size: 8.2pt;
+  letter-spacing: 0.01em;
+}
+
+th * {
+  color: #ffffff !important;
+}
+
+td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid #f1f5f9;
+  vertical-align: top;
+  color: var(--color-foreground);
+  background: #fff;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+td:last-child,
+th:last-child {
+  border-right: none;
+}
+
+tbody tr:nth-child(even) td {
+  background: var(--color-table-stripe);
+}
+
+/* ---------- Code ---------- */
+code {
+  font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, monospace;
+  font-size: 8.5pt;
+  background: var(--color-muted);
+  color: #1d4ed8;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+}
+
+pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 10px 0 14px;
+  font-size: 8pt;
+  line-height: 1.42;
+  overflow: hidden;
+  page-break-inside: avoid;
+  border: 1px solid #1e293b;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+pre,
+pre * {
+  color: #e2e8f0 !important;
+  background: transparent;
+  border: none;
+}
+
+pre code {
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ---------- TOC ---------- */
+hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.3em 0;
+}
+
+#TOC,
+nav#TOC {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  margin: 0 0 20px;
+  page-break-after: always;
+}
+
+#TOC > h2,
+nav#TOC > h2 {
+  font-size: 13pt;
+  font-weight: 750;
+  color: var(--color-primary);
+  margin: 0 0 10px;
+  border: none;
+  padding: 0;
+  border-left: none;
+}
+
+#TOC ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+#TOC li {
+  margin: 0;
+  padding: 5px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+#TOC li:last-child {
+  border-bottom: none;
+}
+
+#TOC a {
+  color: var(--color-foreground);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+#TOC ul ul {
+  padding-left: 12px;
+  margin-top: 2px;
+}
+
+#TOC ul ul a {
+  font-weight: 400;
+  color: var(--color-muted-fg);
+  font-size: 9.3pt;
+}
+
+#TOC ul ul li {
+  border-bottom: none;
+  padding: 2px 0;
+}
+
+/* ---------- Section kickers ---------- */
+.section-kicker {
+  display: inline-block;
+  font-size: 7.2pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin: 0.9em 0 6px;
+}
+
+/* ---------- Blockquote ---------- */
+blockquote {
+  margin: 10px 0 14px;
+  padding: 10px 14px;
+  border-left: 4px solid var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-secondary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+blockquote p {
+  margin: 0.2em 0;
+  color: inherit;
+}
+
+/* ---------- End card ---------- */
+.doc-end {
+  margin-top: 28px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--color-primary);
+  color: #cbd5e1;
+  text-align: center;
+  font-size: 9pt;
+}
+
+.doc-end,
+.doc-end * {
+  color: #e2e8f0 !important;
+}
+
+.doc-end strong {
+  color: #ffffff !important;
+}
+
+/* ---------- Helpers ---------- */
+.pagebreak {
+  page-break-before: always;
+}
+
+.page-content > .pagebreak:first-child {
+  page-break-before: avoid;
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="cover-inner">
+    <div>
+      <div class="cover-badge"><span class="dot"></span> Методичка · Июль 2026 · v1.0</div>
+      <h1><span>Какую нейросеть<br>выбрать в 2026</span></h1>
+      <p class="subtitle">Практическое руководство для новичков: Fable, Opus, Sonnet, GPT‑5.6 Sol/Terra/Luna, Kimi&nbsp;K3, MiniMax&nbsp;M3, Gemini и Antigravity — по задаче и бюджету.</p>
+      <div class="cover-chips">
+        <span class="chip">Fable 5</span>
+        <span class="chip">Opus / Sonnet</span>
+        <span class="chip">GPT‑5.6 Sol · Terra · Luna</span>
+        <span class="chip">Kimi K3</span>
+        <span class="chip">MiniMax M3</span>
+        <span class="chip">Gemini · Antigravity</span>
+      </div>
+    </div>
+    <div>
+      <div class="cover-meta">
+        <div class="item"><div class="label">Для кого</div><div class="value">Новички, разработчики, креатив, product</div></div>
+        <div class="item"><div class="label">Формат</div><div class="value">Задача → модель → бюджет</div></div>
+        <div class="item"><div class="label">Источники</div><div class="value">Официальные доки · X · Reddit</div></div>
+        <div class="item"><div class="label">Правило №1</div><div class="value">Нет «лучшей» — есть задача</div></div>
+      </div>
+      <div class="cover-footer">Сводка по открытым источникам · цены — ориентиры API</div>
+    </div>
+  </div>
+</section>
+
+<main class="page-content">
+
+
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#зачем-эта-методичка" id="toc-зачем-эта-методичка">Зачем
+эта методичка</a></li>
+<li><a href="#как-выбирать-модель-4-вопроса" id="toc-как-выбирать-модель-4-вопроса">1. Как выбирать модель: 4
+вопроса</a></li>
+<li><a href="#карта-рынка-кто-есть-кто-лето-2026" id="toc-карта-рынка-кто-есть-кто-лето-2026">2. Карта рынка: кто есть кто
+(лето 2026)</a>
+<ul>
+<li><a href="#одной-таблицей" id="toc-одной-таблицей">2.1. Одной
+таблицей</a></li>
+<li><a href="#свежий-клад-моделей-что-все-обсуждают" id="toc-свежий-клад-моделей-что-все-обсуждают">2.2. Свежий «клад»
+моделей (что все обсуждают)</a></li>
+</ul></li>
+<li><a href="#anthropic-fable-opus-sonnet" id="toc-anthropic-fable-opus-sonnet">3. Anthropic: Fable, Opus,
+Sonnet</a>
+<ul>
+<li><a href="#claude-fable-5-тяжёлая-артиллерия" id="toc-claude-fable-5-тяжёлая-артиллерия">3.1. Claude Fable 5 —
+«тяжёлая артиллерия»</a></li>
+<li><a href="#claude-opus-4.6-4.7-4.8-умный-премиум" id="toc-claude-opus-4.6-4.7-4.8-умный-премиум">3.2. Claude Opus 4.6 /
+4.7 / 4.8 — «умный премиум»</a></li>
+<li><a href="#claude-sonnet-4.6-рабочая-лошадка-claude" id="toc-claude-sonnet-4.6-рабочая-лошадка-claude">3.3. Claude Sonnet 4.6
+— «рабочая лошадка Claude»</a></li>
+<li><a href="#claude-code-продукт-не-модель" id="toc-claude-code-продукт-не-модель">3.4. Claude Code (продукт, не
+модель)</a></li>
+</ul></li>
+<li><a href="#openai-gpt-5.6-sol-terra-luna" id="toc-openai-gpt-5.6-sol-terra-luna">4. OpenAI: GPT-5.6 Sol, Terra,
+Luna</a>
+<ul>
+<li><a href="#семейство-не-одна-кнопка" id="toc-семейство-не-одна-кнопка">4.1. Семейство, не одна
+кнопка</a></li>
+<li><a href="#уровни-размышлений-reasoning" id="toc-уровни-размышлений-reasoning">4.2. Уровни «размышлений»
+(reasoning)</a></li>
+<li><a href="#за-что-хвалят-gpt-5.6-на-практике" id="toc-за-что-хвалят-gpt-5.6-на-практике">4.3. За что хвалят GPT-5.6 на
+практике</a></li>
+<li><a href="#codex" id="toc-codex">4.4. Codex</a></li>
+</ul></li>
+<li><a href="#kimi-k3-moonshot-открытый-тяжёлый-боец" id="toc-kimi-k3-moonshot-открытый-тяжёлый-боец">5. Kimi K3 (Moonshot) —
+«открытый тяжёлый боец»</a>
+<ul>
+<li><a href="#что-это" id="toc-что-это">5.1. Что это</a></li>
+<li><a href="#где-k3-реально-блестит-x-тесты" id="toc-где-k3-реально-блестит-x-тесты">5.2. Где K3 реально блестит (X +
+тесты)</a></li>
+<li><a href="#где-слабее-важно-для-новичков" id="toc-где-слабее-важно-для-новичков">5.3. Где слабее (важно для
+новичков)</a></li>
+<li><a href="#k2.x-code-vs-k3" id="toc-k2.x-code-vs-k3">5.4. K2.x Code
+vs K3</a></li>
+</ul></li>
+<li><a href="#minimax-m3-дешёвый-long-context-coding" id="toc-minimax-m3-дешёвый-long-context-coding">6. MiniMax M3 — «дешёвый
+long-context coding»</a>
+<ul>
+<li><a href="#что-это-1" id="toc-что-это-1">6.1. Что это</a></li>
+<li><a href="#когда-m3-лучший-выбор" id="toc-когда-m3-лучший-выбор">6.2.
+Когда M3 — лучший выбор</a></li>
+<li><a href="#когда-m3-не-единственный-ответ" id="toc-когда-m3-не-единственный-ответ">6.3. Когда M3 не единственный
+ответ</a></li>
+<li><a href="#m2.7-vs-m3" id="toc-m2.7-vs-m3">6.4. M2.7 vs M3</a></li>
+</ul></li>
+<li><a href="#google-gemini-и-antigravity" id="toc-google-gemini-и-antigravity">7. Google: Gemini и Antigravity</a>
+<ul>
+<li><a href="#gemini-3.x-pro-flash" id="toc-gemini-3.x-pro-flash">7.1.
+Gemini 3.x Pro / Flash</a></li>
+<li><a href="#antigravity-что-это-вообще" id="toc-antigravity-что-это-вообще">7.2. Antigravity — что это
+вообще</a></li>
+</ul></li>
+<li><a href="#прайс-карта-сколько-это-в-жизни" id="toc-прайс-карта-сколько-это-в-жизни">8. Прайс-карта: сколько это «в
+жизни»</a>
+<ul>
+<li><a href="#api-ориентир-за-1m-tokens" id="toc-api-ориентир-за-1m-tokens">8.1. API (ориентир, $ за 1M
+tokens)</a></li>
+<li><a href="#как-считать-цену-задачи-а-не-цену-токена" id="toc-как-считать-цену-задачи-а-не-цену-токена">8.2. Как считать «цену
+задачи», а не «цену токена»</a></li>
+<li><a href="#бюджетные-корзины-для-новичков" id="toc-бюджетные-корзины-для-новичков">8.3. Бюджетные корзины для
+новичков</a></li>
+</ul></li>
+<li><a href="#матрица-задача-модель" id="toc-матрица-задача-модель">9.
+Матрица «задача → модель»</a>
+<ul>
+<li><a href="#код-и-разработка" id="toc-код-и-разработка">9.1. Код и
+разработка</a></li>
+<li><a href="#креатив-и-контент" id="toc-креатив-и-контент">9.2. Креатив
+и контент</a></li>
+<li><a href="#research-документы-данные" id="toc-research-документы-данные">9.3. Research, документы,
+данные</a></li>
+<li><a href="#продуктовые-api-и-боты" id="toc-продуктовые-api-и-боты">9.4. Продуктовые API и боты</a></li>
+</ul></li>
+<li><a href="#агентные-оболочки-где-живёт-модель" id="toc-агентные-оболочки-где-живёт-модель">10. Агентные оболочки: где
+«живёт» модель</a></li>
+<li><a href="#готовые-пресеты-скопируй-и-живи" id="toc-готовые-пресеты-скопируй-и-живи">11. Готовые пресеты (скопируй и
+живи)</a>
+<ul>
+<li><a href="#я-новичок-2030мес" id="toc-я-новичок-2030мес">11.1. «Я
+новичок, $20–30/мес»</a></li>
+<li><a href="#я-разработчик-50100" id="toc-я-разработчик-50100">11.2. «Я
+разработчик, $50–100»</a></li>
+<li><a href="#я-агентство-контент" id="toc-я-агентство-контент">11.3. «Я
+агентство / контент»</a></li>
+<li><a href="#я-строю-продукт-на-api" id="toc-я-строю-продукт-на-api">11.4. «Я строю продукт на API»</a></li>
+<li><a href="#золотой-hybrid-2026-как-делают-сильные" id="toc-золотой-hybrid-2026-как-делают-сильные">11.5. «Золотой hybrid
+2026» (как делают сильные)</a></li>
+</ul></li>
+<li><a href="#decision-tree-для-новичка-30-секунд" id="toc-decision-tree-для-новичка-30-секунд">12. Decision tree для
+новичка (30 секунд)</a></li>
+<li><a href="#частые-мифы" id="toc-частые-мифы">13. Частые мифы</a></li>
+<li><a href="#как-не-сойти-с-ума-система-на-неделю" id="toc-как-не-сойти-с-ума-система-на-неделю">14. Как не сойти с ума:
+система на неделю</a></li>
+<li><a href="#портреты-моделей-как-люди" id="toc-портреты-моделей-как-люди">15. Портреты моделей — «как
+люди»</a></li>
+<li><a href="#шпаргалка-на-одну-страницу" id="toc-шпаргалка-на-одну-страницу">16. Шпаргалка на одну страницу</a>
+<ul>
+<li><a href="#быстрый-выбор" id="toc-быстрый-выбор">Быстрый
+выбор</a></li>
+<li><a href="#деньги-грубо" id="toc-деньги-грубо">Деньги
+(грубо)</a></li>
+<li><a href="#золотые-правила" id="toc-золотые-правила">Золотые
+правила</a></li>
+</ul></li>
+<li><a href="#мини-глоссарий" id="toc-мини-глоссарий">17.
+Мини-глоссарий</a></li>
+<li><a href="#источники-и-как-обновлять-методичку" id="toc-источники-и-как-обновлять-методичку">18. Источники и как
+обновлять методичку</a></li>
+<li><a href="#приложение-a.-карточка-повесь-у-монитора" id="toc-приложение-a.-карточка-повесь-у-монитора">Приложение A. Карточка
+«повесь у монитора»</a></li>
+<li><a href="#приложение-b.-чеклист-первой-недели" id="toc-приложение-b.-чеклист-первой-недели">Приложение B. Чеклист
+первой недели</a></li>
+</ul>
+</nav>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">INTRO</div><h1 id="зачем-эта-методичка">Зачем эта методичка</h1>
+<p>Летом 2026 года новичок открывает ChatGPT, Claude, Kimi, MiniMax,
+Gemini, Antigravity — и тонет. Все обещают «лучшую модель». На X и
+Reddit одно и то же: <em>«какая лучшая?»</em> — и сотня ответов, которые
+противоречат друг другу.</p>
+<p><strong>Правда простая:</strong> лучшей модели нет. Есть
+<strong>задача</strong> и <strong>бюджет</strong>. Эта методичка учит
+выбирать так, как это делают практикующие инженеры и создатели контента:
+<em>под работу</em>, а не под хайп.</p>
+<div class="rule-hero"><div class="label">Запомни навсегда</div>
+<p><strong>Правило №1.</strong> Не спрашивай «какая
+модель лучшая». Спрашивай: «какая модель лучше <em>для этой работы</em>
+при <em>моём бюджете</em>?»</p>
+</div>
+<p><strong>Что внутри</strong></p>
+<ol type="1">
+<li>Как думать о моделях (карта ролей).</li>
+<li>Портреты актуальных моделей: Anthropic (Fable / Opus / Sonnet),
+OpenAI (GPT-5.6 Sol/Terra/Luna), Moonshot (Kimi K3), MiniMax (M3),
+Google (Gemini + Antigravity).</li>
+<li>Прайс-карта «что сколько стоит».</li>
+<li>Матрицы: код, креатив, research, объём, агенты.</li>
+<li>Готовые пресеты для новичков.</li>
+<li>Шпаргалка на одну страницу.</li>
+</ol>
+<p><strong>Источники:</strong> официальные блоги OpenAI, Anthropic,
+Moonshot, MiniMax, Google; Artificial Analysis / Arena; обсуждения X и
+Reddit (r/codex, r/ClaudeAI, r/LocalLLaMA и др.), июль 2026. Цены —
+ориентиры API за 1M tokens (input/output), могут меняться.</p>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ОСНОВЫ</div><h1 id="как-выбирать-модель-4-вопроса">1. Как выбирать модель: 4
+вопроса</h1>
+<p>Перед любым «купи Pro / подключи API» ответь себе:</p>
+<table>
+<colgroup>
+<col style="width: 15%"/>
+<col style="width: 42%"/>
+<col style="width: 42%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>№</th>
+<th>Вопрос</th>
+<th>Зачем</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td><strong>Что делаю?</strong></td>
+<td>Код / текст / дизайн / research / чат-бот / агент на сутки</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><strong>Цена ошибки?</strong></td>
+<td>Черновик можно переписать; прод-миграцию — нельзя «на глаз»</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td><strong>Сколько контекста?</strong></td>
+<td>5 файлов или весь репозиторий / 200 PDF</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td><strong>Какой бюджет?</strong></td>
+<td>$20/мес подписка · $200 API · «хочу почти бесплатно»</td>
+</tr>
+</tbody>
+</table>
+<div class="callout">
+<p><strong>Ментальная модель «три полки».</strong>
+<strong>Флагман</strong> — дорого, умно, для hard work.</p>
+<p><strong>Рабочая лошадка</strong> — 80% дней, баланс.</p>
+<p><strong>Дешёвый объём</strong> — чат, batch, классификация,
+черновики.</p>
+</div>
+<p>Любая «семья» моделей устроена так:</p>
+<ul>
+<li><strong>Anthropic:</strong> Fable 5 (флагман) · Opus 4.x (бывший
+верх) · Sonnet (лошадка) · Haiku (дешёвый)</li>
+<li><strong>OpenAI GPT-5.6:</strong> Sol · Terra · Luna</li>
+<li><strong>Kimi:</strong> K3 (флагман) · K2.x Code (дешевле для
+рутины)</li>
+<li><strong>MiniMax:</strong> M3 (флагман) · M2.7 (стабильная дешёвая
+рутина)</li>
+<li><strong>Google:</strong> Gemini 3.x Pro · Flash · Antigravity
+(агентная оболочка)</li>
+</ul>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ОБЗОР</div><h1 id="карта-рынка-кто-есть-кто-лето-2026">2. Карта рынка: кто есть кто
+(лето 2026)</h1>
+<h2 id="одной-таблицей">2.1. Одной таблицей</h2>
+<table>
+<colgroup>
+<col style="width: 10%"/>
+<col style="width: 12%"/>
+<col style="width: 28%"/>
+<col style="width: 35%"/>
+<col style="width: 12%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Модель</th>
+<th>Компания</th>
+<th>Роль «в двух словах»</th>
+<th>Ориентир API $/1M in→out</th>
+<th>Контекст</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Claude Fable 5</strong></td>
+<td>Anthropic</td>
+<td>Публичный Mythos-класс: hard coding &amp; agents</td>
+<td>~$10 → $50</td>
+<td>до 1M (beta/усл.)</td>
+</tr>
+<tr class="even">
+<td><strong>Claude Opus 4.6/4.7/4.8</strong></td>
+<td>Anthropic</td>
+<td>Глубокое reasoning, «осторожный» премиум</td>
+<td>~$5 → $25</td>
+<td>200K–1M</td>
+</tr>
+<tr class="odd">
+<td><strong>Claude Sonnet 4.6</strong></td>
+<td>Anthropic</td>
+<td>Default дня: сильный код за нормальные деньги</td>
+<td>~$3 → $15</td>
+<td>200K–1M</td>
+</tr>
+<tr class="even">
+<td><strong>GPT-5.6 Sol</strong></td>
+<td>OpenAI</td>
+<td>Флагман OpenAI: код, agents, frontend polish</td>
+<td>~$5 → $30</td>
+<td>большой</td>
+</tr>
+<tr class="odd">
+<td><strong>GPT-5.6 Terra</strong></td>
+<td>OpenAI</td>
+<td>«Почти Sol» дешевле</td>
+<td>~$2.50 → $15</td>
+<td>большой</td>
+</tr>
+<tr class="even">
+<td><strong>GPT-5.6 Luna</strong></td>
+<td>OpenAI</td>
+<td>Throughput / volume</td>
+<td>~$0.63 → $3.75</td>
+<td>большой</td>
+</tr>
+<tr class="odd">
+<td><strong>Kimi K3</strong></td>
+<td>Moonshot</td>
+<td>Open-weight frontier: код, 3D/frontend, 1M</td>
+<td>$3 → $15 (cache $0.30)</td>
+<td><strong>1M</strong></td>
+</tr>
+<tr class="even">
+<td><strong>MiniMax M3</strong></td>
+<td>MiniMax</td>
+<td>Дешёвый long-context coding + multimodal</td>
+<td><strong>$0.30 → $1.20</strong> (promo; list выше)</td>
+<td><strong>1M</strong></td>
+</tr>
+<tr class="odd">
+<td><strong>Gemini 3.x Pro</strong></td>
+<td>Google</td>
+<td>Мультимодальность, docs, long context</td>
+<td>mid/high</td>
+<td>очень большой</td>
+</tr>
+<tr class="even">
+<td><strong>Gemini Flash</strong></td>
+<td>Google</td>
+<td>Быстро и дёшево</td>
+<td>low</td>
+<td>большой</td>
+</tr>
+<tr class="odd">
+<td><strong>Grok 4.x</strong></td>
+<td>xAI</td>
+<td>Multi-agent / research vibe, X-интеграция</td>
+<td>mid</td>
+<td>большой</td>
+</tr>
+</tbody>
+</table>
+<div class="tipbox">
+<p><strong>Как читать цену.</strong> $3/$15 значит: $3 за миллион
+<em>входных</em> токенов, $15 за миллион <em>выходных</em>. Выход почти
+всегда дороже. Агенты пишут много «мыслей» и tool-calls — счёт растёт не
+только от «ответа пользователю».</p>
+</div>
+<h2 id="свежий-клад-моделей-что-все-обсуждают">2.2. Свежий «клад»
+моделей (что все обсуждают)</h2>
+<p>С июня–июля 2026 рынок встряхнули почти одновременно:</p>
+<ol type="1">
+<li><strong>Claude Fable 5</strong> (июнь) — публичная версия
+Mythos-класса.</li>
+<li><strong>MiniMax M3</strong> (1 июня) — open-weight, 1M context,
+«frontier coding дёшево».</li>
+<li><strong>GPT-5.6</strong> Sol/Terra/Luna (июль) — новое семейство
+OpenAI.</li>
+<li><strong>Kimi K3</strong> (16 июля) — 2.8T open-weight, #1 на части
+frontend/webdev арен.</li>
+</ol>
+<p>Люди на X говорят прямо: <em>«не ищи одну лучшую —
+переключайся»</em>.</p>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ANTHROPIC</div><h1 id="anthropic-fable-opus-sonnet">3. Anthropic: Fable, Opus,
+Sonnet</h1>
+<h2 id="claude-fable-5-тяжёлая-артиллерия">3.1. Claude Fable 5 —
+«тяжёлая артиллерия»</h2>
+<p><strong>Что это.</strong> Первая <em>публичная</em> модель
+Mythos-класса. Та же «порода», что и закрытый <strong>Mythos 5</strong>
+(для партнёров / cyber), но с safety-слоем: часть чувствительных
+запросов может уходить на более безопасный fallback (например,
+Opus).</p>
+<p><strong>Сильные стороны (по практике и анонсам)</strong></p>
+<ul>
+<li>Самый надёжный long-horizon coding у Anthropic.</li>
+<li>Системы «с нуля», сложная архитектура, finance-grade reasoning.</li>
+<li>Высокие SWE / FrontierCode показатели в публичных обзорах.</li>
+<li>Хорошо «держит» большой проект, если платишь.</li>
+</ul>
+<p><strong>Слабые стороны</strong></p>
+<ul>
+<li><strong>Дорого</strong> (ориентир ~$10/$50 — в 2×+ дороже
+Opus-уровня).</li>
+<li>Лимиты подписок, safety-interruptions на dual-use темах.</li>
+<li>Overkill для мелких правок и черновиков.</li>
+</ul>
+<div class="okbox">
+<p><strong>Когда брать Fable 5.</strong> Большая система, high-stakes
+код, multi-hour agent, «нужен Claude-уровень дисциплины».</p>
+<p><strong>Когда не брать.</strong> Мелкий bugfix, посты, дешёвый batch
+— сожжёшь бюджет без выигрыша.</p>
+</div>
+<h2 id="claude-opus-4.6-4.7-4.8-умный-премиум">3.2. Claude Opus 4.6 /
+4.7 / 4.8 — «умный премиум»</h2>
+<p><strong>Роль.</strong> До Fable это был верх линейки. Сейчас Opus —
+<em>почти-флагман</em>: глубокое reasoning, осторожность, сильный code
+review, сложные trade-off’ы.</p>
+<p><strong>Когда Opus</strong></p>
+<ul>
+<li>Архитектурные решения, security review, math-heavy.</li>
+<li>Когда Sonnet «чуть не дотягивает», а Fable жалко по деньгам.</li>
+<li>Качественный long-form reasoning «с головой».</li>
+</ul>
+<p><strong>Когда не Opus</strong></p>
+<ul>
+<li>80% повседневного кода — лучше <strong>Sonnet</strong>.</li>
+<li>High-volume API — слишком дорого.</li>
+</ul>
+<h2 id="claude-sonnet-4.6-рабочая-лошадка-claude">3.3. Claude Sonnet 4.6
+— «рабочая лошадка Claude»</h2>
+<p><strong>Роль.</strong> Default Anthropic для большинства людей и
+продуктов.</p>
+<ul>
+<li>Цена ~$3/$15.</li>
+<li>Код, ревью, агенты «на каждый день».</li>
+<li>Многие тесты 2026: Sonnet ≈ Opus по «обычным» задачам при меньшей
+цене; Opus нужен на 10–15% hard cases.</li>
+</ul>
+<div class="callout">
+<p><strong>Практический рецепт Claude-стека.</strong> День:
+<strong>Sonnet 4.6</strong>.</p>
+<p>Hard day: <strong>Opus</strong> или <strong>Fable</strong>.</p>
+<p>Мелочь/скорость: <strong>Haiku</strong> (если доступен в вашем
+тарифе).</p>
+</div>
+<h2 id="claude-code-продукт-не-модель">3.4. Claude Code (продукт, не
+модель)</h2>
+<p><strong>Claude Code</strong> — агентная оболочка Anthropic
+(терминал/IDE). Модель внутри выбираешь: Sonnet / Opus / Fable.<br/>
+Многие на Reddit: <em>«живу в Claude Code на Sonnet, Fable — на
+архитектуру и аудит»</em>.</p>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">OPENAI</div><h1 id="openai-gpt-5.6-sol-terra-luna">4. OpenAI: GPT-5.6 Sol, Terra,
+Luna</h1>
+<h2 id="семейство-не-одна-кнопка">4.1. Семейство, не одна кнопка</h2>
+<table>
+<colgroup>
+<col style="width: 15%"/>
+<col style="width: 31%"/>
+<col style="width: 53%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Тир</th>
+<th>Для кого</th>
+<th>Цена (ориентир)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Sol</strong> (<code>gpt-5.6</code>)</td>
+<td>Максимум OpenAI: hard code, agents, UI polish</td>
+<td>~$5 / $30</td>
+</tr>
+<tr class="even">
+<td><strong>Terra</strong></td>
+<td>Баланс: почти Sol, дешевле</td>
+<td>~$2.50 / $15</td>
+</tr>
+<tr class="odd">
+<td><strong>Luna</strong></td>
+<td>Объём, latency, mass</td>
+<td>~$0.63 / $3.75</td>
+</tr>
+</tbody>
+</table>
+<h2 id="уровни-размышлений-reasoning">4.2. Уровни «размышлений»
+(reasoning)</h2>
+<p>У GPT-5.6 (и в Codex) важна не только модель, но и
+<strong>effort</strong>:<br/>
+<code>none → low → medium → high → xhigh → max</code>.</p>
+<table>
+<colgroup>
+<col style="width: 23%"/>
+<col style="width: 52%"/>
+<col style="width: 23%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Effort</th>
+<th>Простыми словами</th>
+<th>Когда</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>none / low</td>
+<td>Быстро, мало думает</td>
+<td>Мелкий fix, execute готового плана</td>
+</tr>
+<tr class="even">
+<td><strong>medium</strong></td>
+<td>Нормальный день</td>
+<td>80% работы</td>
+</tr>
+<tr class="odd">
+<td>high</td>
+<td>Думает серьёзно</td>
+<td>Hard debug, plan</td>
+</tr>
+<tr class="even">
+<td>xhigh / max</td>
+<td>Долго и дорого</td>
+<td>Audit, overnight, nightmare-task</td>
+</tr>
+</tbody>
+</table>
+<p>Ещё есть:</p>
+<ul>
+<li><strong>Pro mode</strong> — больше «внутренней работы» ради одного
+сильного ответа (quality-first).</li>
+<li><strong>Ultra</strong> (в Codex) — несколько subagents
+<strong>параллельно</strong> (если задача режется на части).</li>
+</ul>
+<div class="warnbox">
+<p><strong>Типичная ошибка новичков.</strong> Ставить Sol + xhigh «на
+всё». Модель overthink’ит, трогает 100 файлов, сжигает лимит. Правильно:
+<strong>plan на high</strong> → <strong>execute на
+low/medium</strong>.</p>
+</div>
+<h2 id="за-что-хвалят-gpt-5.6-на-практике">4.3. За что хвалят GPT-5.6 на
+практике</h2>
+<ul>
+<li>Token-efficient (часто меньше «воды», чем 5.5).</li>
+<li>Сильный <strong>frontend / layout</strong> (OpenAI прямо
+позиционирует).</li>
+<li>Хороший <strong>intent</strong>: меньше микроменеджмента шагов.</li>
+<li>Terra/Luna — удобная лестница цен.</li>
+</ul>
+<p><strong>Когда Sol:</strong> сложный agent, hard code, design-heavy
+UI.<br/>
+<strong>Когда Terra:</strong> daily prod / Codex без флагманского
+счёта.<br/>
+<strong>Когда Luna:</strong> классификация, чат, batch, cheap
+volume.</p>
+<h2 id="codex">4.4. Codex</h2>
+<p><strong>Codex</strong> — coding-agent OpenAI (CLI/IDE/cloud). Почти
+всегда берут <strong>Sol/Terra</strong> + conscious effort.<br/>
+Сообщество r/codex: <em>«Sol medium default; high только на
+plan/review»</em>.</p>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">MOONSHOT</div><h1 id="kimi-k3-moonshot-открытый-тяжёлый-боец">5. Kimi K3 (Moonshot) —
+«открытый тяжёлый боец»</h1>
+<h2 id="что-это">5.1. Что это</h2>
+<ul>
+<li><strong>2.8 триллиона</strong> параметров (open-weight MoE, веса —
+по плану open source).</li>
+<li>Контекст <strong>1M tokens</strong>.</li>
+<li>Native vision (картинки/скрины в loop).</li>
+<li>Цена API: <strong>$3 input / $15 output</strong>, cache hit
+<strong>$0.30</strong> — как у Sonnet-уровня, но с кэшем очень выгодно
+на длинных agent-сессиях.</li>
+<li>На старте часто <strong>max thinking</strong> по умолчанию.</li>
+</ul>
+<p>Сам Moonshot честно пишет: <em>overall</em> пока чуть ниже
+<strong>Fable 5</strong> и <strong>GPT-5.6 Sol</strong>, но на ряде
+coding/agent бенчмарков — frontier; на <strong>Arena Code
+WebDev</strong> — лидер.</p>
+<h2 id="где-k3-реально-блестит-x-тесты">5.2. Где K3 реально блестит (X +
+тесты)</h2>
+<ul>
+<li><strong>Frontend / WebDev / 3D / game-ish builds</strong> — много
+клипов: «K3 &gt; Fable на визуальном loop».</li>
+<li><strong>Долгие agent-сессии</strong> по большому репо.</li>
+<li><strong>Vision-in-the-loop</strong>: скриншот → правка → снова
+скрин.</li>
+<li>Research + interactive dashboards / motion graphics (кейсы Kimi
+Work).</li>
+</ul>
+<h2 id="где-слабее-важно-для-новичков">5.3. Где слабее (важно для
+новичков)</h2>
+<ul>
+<li>Может <strong>переигрывать</strong> и «додумывать за тебя»
+(excessive proactiveness) — нужен жёсткий AGENTS.md.</li>
+<li>Чувствителен к thinking history harness (не все оболочки
+одинаковы).</li>
+<li>На «просто follow the plan» часть людей ставит Fable/Sol выше.</li>
+<li>На старте — GPU pressure, лимиты подписок.</li>
+</ul>
+<div class="okbox">
+<p><strong>Когда Kimi K3.</strong> Визуальный код, 1M context,
+open-weight стратегия, «Sonnet-цена + длинный agent».</p>
+<p><strong>Когда не только K3.</strong> High-stakes прод без human
+review — держи Fable/Sol как second opinion.</p>
+</div>
+<h2 id="k2.x-code-vs-k3">5.4. K2.x Code vs K3</h2>
+<table>
+<colgroup>
+<col style="width: 6%"/>
+<col style="width: 75%"/>
+<col style="width: 17%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>K2.7 Code (примерно)</th>
+<th>K3</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Цена</td>
+<td>заметно дешевле</td>
+<td>$3/$15</td>
+</tr>
+<tr class="even">
+<td>Роль</td>
+<td>рутина, обычный coding loop</td>
+<td>long-horizon, vision, 1M</td>
+</tr>
+<tr class="odd">
+<td>Совет</td>
+<td>default для «просто почини»</td>
+<td>когда упёрся в контекст/горизонт</td>
+</tr>
+</tbody>
+</table>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">MINIMAX</div><h1 id="minimax-m3-дешёвый-long-context-coding">6. MiniMax M3 — «дешёвый
+long-context coding»</h1>
+<h2 id="что-это-1">6.1. Что это</h2>
+<ul>
+<li>Open-weight frontier от MiniMax (июнь 2026).</li>
+<li><strong>1M context</strong>, sparse attention (MSA).</li>
+<li><strong>Native multimodal</strong> (image/video) + computer
+use.</li>
+<li>Цена-убийца: ориентир <strong>$0.30 / $1.20</strong> за 1M (promo;
+list ~2×).<br/>
+Выше <strong>512K</strong> input — отдельный long-context тариф
+(примерно ×2).</li>
+</ul>
+<p><strong>Token Plan (подписка):</strong> Plus $20 / Max $50 / Ultra
+$120 — очень жирные token quotas по меркам рынка.</p>
+<h2 id="когда-m3-лучший-выбор">6.2. Когда M3 — лучший выбор</h2>
+<ul>
+<li>Большой репозиторий / миграция «всё в одном окне».</li>
+<li>Много <strong>retry-циклов</strong> агента (дёшево
+перезапускать).</li>
+<li>Мультимодальный coding: скрины UI, PDF, диаграммы.</li>
+<li>Self-host / open-weight compliance.</li>
+<li>Бюджет tight, а Claude/GPT «съедают» месяц за неделю.</li>
+</ul>
+<h2 id="когда-m3-не-единственный-ответ">6.3. Когда M3 не единственный
+ответ</h2>
+<ul>
+<li>Нужна максимальная «дисциплина» и polish Fable/Sol.</li>
+<li>Сверх-high-stakes без второго opinion.</li>
+<li>Провайдеры/квоты подписки бывают «маркетингово жирными» — читай fine
+print (Reddit: осторожно с Token Plan).</li>
+</ul>
+<div class="callout">
+<p><strong>Hybrid, который рекомендуют на практике.</strong> Daily:
+Claude/Codex (Sonnet или Terra).</p>
+<p>Repo-scale / batch / cheap loops: <strong>MiniMax M3</strong>.</p>
+<p>Visual frontend showcase: <strong>Kimi K3</strong>.</p>
+<p>Архитектура high-stakes: <strong>Fable 5</strong> или <strong>Sol
+high</strong>.</p>
+</div>
+<h2 id="m2.7-vs-m3">6.4. M2.7 vs M3</h2>
+<table>
+<colgroup>
+<col style="width: 11%"/>
+<col style="width: 61%"/>
+<col style="width: 27%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>M2 / M2.7</th>
+<th>M3</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Фокус</td>
+<td>стабильный coding loop</td>
+<td>long-context + multimodal + long-horizon</td>
+</tr>
+<tr class="even">
+<td>Цена</td>
+<td>похожий дешёвый tier</td>
+<td>тот же «cheap frontier»</td>
+</tr>
+<tr class="odd">
+<td>Бери</td>
+<td>рутина</td>
+<td>когда упираешься в контекст/зрение/сутки работы</td>
+</tr>
+</tbody>
+</table>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">GOOGLE</div><h1 id="google-gemini-и-antigravity">7. Google: Gemini и
+Antigravity</h1>
+<h2 id="gemini-3.x-pro-flash">7.1. Gemini 3.x Pro / Flash</h2>
+<p><strong>Gemini Pro (3 / 3.1)</strong> — силён в:</p>
+<ul>
+<li>Очень длинных документах, PDF-пачках, «весь диск в контекст».</li>
+<li>Мультимодальности: картинки, видео, таблицы.</li>
+<li>Research + синтез из кучи источников.</li>
+<li>Workspace-экосистеме (Docs, Drive, и т.д.).</li>
+</ul>
+<p><strong>Gemini Flash</strong> — быстрый и дешёвый: triage, summarize,
+high-QPS, черновики.</p>
+<div class="tipbox">
+<p><strong>Типичное «Google-место» в стеке.</strong> «Прочитай 40 PDF и
+сделай brief» → Gemini Pro.</p>
+<p>«Классифицируй 10k тикетов» → Flash.</p>
+<p>«Собери production-agent на 8 часов с тестами» → чаще
+Claude/Codex/Kimi/MiniMax.</p>
+</div>
+<h2 id="antigravity-что-это-вообще">7.2. Antigravity — что это
+вообще</h2>
+<p><strong>Google Antigravity</strong> (публичный запуск конца 2025 →
+развитие в 2026) — это не «ещё одна LLM», а <strong>агентная
+платформа</strong> Google:</p>
+<ul>
+<li>IDE-like / agent-first среда.</li>
+<li>Работает с <strong>Gemini</strong> (и, по заявлениям/интеграциям, с
+другими моделями).</li>
+<li>Агенты, которые <strong>планируют, пишут код, запускают команды,
+проверяют результат</strong> (browser/terminal).</li>
+<li>Философия: «mission control» для agent fleets, а не один chat.</li>
+</ul>
+<div class="okbox">
+<p><strong>Как думать об Antigravity.</strong> Это <em>где</em> крутится
+агент (как Claude Code / Codex / Cursor), а не <em>какой</em> мозг
+внутри.</p>
+<p>Выбор: «работать в Antigravity на Gemini Pro» vs «в Claude Code на
+Fable» vs «в Codex на Sol».</p>
+</div>
+<p><strong>Когда Antigravity + Gemini</strong></p>
+<ul>
+<li>Ты в Google-экосистеме.</li>
+<li>Нужны агенты с сильным multimodal/docs.</li>
+<li>Хочешь «родной» Google agent stack.</li>
+</ul>
+<p><strong>Когда смотреть в сторону Claude Code / Codex / Kimi Code /
+MiniMax Code</strong></p>
+<ul>
+<li>Coding-агенты «как все в Twitter» — там сейчас больше living
+knowledge.</li>
+<li>Нужен конкретный мозг (Fable / Sol / K3 / M3), а не обязательно
+Google shell.</li>
+</ul>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ДЕНЬГИ</div><h1 id="прайс-карта-сколько-это-в-жизни">8. Прайс-карта: сколько это «в
+жизни»</h1>
+<h2 id="api-ориентир-за-1m-tokens">8.1. API (ориентир, $ за 1M
+tokens)</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Модель</th>
+<th>Input</th>
+<th>Output</th>
+<th>«Ощущение»</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>MiniMax M3 (promo ≤512k)</td>
+<td>0.30</td>
+<td>1.20</td>
+<td>почти даром для agent loops</td>
+</tr>
+<tr class="even">
+<td>GPT-5.6 Luna</td>
+<td>~0.63</td>
+<td>~3.75</td>
+<td>mass production</td>
+</tr>
+<tr class="odd">
+<td>GPT-5.6 Terra</td>
+<td>~2.50</td>
+<td>~15</td>
+<td>рабочий mid</td>
+</tr>
+<tr class="even">
+<td>Claude Sonnet 4.6</td>
+<td>3</td>
+<td>15</td>
+<td>industry default mid</td>
+</tr>
+<tr class="odd">
+<td>Kimi K3</td>
+<td>3 (cache 0.30)</td>
+<td>15</td>
+<td>mid + выгодный cache</td>
+</tr>
+<tr class="even">
+<td>Claude Opus 4.x</td>
+<td>5</td>
+<td>25</td>
+<td>premium</td>
+</tr>
+<tr class="odd">
+<td>GPT-5.6 Sol</td>
+<td>5</td>
+<td>30</td>
+<td>flagship OpenAI</td>
+</tr>
+<tr class="even">
+<td>Claude Fable 5</td>
+<td>~10</td>
+<td>~50</td>
+<td>top $$$</td>
+</tr>
+</tbody>
+</table>
+<div class="warnbox">
+<p><strong>Подписки ≠ API.</strong> ChatGPT Plus / Claude Pro / Kimi
+Membership / MiniMax Token Plan — это <em>квоты и rate limits</em>, не
+«безлимит». Fable/Sol high на подписке сгорают за часы agent-work.
+Смотри usage dashboard.</p>
+</div>
+<h2 id="как-считать-цену-задачи-а-не-цену-токена">8.2. Как считать «цену
+задачи», а не «цену токена»</h2>
+<p>Агент, который 2 часа читает репо:</p>
+<ul>
+<li>500k input + 80k output на <strong>M3</strong> ≈ копейки.</li>
+<li>Тот же объём на <strong>Fable</strong> ≈ в десятки раз дороже.</li>
+</ul>
+<p>Поэтому:</p>
+<ul>
+<li><strong>Исследование / draft / explore</strong> → дешёвые
+модели.</li>
+<li><strong>Финальный merge в прод</strong> → дорогая модель + human
+review.</li>
+</ul>
+<h2 id="бюджетные-корзины-для-новичков">8.3. Бюджетные корзины для
+новичков</h2>
+<table>
+<colgroup>
+<col style="width: 38%"/>
+<col style="width: 61%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Бюджет</th>
+<th>Что собрать</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>$0–20/мес</strong></td>
+<td>Бесплатные тиры + MiniMax/Kimi free trials + Gemini Flash</td>
+</tr>
+<tr class="even">
+<td><strong>$20–50</strong></td>
+<td>Один сильный: Claude Pro <em>или</em> ChatGPT <em>или</em> MiniMax
+Max <em>или</em> Kimi</td>
+</tr>
+<tr class="odd">
+<td><strong>$50–150</strong></td>
+<td>Hybrid: Claude/Codex (mid) + M3 или K3 на объём</td>
+</tr>
+<tr class="even">
+<td><strong>$150+ / API</strong></td>
+<td>Sol/Fable на hard + Terra/Sonnet/M3 на volume</td>
+</tr>
+</tbody>
+</table>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ПРАКТИКА</div><h1 id="матрица-задача-модель">9. Матрица «задача → модель»</h1>
+<h2 id="код-и-разработка">9.1. Код и разработка</h2>
+<table>
+<colgroup>
+<col style="width: 20%"/>
+<col style="width: 28%"/>
+<col style="width: 28%"/>
+<col style="width: 23%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Задача</th>
+<th>1-й выбор</th>
+<th>2-й выбор</th>
+<th>Избегай</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Мелкий bugfix</td>
+<td>Sonnet / Terra / M3</td>
+<td>K2.x / Luna</td>
+<td>Fable xhigh</td>
+</tr>
+<tr class="even">
+<td>Feature по плану</td>
+<td>Sonnet / Terra medium</td>
+<td>K3 / M3</td>
+<td>всегда Ultra</td>
+</tr>
+<tr class="odd">
+<td>Архитектура / ADR</td>
+<td>Fable / Sol high</td>
+<td>Opus</td>
+<td>Flash/Luna alone</td>
+</tr>
+<tr class="even">
+<td>Большой рефакторинг репо</td>
+<td>M3 / K3 (1M)</td>
+<td>Sol + plan</td>
+<td>один промпт «перепиши всё»</td>
+</tr>
+<tr class="odd">
+<td>Frontend / landing / 3D UI</td>
+<td><strong>K3</strong> / Sol</td>
+<td>Fable</td>
+<td>только Flash</td>
+</tr>
+<tr class="even">
+<td>Security audit</td>
+<td>Fable / Sol xhigh</td>
+<td>Opus</td>
+<td>дешёвые alone</td>
+</tr>
+<tr class="odd">
+<td>Overnight unattended</td>
+<td>Sol/K3/M3 + <strong>узкий scope</strong></td>
+<td>Fable</td>
+<td>«сделай весь продукт»</td>
+</tr>
+<tr class="even">
+<td>Tests writing</td>
+<td>Sonnet / Terra</td>
+<td>M3</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="креатив-и-контент">9.2. Креатив и контент</h2>
+<table>
+<colgroup>
+<col style="width: 29%"/>
+<col style="width: 40%"/>
+<col style="width: 29%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Задача</th>
+<th>1-й выбор</th>
+<th>Почему</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Рекламные креативы / офферы</td>
+<td>Claude Sonnet или GPT mid</td>
+<td>сильный copy + структура</td>
+</tr>
+<tr class="even">
+<td>Длинные статьи / tone of voice</td>
+<td>Claude (Sonnet/Opus)</td>
+<td>«человечнее», меньше slop</td>
+</tr>
+<tr class="odd">
+<td>Сценарии / storytelling</td>
+<td>Claude / GPT Sol</td>
+<td>narrative control</td>
+</tr>
+<tr class="even">
+<td>Визуальные концепции + код UI</td>
+<td><strong>Kimi K3</strong>, GPT-5.6 Sol</td>
+<td>vision + frontend</td>
+</tr>
+<tr class="odd">
+<td>Картинки / банеры</td>
+<td>Специализированные image-модели (не LLM-чат)</td>
+<td>LLM пишет бриф, не «рисует» всегда</td>
+</tr>
+<tr class="even">
+<td>Видео-скрипты / motion brief</td>
+<td>K3 (motion cases) / Gemini</td>
+<td>multimodal</td>
+</tr>
+<tr class="odd">
+<td>SMM-посты RU</td>
+<td>Claude + human edit</td>
+<td>тон; всегда редактура</td>
+</tr>
+<tr class="even">
+<td>Бренд-голос «не AI-шно»</td>
+<td>Claude + короткий style guide</td>
+<td>меньше «нейросетевой» воды</td>
+</tr>
+</tbody>
+</table>
+<div class="callout">
+<p><strong>Креатив = модель + бриф, не «магия».</strong> Даже Fable
+напишет шаблон, если бриф пустой. Лучший стек: сильная mid-модель + 5–10
+строк audience/offer/tone + human pass.</p>
+</div>
+<h2 id="research-документы-данные">9.3. Research, документы, данные</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Задача</th>
+<th>Модель</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>50 PDF → summary</td>
+<td>Gemini Pro / K3 / M3</td>
+</tr>
+<tr class="even">
+<td>Deep research report</td>
+<td>Sol / Fable / K3 Work</td>
+</tr>
+<tr class="odd">
+<td>Таблицы, sheets, finance</td>
+<td>Fable (finance praise) / Opus / Sol</td>
+</tr>
+<tr class="even">
+<td>Быстрый fact-check</td>
+<td>Flash / Luna / web-tool agent</td>
+</tr>
+<tr class="odd">
+<td>Научный pipeline + код</td>
+<td>K3 / M3 (long-horizon cases)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="продуктовые-api-и-боты">9.4. Продуктовые API и боты</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Нагрузка</th>
+<th>Модель</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>High QPS chat</td>
+<td>Luna / Flash / Haiku-class</td>
+</tr>
+<tr class="even">
+<td>Support с tools</td>
+<td>Sonnet / Terra</td>
+</tr>
+<tr class="odd">
+<td>Hard escalation</td>
+<td>Sol / Fable / Opus</td>
+</tr>
+<tr class="even">
+<td>Batch offline</td>
+<td>M3 / Luna / Flash</td>
+</tr>
+</tbody>
+</table>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ОБОЛОЧКИ</div><h1 id="агентные-оболочки-где-живёт-модель">10. Агентные оболочки: где
+«живёт» модель</h1>
+<p>Новички путают <strong>чат</strong> и <strong>агента</strong>.</p>
+<table>
+<colgroup>
+<col style="width: 22%"/>
+<col style="width: 25%"/>
+<col style="width: 34%"/>
+<col style="width: 18%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Оболочка</th>
+<th>Чей «дом»</th>
+<th>Типичный мозг</th>
+<th>Когда</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Claude Code</strong></td>
+<td>Anthropic</td>
+<td>Sonnet / Opus / Fable</td>
+<td>coding agent Claude-style</td>
+</tr>
+<tr class="even">
+<td><strong>Codex</strong></td>
+<td>OpenAI</td>
+<td>Sol / Terra + effort</td>
+<td>OpenAI coding agent</td>
+</tr>
+<tr class="odd">
+<td><strong>Kimi Code / Work</strong></td>
+<td>Moonshot</td>
+<td>K3</td>
+<td>visual + long coding</td>
+</tr>
+<tr class="even">
+<td><strong>MiniMax Code</strong></td>
+<td>MiniMax</td>
+<td>M3</td>
+<td>cheap long agents, multimodal</td>
+</tr>
+<tr class="odd">
+<td><strong>Antigravity</strong></td>
+<td>Google</td>
+<td>Gemini (+ multi)</td>
+<td>Google agent IDE</td>
+</tr>
+<tr class="even">
+<td><strong>Cursor / Windsurf / etc.</strong></td>
+<td>IDE</td>
+<td>любая через API</td>
+<td>editor-first</td>
+</tr>
+<tr class="odd">
+<td><strong>ChatGPT / Claude.ai / Gemini app</strong></td>
+<td>Chat UI</td>
+<td>флагманы подписки</td>
+<td>не-агентный день</td>
+</tr>
+</tbody>
+</table>
+<div class="tipbox">
+<p><strong>Практический совет.</strong> Сначала выбери <em>оболочку под
+привычку</em> (терминал / IDE / чат), потом <em>мозг под задачу</em>.
+Менять мозг внутри одной оболочки проще, чем прыгать между продуктами
+каждый час.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ПРЕСЕТЫ</div><h1 id="готовые-пресеты-скопируй-и-живи">11. Готовые пресеты (скопируй и
+живи)</h1>
+<h2 id="я-новичок-2030мес">11.1. «Я новичок, $20–30/мес»</h2>
+<ol type="1">
+<li>Возьми <strong>один</strong> основной: Claude Pro <em>или</em>
+ChatGPT <em>или</em> Kimi <em>или</em> MiniMax Max.</li>
+<li>Для тяжёлых задач — free web другого вендора как second
+opinion.</li>
+<li>Не гонись за Fable/Sol high каждый день.</li>
+</ol>
+<p><strong>Default дня:</strong> Sonnet или GPT mid или K3 (если
+визуал).</p>
+<h2 id="я-разработчик-50100">11.2. «Я разработчик, $50–100»</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Слот</th>
+<th>Модель</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Daily code</td>
+<td>Sonnet 4.6 <strong>или</strong> GPT-5.6 Terra medium</td>
+</tr>
+<tr class="even">
+<td>Plan / architecture</td>
+<td>Fable <strong>или</strong> Sol high</td>
+</tr>
+<tr class="odd">
+<td>Big repo / cheap loops</td>
+<td><strong>MiniMax M3</strong></td>
+</tr>
+<tr class="even">
+<td>Frontend showcase</td>
+<td><strong>Kimi K3</strong></td>
+</tr>
+<tr class="odd">
+<td>Docs/PDF dump</td>
+<td>Gemini Pro</td>
+</tr>
+</tbody>
+</table>
+<h2 id="я-агентство-контент">11.3. «Я агентство / контент»</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Слот</th>
+<th>Модель</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Черновики постов</td>
+<td>Sonnet / GPT mid</td>
+</tr>
+<tr class="even">
+<td>Финальная вычитка</td>
+<td>Opus / human</td>
+</tr>
+<tr class="odd">
+<td>Лендинги (текст+структура)</td>
+<td>Sol / Sonnet</td>
+</tr>
+<tr class="even">
+<td>Визуальный прототип UI</td>
+<td>K3 / Sol</td>
+</tr>
+<tr class="odd">
+<td>Research ниши</td>
+<td>Gemini + K3/Sol</td>
+</tr>
+</tbody>
+</table>
+<h2 id="я-строю-продукт-на-api">11.4. «Я строю продукт на API»</h2>
+<pre><code>Router:
+  simple  → Luna / Flash / Haiku-class
+  normal  → Terra / Sonnet / M3
+  hard    → Sol / Fable / Opus
+  visual long-horizon → K3</code></pre>
+<p>Всегда: логи model + cost + success. Раз в месяц пересматривай
+пороги.</p>
+<h2 id="золотой-hybrid-2026-как-делают-сильные">11.5. «Золотой hybrid
+2026» (как делают сильные)</h2>
+<ol type="1">
+<li><strong>Plan</strong> — Fable 5 или Sol high.<br/>
+</li>
+<li><strong>Execute</strong> — Sonnet / Terra / M3 / K3.<br/>
+</li>
+<li><strong>Review</strong> — Fable / Sol / Opus.<br/>
+</li>
+<li><strong>Bulk</strong> — M3 / Luna / Flash.</li>
+</ol>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ВЫБОР</div><h1 id="decision-tree-для-новичка-30-секунд">12. Decision tree для
+новичка (30 секунд)</h1>
+<pre><code>Что делаю?
+│
+├─ Мелкая правка / вопрос
+│    → Sonnet / Terra / M3 / Flash
+│
+├─ Код feature / agent день
+│    → Sonnet или Terra (default)
+│    → упёрся? Sol / Fable / K3
+│
+├─ Огромный репо / 1M контекст / дёшево крутить loops
+│    → MiniMax M3
+│
+├─ Красивый frontend / 3D / game-ish / screenshots
+│    → Kimi K3 (потом Sol)
+│
+├─ Архитектура / security / «нельзя ошибиться»
+│    → Fable 5 или Sol high (+ human)
+│
+├─ Гора PDF / multimodal research
+│    → Gemini Pro или K3
+│
+├─ Массовый chat/API
+│    → Luna / Flash
+│
+└─ Не знаю
+     → Sonnet 4.6 или GPT-5.6 Terra medium
+        и не усложняй</code></pre>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">МИФЫ</div><h1 id="частые-мифы">13. Частые мифы</h1>
+<table>
+<thead>
+<tr class="header">
+<th>Миф</th>
+<th>Реальность</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>«Fable всегда лучше»</td>
+<td>На мелких задачах — дороже без выигрыша</td>
+</tr>
+<tr class="even">
+<td>«Open-source = слабый»</td>
+<td>K3/M3 бьют закрытых на части задач</td>
+</tr>
+<tr class="odd">
+<td>«Дороже = лучше для креатива»</td>
+<td>Нужен бриф и редактор, не max effort</td>
+</tr>
+<tr class="even">
+<td>«Одна модель на всё»</td>
+<td>Побеждает hybrid</td>
+</tr>
+<tr class="odd">
+<td>«Ultra/max = режим бога»</td>
+<td>Часто overthink и $$$</td>
+</tr>
+<tr class="even">
+<td>«Подписка = безлимит»</td>
+<td>Rate limits реальны</td>
+</tr>
+<tr class="odd">
+<td>«Бенчмарк = мой use case»</td>
+<td>Мерь на <em>своих</em> задачах</td>
+</tr>
+</tbody>
+</table>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ПЛАН</div><h1 id="как-не-сойти-с-ума-система-на-неделю">14. Как не сойти с ума:
+система на неделю</h1>
+<p><strong>День 1–2.</strong> Выбери default (Sonnet или Terra). Делай
+всё на нём.<br/>
+<strong>День 3.</strong> Одну hard-задачу прогони на Fable/Sol. Сравни
+время и качество.<br/>
+<strong>День 4.</strong> Одну long-repo задачу — на M3.<br/>
+<strong>День 5.</strong> Один UI/frontend — на K3.<br/>
+<strong>День 6.</strong> Один PDF-research — на Gemini.<br/>
+<strong>День 7.</strong> Запиши: что оставить default, что — «по
+кнопке».</p>
+<div class="okbox">
+<p><strong>Критерии сравнения (простые).</strong> 1) Сделало ли задачу?
+2) Сколько правок руками? 3) Сколько времени? 4) Сколько денег?</p>
+<p>Победитель — не «умный в чате», а <strong>дешевле доведённый
+результат</strong>.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ХАРАКТЕРЫ</div><h1 id="портреты-моделей-как-люди">15. Портреты моделей — «как
+люди»</h1>
+<table>
+<colgroup>
+<col style="width: 28%"/>
+<col style="width: 35%"/>
+<col style="width: 35%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Модель</th>
+<th>Метафора</th>
+<th>Характер</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Fable 5</strong></td>
+<td>Старший архитектор</td>
+<td>Дорого, глубоко, надёжно на hard</td>
+</tr>
+<tr class="even">
+<td><strong>Opus</strong></td>
+<td>Осторожный профессор</td>
+<td>Думает, иногда медленно, качественно</td>
+</tr>
+<tr class="odd">
+<td><strong>Sonnet</strong></td>
+<td>Сильный middle+</td>
+<td>Default, без драмы</td>
+</tr>
+<tr class="even">
+<td><strong>GPT-5.6 Sol</strong></td>
+<td>Старший full-stack + UI eye</td>
+<td>Быстрый интеллект, agents, polish</td>
+</tr>
+<tr class="odd">
+<td><strong>Terra</strong></td>
+<td>Sol «без пиджака»</td>
+<td>Почти то же, дешевле</td>
+</tr>
+<tr class="even">
+<td><strong>Luna</strong></td>
+<td>Оператор call-центра</td>
+<td>Много, быстро, просто</td>
+</tr>
+<tr class="odd">
+<td><strong>Kimi K3</strong></td>
+<td>Гениальный джун-сеньор с глазами</td>
+<td>Вау-frontend, длинные забеги, иногда самовольничает</td>
+</tr>
+<tr class="even">
+<td><strong>MiniMax M3</strong></td>
+<td>Дешёвый марафонец</td>
+<td>1M контекст, loops, multimodal</td>
+</tr>
+<tr class="odd">
+<td><strong>Gemini Pro</strong></td>
+<td>Библиотекарь-аналитик</td>
+<td>Docs, multimodal, Google world</td>
+</tr>
+<tr class="even">
+<td><strong>Antigravity</strong></td>
+<td>Завод агентов Google</td>
+<td>Оболочка, не мозг</td>
+</tr>
+</tbody>
+</table>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">CHEAT SHEET</div><h1 id="шпаргалка-на-одну-страницу">16. Шпаргалка на одну страницу</h1>
+<h2 id="быстрый-выбор">Быстрый выбор</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Хочу…</th>
+<th>Беру…</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Не думать, default</td>
+<td><strong>Sonnet 4.6</strong> или <strong>GPT-5.6 Terra
+medium</strong></td>
+</tr>
+<tr class="even">
+<td>Максимум надёжности на hard code</td>
+<td><strong>Fable 5</strong> / <strong>Sol high</strong></td>
+</tr>
+<tr class="odd">
+<td>Дешёвый большой репо</td>
+<td><strong>MiniMax M3</strong></td>
+</tr>
+<tr class="even">
+<td>Вау UI / 3D / visual coding</td>
+<td><strong>Kimi K3</strong></td>
+</tr>
+<tr class="odd">
+<td>Много дешёвых запросов</td>
+<td><strong>Luna</strong> / <strong>Gemini Flash</strong></td>
+</tr>
+<tr class="even">
+<td>Куча PDF / research</td>
+<td><strong>Gemini Pro</strong> / <strong>K3</strong></td>
+</tr>
+<tr class="odd">
+<td>Google agent IDE</td>
+<td><strong>Antigravity + Gemini</strong></td>
+</tr>
+<tr class="even">
+<td>Креатив-тексты</td>
+<td><strong>Sonnet</strong> / <strong>GPT mid</strong> + human edit</td>
+</tr>
+<tr class="odd">
+<td>Security / audit</td>
+<td><strong>Fable</strong> / <strong>Sol xhigh</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="деньги-грубо">Деньги (грубо)</h2>
+<p><code>M3 &lt;&lt; Luna &lt; Terra ~ Sonnet ~ K3 &lt; Opus &lt; Sol &lt; Fable</code></p>
+<h2 id="золотые-правила">Золотые правила</h2>
+<ol type="1">
+<li>Модель = под задачу, не под хайп.<br/>
+</li>
+<li>Plan дорогой → Execute дешёвый → Review дорогой.<br/>
+</li>
+<li>1M context нужен не всегда.<br/>
+</li>
+<li>Effort/max/Ultra — только когда medium провалился.<br/>
+</li>
+<li>Hybrid побеждает mono.<br/>
+</li>
+<li>Считай $ за <em>готовую задачу</em>.<br/>
+</li>
+<li>Человек в конце — особенно на прод и креатив.</li>
+</ol>
+<div class="okbox">
+<p><strong>Если совсем лень.</strong> Поставь <strong>Claude Sonnet
+4.6</strong> или <strong>GPT-5.6 Terra</strong>.</p>
+<p>Когда упрёшься — добавь <strong>M3</strong> (объём) +
+<strong>K3</strong> (визуал) + <strong>Fable/Sol</strong> (hard).</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">СЛОВАРЬ</div><h1 id="мини-глоссарий">17. Мини-глоссарий</h1>
+<table>
+<thead>
+<tr class="header">
+<th>Слово</th>
+<th>Простыми словами</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Токен</strong></td>
+<td>Кусочек текста; примерно 1 токен ≈ ¾ слова EN</td>
+</tr>
+<tr class="even">
+<td><strong>Контекст</strong></td>
+<td>Сколько текст/код модель «держит в голове» за раз</td>
+</tr>
+<tr class="odd">
+<td><strong>Reasoning / effort</strong></td>
+<td>Насколько долго модель «думает»</td>
+</tr>
+<tr class="even">
+<td><strong>Agent</strong></td>
+<td>Модель + инструменты (терминал, браузер, файлы) в цикле</td>
+</tr>
+<tr class="odd">
+<td><strong>Open-weight</strong></td>
+<td>Веса можно скачать/хостить (при релизе)</td>
+</tr>
+<tr class="even">
+<td><strong>Frontier</strong></td>
+<td>Уровень лучших закрытых моделей</td>
+</tr>
+<tr class="odd">
+<td><strong>Harness</strong></td>
+<td>Оболочка агента (Claude Code, Codex…)</td>
+</tr>
+<tr class="even">
+<td><strong>Cache</strong></td>
+<td>Повторный ввод дешевле</td>
+</tr>
+<tr class="odd">
+<td><strong>Multimodal</strong></td>
+<td>Текст + картинки/видео</td>
+</tr>
+<tr class="even">
+<td><strong>SWE-bench</strong></td>
+<td>Бенчмарк «чинить реальные GitHub issues»</td>
+</tr>
+</tbody>
+</table>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ИСТОЧНИКИ</div><h1 id="источники-и-как-обновлять-методичку">18. Источники и как
+обновлять методичку</h1>
+<p>Рынок меняется каждые 2–4 недели. Обновляй этот файл, когда:</p>
+<ol type="1">
+<li>Выходит новый флагман (как Fable / K3 / 5.6 / M3).<br/>
+</li>
+<li>Меняются цены &gt;20%.<br/>
+</li>
+<li>Твой default 2 недели подряд «не заходит» — пересобери hybrid.</li>
+</ol>
+<p><strong>Официальные точки входа</strong></p>
+<ul>
+<li>Anthropic: claude.com / docs (Fable, Opus, Sonnet, pricing)<br/>
+</li>
+<li>OpenAI: developers.openai.com (GPT-5.6, Codex, reasoning)<br/>
+</li>
+<li>Moonshot: kimi.com/blog/kimi-k3<br/>
+</li>
+<li>MiniMax: minimax.io/blog/minimax-m3<br/>
+</li>
+<li>Google: antigravity.google / Gemini docs<br/>
+</li>
+<li>Сравнения: Artificial Analysis, Arena.ai, Reddit r/codex,
+r/ClaudeAI, X</li>
+</ul>
+<div class="warnbox">
+<p><strong>Дисклеймер.</strong> Это практическая методичка, не
+финансовый/юридический совет и не официальный документ вендоров.
+Бенчмарки у компаний часто в своих harness — доверяй своим A/B на
+реальных задачах.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ПРИЛОЖЕНИЕ</div><h1 id="приложение-a.-карточка-повесь-у-монитора">Приложение A. Карточка
+«повесь у монитора»</h1>
+<pre><code>┌──────────────────────────────────────────────────────────┐
+│  AI MODELS 2026 — QUICK PICK                             │
+├──────────────────────────────────────────────────────────┤
+│  DEFAULT DAY ...... Sonnet 4.6  или  GPT-5.6 Terra       │
+│  HARD CODE ........ Fable 5  /  Sol high                 │
+│  BIG REPO CHEAP ... MiniMax M3                           │
+│  PRETTY UI / 3D ... Kimi K3                              │
+│  PDF / RESEARCH ... Gemini Pro  /  K3                    │
+│  MASS API ......... Luna  /  Flash                       │
+│  GOOGLE AGENTS .... Antigravity + Gemini                 │
+├──────────────────────────────────────────────────────────┤
+│  FLOW:  PLAN ($$) → EXECUTE ($) → REVIEW ($$)         │
+│  RULE:  не max effort «на всякий»                        │
+│  RULE:  hybrid &gt; mono                                    │
+└──────────────────────────────────────────────────────────┘</code></pre>
+<div class="section-kicker">ПРИЛОЖЕНИЕ</div><h1 id="приложение-b.-чеклист-первой-недели">Приложение B. Чеклист
+первой недели</h1>
+<ul class="task-list">
+<li><label><input type="checkbox"/>Выбрал default-модель<br/>
+</label></li>
+<li><label><input type="checkbox"/>Понял разницу chat vs agent
+shell<br/>
+</label></li>
+<li><label><input type="checkbox"/>Один раз сравнил hard-задачу на 2
+флагманах<br/>
+</label></li>
+<li><label><input type="checkbox"/>Один раз прогнал cheap long-context
+(M3)<br/>
+</label></li>
+<li><label><input type="checkbox"/>Один раз UI на K3<br/>
+</label></li>
+<li><label><input type="checkbox"/>Записал $ и время<br/>
+</label></li>
+<li><label><input type="checkbox"/>Собрал свой hybrid из 2–3
+моделей<br/>
+</label></li>
+<li><label><input type="checkbox"/>Добавил human review на
+прод</label></li>
+</ul>
+<hr/>
+<p><strong>Конец методички · v1.0 · Июль 2026</strong></p>
+<p><em>Сделано как понятное руководство для людей, а не как
+API-reference.</em></p>
+<div class="doc-end"><strong>Какую нейросеть выбрать в 2026 · v1.0</strong> · Выбирай модель под задачу, а не под хайп</div>
+</main>
+</body>
+</html>

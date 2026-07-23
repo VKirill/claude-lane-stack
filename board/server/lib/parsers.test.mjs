@@ -33,7 +33,9 @@ async function writeTrustedProviderReport({
   provider = 'grok',
   model = provider === 'codex'
     ? 'gpt-5.6-sol'
-    : provider === 'agy' ? 'gemini-3.6-flash-high' : 'grok-4.5',
+    : provider === 'agy'
+      ? 'gemini-3.6-flash-high'
+      : provider === 'qwen' ? 'qwen3.8-max-preview' : 'grok-4.5',
   reasoningEffort = provider === 'codex' || provider === 'agy' ? 'high' : 'medium',
 }) {
   const attemptDirectory = path.join(artifactDirectory, 'attempts', String(attempt).padStart(2, '0'));
@@ -72,7 +74,9 @@ async function writeTrustedProviderReport({
     provider_sandbox: provider === 'codex' ? 'workspace-write' : 'off',
     permission_mode: provider === 'codex'
       ? 'never'
-      : provider === 'agy' ? 'always-proceed' : 'bypassPermissions',
+      : provider === 'agy'
+        ? 'always-proceed'
+        : provider === 'qwen' ? 'yolo' : 'bypassPermissions',
     subagents_enabled: false,
     control_plane_read_only: true,
     prompt_sha256: promptSha256,
@@ -464,6 +468,37 @@ test('Codex Sol high fallback runtime is trusted and visible', async () => {
   assert.equal(tasks[0].runtime.report_trusted, true);
   assert.equal(tasks[0].runtime.provider, 'codex');
   assert.equal(tasks[0].runtime.model, 'gpt-5.6-sol');
+});
+
+test('Qwen writer runtime is trusted and visible', async () => {
+  const project = await fixtureDirectory('lane-board-qwen-');
+  const runPath = path.join(project, '.agents', 'runs', 'qwen-run');
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  await mkdir(tasksDirectory, { recursive: true });
+  const taskSource = ['schema_version: 2', 'id: "001"', 'title: Qwen writer'].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const trusted = await writeTrustedProviderReport({
+    artifactDirectory,
+    taskId: '001',
+    taskSource,
+    provider: 'qwen',
+  });
+  await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: trusted.taskSha256,
+    status: 'awaiting_verification',
+    current_attempt: 1,
+  }));
+
+  const tasks = await readTasks(tasksDirectory, 'qwen-run');
+
+  assert.equal(tasks[0].runtime.status, 'awaiting_verification');
+  assert.equal(tasks[0].runtime.report_trusted, true);
+  assert.equal(tasks[0].runtime.provider, 'qwen');
+  assert.equal(tasks[0].runtime.model, 'qwen3.8-max-preview');
 });
 
 test('accepted v2 task has identical done status in list and detail views', async () => {

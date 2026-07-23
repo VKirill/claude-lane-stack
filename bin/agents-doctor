@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Detect Claude + optional write/review CLIs; write routing profile.
 
-PM is always Claude. AGY and Grok are switchable write providers.
+PM is always Claude. Qwen, AGY, and Grok are switchable write providers.
 Review/onboard/docs may use Codex. Claude-only fallback if neither present.
 """
 from __future__ import annotations
@@ -16,10 +16,16 @@ from pathlib import Path
 
 PROFILES = {
     "full": {
-        "fast_write": "agy",
-        "main_write": "agy",
+        "fast_write": "qwen",
+        "main_write": "qwen",
         "review": "codex",
         "emergency_write": "codex",
+    },
+    "claude-qwen": {
+        "fast_write": "qwen",
+        "main_write": "qwen",
+        "review": "claude-reviewer",
+        "emergency_write": "qwen",
     },
     "claude-agy": {
         "fast_write": "agy",
@@ -56,6 +62,7 @@ PROFILES = {
 AGENT_MAP = {
     "agy": "run-supervisor",
     "grok": "run-supervisor",
+    "qwen": "run-supervisor",
     "codex": "codex-implementer",
     "claude-worker": "general-purpose",
     "claude-reviewer": "codex-reviewer",
@@ -249,6 +256,23 @@ def detect() -> dict:
             else None
         ),
     }
+    p = which("qwen")
+    tools["qwen"] = {
+        "present": bool(p and bwrap_ready and resolver_ready),
+        "binary_present": bool(p),
+        "path": p,
+        "version": run_version(["qwen", "--version"]) if p else None,
+        "required": False,
+        "unavailable_reason": (
+            "bubblewrap missing"
+            if p and not bwrap
+            else "bubblewrap probe failed"
+            if p and not bwrap_ready
+            else "bubblewrap resolver unavailable"
+            if p and not resolver_ready
+            else None
+        ),
+    }
     tools["bubblewrap"] = {
         "present": bool(bwrap),
         "operational": bwrap_ready,
@@ -271,11 +295,17 @@ def pick_profile(
     tools: dict, writer_provider: str = "auto"
 ) -> tuple[str, dict, list[str]]:
     notes: list[str] = []
-    has = {k: tools[k]["present"] for k in ("claude", "agy", "grok", "codex")}
+    has = {k: tools[k]["present"] for k in ("claude", "agy", "grok", "codex", "qwen")}
     writer = (
         writer_provider
         if writer_provider != "auto" and has[writer_provider]
-        else "agy" if has["agy"] else "grok" if has["grok"] else None
+        else "qwen"
+        if has["qwen"]
+        else "grok"
+        if has["grok"]
+        else "agy"
+        if has["agy"]
+        else None
     )
     if writer_provider != "auto" and not has[writer_provider]:
         notes.append(f"Requested writer {writer_provider} unavailable; using {writer or 'fallback'}")
@@ -286,6 +316,12 @@ def pick_profile(
         reason = tools["grok"].get("unavailable_reason") or "bubblewrap unavailable"
         notes.append(
             "Grok disabled — bubblewrap is required for safe writer lanes "
+            f"({reason})"
+        )
+    if tools["qwen"].get("binary_present") and not has["qwen"]:
+        reason = tools["qwen"].get("unavailable_reason") or "bubblewrap unavailable"
+        notes.append(
+            "Qwen disabled — bubblewrap is required for safe writer lanes "
             f"({reason})"
         )
     if not has["claude"]:
@@ -304,11 +340,11 @@ def pick_profile(
     elif has["codex"]:
         name = "claude-codex"
         lanes = dict(PROFILES[name])
-        notes.append("AGY/Grok missing — write + review via Codex")
+        notes.append("Qwen/AGY/Grok missing — write + review via Codex")
     else:
         name = "claude-only"
         lanes = dict(PROFILES[name])
-        notes.append("No AGY/Grok/Codex — Claude subagents only")
+        notes.append("No Qwen/AGY/Grok/Codex — Claude subagents only")
 
     return name, lanes, notes
 
@@ -365,9 +401,9 @@ def main() -> int:
     )
     ap.add_argument(
         "--writer-provider",
-        choices=("auto", "agy", "grok"),
+        choices=("auto", "qwen", "agy", "grok"),
         default="auto",
-        help="preferred writer provider (default: auto, AGY before Grok)",
+        help="preferred writer provider (default: auto, Qwen before Grok before AGY)",
     )
     args = ap.parse_args()
 

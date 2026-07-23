@@ -27,7 +27,7 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
    (`wt-merge-main` or commit) — human never merges.
 9. No task CLI / orchestrator MCP for queue.
 10. Normal daytime work flows through `run-controller` and its typed `lane-ctl`
-    actions. The run supervisor is source-read-only; AGY is the default and
+    actions. The run supervisor is source-read-only; Grok is the default and
     Grok is a selectable
     detached writer. One Codex Sol high writer attempt is allowed only after
     two classified fallback-eligible primary-provider availability failures. There is no

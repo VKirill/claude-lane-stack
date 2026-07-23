@@ -1,0 +1,7 @@
+# Claude + Qwen only (Codex unavailable)
+profile: claude-qwen
+lanes:
+  fast_write: qwen
+  main_write: qwen
+  review: claude-reviewer
+  emergency_write: qwen

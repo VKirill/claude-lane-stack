@@ -251,7 +251,7 @@ schema_version: 2
 id: "001"
 title: Add dark mode
 risk: low
-lane: agy # по умолчанию; grok поддерживается
+lane: grok # по умолчанию; agy поддерживается
 project_cwd: /absolute/path/to/worktree
 read_first: [AGENTS.md]
 interfaces: ["ThemeToggle(settings)"]
@@ -339,7 +339,7 @@ verification:
 
 | Профиль | Есть | Пишет | Ревью |
 |---------|------|-------|-------|
-| `full` | AGY и/или Grok + Codex | AGY по умолчанию; Grok выбирается | Codex Sol |
+| `full` | AGY и/или Grok + Codex | Grok по умолчанию; AGY выбирается | Codex Sol |
 | `claude-agy` | AGY | AGY | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |

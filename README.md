@@ -191,7 +191,7 @@ default; choose Grok explicitly with `--provider grok`:
 ```bash
 RUN_DIR="$(run-init "$(pwd)" "$SLUG" --score 7)"
 run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
-run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD" --provider agy
+run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD" --provider grok
 run-controller watch --run-dir "$RUN_DIR" --timeout 240
 run-controller status --run-dir "$RUN_DIR" --json
 ```
@@ -282,7 +282,7 @@ schema_version: 2
 id: "001"
 title: Add dark mode
 risk: low
-lane: agy              # default writer; grok remains supported
+lane: grok             # default writer; agy remains supported
 project_cwd: /absolute/path/to/worktree
 read_first: [AGENTS.md]
 interfaces: ["ThemeToggle(settings)"]
@@ -377,7 +377,7 @@ use `--writer-provider grok` to select Grok for a project.
 
 | Profile | You have | Write lane | Review lane |
 |---------|----------|------------|-------------|
-| `full` | AGY and/or Grok + Codex | AGY default; Grok selectable | Codex Sol |
+| `full` | AGY and/or Grok + Codex | Grok default; AGY selectable | Codex Sol |
 | `claude-agy` | AGY | AGY | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |

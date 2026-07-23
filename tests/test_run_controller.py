@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -98,7 +99,7 @@ class RunControllerTest(unittest.TestCase):
                                 item["status"] = "cancelled"
                             elif item.get("provider") == "codex" and task_id in plan.get("fallback_fail", []):
                                 item["status"] = "failed"
-                            elif item.get("provider") in {"agy", "grok"} and task_id in plan.get("fail_always", []):
+                            elif item.get("provider") in {"agy", "grok", "qwen"} and task_id in plan.get("fail_always", []):
                                 item["status"] = "failed"
                             elif task_id in plan.get("fail_first", []) and item["attempt"] == 1:
                                 item["status"] = "provider_failed"
@@ -118,12 +119,14 @@ class RunControllerTest(unittest.TestCase):
                                 if item.get("provider") == "codex"
                                 else "gemini-3.6-flash-high"
                                 if item.get("provider") == "agy"
+                                else "qwen3.8-max-preview"
+                                if item.get("provider") == "qwen"
                                 else "grok-4.5"
                             ),
                             "failure_class": (
                                 f"{item.get('provider')}_bootstrap_transient"
                                 if item["status"] == "failed"
-                                and item.get("provider") in {"agy", "grok"}
+                                and item.get("provider") in {"agy", "grok", "qwen"}
                                 and task_id in plan.get("eligible_failure", [])
                                 else "codex_provider_failed"
                                 if item["status"] == "failed" and item.get("provider") == "codex"
@@ -132,7 +135,7 @@ class RunControllerTest(unittest.TestCase):
                             "failure_retryable": item["status"] == "failed",
                             "fallback_eligible": (
                                 item["status"] == "failed"
-                                and item.get("provider") in {"agy", "grok"}
+                                and item.get("provider") in {"agy", "grok", "qwen"}
                                 and task_id in plan.get("eligible_failure", [])
                             ),
                         },
@@ -352,10 +355,8 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads((self.run_dir / "controller.json").read_text())
         self.assertEqual(receipt["stage"], "accepted")
-        self.assertEqual(receipt["tasks"]["001"]["provider"], "agy")
-        self.assertEqual(
-            receipt["tasks"]["001"]["model"], "gemini-3.6-flash-high"
-        )
+        self.assertEqual(receipt["tasks"]["001"]["provider"], "qwen")
+        self.assertEqual(receipt["tasks"]["001"]["model"], "qwen3.8-max-preview")
         self.assertEqual(receipt["counts"], {"total": 3, "accepted": 3, "blocked": 0, "running": 0, "pending": 0})
         actions = self.actions()
         active: set[str] = set()
@@ -373,16 +374,102 @@ class RunControllerTest(unittest.TestCase):
         self.assertLess(accept_001, start_003)
         self.assertLess(start_003, accept_002)
 
-    def test_explicit_grok_writer_remains_selectable(self) -> None:
+    def test_explicit_agy_writer_remains_selectable(self) -> None:
         self.write_run(provider_slots=1)
         self.write_task("001")
 
-        result = self.run_controller("--provider", "grok")
+        result = self.run_controller("--provider", "agy")
 
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads((self.run_dir / "controller.json").read_text())
-        self.assertEqual(receipt["tasks"]["001"]["provider"], "grok")
-        self.assertEqual(receipt["tasks"]["001"]["model"], "grok-4.5")
+        self.assertEqual(receipt["tasks"]["001"]["provider"], "agy")
+        self.assertEqual(
+            receipt["tasks"]["001"]["model"], "gemini-3.6-flash-high"
+        )
+
+    def test_explicit_qwen_writer_remains_selectable(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+
+        result = self.run_controller("--provider", "qwen")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["tasks"]["001"]["provider"], "qwen")
+        self.assertEqual(receipt["tasks"]["001"]["model"], "qwen3.8-max-preview")
+
+    def test_outcome_manifest_written_on_accept(self) -> None:
+        self.write_run(provider_slots=2)
+        self.write_task("001")
+        self.write_task("002")
+        self.write_task("003", ["001"])
+        artifact_dir = self.run_dir / "artifacts" / "001"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "owns-check.json").write_text(
+            json.dumps(
+                {
+                    "changed_files": ["src/a.py", "tests/test_a.py"],
+                    "violations": [],
+                    "never_touch_hits": [],
+                    "status": "passed",
+                }
+            ),
+            encoding="utf-8",
+        )
+        report_body = b"STATUS: complete\n"
+        (artifact_dir / "report.md").write_bytes(report_body)
+        report_sha = hashlib.sha256(report_body).hexdigest()
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for task_id in ("001", "002", "003"):
+            outcome_path = self.run_dir / "artifacts" / task_id / "outcome.json"
+            self.assertTrue(outcome_path.is_file(), f"missing outcome for {task_id}")
+            outcome = json.loads(outcome_path.read_text())
+            self.assertEqual(outcome["schema_version"], 1)
+            self.assertEqual(outcome["task_id"], task_id)
+            self.assertEqual(outcome["stage"], "accepted")
+            self.assertEqual(outcome["exit_status"], "completed")
+            self.assertIsNone(outcome["failure_class"])
+            self.assertEqual(outcome["attempts"], 1)
+            self.assertEqual(outcome["run_dir"], str(self.run_dir))
+        first = json.loads(
+            (self.run_dir / "artifacts" / "001" / "outcome.json").read_text()
+        )
+        self.assertEqual(first["files_changed"], ["src/a.py", "tests/test_a.py"])
+        self.assertEqual(first["owns_paths_violations"], [])
+        self.assertEqual(first["report_sha256"], report_sha)
+        self.assertEqual(
+            first["report_path"], str(self.run_dir / "artifacts" / "001" / "report.md")
+        )
+        second = json.loads(
+            (self.run_dir / "artifacts" / "002" / "outcome.json").read_text()
+        )
+        self.assertEqual(second["files_changed"], [])
+        self.assertIsNone(second["report_sha256"])
+
+    def test_outcome_manifest_records_crashed_failure(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.fake_plan.write_text(
+            json.dumps({"finish_after": {"001": 1}, "fail_always": ["001"]}),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["tasks"]["001"]["stage"], "blocked")
+        outcome_path = self.run_dir / "artifacts" / "001" / "outcome.json"
+        self.assertTrue(outcome_path.is_file())
+        outcome = json.loads(outcome_path.read_text())
+        self.assertEqual(outcome["stage"], "blocked")
+        self.assertEqual(outcome["exit_status"], "crashed")
+        self.assertEqual(outcome["failure_class"], "failed")
+        self.assertEqual(outcome["attempts"], 2)
+        self.assertEqual(outcome["files_changed"], [])
 
     def test_large_verification_result_does_not_block_acceptance(self) -> None:
         self.write_run(provider_slots=1)

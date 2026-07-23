@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/outcome-v1.schema.json",
+  "title": "Claude Lane Stack per-task outcome manifest v1",
+  "description": "CLI-agnostic supervisor-facing result manifest. Written by run-controller at each terminal task transition (accepted/blocked), aggregating owns-check.json, report.md, and controller task state. The single artifact a supervisor must read before concluding a task.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "run_dir",
+    "stage",
+    "exit_status",
+    "attempts",
+    "fallbacks",
+    "files_changed",
+    "owns_paths_violations",
+    "never_touch_hits",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "run_dir": {"type": "string", "pattern": "^/"},
+    "provider": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "null"}
+      ]
+    },
+    "model": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "null"}
+      ]
+    },
+    "stage": {"enum": ["accepted", "blocked"]},
+    "exit_status": {"enum": ["completed", "crashed", "timeout", "blocked"]},
+    "failure_class": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "null"}
+      ]
+    },
+    "last_status": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "null"}
+      ]
+    },
+    "attempts": {"type": "integer", "minimum": 1},
+    "fallbacks": {"type": "integer", "minimum": 0},
+    "files_changed": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "owns_paths_violations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "never_touch_hits": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "report_path": {
+      "oneOf": [
+        {"type": "string", "pattern": "^/"},
+        {"type": "null"}
+      ]
+    },
+    "report_sha256": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        {"type": "null"}
+      ]
+    },
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

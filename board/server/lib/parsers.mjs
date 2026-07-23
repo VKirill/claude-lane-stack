@@ -141,8 +141,8 @@ async function trustedProviderReport({ artifactPath, attemptPath, state, taskId,
   const controlIdentityValid = control.task_id === taskId
     && control.attempt === attempt
     && control.task_sha256 === state.task_sha256;
-  const expectedProvider = control.provider ?? 'grok';
-  const providerIdentityValid = ['agy', 'grok', 'codex'].includes(runtime.provider)
+  const expectedProvider = control.provider ?? 'qwen';
+  const providerIdentityValid = ['agy', 'grok', 'codex', 'qwen'].includes(runtime.provider)
     && runtime.provider === expectedProvider
     && runtime.model === (control.model ?? runtime.model)
     && runtime.reasoning_effort === (control.reasoning_effort ?? runtime.reasoning_effort);
@@ -163,6 +163,11 @@ async function trustedProviderReport({ artifactPath, attemptPath, state, taskId,
     && runtime.stop_reason === 'TurnCompleted'
     && runtime.provider_sandbox === 'workspace-write'
     && runtime.permission_mode === 'never'
+  ) || (
+    runtime.provider === 'qwen'
+    && runtime.stop_reason === 'TurnCompleted'
+    && runtime.provider_sandbox === 'off'
+    && runtime.permission_mode === 'yolo'
   );
   const runtimeIdentityValid = controlIdentityValid
     && providerIdentityValid

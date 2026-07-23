@@ -50,7 +50,11 @@ HARD_VERIFY_TIMEOUT = 86400
 HARD_V2_VERIFY_TIMEOUT = 7200
 MAX_PRIMARY_ATTEMPTS = 2
 MAX_ATTEMPTS = 3
-PRIMARY_MODELS = {"agy": "gemini-3.6-flash-high", "grok": "grok-4.5"}
+PRIMARY_MODELS = {
+    "agy": "gemini-3.6-flash-high",
+    "grok": "grok-4.5",
+    "qwen": "qwen3.8-max-preview",
+}
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 CODEX_FALLBACK_REASONING = "high"
 TAIL_SOURCES = {
@@ -568,9 +572,9 @@ def trusted_provider_report(
         and expected_control.get("task_sha256") == state.get("task_sha256")
     )
     provider = runtime.get("provider")
-    expected_provider = expected_control.get("provider", "grok")
+    expected_provider = expected_control.get("provider", "qwen")
     provider_identity_valid = (
-        provider in {"agy", "grok", "codex"}
+        provider in {"agy", "grok", "codex", "qwen"}
         and provider == expected_provider
         and runtime.get("model") == expected_control.get("model", runtime.get("model"))
         and runtime.get("reasoning_effort")
@@ -593,6 +597,11 @@ def trusted_provider_report(
         and runtime.get("stop_reason") == "TurnCompleted"
         and runtime.get("provider_sandbox") == "workspace-write"
         and runtime.get("permission_mode") == "never"
+    ) or (
+        provider == "qwen"
+        and runtime.get("stop_reason") == "TurnCompleted"
+        and runtime.get("provider_sandbox") == "off"
+        and runtime.get("permission_mode") == "yolo"
     )
     required_runtime = (
         control_identity_valid
@@ -2789,7 +2798,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_run_selector(start, task_required=False)
     start.add_argument("--task-file", required=True)
     start.add_argument("--project-cwd", required=True)
-    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="agy")
+    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="qwen")
     start.add_argument("--binary", help="provider binary override for tests")
     start.add_argument("--model", type=validate_model)
     start.add_argument(

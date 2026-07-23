@@ -254,6 +254,67 @@ class LaneSessionTest(unittest.TestCase):
                     )
                     raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
 
+                if os.environ.get("FAKE_PROVIDER_KIND") == "qwen":
+                    prompt = args[args.index("-p") + 1]
+                    task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
+                    prompt_sha256 = re.search(
+                        r"prompt_sha256=([0-9a-f]{64})", prompt
+                    ).group(1)
+                    session_id = (
+                        args[args.index("--resume") + 1]
+                        if "--resume" in args
+                        else "qwen-session-test"
+                    )
+                    model = args[args.index("--model") + 1]
+                    effective_model = os.environ.get("FAKE_EFFECTIVE_MODEL") or model
+                    report = (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n"
+                        "SUMMARY: fake Qwen report\\n"
+                        "<<<LANE_REPORT:END>>>"
+                    )
+                    emit(
+                        {
+                            "type": "system",
+                            "subtype": "init",
+                            "session_id": session_id,
+                            "model": effective_model,
+                            "permission_mode": "yolo",
+                            "qwen_code_version": "0.20.1",
+                        }
+                    )
+                    emit(
+                        {
+                            "type": "assistant",
+                            "session_id": session_id,
+                            "message": {
+                                "role": "assistant",
+                                "model": model,
+                                "content": [{"type": "text", "text": report}],
+                                "usage": {"input_tokens": 10, "output_tokens": 5},
+                            },
+                        }
+                    )
+                    emit(
+                        {
+                            "type": "result",
+                            "subtype": "success",
+                            "session_id": session_id,
+                            "is_error": False,
+                            "num_turns": 1,
+                            "result": report,
+                            "usage": {
+                                "input_tokens": 10,
+                                "output_tokens": 5,
+                                "total_tokens": 15,
+                            },
+                            "permission_denials": [],
+                        }
+                    )
+                    raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
+
                 if os.environ.get("FAKE_PROVIDER_KIND") == "" and "--conversation" not in args:
                     conversations = Path(os.environ["UNUSED_REMOVED"])
                     conversations.mkdir(parents=True, exist_ok=True)
@@ -502,6 +563,36 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["model"], "gemini-3.6-flash-high")
         self.assertEqual(receipt["permission_mode"], "always-proceed")
         self.assertTrue(receipt["protocol_valid"])
+
+    def test_qwen_uses_typed_stream_and_reuses_session(self) -> None:
+        for task_id in ("qwen-001", "qwen-002"):
+            result = self._run("qwen", task_id, model="qwen3.8-max-preview", pool_size=1)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        first, second = self._calls()
+        self.assertIn("--output-format", first)
+        self.assertEqual(first[first.index("--output-format") + 1], "stream-json")
+        self.assertIn("--yolo", first)
+        self.assertIn("-p", first)
+        self.assertNotIn("--resume", first)
+        self.assertEqual(
+            second[second.index("--resume") + 1], "qwen-session-test"
+        )
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider"], "qwen")
+        self.assertEqual(receipt["model"], "qwen3.8-max-preview")
+        self.assertEqual(receipt["permission_mode"], "yolo")
+        self.assertTrue(receipt["protocol_valid"])
+
+    def test_qwen_effective_model_mismatch_fails_closed(self) -> None:
+        result = self._run(
+            "qwen",
+            "qwen-mismatch",
+            model="qwen3.8-max-preview",
+            extra_env={"FAKE_EFFECTIVE_MODEL": "qwen3.6-flash"},
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
 
     def test_agy_rejects_tampered_agent_tool_allowlist_before_launch(self) -> None:
         agent = (

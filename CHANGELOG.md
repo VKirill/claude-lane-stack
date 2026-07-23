@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.7.0 — 2026-07-23
+
+### Added
+- **Per-task outcome manifest:** at every terminal task transition
+  (accepted/blocked) `run-controller` now writes
+  `artifacts/<task_id>/outcome.json` — a CLI-agnostic result manifest aggregating
+  `owns-check.json`, `report.md`, and controller state into one supervisor-facing
+  file: `exit_status` (completed/crashed/timeout/blocked), `failure_class`,
+  `files_changed`, `report_sha256`, attempts, and fallbacks. The write is
+  fail-safe: a missing artifact never breaks the durable controller.
+- **Supervisor outcome contract:** `dev-orchestrator` must read every task's
+  `outcome.json` and may only ship a run when all outcomes are `completed`;
+  `run-supervisor` returns the run `artifacts/` dir, and `lane-supervisor` treats
+  `outcome.json` as the authoritative crash / files-changed evidence instead of
+  re-deriving it from logs.
+- **`schemas/outcome-v1.schema.json`:** strict schema for the manifest. The
+  `provider` field is open (any string) so future writers (qwen, opencode)
+  validate without schema changes.
+- **Qwen writer provider (new default primary coder):** `qwen` is now a
+  first-class switchable writer. `lane-session` drives
+  `qwen --yolo --output-format stream-json` (a Claude-Code-compatible stream:
+  `system/init` → `assistant` → `result`), validates the effective model and the
+  `yolo` permission mode, reuses run-scoped sessions via `--resume`, classifies
+  qwen failures for retry/Codex fallback, and isolates qwen in the same
+  Bubblewrap boundary (`~/.qwen` + cwd writable, other providers hidden).
+  `run-controller` and `lane-ctl` default to qwen (`qwen3.8-max-preview`);
+  `agents-doctor` detects qwen and prefers it (Qwen → Grok → AGY); the `full`
+  profile, routing table, and supervisor contracts now name qwen as the writer.
+  Auth rides `BAILIAN_TOKEN_PLAN_API_KEY` / `DASHSCOPE_API_KEY`.
+
 ## 1.6.0 — 2026-07-21
 
 ### Added

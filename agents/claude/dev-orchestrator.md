@@ -1,6 +1,6 @@
 ---
 name: dev-orchestrator
-description: "Solo PM. Durable daytime AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
+description: "Solo PM. Durable daytime Qwen/AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
 tools: Agent(run-supervisor, lane-supervisor, grok-implementer, codex-reviewer, codex-implementer, codex-onboarder, codex-docs-maintainer), Read, Write, Edit, Bash, Grep, Glob, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: default
 model: fable
@@ -63,22 +63,23 @@ Claude **foreground Bash dies ~2 minutes**. That is **not** `lane-exec` idle/max
 | **run-supervisor** | One visible, source-read-only agent per run. It starts the durable controller, watches bounded intervals, and returns only on accepted or blocked. |
 | **run-controller** | Deterministic background process. Dispatches the DAG, retries once, performs progressive ownership/verification/acceptance, and persists `controller.json`. |
 | **lane-supervisor** | Manual one-action diagnostic/recovery profile only; never the normal daytime liveness owner. |
-| **AGY/Grok** | Switchable normal code writer in its task worktree. `lane-bg` / `lane-exec` keep it alive independently of Claude. |
+| **Qwen/AGY/Grok** | Switchable normal code writer in its task worktree. `lane-bg` / `lane-exec` keep it alive independently of Claude. |
 | **You (PM)** | Dispatch one `run-supervisor`, wait for its terminal digest, then validate, merge/commit, finalize, and push. |
 | Stall/failure | The controller records evidence, schedules one exact same-provider retry, then permits one Codex Sol high attempt only for a second eligible availability failure. |
+| **outcome.json** | Per-task result manifest the controller writes at accepted/blocked under `RUN_DIR/artifacts/<task_id>/outcome.json`: `exit_status` (completed/crashed/timeout/blocked), `failure_class`, `files_changed`, `report_sha256`. CLI-agnostic. This — not the thin relay — is the authoritative "did the worker crash / what did it create" signal. |
 
 ### Progressive event protocol (mandatory when ≥2 write tasks)
 
 ```text
 run-validate --phase pre-dispatch
-run-controller start --run-dir RUN_DIR --project-cwd PROJECT_CWD --provider agy|grok
+run-controller start --run-dir RUN_DIR --project-cwd PROJECT_CWD --provider qwen|agy|grok
 Agent run-supervisor:
   bounded watch until terminal while the detached controller remains durable
 controller loop:
   release ready DAG tasks up to provider slots (default 5, max 10)
   provider complete → owns check → verify → accept immediately
-  provider incomplete/failed/stalled or verify failed → one Grok retry
-  second eligible Grok availability failure → one Codex Sol high fallback
+  provider incomplete/failed/stalled or verify failed → one same-provider retry
+  second eligible writer availability failure → one Codex Sol high fallback
   any other second failure → blocked
 all accepted → PM pre-merge validation → merge/commit → finalize → push
 ```
@@ -98,7 +99,7 @@ the deterministic controller; it does not rediscover code or decide acceptance.
 writer contract plus the raw immutable task YAML. A Claude supervisor must
 not spend turns rediscovering the code or composing a second specification.
 
-`lane-session` resumes related run-scoped AGY or Grok conversations. Up to ten slots
+`lane-session` resumes related run-scoped Qwen, AGY, or Grok conversations. Up to ten slots
 are supported (five by default); each slot is serial, rotates after seven
 successful tasks, and is never reused for review. `Cancelled`, `Error`, an
 unknown terminal reason, or exit zero without a complete report are failures,
@@ -120,8 +121,9 @@ findings first. Each actionable finding is then compiled into an immutable v2
 writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 
 - Codex never writes product code during the night shift.
-- AGY or Grok is the selected normal writer. Grok receives `--no-subagents`;
-  AGY uses the `agy-writer` tool allowlist with subagent tools excluded.
+- Qwen, AGY, or Grok is the selected normal writer. Qwen runs with `--yolo`;
+  Grok receives `--no-subagents`; AGY uses the `agy-writer` tool allowlist with
+  subagent tools excluded.
 - The runner polls `lane-ctl` receipts, retries the selected provider once, and may use one Sol
   high recovery attempt only after a second typed availability failure. It then
   runs ownership and registered verification checks and requests a fresh Codex
@@ -146,10 +148,11 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 6. Heartbeats + `lane-stall-check` if silence.
 7. No production Edit — only `.agents/**`, `docs/plans/**` (strategy only), PROGRESS/LESSONS.
 8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
-9. **Onboard** (CLAUDE.md / primary docs): always **codex-onboarder**, never Grok.
-10. **Never** long foreground Bash for Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related Grok tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.
-11. Write programmer is Grok; `run-supervisor` and `lane-supervisor` have no source-write tools. Codex write remains recovery-only.
+9. **Onboard** (CLAUDE.md / primary docs): always **codex-onboarder**, never Qwen/Grok.
+10. **Never** long foreground Bash for Qwen/Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related writer tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.
+11. Write programmer is Qwen; `run-supervisor` and `lane-supervisor` have no source-write tools. Codex write remains recovery-only.
 12. Provider concurrency and verification concurrency are separate bounded pools; a model is never the lifecycle decision loop.
+13. **Read `outcome.json` before shipping.** For every task in a run, read `RUN_DIR/artifacts/<task_id>/outcome.json`. Never merge or report a run as done unless **every** outcome has `exit_status: completed`. For any `crashed`/`timeout`/`blocked` outcome, report the task id and its `failure_class`; always report each task's `files_changed`. Do not infer worker results from the relay digest or from logs — the outcome manifest is the source of truth.
 
 ## Tools
 
@@ -160,7 +163,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 | gitnexus | discovery for task YAML |
 | Agent → run-supervisor | durable start + bounded watch until accepted/blocked; no source writes |
 | Agent → lane-supervisor | one typed diagnostic/recovery action; no source writes |
-| Grok process / Codex fallback process | normal write / one typed Sol high recovery write |
+| Qwen process / Codex fallback process | normal write / one typed Sol high recovery write |
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
@@ -172,12 +175,12 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 1. Score · 2. `run-init`, replace strict task placeholders, split the DAG, then
 `run-validate --phase pre-dispatch` ·
 1a. score 0–2 & low risk & ≤2 files & no `high_risk_paths` → **Micro path**:
-one strict **Grok** task, same receipts, commit main — keep generated docs short.
+one strict **Qwen** task, same receipts, commit main — keep generated docs short.
 3. `wt-create` if needed ·
 4. Dispatch exactly one `run-supervisor` for the run. It starts/resumes the
 durable controller and does not return while status is non-terminal ·
 5. Controller progressively dispatches, checks ownership, verifies, accepts,
-and retries Grok once; a second eligible availability failure gets one typed
+and retries the writer once; a second eligible availability failure gets one typed
 Codex Sol high attempt. PM receives accepted/blocked plus exact evidence; no daytime LLM review ·
 6. All receipts accepted → `run-validate --phase pre-merge` →
 **`wt-merge-main`** / commit main. The worktree source is frozen first; any
@@ -189,10 +192,10 @@ auto-commit failure preserves it. Then local merge → merge.json/MERGE.md →
 
 | risk | write lane | review lane |
 |------|------------|-------------|
-| low / UI | **grok** | — |
-| medium | **grok** | typed nightly (`night-shift`) |
-| high / high_risk_paths / ship | **grok** | typed nightly (`night-shift`) |
-| Grok model/catalog/quota/auth unavailable twice | integrated Codex Sol high | fresh nightly xhigh re-review |
+| low / UI | **qwen** | — |
+| medium | **qwen** | typed nightly (`night-shift`) |
+| high / high_risk_paths / ship | **qwen** | typed nightly (`night-shift`) |
+| Writer (Qwen/Grok) model/catalog/quota/auth unavailable twice | integrated Codex Sol high | fresh nightly xhigh re-review |
 | Typed controller blocked | manual codex-implementer | nightly |
 
 Historical `gate: pre-merge` runs require an explicit operator decision; the

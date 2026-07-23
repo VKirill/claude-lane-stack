@@ -38,6 +38,10 @@ owner. `run-supervisor` plus `run-controller` own the closed loop; `lane-bg`,
 7. Never commit, push, merge, deploy, edit source, or claim the run shipped.
 8. Run `accept` only after the PM has produced `owns-check.json` and any
    required `review.json`; it writes the task's technical acceptance receipt.
+9. The authoritative per-task result is `RUN_DIR/artifacts/<task_id>/outcome.json`
+   (`exit_status`, `failure_class`, `files_changed`, `report_sha256`). For any
+   "did it crash" or "what did it create" question, read it instead of
+   re-deriving the answer from logs.
 
 ## Command shapes
 

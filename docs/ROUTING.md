@@ -7,7 +7,7 @@
 | Role | Who | Default model |
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
-| Write (all risks) | **AGY 3.6** (default) or **Grok 4.5** | selected programmer lane |
+| Write (all risks) | **Qwen 3.8** (default), Grok 4.5, or AGY 3.6 | selected programmer lane |
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
 | Fallback write | Codex | see claude-codex table |
@@ -31,7 +31,7 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
-| `risk: low` UI/wiring | **agy** by default; `grok` selectable | Gemini 3.6 Flash high or Grok 4.5 medium |
+| `risk: low` UI/wiring | **qwen** by default; `grok`/`agy` selectable | Qwen 3.8 max, Grok 4.5 medium, or Gemini 3.6 Flash high |
 | `risk: medium` | selected writer → Codex night shift | same receipt chain + gpt-5.6-sol xhigh nightly |
 | `risk: high` auth/pay/schema | selected writer solo → Codex night shift | no silent daytime reviewer |
 | Selected model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |
@@ -42,7 +42,7 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 | Tier    | Trigger                            | Review |
 |---------|-------------------------------------|--------|
 | none    | micro path / risk low               | verify field + check-owns-paths only |
-| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded AGY/Grok repair; fresh re-review |
+| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Qwen/AGY/Grok repair; fresh re-review |
 
 There is no daytime LLM review. Historical or explicitly configured
 `gate: pre-merge` runs stop for an operator decision instead of silently
@@ -93,7 +93,7 @@ See [LANE-EXEC.md](LANE-EXEC.md). One source-read-only `run-supervisor` stays
 visible through bounded watches; the detached deterministic controller remains
 alive independently and makes all lifecycle decisions.
 
-AGY and Grok write tasks within the same run use `lane-session` affinity. The
+Qwen, AGY, and Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
 slots (five by default, configurable 1–10). Default rotation: seven successful tasks; review remains
 an independent cold session.
@@ -106,7 +106,7 @@ ownership, verification, cancellation, or an unknown failure.
 
 | Situation | Policy |
 |-----------|--------|
-| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, durable controller around one detached **AGY/Grok** lane, no daytime reviewer |
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, durable controller around one detached **Qwen/AGY/Grok** lane, no daytime reviewer |
 | 1 low-risk write | main tree OK; typed `run-controller start` |
 | ≥2 writes OR score ≥ 4 | worktree; provider pool default 5 / max 10; durable progressive accept; disjoint owns_paths |
 | Verification | separate pool default 2 / max 10; exact task commands only |

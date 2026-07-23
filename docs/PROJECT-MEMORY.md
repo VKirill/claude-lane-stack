@@ -17,6 +17,7 @@ Files every serious agent project should keep so a cold session is useful in min
 | `.agents/runs/<slug>/night-fix-state.json` | Resumable dispatch/verify/re-review state | `night-fix-runner` |
 | `.agents/runs/<slug>/artifacts/<task>/review.json` | Identity-bound Codex re-review receipt | `night-review-engine` |
 | `.agents/runs/<slug>/artifacts/<task>/attempts/<n>/runtime.json` | Sanitized Grok protocol/runtime receipt | `lane-session` |
+| `.agents/runs/<slug>/artifacts/<task>/outcome.json` | CLI-agnostic result manifest (exit_status, failure_class, files_changed) for supervisors | `run-controller` |
 | `.agents/night-fix-current.json` | Pointer to current/last repair state | `night-fix-runner` |
 | `.agents/todos/` | Ideas backlog | Humans + PM agents |
 | `.agents/runs/` | Immutable task specs + machine receipts + reports | Orchestrator + lanes |

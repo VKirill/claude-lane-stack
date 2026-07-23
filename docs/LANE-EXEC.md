@@ -17,7 +17,7 @@ The lane stack therefore separates six responsibilities:
 | `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
 | `lane-session` | Warm AGY/Grok plus one-shot Codex fallback, provider isolation, validated report transport, and bounded concurrency |
 
-AGY 3.6 is the default code writer and Grok remains selectable. A classified second availability failure may
+Grok 4.5 is the default code writer and AGY 3.6 remains selectable. A classified second availability failure may
 use one Codex Sol high writer attempt; that is recovery, not daytime review.
 Both Claude supervisor profiles have no `Write`,
 `Edit`, or unrestricted `Bash` capability. There is no daytime LLM review.
@@ -31,7 +31,7 @@ run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
 run-controller start \
   --run-dir "$RUN_DIR" \
   --project-cwd "$PROJECT_CWD" \
-  --provider agy # or: grok
+  --provider grok # or: agy
 run-controller watch --run-dir "$RUN_DIR" --timeout 240
 run-controller status --run-dir "$RUN_DIR" --json
 ```
@@ -190,6 +190,7 @@ private per-user directory under `/tmp`.
     report.md
     owns-check.json
     acceptance.json
+    outcome.json # aggregated result manifest for supervisors (exit_status, files_changed)
     review.json
     attempts/01/
       control.json

@@ -51,6 +51,7 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
         report.md
         owns-check.json
         acceptance.json # sole technical done receipt
+        outcome.json # supervisor-facing result manifest: exit_status, failure_class, files_changed
         review.json # codex when required
         heartbeat.json # last touch from lane
         attempts/

@@ -1,0 +1,1906 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<title>GPT-5.6: модель и reasoning</title>
+<style>/* =========================================================
+   AI Models Guide 2026 — print design system
+   Style: Minimalism & Swiss (documentation)
+   Palette: Knowledge Base / Documentation (ui-ux-pro-max)
+   ========================================================= */
+
+:root {
+  /* Semantic tokens — Knowledge Base palette */
+  --color-primary: #0f172a;
+  --color-on-primary: #ffffff;
+  --color-secondary: #475569;
+  --color-accent: #2563eb;
+  --color-on-accent: #ffffff;
+  --color-background: #ffffff;
+  --color-surface: #f8fafc;
+  --color-foreground: #1e293b;
+  --color-muted: #f1f5f9;
+  --color-muted-fg: #64748b;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-success-bg: #ecfdf5;
+  --color-success-border: #a7f3d0;
+  --color-success-fg: #065f46;
+  --color-success-accent: #059669;
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+  --color-info-fg: #1e3a8a;
+  --color-info-accent: #2563eb;
+  --color-warn-bg: #fffbeb;
+  --color-warn-border: #fde68a;
+  --color-warn-fg: #92400e;
+  --color-warn-accent: #d97706;
+  --color-tip-bg: #f5f3ff;
+  --color-tip-border: #ddd6fe;
+  --color-tip-fg: #5b21b6;
+  --color-tip-accent: #7c3aed;
+  --color-table-header: #0f172a;
+  --color-table-stripe: #f8fafc;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+}
+
+@page {
+  size: A4;
+  margin: 18mm 16mm 20mm 16mm;
+}
+
+@page :first {
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+body {
+  font-family: "DejaVu Sans", "Liberation Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  color: var(--color-foreground);
+  background: var(--color-background);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Cover (dark slate + accent) ---------- */
+.cover {
+  page-break-after: always;
+  min-height: 297mm;
+  width: 210mm;
+  margin: 0;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 85% 55% at 0% 0%, rgba(37, 99, 235, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(14, 165, 233, 0.12), transparent 50%),
+    linear-gradient(168deg, #0b1220 0%, #0f172a 48%, #111827 100%);
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
+
+.cover::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cover-inner {
+  position: relative;
+  z-index: 1;
+  padding: 26mm 18mm 18mm;
+  display: flex;
+  flex-direction: column;
+  min-height: 297mm;
+  justify-content: space-between;
+}
+
+.cover-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  font-size: 8.5pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+  width: fit-content;
+  font-weight: 600;
+}
+
+.cover-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.22);
+}
+
+.cover h1 {
+  margin: 28px 0 14px;
+  font-size: 30pt;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  border: none;
+  padding: 0;
+}
+
+.cover h1 span {
+  display: block;
+  color: #ffffff;
+}
+
+.cover .subtitle {
+  font-size: 11.5pt;
+  line-height: 1.5;
+  color: #94a3b8;
+  max-width: 92%;
+  margin: 0 0 24px;
+  font-weight: 400;
+}
+
+.cover-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.chip {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 8.2pt;
+  font-weight: 600;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  color: #dbeafe;
+}
+
+.cover-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.cover-meta .item {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.cover-meta .label {
+  font-size: 7.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.cover-meta .value {
+  font-size: 10pt;
+  color: #f1f5f9;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cover-footer {
+  margin-top: 14px;
+  font-size: 8pt;
+  color: #64748b;
+}
+
+/* ---------- Content ---------- */
+.page-content {
+  padding: 0;
+  max-width: 100%;
+}
+
+h1, h2, h3, h4 {
+  color: var(--color-primary);
+  font-weight: 700;
+  line-height: 1.28;
+  page-break-after: avoid;
+}
+
+h1 {
+  font-size: 16.5pt;
+  margin: 1.35em 0 0.5em;
+  padding: 0 0 0.4em;
+  border-bottom: 2px solid var(--color-accent);
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 12.5pt;
+  margin: 1.2em 0 0.4em;
+  padding-left: 10px;
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-primary);
+}
+
+h3 {
+  font-size: 11pt;
+  margin: 1em 0 0.35em;
+  color: var(--color-secondary);
+  font-weight: 650;
+}
+
+p {
+  margin: 0.4em 0 0.65em;
+  orphans: 3;
+  widows: 3;
+  color: var(--color-foreground);
+}
+
+strong {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+em {
+  color: var(--color-secondary);
+  font-style: italic;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+ul, ol {
+  margin: 0.35em 0 0.75em;
+  padding-left: 1.2em;
+}
+
+li {
+  margin: 0.2em 0;
+  color: var(--color-foreground);
+}
+
+li::marker {
+  color: var(--color-accent);
+}
+
+/* ---------- Callouts — light surfaces, forced contrast ---------- */
+.okbox,
+.callout,
+.warnbox,
+.tipbox,
+.rule-hero {
+  border-radius: var(--radius);
+  padding: 12px 14px 12px 16px;
+  margin: 12px 0 14px;
+  page-break-inside: avoid;
+  border: 1px solid var(--color-border);
+  /* reset inheritance traps */
+  color: var(--color-foreground);
+}
+
+/* Force ALL descendants readable — fixes black italic on blue */
+.okbox,
+.okbox *,
+.callout,
+.callout *,
+.warnbox,
+.warnbox *,
+.tipbox,
+.tipbox *,
+.rule-hero,
+.rule-hero * {
+  color: inherit;
+}
+
+.okbox strong,
+.callout strong,
+.warnbox strong,
+.tipbox strong,
+.rule-hero strong {
+  font-weight: 700;
+}
+
+.okbox em,
+.callout em,
+.warnbox em,
+.tipbox em,
+.rule-hero em {
+  font-style: normal;
+  font-weight: 650;
+}
+
+/* Rule hero: light info surface (NOT gradient with mixed text) */
+.rule-hero {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  box-shadow: inset 4px 0 0 var(--color-info-accent);
+  color: var(--color-info-fg);
+}
+
+.rule-hero .label {
+  font-size: 7.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--color-info-accent);
+  margin: 0 0 6px;
+}
+
+.rule-hero strong {
+  color: var(--color-primary);
+}
+
+.rule-hero em {
+  color: var(--color-info-accent);
+  background: rgba(37, 99, 235, 0.08);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.okbox {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  box-shadow: inset 4px 0 0 var(--color-success-accent);
+  color: var(--color-success-fg);
+}
+
+.okbox strong { color: #064e3b; }
+.okbox em { color: var(--color-success-accent); }
+
+.callout {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  box-shadow: inset 4px 0 0 var(--color-info-accent);
+  color: var(--color-info-fg);
+}
+
+.callout strong { color: #1e3a8a; }
+.callout em { color: var(--color-info-accent); }
+
+.warnbox {
+  background: var(--color-warn-bg);
+  border-color: var(--color-warn-border);
+  box-shadow: inset 4px 0 0 var(--color-warn-accent);
+  color: var(--color-warn-fg);
+}
+
+.warnbox strong { color: #78350f; }
+.warnbox em { color: #b45309; }
+
+.tipbox {
+  background: var(--color-tip-bg);
+  border-color: var(--color-tip-border);
+  box-shadow: inset 4px 0 0 var(--color-tip-accent);
+  color: var(--color-tip-fg);
+}
+
+.tipbox strong { color: #4c1d95; }
+.tipbox em { color: var(--color-tip-accent); }
+
+/* ---------- Tables ---------- */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 10px 0 16px;
+  font-size: 8.8pt;
+  line-height: 1.4;
+  page-break-inside: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+}
+
+thead {
+  display: table-header-group;
+}
+
+th {
+  background: var(--color-table-header);
+  color: #ffffff !important;
+  font-weight: 650;
+  text-align: left;
+  padding: 8px 9px;
+  border: none;
+  font-size: 8.2pt;
+  letter-spacing: 0.01em;
+}
+
+th * {
+  color: #ffffff !important;
+}
+
+td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--color-border);
+  border-right: 1px solid #f1f5f9;
+  vertical-align: top;
+  color: var(--color-foreground);
+  background: #fff;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+td:last-child,
+th:last-child {
+  border-right: none;
+}
+
+tbody tr:nth-child(even) td {
+  background: var(--color-table-stripe);
+}
+
+/* ---------- Code ---------- */
+code {
+  font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, monospace;
+  font-size: 8.5pt;
+  background: var(--color-muted);
+  color: #1d4ed8;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+}
+
+pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 10px 0 14px;
+  font-size: 8pt;
+  line-height: 1.42;
+  overflow: hidden;
+  page-break-inside: avoid;
+  border: 1px solid #1e293b;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+pre,
+pre * {
+  color: #e2e8f0 !important;
+  background: transparent;
+  border: none;
+}
+
+pre code {
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ---------- TOC ---------- */
+hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.3em 0;
+}
+
+#TOC,
+nav#TOC {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  margin: 0 0 20px;
+  page-break-after: always;
+}
+
+#TOC > h2,
+nav#TOC > h2 {
+  font-size: 13pt;
+  font-weight: 750;
+  color: var(--color-primary);
+  margin: 0 0 10px;
+  border: none;
+  padding: 0;
+  border-left: none;
+}
+
+#TOC ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+#TOC li {
+  margin: 0;
+  padding: 5px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+#TOC li:last-child {
+  border-bottom: none;
+}
+
+#TOC a {
+  color: var(--color-foreground);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+#TOC ul ul {
+  padding-left: 12px;
+  margin-top: 2px;
+}
+
+#TOC ul ul a {
+  font-weight: 400;
+  color: var(--color-muted-fg);
+  font-size: 9.3pt;
+}
+
+#TOC ul ul li {
+  border-bottom: none;
+  padding: 2px 0;
+}
+
+/* ---------- Section kickers ---------- */
+.section-kicker {
+  display: inline-block;
+  font-size: 7.2pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin: 0.9em 0 6px;
+}
+
+/* ---------- Blockquote ---------- */
+blockquote {
+  margin: 10px 0 14px;
+  padding: 10px 14px;
+  border-left: 4px solid var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-secondary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+blockquote p {
+  margin: 0.2em 0;
+  color: inherit;
+}
+
+/* ---------- End card ---------- */
+.doc-end {
+  margin-top: 28px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--color-primary);
+  color: #cbd5e1;
+  text-align: center;
+  font-size: 9pt;
+}
+
+.doc-end,
+.doc-end * {
+  color: #e2e8f0 !important;
+}
+
+.doc-end strong {
+  color: #ffffff !important;
+}
+
+/* ---------- Helpers ---------- */
+.pagebreak {
+  page-break-before: always;
+}
+
+.page-content > .pagebreak:first-child {
+  page-break-before: avoid;
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="cover-inner">
+    <div>
+      <div class="cover-badge"><span class="dot"></span> OpenAI · GPT‑5.6 · v1.0</div>
+      <h1><span>GPT‑5.6: модель<br>и уровень размышлений</span></h1>
+      <p class="subtitle">Sol · Terra · Luna · none → max · Pro · Ultra — когда какой тир и какой effort использовать в коде, агентах и API.</p>
+      <div class="cover-chips">
+        <span class="chip">Sol / Terra / Luna</span>
+        <span class="chip">low · medium · high</span>
+        <span class="chip">xhigh · max</span>
+        <span class="chip">Pro · Ultra</span>
+      </div>
+    </div>
+    <div>
+      <div class="cover-meta">
+        <div class="item"><div class="label">Default</div><div class="value">Sol medium (или Terra medium)</div></div>
+        <div class="item"><div class="label">Паттерн</div><div class="value">Plan high → Execute low/medium</div></div>
+        <div class="item"><div class="label">Формат</div><div class="value">Практическая методичка</div></div>
+        <div class="item"><div class="label">Аудитория</div><div class="value">Dev · Codex · API</div></div>
+      </div>
+      <div class="cover-footer">По документации OpenAI и практике · июль 2026</div>
+    </div>
+  </div>
+</section>
+
+<main class="page-content">
+
+
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#о-документе" id="toc-о-документе">О документе</a></li>
+<li><a href="#семейство-gpt-5.6-три-модели-не-одна" id="toc-семейство-gpt-5.6-три-модели-не-одна">1. Семейство GPT-5.6: три
+модели, не одна</a>
+<ul>
+<li><a href="#принцип-выбора-модели-openai" id="toc-принцип-выбора-модели-openai">1.1. Принцип выбора модели
+(OpenAI)</a></li>
+<li><a href="#сильные-стороны-5.6-зачем-вообще-переходить" id="toc-сильные-стороны-5.6-зачем-вообще-переходить">1.2. Сильные
+стороны 5.6 (зачем вообще переходить)</a></li>
+</ul></li>
+<li><a href="#уровни-размышлений-reasoning.effort" id="toc-уровни-размышлений-reasoning.effort">2. Уровни размышлений
+(reasoning.effort)</a>
+<ul>
+<li><a href="#шкала-api-gpt-5.6" id="toc-шкала-api-gpt-5.6">2.1. Шкала
+API (GPT-5.6)</a></li>
+<li><a href="#официальная-матрица-best-for-по-docs-openai" id="toc-официальная-матрица-best-for-по-docs-openai">2.2. Официальная
+матрица «best for» (по docs OpenAI)</a></li>
+<li><a href="#max-ultra-pro-не-путать" id="toc-max-ultra-pro-не-путать">2.3. Max · Ultra · Pro — не
+путать</a></li>
+</ul></li>
+<li><a href="#когда-какой-уровень-полная-матрица" id="toc-когда-какой-уровень-полная-матрица">3. Когда какой уровень:
+полная матрица</a>
+<ul>
+<li><a href="#по-типу-задачи" id="toc-по-типу-задачи">3.1. По типу
+задачи</a></li>
+<li><a href="#по-цене-ошибки" id="toc-по-цене-ошибки">3.2. По «цене
+ошибки»</a></li>
+<li><a href="#по-режиму-работы-человека" id="toc-по-режиму-работы-человека">3.3. По режиму работы
+человека</a></li>
+</ul></li>
+<li><a href="#decision-tree-что-выбрать-за-30-секунд" id="toc-decision-tree-что-выбрать-за-30-секунд">4. Decision tree: что
+выбрать за 30 секунд</a>
+<ul>
+<li><a href="#ascii-дерево" id="toc-ascii-дерево">4.1.
+ASCII-дерево</a></li>
+</ul></li>
+<li><a href="#рекомендованные-пресеты" id="toc-рекомендованные-пресеты">5. Рекомендованные пресеты</a>
+<ul>
+<li><a href="#daily-coding-codex-ide" id="toc-daily-coding-codex-ide">5.1. Daily coding (Codex / IDE)</a></li>
+<li><a href="#product-api-продакшен" id="toc-product-api-продакшен">5.2.
+Product API (продакшен)</a></li>
+<li><a href="#research-аналитика" id="toc-research-аналитика">5.3.
+Research / аналитика</a></li>
+<li><a href="#оркестратор-несколько-ролей" id="toc-оркестратор-несколько-ролей">5.4. Оркестратор (несколько
+ролей)</a></li>
+</ul></li>
+<li><a href="#миграция-с-gpt-5.5" id="toc-миграция-с-gpt-5.5">6.
+Миграция с GPT-5.5</a>
+<ul>
+<li><a href="#таблица-конверсии-effort" id="toc-таблица-конверсии-effort">6.1. Таблица конверсии effort</a></li>
+<li><a href="#эвристики-сообщества-не-догма" id="toc-эвристики-сообщества-не-догма">6.2. Эвристики сообщества (не
+догма)</a></li>
+<li><a href="#hybrid-5.5-5.6" id="toc-hybrid-5.5-5.6">6.3. Hybrid 5.5 +
+5.6</a></li>
+<li><a href="#что-поменять-в-промптах" id="toc-что-поменять-в-промптах">6.4. Что поменять в промптах</a></li>
+</ul></li>
+<li><a href="#экономика-и-антипаттерны" id="toc-экономика-и-антипаттерны">7. Экономика и антипаттерны</a>
+<ul>
+<li><a href="#что-реально-жжёт-бюджет" id="toc-что-реально-жжёт-бюджет">7.1. Что реально жжёт бюджет</a></li>
+<li><a href="#антипаттерны" id="toc-антипаттерны">7.2.
+Антипаттерны</a></li>
+<li><a href="#когда-effort-уже-насытился" id="toc-когда-effort-уже-насытился">7.3. Когда effort уже
+«насытился»</a></li>
+</ul></li>
+<li><a href="#чеклисты" id="toc-чеклисты">8. Чеклисты</a>
+<ul>
+<li><a href="#перед-запуском-задачи" id="toc-перед-запуском-задачи">8.1.
+Перед запуском задачи</a></li>
+<li><a href="#если-качество-плохое" id="toc-если-качество-плохое">8.2.
+Если качество плохое</a></li>
+<li><a href="#если-слишком-дорого-медленно" id="toc-если-слишком-дорого-медленно">8.3. Если слишком дорого /
+медленно</a></li>
+<li><a href="#production-gate" id="toc-production-gate">8.4. Production
+gate</a></li>
+</ul></li>
+<li><a href="#api-минимальные-примеры" id="toc-api-минимальные-примеры">9. API: минимальные примеры</a>
+<ul>
+<li><a href="#standard-medium" id="toc-standard-medium">9.1. Standard ·
+medium</a></li>
+<li><a href="#pro-high-quality-first" id="toc-pro-high-quality-first">9.2. Pro · high (quality-first)</a></li>
+<li><a href="#luna-low-high-volume" id="toc-luna-low-high-volume">9.3.
+Luna · low (high volume)</a></li>
+<li><a href="#параметры-которые-стоит-знать" id="toc-параметры-которые-стоит-знать">9.4. Параметры, которые стоит
+знать</a></li>
+</ul></li>
+<li><a href="#шпаргалка-на-одну-страницу" id="toc-шпаргалка-на-одну-страницу">10. Шпаргалка на одну страницу</a>
+<ul>
+<li><a href="#модели" id="toc-модели">Модели</a></li>
+<li><a href="#effort" id="toc-effort">Effort</a></li>
+<li><a href="#режимы" id="toc-режимы">Режимы</a></li>
+<li><a href="#миграция-5.5-5.6" id="toc-миграция-5.5-5.6">Миграция 5.5 →
+5.6</a></li>
+<li><a href="#золотые-правила" id="toc-золотые-правила">Золотые
+правила</a></li>
+</ul></li>
+<li><a href="#приложение-a.-глоссарий" id="toc-приложение-a.-глоссарий">Приложение A. Глоссарий</a></li>
+<li><a href="#приложение-b.-источники" id="toc-приложение-b.-источники">Приложение B. Источники</a></li>
+<li><a href="#приложение-c.-карточка-повесь-у-монитора" id="toc-приложение-c.-карточка-повесь-у-монитора">Приложение C. Карточка
+«повесь у монитора»</a></li>
+</ul>
+</nav>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">INTRO</div><h1 id="о-документе">О документе</h1>
+<p><strong>Назначение.</strong> Дать однозначные правила: <em>какую
+модель GPT-5.6 взять</em> и <em>какой уровень reasoning (размышлений)
+выставить</em> — для API, Codex, ChatGPT и агентных пайплайнов.</p>
+<p><strong>Источники.</strong> Официальные гайды OpenAI (<em>Using
+GPT-5.6</em>, <em>Reasoning models</em>, <em>Model selection</em>,
+Introducing GPT-5.6), Codex-практика, обсуждения power-users в X и
+Reddit (r/codex и др.), июль 2026.</p>
+<p><strong>Как читать.</strong></p>
+<ol type="1">
+<li>Разделы 1–2 — карта моделей и уровней (теория).</li>
+<li>Разделы 3–5 — матрицы «когда что» (практика).</li>
+<li>Разделы 6–8 — пресеты, миграция с 5.5, чеклисты.</li>
+<li>Приложение — шпаргалка на одну страницу.</li>
+</ol>
+<div class="rule-hero"><div class="label">Запомни навсегда</div>
+<p><strong>Главное правило.</strong> Начинай с
+<strong>минимального</strong> тира и effort, которые дают нужное
+качество; поднимай только если eval/ревью показали просадку. На GPT-5.6
+уровни <strong>не</strong> мапятся 1:1 с GPT-5.5 — часто хватает effort
+на один уровень ниже.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">МОДЕЛИ</div><h1 id="семейство-gpt-5.6-три-модели-не-одна">1. Семейство GPT-5.6: три
+модели, не одна</h1>
+<p>GPT-5.6 — <strong>семейство</strong>. Alias <code>gpt-5.6</code>
+маршрутизирует на <strong><code>gpt-5.6-sol</code></strong>
+(флагман).</p>
+<table>
+<colgroup>
+<col style="width: 11%"/>
+<col style="width: 14%"/>
+<col style="width: 8%"/>
+<col style="width: 44%"/>
+<col style="width: 19%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Модель</th>
+<th>API slug</th>
+<th>Роль</th>
+<th>Цена (ориентир, $/1M tokens)</th>
+<th>Когда брать</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Sol</strong></td>
+<td><code>gpt-5.6</code> / <code>gpt-5.6-sol</code></td>
+<td>Максимальный интеллект</td>
+<td>~$5 input / $30 output</td>
+<td>Сложный код, агенты, архитектура, hard research</td>
+</tr>
+<tr class="even">
+<td><strong>Terra</strong></td>
+<td><code>gpt-5.6-terra</code></td>
+<td>Баланс качество/цена</td>
+<td>~$2.50 / $15</td>
+<td>«Рабочая лошадка» прод, объём, большинство задач</td>
+</tr>
+<tr class="odd">
+<td><strong>Luna</strong></td>
+<td><code>gpt-5.6-luna</code></td>
+<td>Скорость и throughput</td>
+<td>~$0.625 / $3.75</td>
+<td>Chat, classify, routing, batch, high-QPS</td>
+</tr>
+</tbody>
+</table>
+<h2 id="принцип-выбора-модели-openai">1.1. Принцип выбора модели
+(OpenAI)</h2>
+<ol type="1">
+<li><strong>Сначала accuracy.</strong> Зафиксируй целевое качество
+(например: 90% успешных agent-runs).</li>
+<li><strong>Потом cost и latency.</strong> Удерживая accuracy, спускайся
+к более дешёвой/быстрой модели.</li>
+<li><strong>Eval обязателен.</strong> Меняй модель/effort только по
+замерам на <em>своих</em> задачах, не по бенчмаркам из анонсов.</li>
+</ol>
+<div class="callout">
+<p><strong>Практический порядок.</strong> Sol medium (baseline качества)
+→ тот же effort на Terra → Luna. На каждом шаге: success rate, токены,
+wall-clock, $. Оставляй самый дешёвый вариант, где quality в пределах
+допуска.</p>
+</div>
+<h2 id="сильные-стороны-5.6-зачем-вообще-переходить">1.2. Сильные
+стороны 5.6 (зачем вообще переходить)</h2>
+<ul>
+<li><strong>Token-efficiency</strong> — frontier-качество при меньшем
+числе output tokens, чем у 5.5.</li>
+<li><strong>Frontend / UI</strong> — сильнее layout, hierarchy, design
+judgment.</li>
+<li><strong>Intent understanding</strong> — лучше угадывает «сколько
+работы» нужно; меньше микроменеджмента шагов.</li>
+<li><strong>Новые режимы:</strong> <code>max</code> effort, <strong>Pro
+mode</strong>, multi-agent (аналог Ultra в Codex), Programmatic Tool
+Calling, persisted reasoning.</li>
+</ul>
+<div class="warnbox">
+<p><strong>Подводный камень.</strong> Cache writes у 5.6 биллятся <span class="math inline"> ≈ 1.25×</span> uncached input. На длинных
+agent-сессиях лимиты могут сгорать быстрее, чем «ожидали по 5.5», даже
+если «сырой» output меньше.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">REASONING</div><h1 id="уровни-размышлений-reasoning.effort">2. Уровни размышлений
+(reasoning.effort)</h1>
+<p>Параметр <code>reasoning.effort</code> (в Codex: <em>reasoning
+level</em>) задаёт, <strong>сколько модель думает</strong> до ответа.
+Больше effort → больше reasoning tokens, latency и стоимости. Модель
+<strong>адаптивна</strong>: на простых запросах тратит меньше, на
+сложных — больше <em>даже при том же уровне</em>.</p>
+<h2 id="шкала-api-gpt-5.6">2.1. Шкала API (GPT-5.6)</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Effort</th>
+<th>Суть</th>
+<th>Типичная latency</th>
+<th>Типичная стоимость</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>none</code></td>
+<td>Почти без «думания»</td>
+<td>минимальная</td>
+<td>минимальная</td>
+</tr>
+<tr class="even">
+<td><code>low</code></td>
+<td>Лёгкое reasoning + tools</td>
+<td>низкая</td>
+<td>низкая</td>
+</tr>
+<tr class="odd">
+<td><code>medium</code></td>
+<td>Баланс (часто <strong>default</strong>)</td>
+<td>средняя</td>
+<td>средняя</td>
+</tr>
+<tr class="even">
+<td><code>high</code></td>
+<td>Глубокий разбор</td>
+<td>высокая</td>
+<td>высокая</td>
+</tr>
+<tr class="odd">
+<td><code>xhigh</code></td>
+<td>Длинный горизонт / async</td>
+<td>очень высокая</td>
+<td>очень высокая</td>
+</tr>
+<tr class="even">
+<td><code>max</code></td>
+<td>Потолок для hardest tasks</td>
+<td>максимальная</td>
+<td>максимальная</td>
+</tr>
+</tbody>
+</table>
+<p>В UI Codex/ChatGPT иногда встречаются <strong>Light</strong>,
+<strong>Max</strong>, <strong>Ultra</strong> — см. §2.3: это <strong>не
+всегда</strong> то же, что <code>reasoning.effort</code>.</p>
+<h2 id="официальная-матрица-best-for-по-docs-openai">2.2. Официальная
+матрица «best for» (по docs OpenAI)</h2>
+<table>
+<colgroup>
+<col style="width: 23%"/>
+<col style="width: 50%"/>
+<col style="width: 26%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Effort</th>
+<th>Лучше всего для</th>
+<th>Примеры</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>none</strong></td>
+<td>Latency-critical, без tool chains</td>
+<td>Voice, classify, быстрый lookup</td>
+</tr>
+<tr class="even">
+<td><strong>low</strong></td>
+<td>Tool-use, plan, search, multi-step <em>с</em> приоритетом
+скорости</td>
+<td>Data analysis, draft, execution-coding, support</td>
+</tr>
+<tr class="odd">
+<td><strong>medium</strong></td>
+<td>Quality + reliability, planning, judgement</td>
+<td>Agentic coding, research, slides/sheets, long-horizon work</td>
+</tr>
+<tr class="even">
+<td><strong>high</strong></td>
+<td>Hard reasoning, complex debug, high-value agents</td>
+<td>Сложный код, deep plan, knowledge work</td>
+</tr>
+<tr class="odd">
+<td><strong>xhigh</strong></td>
+<td>Deep research, async, long runs; <strong>только</strong> если eval
+доказал выигрыш</td>
+<td>Security review, enterprise productivity, hard coding overnight</td>
+</tr>
+<tr class="even">
+<td><strong>max</strong></td>
+<td>Максимум для самых сложных single-problem; сравнивай с xhigh</td>
+<td>«Одна задача, цена ошибки огромна»</td>
+</tr>
+</tbody>
+</table>
+<div class="okbox">
+<p><strong>Совет OpenAI при миграции с 5.5 / 5.4.</strong> Оставь
+текущий effort как baseline → прогони <strong>тот же</strong> и
+<strong>на уровень ниже</strong>. GPT-5.6 часто держит или улучшает
+quality при меньшем effort.</p>
+</div>
+<h2 id="max-ultra-pro-не-путать">2.3. Max · Ultra · Pro — не путать</h2>
+<table>
+<colgroup>
+<col style="width: 18%"/>
+<col style="width: 23%"/>
+<col style="width: 36%"/>
+<col style="width: 21%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Режим</th>
+<th>Что это</th>
+<th>Как включить</th>
+<th>Когда</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Effort <code>max</code></strong></td>
+<td>Один агент думает <em>максимально долго</em> над одной задачей</td>
+<td><code>reasoning.effort: "max"</code></td>
+<td>Самая жёсткая single-problem</td>
+</tr>
+<tr class="even">
+<td><strong>Ultra</strong> (Codex)</td>
+<td>Несколько <strong>subagents параллельно</strong></td>
+<td>Режим Ultra в Codex / multi-agent API</td>
+<td>Задача <strong>делится</strong> на независимые ветки</td>
+</tr>
+<tr class="odd">
+<td><strong>Pro mode</strong></td>
+<td>Больше model work → <strong>один</strong> финальный ответ</td>
+<td><code>reasoning.mode: "pro"</code></td>
+<td>Quality-first; latency/cost вторичны</td>
+</tr>
+</tbody>
+</table>
+<div class="callout">
+<p><strong>Mode и effort независимы.</strong> Можно: Pro + medium,
+standard + xhigh, Pro + max. Не считай «Pro = всегда xhigh». Сравнивай
+конфиги на одних и тех же задачах.</p>
+</div>
+<h3 id="когда-pro">Когда Pro</h3>
+<p><strong>Да:</strong> ошибка дорогая (migration, деньги, security);
+есть чёткие критерии; latency 2–10× ок.</p>
+<p><strong>Нет:</strong> high-QPS, интерактив «нужен ответ сейчас»,
+evals не показывают прирост.</p>
+<h3 id="когда-ultra-multi-agent">Когда Ultra / multi-agent</h3>
+<p><strong>Да:</strong> независимые модули, parallel research, разные
+срезы аудита.</p>
+<p><strong>Нет:</strong> один запутанный bug с сильной связностью;
+«размажет» scope и сожжёт токены.</p>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">МАТРИЦА</div><h1 id="когда-какой-уровень-полная-матрица">3. Когда какой уровень:
+полная матрица</h1>
+<h2 id="по-типу-задачи">3.1. По типу задачи</h2>
+<table>
+<colgroup>
+<col style="width: 21%"/>
+<col style="width: 21%"/>
+<col style="width: 21%"/>
+<col style="width: 35%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Задача</th>
+<th>Модель</th>
+<th>Effort</th>
+<th>Комментарий</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Голосовой / мгновенный чат</td>
+<td>Luna</td>
+<td>none / low</td>
+<td>Latency first</td>
+</tr>
+<tr class="even">
+<td>Классификация, tagging, routing</td>
+<td>Luna</td>
+<td>none / low</td>
+<td>High volume</td>
+</tr>
+<tr class="odd">
+<td>Черновик письма / post</td>
+<td>Luna / Terra</td>
+<td>low</td>
+<td>Style → в prompt, не в effort</td>
+</tr>
+<tr class="even">
+<td>Мелкий bugfix, rename, UI tweak</td>
+<td>Terra или Sol</td>
+<td><strong>low</strong></td>
+<td>5.6 часто «закрывает» low</td>
+</tr>
+<tr class="odd">
+<td>Feature по <strong>готовому</strong> плану</td>
+<td>Terra / Sol</td>
+<td>low–<strong>medium</strong></td>
+<td>Execute, не re-architect</td>
+</tr>
+<tr class="even">
+<td>Написать SPEC / план / ADR</td>
+<td>Sol</td>
+<td><strong>medium–high</strong></td>
+<td>Plan high → execute low</td>
+</tr>
+<tr class="odd">
+<td>Agentic coding (я рядом)</td>
+<td>Sol / Terra</td>
+<td><strong>medium</strong></td>
+<td>Default 80% дней</td>
+</tr>
+<tr class="even">
+<td>Hard debug (race, data loss)</td>
+<td>Sol</td>
+<td><strong>high</strong> / xhigh</td>
+<td>+ Pro при цене ошибки</td>
+</tr>
+<tr class="odd">
+<td>Security / deep code review</td>
+<td>Sol</td>
+<td><strong>xhigh</strong> / max</td>
+<td>Async ок</td>
+</tr>
+<tr class="even">
+<td>Deep research overnight</td>
+<td>Sol</td>
+<td>xhigh</td>
+<td>Scope + done-criteria</td>
+</tr>
+<tr class="odd">
+<td>Большой рефакторинг по модулям</td>
+<td>Sol</td>
+<td>high + <strong>Ultra</strong></td>
+<td>Только если параллелится</td>
+</tr>
+<tr class="even">
+<td>Frontend landing / design polish</td>
+<td>Sol</td>
+<td>medium</td>
+<td>Сильная сторона 5.6</td>
+</tr>
+<tr class="odd">
+<td>Batch 10k документов</td>
+<td>Luna</td>
+<td>low / none</td>
+<td>Caching, batch API</td>
+</tr>
+<tr class="even">
+<td>Customer support agent</td>
+<td>Terra / Luna</td>
+<td>low–medium</td>
+<td>Escalate hard cases → Sol</td>
+</tr>
+</tbody>
+</table>
+<h2 id="по-цене-ошибки">3.2. По «цене ошибки»</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Цена ошибки</th>
+<th>Рекомендация</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Низкая (черновик, brainstorm)</td>
+<td>Luna / Terra · low</td>
+</tr>
+<tr class="even">
+<td>Средняя (фича, PR под ревью)</td>
+<td>Terra / Sol · medium</td>
+</tr>
+<tr class="odd">
+<td>Высокая (прод-миграция, платежи)</td>
+<td>Sol · high ± Pro</td>
+</tr>
+<tr class="even">
+<td>Критическая (security, data loss)</td>
+<td>Sol · xhigh / max + human gate</td>
+</tr>
+</tbody>
+</table>
+<h2 id="по-режиму-работы-человека">3.3. По режиму работы человека</h2>
+<table>
+<colgroup>
+<col style="width: 30%"/>
+<col style="width: 34%"/>
+<col style="width: 34%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Режим</th>
+<th>Effort</th>
+<th>Почему</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Pair-programming, я смотрю каждый diff</td>
+<td>low–medium</td>
+<td>Feedback loop быстрый</td>
+</tr>
+<tr class="even">
+<td>«Сделай PR, я проверю вечером»</td>
+<td>medium–high</td>
+<td>Меньше итераций</td>
+</tr>
+<tr class="odd">
+<td>Unattended overnight, без меня</td>
+<td>xhigh (узкий scope!)</td>
+<td>Но <strong>жёсткий</strong> owns_paths / plan</td>
+</tr>
+<tr class="even">
+<td>«Я код не читаю, верь модели»</td>
+<td>high–xhigh + тесты</td>
+<td>Иначе лотерея</td>
+</tr>
+</tbody>
+</table>
+<div class="warnbox">
+<p><strong>Антипаттерн №1.</strong> Sol Ultra / xhigh <strong>на весь
+день execution</strong> в monorepo 1000+ файлов. Часто: часы runtime,
+100+ файлов, mess, быстрее burn лимитов. Правильно: <strong>plan
+high</strong> → <strong>execute low/medium</strong> по кускам.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ВЫБОР</div><h1 id="decision-tree-что-выбрать-за-30-секунд">4. Decision tree: что
+выбрать за 30 секунд</h1>
+<pre><code>1) Какая ставка?
+   · frontier / hard agent / hard code  → Sol
+   · хорошее качество, много объёма    → Terra
+   · QPS / batch / cheap chat          → Luna
+
+2) Какой effort?
+   · ответ за секунды, без tools       → none
+   · мелкая правка / execute plan      → low
+   · обычная работа / agent day-to-day → medium   ← START HERE
+   · hard debug / deep plan            → high
+   · long research / audit overnight   → xhigh
+   · «одна суперсложная задача»        → max (± pro)
+
+3) Нужен ли Pro?
+   · да, если ошибка дорогая И evals зелёные
+   · иначе standard
+
+4) Нужен ли Ultra / multi-agent?
+   · да, только если задача режется на независимые ветки
+   · иначе Max/high на одном агенте</code></pre>
+<h2 id="ascii-дерево">4.1. ASCII-дерево</h2>
+<pre><code>Нужен frontier / hard multi-step?
+├─ ДА → SOL
+│   ├─ Я рядом, интерактив     → low / medium
+│   ├─ Plan / design / hard bug → high
+│   ├─ Deep review / research   → xhigh
+│   ├─ Одна nightmare-задача    → max (± pro)
+│   └─ Параллелится по частям   → Ultra / multi-agent
+│
+Нужен баланс цена/качество?
+├─ ДА → TERRA · medium (hard steps: high/xhigh)
+│
+High volume / latency / $?
+└─ LUNA · none / low</code></pre>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ПРЕСЕТЫ</div><h1 id="рекомендованные-пресеты">5. Рекомендованные пресеты</h1>
+<h2 id="daily-coding-codex-ide">5.1. Daily coding (Codex / IDE)</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Слот</th>
+<th>Модель</th>
+<th>Effort</th>
+<th>Заметки</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Default</td>
+<td>Sol или Terra</td>
+<td><strong>medium</strong></td>
+<td>Старт дня</td>
+</tr>
+<tr class="even">
+<td>Quick fix</td>
+<td>Terra / Sol</td>
+<td><strong>low</strong></td>
+<td>1–3 файла</td>
+</tr>
+<tr class="odd">
+<td>/plan</td>
+<td>Sol</td>
+<td><strong>high</strong></td>
+<td>Только план, без кода</td>
+</tr>
+<tr class="even">
+<td>Execute plan</td>
+<td>Sol / Terra</td>
+<td><strong>low–medium</strong></td>
+<td>По чеклисту</td>
+</tr>
+<tr class="odd">
+<td>Review / audit</td>
+<td>Sol</td>
+<td><strong>xhigh</strong></td>
+<td>Read-only</td>
+</tr>
+<tr class="even">
+<td>Overnight</td>
+<td>Sol</td>
+<td><strong>xhigh</strong></td>
+<td>Узкий scope + tests</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Команда Codex (пример):</strong></p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a aria-hidden="true" href="#cb3-1" tabindex="-1"></a><span class="co"># Execute</span></span>
+<span id="cb3-2"><a aria-hidden="true" href="#cb3-2" tabindex="-1"></a><span class="ex">codex</span> <span class="at">-m</span> gpt-5.6-sol <span class="at">-c</span> model_reasoning_effort=medium</span>
+<span id="cb3-3"><a aria-hidden="true" href="#cb3-3" tabindex="-1"></a></span>
+<span id="cb3-4"><a aria-hidden="true" href="#cb3-4" tabindex="-1"></a><span class="co"># Plan-heavy</span></span>
+<span id="cb3-5"><a aria-hidden="true" href="#cb3-5" tabindex="-1"></a><span class="ex">codex</span> <span class="at">-m</span> gpt-5.6-sol <span class="at">-c</span> model_reasoning_effort=high</span></code></pre></div>
+<h2 id="product-api-продакшен">5.2. Product API (продакшен)</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Слой</th>
+<th>Модель</th>
+<th>Effort</th>
+<th>Mode</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Hot path (chat, classify)</td>
+<td>Luna</td>
+<td>none / low</td>
+<td>standard</td>
+</tr>
+<tr class="even">
+<td>Tool agent (обычный)</td>
+<td>Terra</td>
+<td>medium</td>
+<td>standard</td>
+</tr>
+<tr class="odd">
+<td>Escalation hard cases</td>
+<td>Sol</td>
+<td>high</td>
+<td>± pro</td>
+</tr>
+<tr class="even">
+<td>Offline batch</td>
+<td>Luna</td>
+<td>low</td>
+<td>standard + Batch</td>
+</tr>
+</tbody>
+</table>
+<h2 id="research-аналитика">5.3. Research / аналитика</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Слой</th>
+<th>Модель</th>
+<th>Effort</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Quick brief</td>
+<td>Terra</td>
+<td>medium</td>
+</tr>
+<tr class="even">
+<td>Deep dive</td>
+<td>Sol</td>
+<td>xhigh</td>
+</tr>
+<tr class="odd">
+<td>Board one-shot</td>
+<td>Sol</td>
+<td>high / xhigh + <strong>pro</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="оркестратор-несколько-ролей">5.4. Оркестратор (несколько
+ролей)</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Роль</th>
+<th>Модель</th>
+<th>Effort</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Planner / architect</td>
+<td>Sol</td>
+<td>high</td>
+</tr>
+<tr class="even">
+<td>Coder / implementer</td>
+<td>Terra или Sol</td>
+<td>low–medium</td>
+</tr>
+<tr class="odd">
+<td>Reviewer</td>
+<td>Sol</td>
+<td>high / xhigh</td>
+</tr>
+<tr class="even">
+<td>Tester (узкий scope)</td>
+<td>Terra</td>
+<td>medium</td>
+</tr>
+<tr class="odd">
+<td>Cheap triage / router</td>
+<td>Luna</td>
+<td>none / low</td>
+</tr>
+</tbody>
+</table>
+<div class="okbox">
+<p><strong>Золотой паттерн.</strong> Plan на Sol high → Execute на
+Terra/Sol medium (или low) → Review на Sol high/xhigh. Не гоняй Ultra на
+каждый коммит.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">МИГРАЦИЯ</div><h1 id="миграция-с-gpt-5.5">6. Миграция с GPT-5.5</h1>
+<h2 id="таблица-конверсии-effort">6.1. Таблица конверсии effort</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Было на GPT-5.5</th>
+<th>Попробуй на GPT-5.6 (primary)</th>
+<th>Control</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>none / minimal</td>
+<td>none</td>
+<td>low</td>
+</tr>
+<tr class="even">
+<td>low</td>
+<td><strong>none или low</strong></td>
+<td>medium</td>
+</tr>
+<tr class="odd">
+<td>medium</td>
+<td><strong>low</strong></td>
+<td>medium</td>
+</tr>
+<tr class="even">
+<td>high</td>
+<td><strong>medium</strong></td>
+<td>high</td>
+</tr>
+<tr class="odd">
+<td>xhigh</td>
+<td><strong>high</strong></td>
+<td>xhigh</td>
+</tr>
+<tr class="even">
+<td>—</td>
+<td>max только если xhigh мало</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<div class="callout">
+<p><strong>Совет power-users (X / Reddit).</strong> «На 5.5 default
+medium/high; на 5.6 — <strong>start low</strong>, medium если надо.
+High/xhigh/max — редко.» Уровни <strong>не</strong> переносятся
+один-в-один: 5.6 умнее на low/medium.</p>
+</div>
+<h2 id="эвристики-сообщества-не-догма">6.2. Эвристики сообщества (не
+догма)</h2>
+<table>
+<colgroup>
+<col style="width: 42%"/>
+<col style="width: 57%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Ты жил на 5.5…</th>
+<th>Часто хорошо на 5.6…</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>medium / low</td>
+<td>Terra high <strong>или</strong> Sol medium</td>
+</tr>
+<tr class="even">
+<td>high / xhigh</td>
+<td>Sol medium (+ hard steps high); иногда Luna Max в Codex</td>
+</tr>
+<tr class="odd">
+<td>xhigh unattended</td>
+<td>Sol high/xhigh <strong>с</strong> жёстким plan; не Ultra «на
+всё»</td>
+</tr>
+</tbody>
+</table>
+<h2 id="hybrid-5.5-5.6">6.3. Hybrid 5.5 + 5.6</h2>
+<p>Часть инженеров оставляет:</p>
+<ul>
+<li><strong>5.6 Sol high/xhigh/Ultra</strong> — brainstorm,
+architecture, plan;</li>
+<li><strong>5.5 xhigh</strong> — implementation (быстрее, меньше
+«размаза»).</li>
+</ul>
+<p>Это <strong>валидный</strong> hybrid, если на твоих задачах 5.6
+overthink’ит execute. Не стыдно — стыдно не мерить.</p>
+<h2 id="что-поменять-в-промптах">6.4. Что поменять в промптах</h2>
+<ol type="1">
+<li><strong>Убери</strong> лишние «Be concise / think step by step» —
+5.6 и так компактнее; <code>text.verbosity</code> для длины.</li>
+<li><strong>Задай autonomy boundaries:</strong> что можно делать без
+спроса, что — только с approval.</li>
+<li><strong>Lean system prompt:</strong> один раз каждая инструкция;
+меньше tools = лучше.</li>
+<li><strong>Done-criteria:</strong> «готово = tests green + …», иначе
+high effort «копает вечно».</li>
+</ol>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ЭКОНОМИКА</div><h1 id="экономика-и-антипаттерны">7. Экономика и антипаттерны</h1>
+<h2 id="что-реально-жжёт-бюджет">7.1. Что реально жжёт бюджет</h2>
+<ol type="1">
+<li><strong>Высокий effort</strong> на простых задачах (reasoning tokens
+дорогие).</li>
+<li><strong>Ultra / multi-agent</strong> без параллелизуемой
+структуры.</li>
+<li><strong>Pro mode</strong> на каждый запрос.</li>
+<li><strong>Cache writes 1.25×</strong> на часто меняющемся prefix.</li>
+<li><strong>Длинный system prompt + 20 tools</strong> на каждом
+turn.</li>
+</ol>
+<h2 id="антипаттерны">7.2. Антипаттерны</h2>
+<table>
+<colgroup>
+<col style="width: 33%"/>
+<col style="width: 35%"/>
+<col style="width: 30%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Антипаттерн</th>
+<th>Почему плохо</th>
+<th>Что вместо</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Всегда xhigh «чтобы SOTA»</td>
+<td>Latency, $$$, overthink</td>
+<td>medium default</td>
+</tr>
+<tr class="even">
+<td>Ultra на monorepo «сделай всё»</td>
+<td>100+ файлов, mess</td>
+<td>plan → chunks</td>
+</tr>
+<tr class="odd">
+<td>Sol на classify</td>
+<td>Переплата 10–50×</td>
+<td>Luna</td>
+</tr>
+<tr class="even">
+<td>Luna на hard architecture</td>
+<td>Тихие ошибки</td>
+<td>Sol high</td>
+</tr>
+<tr class="odd">
+<td>Менять effort вместо промпта</td>
+<td>Effort — тюнинг, не костыль</td>
+<td>goal + constraints + eval</td>
+</tr>
+<tr class="even">
+<td>Max без сравнения с xhigh</td>
+<td>Насыщение качества</td>
+<td>A/B на eval set</td>
+</tr>
+</tbody>
+</table>
+<h2 id="когда-effort-уже-насытился">7.3. Когда effort уже
+«насытился»</h2>
+<p>Сообщество и наблюдения: у <strong>Sol</strong> кривая high → xhigh →
+max часто <strong>убывающая</strong>. Если medium уже закрывает tests —
+<strong>не</strong> крути max «для спокойствия».</p>
+<p>Признаки overthinking:</p>
+<ul>
+<li>правит несвязанные файлы;</li>
+<li>«улучшает» архитектуру без запроса;</li>
+<li>runtime часы на scoped bug;</li>
+<li>diff, который ты не можешь review’нуть.</li>
+</ul>
+<p><strong>Лечение:</strong> effort −1, ужесточить scope, approval
+boundaries, короткий plan-файл.</p>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ЧЕКЛИСТЫ</div><h1 id="чеклисты">8. Чеклисты</h1>
+<h2 id="перед-запуском-задачи">8.1. Перед запуском задачи</h2>
+<ul class="task-list">
+<li><label><input type="checkbox"/>Цель и definition of done
+ясны</label></li>
+<li><label><input type="checkbox"/>Выбран тир: Sol / Terra /
+Luna</label></li>
+<li><label><input type="checkbox"/>Выбран effort: start
+low/medium</label></li>
+<li><label><input type="checkbox"/>Scope файлов / owns_paths
+ограничен</label></li>
+<li><label><input type="checkbox"/>Destructive / external writes =
+approval only</label></li>
+<li><label><input type="checkbox"/>Есть тесты / eval /
+rubric</label></li>
+</ul>
+<h2 id="если-качество-плохое">8.2. Если качество плохое</h2>
+<ol type="1">
+<li>Улучши <strong>контекст</strong> (файлы, ошибки, constraints) — не
+сразу effort.</li>
+<li>Подними effort <strong>на один</strong> уровень.</li>
+<li>Если мало — Sol (если был Terra/Luna) или <strong>pro</strong>.</li>
+<li>Если multi-part — Ultra / multi-agent.</li>
+<li>Зафиксируй выигрыш в eval — иначе откат.</li>
+</ol>
+<h2 id="если-слишком-дорого-медленно">8.3. Если слишком дорого /
+медленно</h2>
+<ol type="1">
+<li>Effort −1.</li>
+<li>Sol → Terra → Luna.</li>
+<li>Выключи Pro / Ultra.</li>
+<li>Укороти system prompt и список tools.</li>
+<li>Explicit prompt caching, batch, parallel only where
+independent.</li>
+</ol>
+<h2 id="production-gate">8.4. Production gate</h2>
+<ul class="task-list">
+<li><label><input type="checkbox"/>Accuracy target выполнен на eval
+set</label></li>
+<li><label><input type="checkbox"/>p50/p95 latency в SLA</label></li>
+<li><label><input type="checkbox"/>$ / 1k requests в
+бюджете</label></li>
+<li><label><input type="checkbox"/>Fallback на более сильную модель для
+hard cases</label></li>
+<li><label><input type="checkbox"/>Логи: model, effort, mode, tokens,
+success</label></li>
+</ul>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">API</div><h1 id="api-минимальные-примеры">9. API: минимальные примеры</h1>
+<h2 id="standard-medium">9.1. Standard · medium</h2>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a aria-hidden="true" href="#cb4-1" tabindex="-1"></a><span class="im">from</span> openai <span class="im">import</span> OpenAI</span>
+<span id="cb4-2"><a aria-hidden="true" href="#cb4-2" tabindex="-1"></a>client <span class="op">=</span> OpenAI()</span>
+<span id="cb4-3"><a aria-hidden="true" href="#cb4-3" tabindex="-1"></a></span>
+<span id="cb4-4"><a aria-hidden="true" href="#cb4-4" tabindex="-1"></a>response <span class="op">=</span> client.responses.create(</span>
+<span id="cb4-5"><a aria-hidden="true" href="#cb4-5" tabindex="-1"></a>    model<span class="op">=</span><span class="st">"gpt-5.6"</span>,  <span class="co"># = Sol</span></span>
+<span id="cb4-6"><a aria-hidden="true" href="#cb4-6" tabindex="-1"></a>    reasoning<span class="op">=</span>{<span class="st">"effort"</span>: <span class="st">"medium"</span>},</span>
+<span id="cb4-7"><a aria-hidden="true" href="#cb4-7" tabindex="-1"></a>    <span class="bu">input</span><span class="op">=</span><span class="st">"Составь план рефакторинга auth-модуля. Код не пиши."</span>,</span>
+<span id="cb4-8"><a aria-hidden="true" href="#cb4-8" tabindex="-1"></a>)</span>
+<span id="cb4-9"><a aria-hidden="true" href="#cb4-9" tabindex="-1"></a><span class="bu">print</span>(response.output_text)</span></code></pre></div>
+<h2 id="pro-high-quality-first">9.2. Pro · high (quality-first)</h2>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a aria-hidden="true" href="#cb5-1" tabindex="-1"></a>response <span class="op">=</span> client.responses.create(</span>
+<span id="cb5-2"><a aria-hidden="true" href="#cb5-2" tabindex="-1"></a>    model<span class="op">=</span><span class="st">"gpt-5.6-sol"</span>,</span>
+<span id="cb5-3"><a aria-hidden="true" href="#cb5-3" tabindex="-1"></a>    reasoning<span class="op">=</span>{<span class="st">"mode"</span>: <span class="st">"pro"</span>, <span class="st">"effort"</span>: <span class="st">"high"</span>},</span>
+<span id="cb5-4"><a aria-hidden="true" href="#cb5-4" tabindex="-1"></a>    <span class="bu">input</span><span class="op">=</span>(</span>
+<span id="cb5-5"><a aria-hidden="true" href="#cb5-5" tabindex="-1"></a>        <span class="st">"Проверь plan миграции БД на failure modes с data loss. "</span></span>
+<span id="cb5-6"><a aria-hidden="true" href="#cb5-6" tabindex="-1"></a>        <span class="st">"Топ-5 рисков по severity + mitigation."</span></span>
+<span id="cb5-7"><a aria-hidden="true" href="#cb5-7" tabindex="-1"></a>    ),</span>
+<span id="cb5-8"><a aria-hidden="true" href="#cb5-8" tabindex="-1"></a>)</span></code></pre></div>
+<h2 id="luna-low-high-volume">9.3. Luna · low (high volume)</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a aria-hidden="true" href="#cb6-1" tabindex="-1"></a>response <span class="op">=</span> client.responses.create(</span>
+<span id="cb6-2"><a aria-hidden="true" href="#cb6-2" tabindex="-1"></a>    model<span class="op">=</span><span class="st">"gpt-5.6-luna"</span>,</span>
+<span id="cb6-3"><a aria-hidden="true" href="#cb6-3" tabindex="-1"></a>    reasoning<span class="op">=</span>{<span class="st">"effort"</span>: <span class="st">"low"</span>},</span>
+<span id="cb6-4"><a aria-hidden="true" href="#cb6-4" tabindex="-1"></a>    <span class="bu">input</span><span class="op">=</span><span class="st">"Классифицируй тикет: billing | tech | spam. Ответ — одно слово."</span>,</span>
+<span id="cb6-5"><a aria-hidden="true" href="#cb6-5" tabindex="-1"></a>)</span></code></pre></div>
+<h2 id="параметры-которые-стоит-знать">9.4. Параметры, которые стоит
+знать</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Параметр</th>
+<th>Зачем</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>reasoning.effort</code></td>
+<td>Сколько думать</td>
+</tr>
+<tr class="even">
+<td><code>reasoning.mode</code></td>
+<td><code>standard</code> | <code>pro</code></td>
+</tr>
+<tr class="odd">
+<td><code>reasoning.context</code></td>
+<td><code>auto</code> | <code>current_turn</code> |
+<code>all_turns</code></td>
+</tr>
+<tr class="even">
+<td><code>text.verbosity</code></td>
+<td>Длина ответа (low/medium/high)</td>
+</tr>
+<tr class="odd">
+<td><code>max_output_tokens</code></td>
+<td>Потолок (заложи запас на reasoning)</td>
+</tr>
+<tr class="even">
+<td><code>previous_response_id</code></td>
+<td>Сохранить reasoning continuity</td>
+</tr>
+</tbody>
+</table>
+<div class="warnbox">
+<p><strong>Context window.</strong> Reasoning tokens тоже занимают окно
+и биллятся. Для тяжёлых режимов OpenAI советует резервировать порядка
+<strong>25k+</strong> tokens на reasoning+output при экспериментах.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">CHEAT SHEET</div><h1 id="шпаргалка-на-одну-страницу">10. Шпаргалка на одну страницу</h1>
+<h2 id="модели">Модели</h2>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th>Sol</th>
+<th>Terra</th>
+<th>Luna</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Зачем</td>
+<td>frontier</td>
+<td>баланс</td>
+<td>volume</td>
+</tr>
+<tr class="even">
+<td>$</td>
+<td>высокий</td>
+<td>средний</td>
+<td>низкий</td>
+</tr>
+<tr class="odd">
+<td>Default use</td>
+<td>hard agent/code</td>
+<td>daily prod</td>
+<td>chat/batch</td>
+</tr>
+</tbody>
+</table>
+<h2 id="effort">Effort</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Уровень</th>
+<th>Одна фраза</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>none</td>
+<td>мгновенно, без tools</td>
+</tr>
+<tr class="even">
+<td>low</td>
+<td>мелкие правки, execute</td>
+</tr>
+<tr class="odd">
+<td><strong>medium</strong></td>
+<td><strong>дефолт 80%</strong></td>
+</tr>
+<tr class="even">
+<td>high</td>
+<td>hard plan/debug</td>
+</tr>
+<tr class="odd">
+<td>xhigh</td>
+<td>audit / overnight</td>
+</tr>
+<tr class="even">
+<td>max</td>
+<td>nightmare single task</td>
+</tr>
+</tbody>
+</table>
+<h2 id="режимы">Режимы</h2>
+<ul>
+<li><strong>Pro</strong> = дорогая ошибка + eval</li>
+<li><strong>Ultra</strong> = задача параллелится</li>
+<li><strong>Max effort</strong> = одна модель думает до упора</li>
+</ul>
+<h2 id="миграция-5.5-5.6">Миграция 5.5 → 5.6</h2>
+<p><strong>Effort −1</strong> как первый эксперимент.</p>
+<h2 id="золотые-правила">Золотые правила</h2>
+<ol type="1">
+<li>Accuracy first, cost second.</li>
+<li>Plan high → execute low/medium.</li>
+<li>Не поднимай effort вместо хорошего ТЗ.</li>
+<li>Ultra ≠ «просто сильнее».</li>
+<li>Мерить: success, tokens, latency, $.</li>
+<li>На 5.6 high часто избыточен.</li>
+<li>Hybrid 5.5 execute ок, если 5.6 overthink’ит.</li>
+</ol>
+<div class="okbox">
+<p><strong>Default, если лень думать.</strong> <strong>Sol
+medium</strong> (или <strong>Terra medium</strong> при бюджете). Поднял
+effort только после провала medium на конкретных критериях.</p>
+</div>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ПРИЛОЖЕНИЕ</div><h1 id="приложение-a.-глоссарий">Приложение A. Глоссарий</h1>
+<table>
+<colgroup>
+<col style="width: 44%"/>
+<col style="width: 55%"/>
+</colgroup>
+<thead>
+<tr class="header">
+<th>Термин</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Reasoning tokens</strong></td>
+<td>«Скрытые» токены размышления; в usage, в счёте как output</td>
+</tr>
+<tr class="even">
+<td><strong>Effort</strong></td>
+<td>Бюджет «думания» (none…max)</td>
+</tr>
+<tr class="odd">
+<td><strong>Pro mode</strong></td>
+<td>Режим с большим объёмом model work → один ответ</td>
+</tr>
+<tr class="even">
+<td><strong>Ultra</strong></td>
+<td>Параллельные subagents (Codex / multi-agent)</td>
+</tr>
+<tr class="odd">
+<td><strong>Sol / Terra / Luna</strong></td>
+<td>Тиры 5.6: flagship / mid / efficient</td>
+</tr>
+<tr class="even">
+<td><strong>Eval</strong></td>
+<td>Набор задач с эталоном для сравнения конфигов</td>
+</tr>
+<tr class="odd">
+<td><strong>Owns_paths</strong></td>
+<td>Ограничение «какие пути можно трогать»</td>
+</tr>
+<tr class="even">
+<td><strong>Done-criteria</strong></td>
+<td>Явное «что считается готово»</td>
+</tr>
+</tbody>
+</table>
+<div class="section-kicker">ПРИЛОЖЕНИЕ</div><h1 id="приложение-b.-источники">Приложение B. Источники</h1>
+<ol type="1">
+<li>OpenAI Docs — <em>Using GPT-5.6</em> / latest-model guide<br/>
+</li>
+<li>OpenAI Docs — <em>Reasoning models</em>
+(<code>reasoning.effort</code>, mode, context)<br/>
+</li>
+<li>OpenAI Docs — <em>Model selection</em> (accuracy → cost)<br/>
+</li>
+<li>OpenAI — <em>Introducing GPT-5.6</em> (анонс, тиры, Pro/Max)<br/>
+</li>
+<li>Community: Codex Reddit, X threads (в т.ч. OpenAI staff guidance по
+efforts)</li>
+</ol>
+<p><em>Документ составлен как практическая методичка. Цены и дефолты
+effort уточняйте в актуальной документации OpenAI — они могут
+меняться.</em></p>
+<div class="pagebreak">
+</div>
+<div class="section-kicker">ПРИЛОЖЕНИЕ</div><h1 id="приложение-c.-карточка-повесь-у-монитора">Приложение C. Карточка
+«повесь у монитора»</h1>
+<pre><code>┌─────────────────────────────────────────────────────────┐
+│  GPT-5.6 QUICK PICK                                     │
+├─────────────────────────────────────────────────────────┤
+│  МОДЕЛЬ                                                 │
+│   Hard / agent / design ........ Sol                    │
+│   Daily prod / volume .......... Terra                  │
+│   Chat / batch / classify ...... Luna                   │
+├─────────────────────────────────────────────────────────┤
+│  EFFORT                                                 │
+│   Instant / no tools ........... none                   │
+│   Fix / execute plan ........... low                    │
+│   Default day-to-day ........... medium  ← START        │
+│   Hard plan / debug ............ high                   │
+│   Audit / overnight ............ xhigh                  │
+│   Nightmare one-shot ........... max                    │
+├─────────────────────────────────────────────────────────┤
+│  SPECIAL                                                │
+│   Pro ........ ошибка дорогая + есть eval               │
+│   Ultra ...... задача режется на параллель              │
+├─────────────────────────────────────────────────────────┤
+│  FLOW                                                   │
+│   PLAN high → EXECUTE low/medium → REVIEW high/xhigh    │
+│   5.5→5.6: сначала попробуй effort −1                   │
+└─────────────────────────────────────────────────────────┘</code></pre>
+<hr/>
+<p><strong>Конец методички · v1.0 · Июль 2026</strong></p>
+<div class="doc-end"><strong>GPT-5.6: модель и reasoning · v1.0</strong> · Выбирай модель под задачу, а не под хайп</div>
+</main>
+</body>
+</html>

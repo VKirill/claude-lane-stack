@@ -37,8 +37,8 @@ commit to main.
 
 Micro commit format: `<type>(<area>): <title> [micro:<slug>]`.
 
-Default writer is AGY `gemini-3.6-flash-high`; Grok 4.5 remains selectable with
-`--provider grok`. The controller retries the selected provider once after a persisted
+Default writer is Grok 4.5; AGY `gemini-3.6-flash-high` remains selectable with
+`--provider agy`. The controller retries the selected provider once after a persisted
 backoff; a second classified model/catalog/quota/auth/transport failure uses one
 integrated `gpt-5.6-sol` + `high` Codex attempt through the same receipt chain.
 
@@ -128,7 +128,7 @@ Never edit source and never return while the controller is still running.
 ### Control-plane commands
 
 ```bash
-run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD" --provider agy
+run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD" --provider grok
 run-controller watch --run-dir "$RUN_DIR" --timeout 240
 run-controller status --run-dir "$RUN_DIR" --json
 lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"

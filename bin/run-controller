@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ast
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -34,7 +35,16 @@ TERMINAL_FAILURES = frozenset(
 )
 RUNNING_STATUSES = frozenset({"launching", "running", "unknown", "verifying"})
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
-PRIMARY_MODELS = {"agy": "gemini-3.6-flash-high", "grok": "grok-4.5"}
+PRIMARY_MODELS = {
+    "agy": "gemini-3.6-flash-high",
+    "grok": "grok-4.5",
+    "qwen": "qwen3.8-max-preview",
+}
+TERMINAL_OUTCOME_EVENTS = frozenset({"task_accepted", "task_blocked"})
+OUTCOME_CRASH_FAILURES = frozenset(
+    {"provider_failed", "provider_incomplete", "failed", "cancelled"}
+)
+OUTCOME_TIMEOUT_FAILURES = frozenset({"stalled"})
 
 
 class ControllerError(RuntimeError):
@@ -289,6 +299,87 @@ def persist(receipt_path: Path, receipt: dict[str, Any]) -> None:
     atomic_json(receipt_path, receipt)
 
 
+def outcome_exit_status(stage: str | None, failure_hint: str | None) -> str:
+    if stage == "accepted":
+        return "completed"
+    if failure_hint in OUTCOME_TIMEOUT_FAILURES:
+        return "timeout"
+    if failure_hint in OUTCOME_CRASH_FAILURES:
+        return "crashed"
+    return "blocked"
+
+
+def write_task_outcome(receipt: dict[str, Any], task_id: str) -> None:
+    """Aggregate the per-task result artifacts into one supervisor-facing manifest.
+
+    CLI-agnostic: the same shape is written whether the writer was agy, grok,
+    codex, qwen, or opencode. Reads only artifacts that already exist on disk
+    (owns-check.json, report.md) plus the controller task state; never fails the
+    durable controller if an artifact is missing.
+    """
+    raw_run_dir = receipt.get("run_dir")
+    if not isinstance(raw_run_dir, str) or not raw_run_dir:
+        return
+    tasks = receipt.get("tasks")
+    task_state = tasks.get(task_id) if isinstance(tasks, dict) else None
+    if not isinstance(task_state, dict):
+        return
+    artifact_dir = Path(raw_run_dir) / "artifacts" / task_id
+
+    owns: dict[str, Any] = {}
+    owns_check_path = artifact_dir / "owns-check.json"
+    if owns_check_path.is_file():
+        try:
+            loaded = json.loads(owns_check_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            loaded = None
+        if isinstance(loaded, dict):
+            owns = loaded
+
+    def string_list(value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if isinstance(item, (str, int, float))]
+
+    report_path = artifact_dir / "report.md"
+    report_sha256: str | None = None
+    if report_path.is_file():
+        try:
+            report_sha256 = hashlib.sha256(report_path.read_bytes()).hexdigest()
+        except OSError:
+            report_sha256 = None
+
+    stage = task_state.get("stage")
+    stage = stage if isinstance(stage, str) else None
+    failure_class = task_state.get("last_failure_class")
+    failure_class = failure_class if isinstance(failure_class, str) else None
+    last_status = task_state.get("last_status")
+    last_status = last_status if isinstance(last_status, str) else None
+    failure_hint = failure_class or last_status
+    retries = task_state.get("retries")
+    fallbacks = task_state.get("fallbacks")
+    outcome = {
+        "schema_version": 1,
+        "task_id": task_id,
+        "run_dir": raw_run_dir,
+        "provider": task_state.get("provider"),
+        "model": task_state.get("model"),
+        "stage": stage,
+        "exit_status": outcome_exit_status(stage, failure_hint),
+        "failure_class": failure_class,
+        "last_status": last_status,
+        "attempts": (retries + 1) if isinstance(retries, int) and not isinstance(retries, bool) else 1,
+        "fallbacks": fallbacks if isinstance(fallbacks, int) and not isinstance(fallbacks, bool) else 0,
+        "files_changed": string_list(owns.get("changed_files")),
+        "owns_paths_violations": string_list(owns.get("violations")),
+        "never_touch_hits": string_list(owns.get("never_touch_hits")),
+        "report_path": str(report_path) if report_sha256 is not None else None,
+        "report_sha256": report_sha256,
+        "updated_at": utc_now(),
+    }
+    atomic_json(artifact_dir / "outcome.json", outcome)
+
+
 def transition(
     receipt_path: Path,
     receipt: dict[str, Any],
@@ -309,6 +400,15 @@ def transition(
     receipt["last_event"] = payload
     persist(receipt_path, receipt)
     print(json.dumps(payload, sort_keys=True), flush=True)
+    if event in TERMINAL_OUTCOME_EVENTS and task_id is not None:
+        try:
+            write_task_outcome(receipt, task_id)
+        except (OSError, ValueError, TypeError) as exc:
+            print(
+                f"run-controller: outcome manifest write failed for {task_id}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 def action(argv: list[str], *, label: str) -> dict[str, Any]:
@@ -494,8 +594,8 @@ def run_controller(args: argparse.Namespace) -> int:
         raise ControllerError("controller receipt task identity does not match run")
     for task_state in receipt["tasks"].values():
         task_state.setdefault("fallbacks", 0)
-        task_state.setdefault("provider", "grok")
-        task_state.setdefault("model", "grok-4.5")
+        task_state.setdefault("provider", "qwen")
+        task_state.setdefault("model", "qwen3.8-max-preview")
         task_state.setdefault("last_failure_class", None)
         task_state.setdefault("retry_not_before", None)
     if receipt.get("stage") == "accepted":
@@ -737,7 +837,7 @@ def run_controller(args: argparse.Namespace) -> int:
                     provider = {}
                 provider_name = provider.get("name")
                 provider_model = provider.get("model")
-                if provider_name in {"agy", "grok", "codex"}:
+                if provider_name in {"agy", "grok", "codex", "qwen"}:
                     task_state["provider"] = provider_name
                 if isinstance(provider_model, str) and provider_model:
                     task_state["model"] = provider_model
@@ -1195,7 +1295,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--poll-interval", type=float, default=1.0)
     run.add_argument("--heartbeat-interval", type=float, default=30.0)
     run.add_argument("--retry-backoff", type=float, default=30.0)
-    run.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="agy")
+    run.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="qwen")
     run.add_argument("--model")
     start = sub.add_parser("start", help="durably start the controller through lane-bg")
     start.add_argument("--run-dir", required=True)
@@ -1207,7 +1307,7 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--poll-interval", type=float, default=1.0)
     start.add_argument("--heartbeat-interval", type=float, default=30.0)
     start.add_argument("--retry-backoff", type=float, default=30.0)
-    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="agy")
+    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="qwen")
     start.add_argument("--model")
     status = sub.add_parser("status", help="read the current controller receipt")
     status.add_argument("--run-dir", required=True)

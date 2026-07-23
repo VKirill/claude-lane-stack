@@ -35,6 +35,7 @@ HARD_MAX_POOL = 10
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 AGY_SANDBOX_PROFILE = "off"
 GROK_SANDBOX_PROFILE = "off"
+QWEN_SANDBOX_PROFILE = "off"
 CODEX_SANDBOX_PROFILE = "workspace-write"
 RUNTIME_SANDBOX_PROFILE = "bubblewrap-workspace"
 PROTOCOL_FAILURE_EXIT = 65
@@ -90,6 +91,9 @@ PROVIDER_AUTH_ENV_KEYS = {
     "agy": frozenset(),
     "grok": frozenset({"GROK_API_KEY", "XAI_API_KEY"}),
     "codex": frozenset({"OPENAI_API_KEY"}),
+    "qwen": frozenset(
+        {"BAILIAN_TOKEN_PLAN_API_KEY", "DASHSCOPE_API_KEY", "QWEN_API_KEY"}
+    ),
 }
 TEST_PROVIDER_ENV_KEYS = frozenset(
     {
@@ -496,6 +500,33 @@ def provider_command(
             else ["--resume", session_id]
         )
         return command
+    if args.provider == "qwen":
+        prompt = args.prompt_file.read_text(encoding="utf-8")
+        boundary = (
+            "\n\nLane runtime task boundary (non-negotiable): "
+            f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
+            f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
+            "Treat the raw task YAML above as authoritative. Write only paths matched "
+            "by owns_paths, honor never_touch, do not spawn subagents, and do not "
+            "commit, merge, or push. The .agents control plane is read-only to you. "
+            "Return the canonical report as the final response between "
+            f"{REPORT_BEGIN} and {REPORT_END}; it must contain exact "
+            f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a STATUS "
+            "line whose value is exactly one of complete, partial, timeout, or unavailable."
+        )
+        command = [
+            binary,
+            "--yolo",
+            "-p",
+            prompt + boundary + "\n",
+            "--model",
+            args.model,
+            "--output-format",
+            "stream-json",
+        ]
+        if not lease.is_new:
+            command[1:1] = ["--resume", lease.record["session_id"]]
+        return command
     if args.provider != "agy":
         raise RuntimeError(f"unsupported provider {args.provider!r}")
     validate_agy_agent_definition()
@@ -582,6 +613,14 @@ def provider_environment(provider: str) -> dict[str, str]:
                 "GROK_CLAUDE_HOOKS_ENABLED": "0",
                 "GROK_SUBAGENTS": "0",
                 "GROK_SANDBOX": GROK_SANDBOX_PROFILE,
+            }
+        )
+    if provider == "qwen":
+        environment.update(
+            {
+                "QWEN_CODE_SUPPRESS_YOLO_WARNING": "1",
+                "QWEN_CODE_NO_RELAUNCH": "1",
+                "QWEN_SANDBOX": QWEN_SANDBOX_PROFILE,
             }
         )
     return environment
@@ -696,6 +735,8 @@ def sandbox_provider_command(
         writable_paths = (home / ".gemini" / "antigravity-cli", cwd)
     elif provider == "grok":
         writable_paths = (home / ".grok", cwd)
+    elif provider == "qwen":
+        writable_paths = (home / ".qwen", cwd)
     else:
         writable_paths = tuple(
             path for path in (cwd, provider_state_dir) if path is not None
@@ -714,6 +755,13 @@ def sandbox_provider_command(
     elif provider == "grok":
         hidden_paths.add((home / ".codex").resolve())
         hidden_paths.add((home / ".gemini").resolve())
+        configured_codex_home = os.environ.get("CODEX_HOME")
+        if configured_codex_home:
+            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
+    elif provider == "qwen":
+        hidden_paths.add((home / ".codex").resolve())
+        hidden_paths.add((home / ".gemini").resolve())
+        hidden_paths.add((home / ".grok").resolve())
         configured_codex_home = os.environ.get("CODEX_HOME")
         if configured_codex_home:
             hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
@@ -1061,6 +1109,112 @@ def classify_grok_failure(
     if error_event:
         return "grok_protocol_failure", True, False, "protocol", evidence_digest
     return "grok_provider_failed", True, False, "exit", evidence_digest
+
+
+def classify_qwen_failure(
+    evidence: bytes,
+    *,
+    provider_exit_code: int,
+    protocol_error: str | None,
+) -> tuple[str | None, bool, bool, str | None, str | None]:
+    error_event = protocol_error == "qwen result reported an error"
+    if protocol_error is not None and not error_event:
+        failure_class = (
+            "qwen_model_mismatch"
+            if protocol_error == "qwen effective model does not match requested model"
+            else "qwen_permission_mode_invalid"
+            if protocol_error == "qwen permission mode is not yolo"
+            else "qwen_protocol_failure"
+        )
+        return failure_class, True, False, "protocol", None
+    if provider_exit_code == 0 and not error_event:
+        return None, False, False, None, None
+
+    lower = evidence.decode("utf-8", errors="ignore").lower()
+    patterns: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+        (
+            "qwen_bootstrap_transient",
+            (
+                "settings fetch failed",
+                "failed to load settings",
+                "settings unavailable",
+                "dns error",
+                "temporary failure in name resolution",
+                "failed to lookup address information",
+                "re-authentication required",
+            ),
+            True,
+        ),
+        (
+            "qwen_model_unavailable",
+            (
+                "unknown model",
+                "model not found",
+                "unsupported model",
+                "model unavailable",
+                "invalid model",
+                "does not exist",
+            ),
+            True,
+        ),
+        (
+            "qwen_quota_exhausted",
+            (
+                "rate limit",
+                "quota",
+                "usage limit",
+                "limit reached",
+                "status 429",
+                " 429 ",
+                "too many requests",
+                "insufficient quota",
+            ),
+            True,
+        ),
+        (
+            "qwen_auth_unavailable",
+            (
+                "unauthorized",
+                "authentication failed",
+                "login required",
+                "invalid token",
+                "invalid api key",
+                "status 401",
+            ),
+            True,
+        ),
+        (
+            "qwen_region_unavailable",
+            (
+                "region unavailable",
+                "not available in your region",
+                "geo blocked",
+                "status 403",
+                "forbidden",
+            ),
+            True,
+        ),
+        (
+            "qwen_transport_transient",
+            (
+                "connection reset",
+                "timed out",
+                "timeout",
+                "status 503",
+                "service unavailable",
+                "status 502",
+                "bad gateway",
+            ),
+            True,
+        ),
+    )
+    evidence_digest = hashlib.sha256(evidence).hexdigest() if evidence else None
+    for failure_class, signatures, fallback_eligible in patterns:
+        if any(signature in lower for signature in signatures):
+            return failure_class, True, fallback_eligible, "provider", evidence_digest
+    if error_event:
+        return "qwen_protocol_failure", True, False, "protocol", evidence_digest
+    return "qwen_provider_failed", True, False, "exit", evidence_digest
 
 
 def stream_codex_provider(
@@ -1462,6 +1616,216 @@ def stream_agy_provider(
     )
 
 
+def stream_qwen_provider(
+    process: subprocess.Popen[bytes],
+    output: IO[bytes],
+    *,
+    expected_session_id: str | None,
+    requested_model: str,
+    task_id: str,
+    prompt_sha256: str,
+    report_path: Path,
+    report_root: Path,
+) -> StreamResult:
+    assert process.stdout is not None
+    assert process.stderr is not None
+    stdout_fd = process.stdout.fileno()
+    stderr_fd = process.stderr.fileno()
+    open_fds = {stdout_fd, stderr_fd}
+    pending = b""
+    log_bytes = 0
+    log_truncated = False
+    stderr_bytes = 0
+    failure_evidence = bytearray()
+    conversation_id: str | None = None
+    usage: dict | None = None
+    num_turns: int | None = None
+    response: str | None = None
+    result_subtype: str | None = None
+    result_is_error = False
+    protocol_error: str | None = None
+    saw_result = False
+
+    def write_log(data: bytes) -> None:
+        nonlocal log_bytes, log_truncated
+        remaining = MAX_PROVIDER_LOG_BYTES - log_bytes
+        if remaining <= 0:
+            log_truncated = True
+            return
+        chunk = data[:remaining]
+        output.write(chunk)
+        output.flush()
+        log_bytes += len(chunk)
+        if len(chunk) < len(data):
+            log_truncated = True
+
+    def set_protocol_error(reason: str, line: bytes = b"") -> None:
+        nonlocal protocol_error
+        if protocol_error is None:
+            protocol_error = reason
+            bounded_evidence_append(failure_evidence, line)
+
+    def process_line(line: bytes) -> None:
+        nonlocal conversation_id, usage, num_turns, response
+        nonlocal result_subtype, result_is_error, saw_result
+        if not line.strip():
+            return
+        try:
+            payload = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            set_protocol_error("malformed qwen stream-json", line)
+            return
+        if not isinstance(payload, dict) or not isinstance(payload.get("type"), str):
+            set_protocol_error("qwen event must be an object with a string type", line)
+            return
+        event_type = payload["type"]
+        if saw_result:
+            set_protocol_error("qwen event received after result", line)
+            return
+        print(f"QWEN_EVENT {event_type}", flush=True)
+        if event_type == "system":
+            if payload.get("subtype") != "init":
+                return
+            value = payload.get("session_id")
+            if not isinstance(value, str) or not value:
+                set_protocol_error("qwen init session_id is invalid", line)
+                return
+            if expected_session_id and value != expected_session_id:
+                set_protocol_error("qwen resumed session_id mismatch", line)
+                return
+            if requested_model and payload.get("model") != requested_model:
+                set_protocol_error(
+                    "qwen effective model does not match requested model", line
+                )
+                return
+            if payload.get("permission_mode") != "yolo":
+                set_protocol_error("qwen permission mode is not yolo", line)
+                return
+            conversation_id = value
+        elif event_type == "assistant":
+            message = payload.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text")
+                        if isinstance(text, str) and text:
+                            data = text.encode("utf-8", errors="replace")
+                            write_log(data)
+                            sys.stdout.buffer.write(data)
+                            sys.stdout.buffer.flush()
+            if isinstance(message, dict):
+                usage = sanitized_usage(message.get("usage"), TOKEN_FIELDS) or usage
+        elif event_type == "result":
+            saw_result = True
+            subtype = payload.get("subtype")
+            result_subtype = subtype if isinstance(subtype, str) else None
+            result_is_error = bool(payload.get("is_error"))
+            value = payload.get("session_id")
+            if isinstance(value, str) and value:
+                conversation_id = value
+            result_text = payload.get("result")
+            response = result_text if isinstance(result_text, str) else ""
+            turns = payload.get("num_turns")
+            if isinstance(turns, int) and not isinstance(turns, bool) and turns >= 0:
+                num_turns = turns
+            usage = sanitized_usage(payload.get("usage"), TOKEN_FIELDS) or usage
+            denials = payload.get("permission_denials")
+            if isinstance(denials, list) and denials:
+                bounded_evidence_append(
+                    failure_evidence,
+                    json.dumps(denials, sort_keys=True).encode("utf-8"),
+                )
+
+    def consume_stdout(chunk: bytes) -> None:
+        nonlocal pending
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            process_line(line)
+
+    def consume_stderr(chunk: bytes) -> None:
+        nonlocal stderr_bytes
+        stderr_bytes += len(chunk)
+        bounded_evidence_append(failure_evidence, chunk)
+        digest = hashlib.sha256(chunk).hexdigest()[:16]
+        write_log(
+            f"\n[qwen stderr: bytes={len(chunk)}; sha256={digest}]\n".encode("utf-8")
+        )
+        print("QWEN_EVENT stderr", flush=True)
+
+    while open_fds:
+        ready, _, _ = select.select(list(open_fds), [], [], 0.1)
+        for fd in ready:
+            chunk = os.read(fd, 65536)
+            if chunk:
+                consume_stdout(chunk) if fd == stdout_fd else consume_stderr(chunk)
+            else:
+                open_fds.discard(fd)
+    if pending:
+        process_line(pending)
+
+    provider_exit_code = process.wait()
+    report_sha256: str | None = None
+    if provider_exit_code == 0 and protocol_error is None and not saw_result:
+        protocol_error = "qwen stream ended without result"
+    if (
+        provider_exit_code == 0
+        and protocol_error is None
+        and (result_is_error or result_subtype != "success")
+    ):
+        protocol_error = "qwen result reported an error"
+    if provider_exit_code == 0 and protocol_error is None:
+        try:
+            assert response is not None
+            report = extract_lane_report(
+                response,
+                task_id=task_id,
+                prompt_sha256=prompt_sha256,
+                begin_count=response.count(REPORT_BEGIN),
+                end_count=response.count(REPORT_END),
+            )
+            report_sha256 = materialize_lane_report(
+                report_path, report, root=report_root
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            protocol_error = str(exc)
+    exit_code = (
+        PROTOCOL_FAILURE_EXIT
+        if provider_exit_code == 0 and protocol_error is not None
+        else provider_exit_code
+    )
+    failure_class, retryable, fallback_eligible, source, evidence_sha256 = (
+        classify_qwen_failure(
+            bytes(failure_evidence),
+            provider_exit_code=provider_exit_code,
+            protocol_error=protocol_error,
+        )
+    )
+    return StreamResult(
+        provider_exit_code=provider_exit_code,
+        exit_code=exit_code,
+        session_id=conversation_id,
+        stop_reason="TurnCompleted" if exit_code == 0 else None,
+        usage=usage,
+        model_usage=None,
+        num_turns=num_turns,
+        total_cost_usd=None,
+        total_cost_usd_ticks=None,
+        cost_is_partial=None,
+        usage_is_incomplete=None,
+        protocol_error=protocol_error,
+        report_sha256=report_sha256,
+        log_truncated=log_truncated,
+        stderr_bytes=stderr_bytes,
+        failure_class=failure_class,
+        failure_retryable=retryable,
+        fallback_eligible=fallback_eligible,
+        failure_source=source,
+        failure_evidence_sha256=evidence_sha256,
+    )
+
+
 def stream_provider(
     process: subprocess.Popen[bytes],
     output: IO[bytes],
@@ -1485,6 +1849,17 @@ def stream_provider(
         )
     if provider == "agy":
         return stream_agy_provider(
+            process,
+            output,
+            expected_session_id=expected_session_id,
+            requested_model=requested_model,
+            task_id=task_id,
+            prompt_sha256=prompt_sha256,
+            report_path=report_path,
+            report_root=report_root,
+        )
+    if provider == "qwen":
+        return stream_qwen_provider(
             process,
             output,
             expected_session_id=expected_session_id,
@@ -1744,16 +2119,18 @@ def write_runtime_receipt(
     failure_class: str | None = None,
 ) -> None:
     effective_failure_class = failure_class or result.failure_class
-    provider_sandbox = (
-        CODEX_SANDBOX_PROFILE
-        if args.provider == "codex"
-        else AGY_SANDBOX_PROFILE if args.provider == "agy" else GROK_SANDBOX_PROFILE
-    )
-    permission_mode = (
-        "never"
-        if args.provider == "codex"
-        else "always-proceed" if args.provider == "agy" else "bypassPermissions"
-    )
+    provider_sandbox = {
+        "codex": CODEX_SANDBOX_PROFILE,
+        "agy": AGY_SANDBOX_PROFILE,
+        "grok": GROK_SANDBOX_PROFILE,
+        "qwen": QWEN_SANDBOX_PROFILE,
+    }.get(args.provider, GROK_SANDBOX_PROFILE)
+    permission_mode = {
+        "codex": "never",
+        "agy": "always-proceed",
+        "grok": "bypassPermissions",
+        "qwen": "yolo",
+    }.get(args.provider, "bypassPermissions")
     receipt: dict[str, object] = {
         "schema_version": 1,
         "provider": args.provider,
@@ -2116,7 +2493,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="acquire a session slot and run one task")
-    run.add_argument("--provider", required=True, choices=("agy", "grok", "codex"))
+    run.add_argument("--provider", required=True, choices=("agy", "grok", "codex", "qwen"))
     run.add_argument("--run-dir", required=True, type=Path)
     run.add_argument("--task-id", required=True)
     run.add_argument("--role", required=True)
