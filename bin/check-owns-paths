@@ -22,6 +22,16 @@ try:
 except ImportError:
     yaml = None
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from gate_log import record_gate_event, run_slug_from_run_dir  # type: ignore
+except Exception:  # pragma: no cover - observability must never break the gate
+    def record_gate_event(*args, **kwargs):  # type: ignore
+        pass
+
+    def run_slug_from_run_dir(run_dir):  # type: ignore
+        return None
+
 IGNORE_PREFIXES = (
     ".agents/",
     ".repowise/",
@@ -328,6 +338,19 @@ def main() -> int:
         }
         write_receipt(receipt_path, receipt)
         print(f"receipt: {receipt_path}")
+    run_dir_candidate = task_path.parent.parent if task_path.parent.name == "tasks" else None
+    record_gate_event(
+        "owns-paths",
+        details.get("status", "failed"),
+        project=str(cwd),
+        run_slug=run_slug_from_run_dir(run_dir_candidate),
+        task_id=task_id,
+        scope=scope,
+        violations=details.get("violations"),
+        never_touch_hits=details.get("never_touch_hits"),
+        exit_code=exit_code,
+        detail=details.get("error"),
+    )
     return exit_code
 
 

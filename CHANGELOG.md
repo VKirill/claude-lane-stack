@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.8.0 — 2026-07-24
+
+### Added
+- **Gate observability:** every gate evaluation now appends one line to a
+  durable, append-only `~/.agents/logs/gate-events.jsonl` (schema
+  `schemas/gate-event-v1.schema.json`). Instrumented gates: `check-owns-paths`
+  (owns-paths), `run-validate` (validate), `lane-ctl accept` (accept), and
+  `lane-ctl verify` (verification), all through the shared best-effort
+  `bin/gate_log.py` — a failed write never breaks the gate. Override the path
+  with `CLAUDE_LANE_GATE_LOG`; set it to `off` to disable (the test suite does,
+  via `tests/__init__.py`, so fixtures never pollute the real log).
+- **`gate-report`:** weekly review CLI over the gate-event log — per-gate
+  pass/reject/fail counts, top `owns_paths` violations, top `never_touch` hits,
+  top blocking reasons, and a per-project breakdown, in markdown or `--json`,
+  with `--days` / `--project` / `--gate` filters. The loop for catching
+  recurring blocks and false positives, then fixing contracts or gates.
+- **`docs/LANE-EXEC.md`:** new "Gate observability" section.
+
+### Fixed
+- **`check-owns-paths` ignores root living-memory files** (`PROGRESS.md`,
+  `LESSONS.md`). The shared session-ledger hook flushes `PROGRESS.md` from any
+  concurrent orchestrator/supervisor session in the same worktree; the gate only
+  filtered directory prefixes (`.agents/`), so an unrelated flush could block a
+  clean writer task with a false `owns_paths` violation. These files are
+  orchestration-managed and never a parallel-writer collision source.
+
 ## 1.7.0 — 2026-07-23
 
 ### Added

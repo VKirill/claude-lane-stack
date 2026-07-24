@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/gate-event-v1.schema.json",
+  "title": "Claude Lane Stack gate event v1",
+  "description": "One append-only line per gate evaluation (owns-paths, validate, accept, verification), written best-effort by bin/gate_log.py to ~/.agents/logs/gate-events.jsonl. Consumed by bin/gate-report for periodic review of triggered gates and recurring false positives.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "ts", "gate", "status"],
+  "properties": {
+    "v": {"const": 1},
+    "ts": {"type": "string", "format": "date-time"},
+    "gate": {"enum": ["owns-paths", "validate", "accept", "verification"]},
+    "status": {"enum": ["passed", "rejected", "failed", "skipped"]},
+    "project": {"type": "string", "minLength": 1},
+    "run_slug": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "scope": {"type": "string", "minLength": 1},
+    "violations": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "never_touch_hits": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "exit_code": {"type": "integer"},
+    "detail": {"type": "string", "minLength": 1},
+    "provider": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1}
+  }
+}

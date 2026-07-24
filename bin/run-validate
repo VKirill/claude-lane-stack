@@ -5,9 +5,20 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+
+BIN_DIR = Path(__file__).resolve().parent
+if str(BIN_DIR) not in sys.path:
+    sys.path.insert(0, str(BIN_DIR))
+try:
+    from gate_log import record_gate_event  # type: ignore
+except Exception:  # pragma: no cover - observability must never break the gate
+    def record_gate_event(*args, **kwargs):  # type: ignore
+        pass
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -377,6 +388,15 @@ def validate_run(run_dir: Path, phase: str) -> int:
     return 0
 
 
+def best_effort_project_cwd(run_dir: Path) -> str | None:
+    try:
+        text = (run_dir / "run.yaml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    match = re.search(r"^project_cwd:\s*[\"']?([^\"'\n]+)", text, re.M)
+    return match.group(1).strip() if match else None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="strictly validate a lane run v2")
     parser.add_argument("--run-dir", required=True)
@@ -385,12 +405,32 @@ def main() -> int:
     )
     args = parser.parse_args()
     run_dir = Path(args.run_dir).expanduser().resolve(strict=False)
+    project = best_effort_project_cwd(run_dir)
     try:
-        return validate_run(run_dir, args.phase)
+        result = validate_run(run_dir, args.phase)
     except ContractError as exc:
-        for line in str(exc).splitlines():
+        lines = str(exc).splitlines()
+        for line in lines:
             print(f"run-validate: {line}", file=sys.stderr)
+        record_gate_event(
+            "validate",
+            "rejected",
+            project=project,
+            run_slug=run_dir.name,
+            scope=args.phase,
+            exit_code=2,
+            detail=lines[0] if lines else "contract error",
+        )
         return 2
+    record_gate_event(
+        "validate",
+        "passed",
+        project=project,
+        run_slug=run_dir.name,
+        scope=args.phase,
+        exit_code=0,
+    )
+    return result
 
 
 if __name__ == "__main__":

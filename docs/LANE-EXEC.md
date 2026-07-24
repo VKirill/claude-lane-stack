@@ -223,6 +223,36 @@ Registered state and events distinguish live work from immutable task YAML.
 `STATUS.md` is rebuilt from state/acceptance by `run-board`; heartbeat never
 appends to it. A run with merge.json/MERGE.md is terminal and is not stalled.
 
+## Gate observability
+
+Per-run receipts (`owns-check.json`, `outcome.json`) record the *terminal* state
+of a task, so a transient block that later clears leaves no trace there. To
+review gates over time, every gate evaluation also appends one line to a
+durable, append-only log:
+
+```text
+~/.agents/logs/gate-events.jsonl   # schema: schemas/gate-event-v1.schema.json
+```
+
+`check-owns-paths` (owns-paths), `run-validate` (validate), `lane-ctl accept`
+(accept), and `lane-ctl verify` (verification) all write through the shared
+best-effort `bin/gate_log.py` — a failed write never breaks the gate. Override
+the path with `CLAUDE_LANE_GATE_LOG`; set it to `off` to disable (the test
+suite does).
+
+Review the last N days (default 7) with `gate-report`:
+
+```bash
+gate-report                       # markdown summary
+gate-report --days 14 --json      # machine-readable
+gate-report --project my-app --gate owns-paths
+```
+
+It aggregates pass/reject/fail counts per gate, top `owns_paths` violations,
+top `never_touch` hits, top blocking reasons, and a per-project breakdown — the
+weekly loop for spotting recurring blocks and false positives, then fixing the
+contracts or the gate. Schedule it with the `loop` skill or cron.
+
 ## Timeouts
 
 `lane-exec` has independent limits:

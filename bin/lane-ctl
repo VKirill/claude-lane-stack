@@ -33,6 +33,12 @@ if str(BIN_DIR) not in sys.path:
 
 from verification_safety import verification_argv, verification_error
 
+try:
+    from gate_log import record_gate_event
+except Exception:  # pragma: no cover - observability must never break the gate
+    def record_gate_event(*args, **kwargs):  # type: ignore
+        pass
+
 
 ROOT = Path(__file__).resolve().parents[1]
 LANE_BG = ROOT / "bin" / "lane-bg"
@@ -2302,6 +2308,20 @@ def cmd_verify_v2(
                 status=payload["status"],
                 exit_code=0 if passed else 1,
             )
+            failed_commands = [
+                f"{record.get('command')} (exit {record.get('exit_code')})"
+                for record in command_results
+                if record.get("exit_code") != 0
+            ]
+            record_gate_event(
+                "verification",
+                payload["status"],
+                project=str(context.project_cwd),
+                run_slug=context.run_dir.name,
+                task_id=context.task_id,
+                exit_code=0 if passed else 1,
+                detail="; ".join(failed_commands) if failed_commands else None,
+            )
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if passed else 1
 
@@ -2449,6 +2469,20 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 attempt=attempt,
                 status=payload["status"],
                 exit_code=0 if passed else 1,
+            )
+            failed_commands = [
+                f"{record.get('command')} (exit {record.get('exit_code')})"
+                for record in command_results
+                if record.get("exit_code") != 0
+            ]
+            record_gate_event(
+                "verification",
+                payload["status"],
+                project=str(context.project_cwd),
+                run_slug=context.run_dir.name,
+                task_id=context.task_id,
+                exit_code=0 if passed else 1,
+                detail="; ".join(failed_commands) if failed_commands else None,
             )
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if passed else 1
@@ -2630,7 +2664,35 @@ def reviewed_worktree_digests(
 
 
 def cmd_accept(args: argparse.Namespace) -> int:
+    gate_ctx: dict = {}
+    try:
+        result = _cmd_accept_impl(args, gate_ctx)
+    except ContractError as exc:
+        detail = str(exc).splitlines()[0] if str(exc) else "rejected"
+        record_gate_event(
+            "accept",
+            "rejected",
+            project=gate_ctx.get("project"),
+            run_slug=gate_ctx.get("run_slug"),
+            task_id=gate_ctx.get("task_id"),
+            exit_code=2,
+            detail=detail,
+        )
+        raise
+    record_gate_event(
+        "accept",
+        "passed",
+        project=gate_ctx.get("project"),
+        run_slug=gate_ctx.get("run_slug"),
+        task_id=gate_ctx.get("task_id"),
+        exit_code=0,
+    )
+    return result
+
+
+def _cmd_accept_impl(args: argparse.Namespace, gate_ctx: dict) -> int:
     run_dir = validate_run_dir(args.run_dir)
+    gate_ctx["run_slug"] = run_dir.name
     supplied_context: TaskContext | None = None
     if args.task_file is not None or args.project_cwd is not None:
         if args.task_file is None or args.project_cwd is None:
@@ -2649,12 +2711,14 @@ def cmd_accept(args: argparse.Namespace) -> int:
                 "accept requires --task-id or --task-file with --project-cwd"
             )
         task_id = validate_name(args.task_id, "task id")
+    gate_ctx["task_id"] = task_id
     artifact = artifact_dir_for(run_dir, task_id)
     with locked_file(safe_child_file(artifact, ".lifecycle.lock")):
         state = load_task_state(artifact)
         if state is None:
             raise ContractError("accept requires a schema_version 2 state.json")
         context = supplied_context or context_from_state(run_dir, task_id, state)
+        gate_ctx["project"] = str(context.project_cwd)
         require_immutable_task(context, state)
         _, run_contract = context_schema_version(context)
         assert run_contract is not None
