@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/gate-triage-result-v1.schema.json",
+  "title": "Claude Lane Stack gate triage result v1 (qwen output)",
+  "description": "Schema-validated output of the weekly read-only qwen gate triage. Each finding classifies a recurring gate block (false positive vs real issue) and proposes a concrete fix. gate-triage transforms candidates into canonical finding-v1 records routed to the target repo (tool = claude-lane-stack, project = the project the events came from).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "findings"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "summary": {"type": "string"},
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/findingCandidate"}
+    }
+  },
+  "$defs": {
+    "findingCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severity",
+        "title",
+        "summary",
+        "classification",
+        "actionable",
+        "target",
+        "evidence",
+        "scope",
+        "verification"
+      ],
+      "properties": {
+        "severity": {"enum": ["P0", "P1", "P2", "P3"]},
+        "title": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1},
+        "classification": {
+          "enum": ["false_positive", "real_contract_issue", "real_writer_issue", "noise"]
+        },
+        "actionable": {"type": "boolean"},
+        "target": {"enum": ["tool", "project"]},
+        "rationale": {"type": "string"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "line", "detail"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "line": {"type": ["integer", "null"], "minimum": 1},
+              "detail": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["owns_paths", "never_touch"],
+          "properties": {
+            "owns_paths": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": "string", "minLength": 1},
+              "uniqueItems": true
+            },
+            "never_touch": {
+              "type": "array",
+              "items": {"type": "string", "minLength": 1},
+              "uniqueItems": true
+            }
+          }
+        },
+        "verification": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command", "timeout_sec"],
+            "properties": {
+              "command": {"type": "string", "minLength": 1},
+              "timeout_sec": {"type": "integer", "minimum": 1, "maximum": 7200}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"actionable": {"const": true}}},
+          "then": {"properties": {"verification": {"minItems": 1}}}
+        }
+      ]
+    }
+  }
+}

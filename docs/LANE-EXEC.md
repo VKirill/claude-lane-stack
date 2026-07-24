@@ -253,6 +253,24 @@ top `never_touch` hits, top blocking reasons, and a per-project breakdown — th
 weekly loop for spotting recurring blocks and false positives, then fixing the
 contracts or the gate. Schedule it with the `loop` skill or cron.
 
+`gate-triage` automates that loop. Weekly, it feeds the blocking events to a
+read-only qwen analysis (isolated empty cwd, `--output-format stream-json`,
+result validated against `schemas/gate-triage-result-v1.schema.json`), persists
+the recurring false-positive / tooling findings as canonical `finding-v1`
+records in the tool repo's `.agents/findings/`, writes
+`~/.agents/logs/gate-triage/GATE-TRIAGE-<date>.md` (+ `.json`) and a backlog
+block into `agent-notes/OPEN.md`, then — unless `--no-repair` — drives the
+existing repair chain (`wt-create` → `night-review-engine compile-fixes` →
+`night-fix-runner --provider qwen`) so the fix lands in an isolated worktree
+with verify + fresh re-review + accept. Merge happens only when
+`.agents/night-shift.yaml` has `auto_merge: true` (gate-triage enables it with
+`--auto-merge`). A failed qwen analysis fails closed and never touches code.
+
+```bash
+0 4 * * 0 PATH=$HOME/.agents/bin:$PATH $HOME/.agents/bin/gate-triage \
+    --auto-merge >> $HOME/.agents/logs/gate-triage.log 2>&1
+```
+
 ## Timeouts
 
 `lane-exec` has independent limits:

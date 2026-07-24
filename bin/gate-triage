@@ -1,0 +1,619 @@
+#!/usr/bin/env python3
+"""Weekly read-only qwen triage of the gate-event log + bounded auto-repair.
+
+Reads the gate-event log (default ~/.agents/logs/gate-events.jsonl, last N
+days), asks qwen to classify recurring gate blocks (false positive vs real
+issue) and propose concrete fixes, persists schema-validated findings to the
+target repo's .agents/findings/, then drives the EXISTING night-fix repair
+chain (wt-create -> night-review-engine compile-fixes -> night-fix-runner with
+the qwen writer) so recurring gate/tooling bugs fix themselves. Merge is gated
+by .agents/night-shift.yaml auto_merge (gate-triage enables it for the target
+repo when --auto-merge is passed).
+
+Schedule (weekly, Sunday 04:00), mirroring night-shift-all:
+  0 4 * * 0 PATH=$HOME/.agents/bin:$PATH $HOME/.agents/bin/gate-triage \\
+      >> $HOME/.agents/logs/gate-triage.log 2>&1
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+BIN_DIR = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
+SCHEMAS = ROOT / "schemas"
+if str(BIN_DIR) not in sys.path:
+    sys.path.insert(0, str(BIN_DIR))
+
+from gate_log import (  # noqa: E402
+    BLOCKING_STATUSES,
+    aggregate,
+    load_events,
+    resolve_log_path,
+    window_cutoff,
+)
+
+WT_CREATE = BIN_DIR / "wt-create"
+REVIEW_ENGINE = BIN_DIR / "night-review-engine"
+NIGHT_FIX_RUNNER = BIN_DIR / "night-fix-runner"
+
+RESULT_SCHEMA_NAME = "gate-triage-result-v1.schema.json"
+DEFAULT_MODEL = "qwen3.8-max-preview"
+DEFAULT_DAYS = 7
+MAX_BLOCKING_EVENTS_IN_PROMPT = 60
+MAX_EVENTS_IN_REPORT = 40
+REPORT_BEGIN = "```json"
+QWEN_AUTH_ENV_KEYS = (
+    "BAILIAN_TOKEN_PLAN_API_KEY",
+    "DASHSCOPE_API_KEY",
+    "QWEN_API_KEY",
+)
+
+ANALYSIS_CONTEXT = """\
+You are the read-only GATE TRIAGE analyst for Claude Lane Stack.
+
+The stack guards every task with four deterministic gates:
+- owns-paths (bin/check-owns-paths): fails a task whose changed files fall
+  outside its owns_paths or touch never_touch. It already ignores the .agents/
+  control plane and the root living-memory files PROGRESS.md / LESSONS.md
+  (IGNORE_PREFIXES / IGNORE_FILES), because the shared session-ledger hook
+  (hooks/session_ledger.py) flushes PROGRESS.md from ANY concurrent
+  orchestrator/supervisor session in the same worktree.
+- validate (bin/run-validate): rejects a run contract before dispatch
+  (owns_paths overlap, never_touch conflict, schema errors, dependency cycles,
+  unresolved REPLACE_ME placeholders).
+- accept (bin/lane-ctl accept): the acceptance gate (trusted report STATUS
+  complete, owns-check passed, verification passed, review).
+- verification (bin/lane-ctl verify): runs the task's verification commands.
+
+You receive the aggregated gate blocks of the last days plus the raw blocking
+events. For each RECURRING blocking pattern decide:
+- classification=false_positive: a gate/tooling bug (e.g. an infrastructure or
+  generated file the gate should ignore). Fix belongs in the TOOL repo
+  (claude-lane-stack): target="tool", owns_paths = the specific gate/tooling
+  files to change (e.g. ["bin/check-owns-paths"]), verification = the tool test
+  command (e.g. {"command": "python3 -m unittest discover -s tests -p
+  'test_*.py'", "timeout_sec": 900}).
+- classification=real_contract_issue / real_writer_issue: a genuine contract or
+  writer problem in a project. target="project". Report it; do NOT invent tool
+  fixes for it.
+- classification=noise: one-off / explained; actionable=false.
+
+Rules:
+- Only propose a fix you are confident about. actionable=false when unsure.
+- owns_paths must be SPECIFIC files (never "**" or a bare directory).
+- evidence[].path must be a concrete file that exists in the target repo.
+- Group the same root cause into ONE finding (do not duplicate per event).
+- Output ONLY a JSON object wrapped in ```json ... ``` matching the provided
+  schema. No prose outside the fence. Do not modify any file.
+"""
+
+
+class TriageError(RuntimeError):
+    pass
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def load_schema(name: str) -> dict:
+    path = SCHEMAS / name
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TriageError(f"cannot load schema {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise TriageError(f"schema must be a JSON object: {path}")
+    return value
+
+
+def validate_schema(instance: object, schema: dict, label: str) -> None:
+    try:
+        import jsonschema
+    except ImportError as exc:
+        raise TriageError("jsonschema is required for gate triage") from exc
+    validator = jsonschema.Draft202012Validator(
+        schema, format_checker=jsonschema.FormatChecker()
+    )
+    errors = sorted(
+        validator.iter_errors(instance),
+        key=lambda item: ([str(p) for p in item.absolute_path], item.message),
+    )
+    if errors:
+        rendered = "\n".join(
+            f"{'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}"
+            for e in errors
+        )
+        raise TriageError(f"{label} schema violation:\n{rendered}")
+
+
+def atomic_write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def tool_repo() -> Path | None:
+    """The claude-lane-stack source repo, from the install receipt."""
+    receipt = Path.home() / ".agents" / "install.json"
+    try:
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    source = data.get("source_repo")
+    if isinstance(source, str) and source:
+        path = Path(source).expanduser().resolve()
+        if path.is_dir():
+            return path
+    return None
+
+
+# --- qwen read-only structured analysis --------------------------------------
+
+def parse_qwen_stream(stdout_text: str) -> dict:
+    """Parse qwen --output-format stream-json; return the final result envelope."""
+    result_text = ""
+    subtype = None
+    is_error = False
+    session_id = None
+    saw_result = False
+    for line in stdout_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        etype = event.get("type")
+        if etype == "system" and event.get("subtype") == "init":
+            value = event.get("session_id")
+            if isinstance(value, str) and value:
+                session_id = value
+        elif etype == "result":
+            saw_result = True
+            value = event.get("subtype")
+            subtype = value if isinstance(value, str) else None
+            is_error = bool(event.get("is_error"))
+            text = event.get("result")
+            result_text = text if isinstance(text, str) else ""
+            value = event.get("session_id")
+            if isinstance(value, str) and value:
+                session_id = value
+    return {
+        "result": result_text,
+        "subtype": subtype,
+        "is_error": is_error,
+        "session_id": session_id,
+        "saw_result": saw_result,
+    }
+
+
+def extract_json_payload(text: str) -> str:
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if fenced:
+        return fenced.group(1)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start : end + 1]
+    raise TriageError("no JSON object found in qwen result")
+
+
+def _qwen_env() -> dict:
+    env = os.environ.copy()
+    env["CLAUDE_LANE_AUTOMATION"] = "1"
+    env["QWEN_CODE_SUPPRESS_YOLO_WARNING"] = "1"
+    env["QWEN_CODE_NO_RELAUNCH"] = "1"
+    return env
+
+
+def _run_qwen(argv: list[str], cwd: Path, env: dict, timeout: int) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        argv,
+        cwd=str(cwd),
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def invoke_qwen_triage(
+    prompt: str,
+    schema: dict,
+    *,
+    model: str,
+    qwen_bin: str,
+    timeout: int,
+) -> dict:
+    """Run a one-shot read-only qwen analysis in an isolated empty cwd.
+
+    The cwd is a throwaway empty dir so even a stray write cannot touch a repo.
+    Returns the schema-validated result object.
+    """
+    argv = [
+        qwen_bin,
+        "--yolo",
+        "-p",
+        prompt,
+        "--model",
+        model,
+        "--output-format",
+        "stream-json",
+    ]
+    with tempfile.TemporaryDirectory(prefix="gate-triage-qwen-") as raw:
+        completed = _run_qwen(argv, Path(raw), _qwen_env(), timeout)
+    if completed.returncode != 0:
+        tail = (completed.stderr or completed.stdout or "")[-2000:]
+        raise TriageError(f"qwen triage exited {completed.returncode}: {tail}")
+    envelope = parse_qwen_stream(completed.stdout or "")
+    if not envelope["saw_result"]:
+        raise TriageError("qwen triage stream ended without a result event")
+    if envelope["is_error"] or envelope["subtype"] != "success":
+        raise TriageError(
+            f"qwen triage reported an error (subtype={envelope['subtype']!r})"
+        )
+    payload_text = extract_json_payload(envelope["result"])
+    try:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
+        raise TriageError(f"qwen triage returned invalid JSON: {exc}") from exc
+    validate_schema(payload, schema, "gate-triage result")
+    return payload
+
+
+# --- findings ----------------------------------------------------------------
+
+def candidate_fingerprint(candidate: dict) -> str:
+    parts = [str(candidate.get("title", "")), str(candidate.get("summary", ""))]
+    for ev in candidate.get("evidence", []):
+        parts.append(f"{ev.get('path', '')}:{ev.get('line', '')}:{ev.get('detail', '')}")
+    parts.extend(sorted(str(p) for p in candidate.get("scope", {}).get("owns_paths", [])))
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def canonical_finding(candidate: dict, fingerprint: str, now_iso: str, source_task: str | None) -> dict:
+    return {
+        "schema_version": 1,
+        "fingerprint": fingerprint,
+        "source_sha": None,
+        "source_task": source_task,
+        "source_attempt": None,
+        "source_chunk": "gate-triage",
+        "severity": candidate["severity"],
+        "title": candidate["title"],
+        "summary": candidate["summary"],
+        "actionable": candidate["actionable"],
+        "evidence": candidate["evidence"],
+        "scope": candidate["scope"],
+        "verification": candidate["verification"],
+        "status": "open",
+        "first_seen": now_iso,
+        "last_seen": now_iso,
+    }
+
+
+def persist_finding(repo: Path, finding: dict) -> tuple[Path, bool]:
+    """Atomic upsert into repo/.agents/findings/<fp>.json. Returns (path, created)."""
+    findings_dir = repo / ".agents" / "findings"
+    path = findings_dir / f"{finding['fingerprint']}.json"
+    if path.is_file():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing = None
+        if isinstance(existing, dict):
+            finding = {**finding, "first_seen": existing.get("first_seen", finding["first_seen"])}
+            # Do not clobber a resolved finding; re-open as a recurrence instead.
+            if existing.get("status") in {"fixed", "dismissed"}:
+                finding["status"] = "open"
+                finding.pop("closure", None)
+            elif existing.get("status") in {"needs_human", "in_progress"}:
+                finding["status"] = existing["status"]
+            atomic_write_json(path, finding)
+            return path, False
+    atomic_write_json(path, finding)
+    return path, True
+
+
+# --- prompt + report + backlog ----------------------------------------------
+
+def build_prompt(agg: dict, blocking_events: list[dict], schema: dict) -> str:
+    bounded = blocking_events[:MAX_BLOCKING_EVENTS_IN_PROMPT]
+    schema_json = json.dumps(schema, indent=2, sort_keys=True)
+    agg_json = json.dumps(
+        {k: v for k, v in agg.items() if k != "blocking_recent"},
+        indent=2,
+        sort_keys=True,
+    )
+    events_json = json.dumps(bounded, indent=2, sort_keys=True)
+    return (
+        f"{ANALYSIS_CONTEXT}\n"
+        f"## Output schema (return an object matching this)\n```json\n{schema_json}\n```\n\n"
+        f"## Aggregate (last days)\n```json\n{agg_json}\n```\n\n"
+        f"## Raw blocking events (most recent first, bounded)\n```json\n{events_json}\n```\n\n"
+        "Return ONLY the JSON result wrapped in ```json ... ```."
+    )
+
+
+def render_report(meta: dict, agg: dict, findings: list[dict], events: list[dict]) -> str:
+    lines: list[str] = []
+    lines.append(f"# Gate triage — {meta['day']}")
+    lines.append("")
+    lines.append(f"- window: last {meta['days']} day(s) ({meta['since']} → {meta['until']})")
+    lines.append(f"- log: `{meta['log_path']}`")
+    lines.append(f"- model: `{meta['model']}`")
+    lines.append(f"- total gate evaluations: **{agg['total']}** · blocking: **{agg['blocking']}**")
+    lines.append(f"- findings: **{len(findings)}** "
+                 f"(actionable: {sum(1 for f in findings if f.get('actionable'))})")
+    lines.append("")
+    if findings:
+        lines.append("## Findings")
+        lines.append("")
+        for f in findings:
+            cls = f.get("classification", "?")
+            target = f.get("target", "?")
+            actionable = "actionable" if f.get("actionable") else "not actionable"
+            lines.append(f"### [{f.get('severity')}] {f.get('title')}")
+            lines.append("")
+            lines.append(f"- classification: `{cls}` · target: `{target}` · {actionable}")
+            lines.append(f"- fingerprint: `{f.get('fingerprint')}`")
+            if f.get("rationale"):
+                lines.append(f"- rationale: {f['rationale']}")
+            lines.append(f"- summary: {f.get('summary')}")
+            scope = f.get("scope", {})
+            if scope.get("owns_paths"):
+                lines.append(f"- owns_paths: {', '.join('`%s`' % p for p in scope['owns_paths'])}")
+            lines.append("")
+    else:
+        lines.append("## Findings")
+        lines.append("")
+        lines.append("_No findings — qwen found nothing actionable._ 🎉")
+        lines.append("")
+    lines.append(f"## Recent blocking events (last {MAX_EVENTS_IN_REPORT})")
+    lines.append("")
+    recent = events[:MAX_EVENTS_IN_REPORT]
+    if recent:
+        for event in recent:
+            lines.append(
+                f"- `{event.get('ts')}` **{event.get('gate')}/{event.get('status')}** "
+                f"project=`{event.get('project')}` run=`{event.get('run_slug')}` "
+                f"task=`{event.get('task_id')}`"
+            )
+            if event.get("detail"):
+                lines.append(f"  - {event['detail']}")
+    else:
+        lines.append("_No blocking events in this window._ 🎉")
+    lines.append("")
+    lines.append("---")
+    lines.append("_gate-triage — ~/.agents/bin/gate-triage_")
+    return "\n".join(lines)
+
+
+def append_backlog(repo: Path, findings: list[dict], day: str) -> None:
+    actionable = [f for f in findings if f.get("actionable")]
+    if not actionable:
+        return
+    notes_dir = repo / ".agents" / "agent-notes"
+    open_f = notes_dir / "OPEN.md"
+    header = "# Agent notes — open improvements\n\n> Debt / simplify / fix-later surfaced by agents. Night audit closes or promotes items.\n\n"
+    block = f"## {day} gate-triage\n\n"
+    block += "\n".join(
+        f"- [ ] [{f.get('severity')}] {f.get('title')} (finding `{f.get('fingerprint')[:12]}`)"
+        for f in actionable
+    )
+    block += "\n\n"
+    if open_f.exists():
+        atomic_write_text(open_f, open_f.read_text(encoding="utf-8") + block)
+    else:
+        atomic_write_text(open_f, header + block)
+
+
+# --- repair (reuse the night-fix chain) --------------------------------------
+
+def ensure_auto_merge(repo: Path) -> None:
+    policy_path = repo / ".agents" / "night-shift.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = ""
+    if policy_path.is_file():
+        existing = policy_path.read_text(encoding="utf-8")
+    if re.search(r"(?m)^\s*auto_merge\s*:\s*true\s*$", existing):
+        return
+    lines = [ln for ln in existing.splitlines() if not re.match(r"^\s*auto_merge\s*:", ln)]
+    lines.append("auto_merge: true")
+    atomic_write_text(policy_path, "\n".join(lines).strip() + "\n")
+
+
+def run_command(argv: list[str], *, timeout: int, check: bool = True) -> subprocess.CompletedProcess:
+    completed = subprocess.run(
+        argv, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=timeout, check=False,
+    )
+    if check and completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise TriageError(f"{' '.join(argv[:3])} failed: {detail[-1500:]}")
+    return completed
+
+
+def repair_repo(repo: Path, slug: str, *, qwen_bin: str, provider_timeout: int, dry_run: bool) -> dict:
+    """wt-create -> compile-fixes -> night-fix-runner --auto-merge --provider qwen."""
+    result = {"repo": str(repo), "slug": slug, "stages": []}
+    if dry_run:
+        result["stages"].append("dry-run: skipped wt-create/compile-fixes/night-fix-runner")
+        return result
+    run_command([str(WT_CREATE), str(repo), slug], timeout=300)
+    result["stages"].append("wt-create")
+    run_command(
+        [str(REVIEW_ENGINE), "compile-fixes", str(repo), "--run-slug", slug],
+        timeout=600,
+    )
+    result["stages"].append("compile-fixes")
+    run_dir = repo / ".agents" / "runs" / slug
+    tasks_dir = run_dir / "tasks"
+    has_tasks = tasks_dir.is_dir() and bool(sorted(tasks_dir.glob("*.yaml")))
+    if not run_dir.is_dir() or not has_tasks:
+        result["stages"].append("night-fix-runner: skipped (no tasks compiled)")
+        return result
+    completed = run_command(
+        [
+            str(NIGHT_FIX_RUNNER),
+            str(repo),
+            "--run-dir",
+            str(run_dir),
+            "--auto-merge",
+            "--provider",
+            "qwen",
+            "--provider-bin",
+            qwen_bin,
+            "--provider-timeout",
+            str(provider_timeout),
+        ],
+        timeout=provider_timeout + 1800,
+        check=False,
+    )
+    result["stages"].append(f"night-fix-runner exit={completed.returncode}")
+    result["night_fix_runner_exit"] = completed.returncode
+    if completed.stdout:
+        result["night_fix_runner_tail"] = completed.stdout.strip()[-1500:]
+    return result
+
+
+# --- orchestration -----------------------------------------------------------
+
+def run_triage(args: argparse.Namespace) -> int:
+    log_path = resolve_log_path(args.log)
+    if log_path is None:
+        print("gate-triage: gate-event logging is disabled (CLAUDE_LANE_GATE_LOG=off)", file=sys.stderr)
+        return 1
+    cutoff, until = window_cutoff(args.days)
+    events = load_events(log_path, cutoff=cutoff)
+    agg = aggregate(events)
+    blocking = [e for e in events if str(e.get("status")) in BLOCKING_STATUSES]
+    day = datetime.now().astimezone().strftime("%Y-%m-%d")
+    meta = {
+        "day": day,
+        "days": args.days,
+        "since": cutoff.isoformat(),
+        "until": until.isoformat(),
+        "log_path": str(log_path),
+        "model": args.model,
+    }
+
+    report_dir = Path.home() / ".agents" / "logs" / "gate-triage"
+    findings: list[dict] = []
+
+    if not blocking:
+        atomic_write_text(
+            report_dir / f"GATE-TRIAGE-{day}.md",
+            render_report(meta, agg, [], []),
+        )
+        print(f"gate-triage: no blocking events in last {args.days} day(s); report written")
+        return 0
+
+    schema = load_schema(RESULT_SCHEMA_NAME)
+    prompt = build_prompt(agg, blocking, schema)
+    try:
+        payload = invoke_qwen_triage(
+            prompt, schema, model=args.model, qwen_bin=args.qwen_bin, timeout=args.analysis_timeout
+        )
+    except TriageError as exc:
+        atomic_write_text(
+            report_dir / f"GATE-TRIAGE-{day}.failures.md",
+            f"# Gate triage failure — {day}\n\n```\n{exc}\n```\n",
+        )
+        print(f"gate-triage: analysis failed: {exc}", file=sys.stderr)
+        return 2
+
+    now_iso = utc_now()
+    repo = tool_repo()
+    by_repo: dict[Path, list[dict]] = {}
+    for candidate in payload.get("findings", []):
+        fp = candidate_fingerprint(candidate)
+        finding = canonical_finding(candidate, fp, now_iso, source_task=None)
+        # keep triage-only metadata for the report (not persisted to finding-v1)
+        report_finding = {
+            **finding,
+            "classification": candidate.get("classification"),
+            "target": candidate.get("target"),
+            "rationale": candidate.get("rationale"),
+        }
+        findings.append(report_finding)
+        if candidate.get("actionable") and repo is not None:
+            by_repo.setdefault(repo, []).append(finding)
+
+    for target_repo, repo_findings in by_repo.items():
+        for finding in repo_findings:
+            persist_finding(target_repo, finding)
+        append_backlog(target_repo, repo_findings, day)
+
+    atomic_write_text(report_dir / f"GATE-TRIAGE-{day}.md", render_report(meta, agg, findings, blocking))
+    atomic_write_json(
+        report_dir / f"GATE-TRIAGE-{day}.json",
+        {"meta": meta, "summary": agg, "findings": findings},
+    )
+    print(
+        f"gate-triage: {len(blocking)} blocking event(s) -> {len(findings)} finding(s) "
+        f"({sum(1 for f in findings if f.get('actionable'))} actionable)"
+    )
+
+    if args.no_repair or repo is None or not by_repo:
+        if repo is None and by_repo:
+            print("gate-triage: tool repo not found (install.json source_repo); skipped repair", file=sys.stderr)
+        return 0
+
+    slug = f"gate-fixes-{day}"
+    if args.auto_merge:
+        ensure_auto_merge(repo)
+    repair_result = repair_repo(
+        repo, slug, qwen_bin=args.qwen_bin, provider_timeout=args.provider_timeout, dry_run=args.dry_run
+    )
+    print(f"gate-triage: repair {json.dumps(repair_result, sort_keys=True)}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="weekly qwen gate triage + bounded auto-repair")
+    parser.add_argument("--days", type=int, default=DEFAULT_DAYS, help="lookback window (default 7)")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="qwen analysis model")
+    parser.add_argument("--qwen-bin", default=os.environ.get("GATE_TRIAGE_QWEN_BIN", "qwen"))
+    parser.add_argument("--log", default=None, help="gate-event log path override")
+    parser.add_argument("--analysis-timeout", type=int, default=1800, help="qwen analysis wall-clock timeout (s)")
+    parser.add_argument("--provider-timeout", type=int, default=7200, help="per-fix writer timeout (s)")
+    parser.add_argument("--no-repair", action="store_true", help="analyze + persist findings only; skip the fix chain")
+    parser.add_argument("--auto-merge", action="store_true", help="enable auto_merge in the target repo and merge accepted fixes")
+    parser.add_argument("--dry-run", action="store_true", help="analyze + persist findings; skip worktree/fix execution")
+    args = parser.parse_args()
+    if args.days < 1:
+        print("gate-triage: --days must be >= 1", file=sys.stderr)
+        return 2
+    try:
+        return run_triage(args)
+    except TriageError as exc:
+        print(f"gate-triage: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

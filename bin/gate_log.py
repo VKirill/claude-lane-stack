@@ -13,13 +13,18 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-from datetime import datetime, timezone
+from collections import Counter
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SCHEMA_VERSION = 1
 DEFAULT_LOG_RELATIVE = Path(".agents") / "logs" / "gate-events.jsonl"
 _MAX_LIST_ITEMS = 40
 _MAX_DETAIL_CHARS = 300
+
+BLOCKING_STATUSES = frozenset({"rejected", "failed"})
+GATE_ORDER = ("owns-paths", "validate", "accept", "verification")
+STATUS_ORDER = ("passed", "rejected", "failed", "skipped")
 
 
 def _utc_now() -> str:
@@ -123,3 +128,104 @@ def run_slug_from_run_dir(run_dir: str | os.PathLike | None) -> str | None:
         return None
     name = Path(str(run_dir)).name
     return name or None
+
+
+# --- Shared read / aggregation (used by gate-report and gate-triage) ---------
+
+def parse_ts(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def project_matches(project: str | None, wanted: str | None) -> bool:
+    if not wanted:
+        return True
+    if not project:
+        return False
+    return project == wanted or Path(project).name == wanted
+
+
+def load_events(
+    path: Path,
+    *,
+    cutoff: datetime,
+    project: str | None = None,
+    gate: str | None = None,
+) -> list[dict]:
+    events: list[dict] = []
+    if not path.is_file():
+        return events
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            ts = parse_ts(event.get("ts"))
+            if ts is None or ts < cutoff:
+                continue
+            if gate and event.get("gate") != gate:
+                continue
+            if not project_matches(event.get("project"), project):
+                continue
+            events.append(event)
+    return events
+
+
+def aggregate(events: list[dict]) -> dict:
+    by_gate: dict[str, Counter] = {}
+    by_status: Counter = Counter()
+    by_project: dict[str, Counter] = {}
+    violations: Counter = Counter()
+    never_touch: Counter = Counter()
+    details: Counter = Counter()
+    blocking_recent: list[dict] = []
+
+    for event in events:
+        gate = str(event.get("gate", "unknown"))
+        status = str(event.get("status", "unknown"))
+        project = str(event.get("project") or "<unknown>")
+        by_gate.setdefault(gate, Counter())[status] += 1
+        by_status[status] += 1
+        proj_counts = by_project.setdefault(project, Counter())
+        proj_counts["total"] += 1
+        for item in event.get("violations") or []:
+            violations[str(item)] += 1
+        for item in event.get("never_touch_hits") or []:
+            never_touch[str(item)] += 1
+        if status in BLOCKING_STATUSES:
+            proj_counts["blocking"] += 1
+            detail = event.get("detail")
+            if detail:
+                details[str(detail)] += 1
+            blocking_recent.append(event)
+
+    blocking_recent.sort(key=lambda e: str(e.get("ts", "")), reverse=True)
+    return {
+        "total": len(events),
+        "blocking": sum(1 for e in events if str(e.get("status")) in BLOCKING_STATUSES),
+        "by_gate": {g: dict(c) for g, c in by_gate.items()},
+        "by_status": dict(by_status),
+        "by_project": {p: dict(c) for p, c in by_project.items()},
+        "top_violations": violations.most_common(),
+        "top_never_touch": never_touch.most_common(),
+        "top_details": details.most_common(),
+        "blocking_recent": blocking_recent,
+    }
+
+
+def window_cutoff(days: int) -> tuple[datetime, datetime]:
+    until = datetime.now(timezone.utc)
+    return until - timedelta(days=days), until

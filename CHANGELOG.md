@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.9.0 — 2026-07-24
+
+### Added
+- **`gate-triage`: weekly autonomous gate review + repair.** Reads the
+  gate-event log (last N days), feeds the blocking events to a **read-only qwen
+  analysis** (isolated empty cwd, `--output-format stream-json`, result
+  validated against `schemas/gate-triage-result-v1.schema.json`), and persists
+  recurring false-positive / tooling findings as canonical `finding-v1` records
+  in the tool repo's `.agents/findings/` (fingerprint-dedup, atomic, first_seen
+  preserved). Writes `~/.agents/logs/gate-triage/GATE-TRIAGE-<date>.md` (+
+  `.json`) and a backlog block into `agent-notes/OPEN.md`. Unless `--no-repair`,
+  it then reuses the existing repair chain — `wt-create` →
+  `night-review-engine compile-fixes` → `night-fix-runner --provider qwen` — so
+  the fix lands in an isolated worktree with verify + fresh re-review + accept;
+  merge only when `.agents/night-shift.yaml auto_merge: true` (`--auto-merge`
+  enables it). A failed analysis fails closed and never touches code. Schedule:
+  weekly cron (see `docs/LANE-EXEC.md`).
+- **`schemas/gate-triage-result-v1.schema.json`:** qwen triage output schema
+  (classified, actionable findings with fix scope + verification).
+- **Shared gate aggregation** (`load_events`/`aggregate`/`window_cutoff`) moved
+  into `bin/gate_log.py`; `gate-report` now imports it.
+
+### Changed
+- **`night-fix-runner --provider` accepts `qwen`** (in addition to `agy`/`grok`);
+  qwen-lane tasks and qwen provider receipts were already handled internally.
+
 ## 1.8.0 — 2026-07-24
 
 ### Added
