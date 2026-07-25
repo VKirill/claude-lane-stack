@@ -64,6 +64,12 @@ Every new task is schema v2 and immutable after first start. It must declare
 `owns_paths`, `never_touch`, `depends_on`, behavioral `acceptance`, and
 structured verification commands. Parallel tasks: **disjoint** owns_paths.
 
+Repeated correction rule: while filling generated task placeholders, if you
+notice you are re-typing a correction you already made in an earlier run of
+this project (same command rewrite, same path fix), persist it as a project
+convention in CLAUDE.md/LESSONS.md first, then fill the task; generated plans
+must be right on first generation.
+
 ## Phase 2 — Isolation
 
 | Condition | Action |

@@ -25,6 +25,14 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 11. **Typed provider recovery.** Retry the exact selected provider once after a persisted
     deadline; only a second classified availability failure may use one
     ephemeral Codex Sol high writer attempt through the same receipts.
+12. **Repeated correction rule.** When the PM makes the same correction to
+    generated run files (task YAML verification commands, paths, tool
+    invocations) for the second time in a project, it must stop and persist
+    that correction as a durable project convention — an explicit rule in the
+    project's CLAUDE.md (or AGENTS.md) plus a LESSONS.md entry — before
+    dispatching the run. Repeated identical hand-fixes are process loss; the
+    third occurrence of the same fix is a control-plane defect and must be
+    recorded as a canonical finding.
 
 Daytime: micro/medium ship fast with exact checks and **no daytime LLM review**.
 Night: `night-shift` performs typed Codex Sol
