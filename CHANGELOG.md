@@ -25,8 +25,9 @@
   keep verifying and accepting unchanged.
 - `~/.kimi-code` is masked inside every other writer's sandbox, and kimi's own
   sandbox masks `~/.codex`, `~/.gemini`, `~/.grok`, and `~/.qwen`.
-- `night-fix-runner --provider` and night-fix lanes accept `kimi` (its own
-  default remains `grok`).
+- `night-fix-runner --provider` and night-fix lanes accept `kimi`, and the
+  `night-shift` / `night-shift-all` wrappers now pass `qwen`/`kimi` through as
+  well (their own default remains `grok`).
 
 ### Known limits
 - kimi emits no init event, effective-model echo, permission-mode echo, or usage
