@@ -36,6 +36,7 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 AGY_SANDBOX_PROFILE = "off"
 GROK_SANDBOX_PROFILE = "off"
 QWEN_SANDBOX_PROFILE = "off"
+KIMI_SANDBOX_PROFILE = "off"
 CODEX_SANDBOX_PROFILE = "workspace-write"
 RUNTIME_SANDBOX_PROFILE = "bubblewrap-workspace"
 PROTOCOL_FAILURE_EXIT = 65
@@ -94,7 +95,11 @@ PROVIDER_AUTH_ENV_KEYS = {
     "qwen": frozenset(
         {"BAILIAN_TOKEN_PLAN_API_KEY", "DASHSCOPE_API_KEY", "QWEN_API_KEY"}
     ),
+    "kimi": frozenset({"KIMI_API_KEY"}),
 }
+# kimi-code exposes thinking effort only through the environment; the lane
+# contract allows low|medium|high while kimi models list low|high|max.
+KIMI_THINKING_EFFORT = {"low": "low", "medium": "high", "high": "high"}
 TEST_PROVIDER_ENV_KEYS = frozenset(
     {
         "FAKE_ARGS_LOG",
@@ -123,6 +128,7 @@ TEST_PROVIDER_ENV_KEYS = frozenset(
         "FAKE_STREAM_MODE",
         "FAKE_TEXT_SIZE",
         "FAKE_HOST_TMP_PROBE",
+        "FAKE_KIMI_SESSION",
         "FAKE_VERSION_TEXT",
         "FAKE_VERSION_PROBE_LOG",
         "FAKE_VERSION_WARNING",
@@ -527,6 +533,34 @@ def provider_command(
         if not lease.is_new:
             command[1:1] = ["--resume", lease.record["session_id"]]
         return command
+    if args.provider == "kimi":
+        prompt = args.prompt_file.read_text(encoding="utf-8")
+        boundary = (
+            "\n\nLane runtime task boundary (non-negotiable): "
+            f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
+            f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
+            "Treat the raw task YAML above as authoritative. Write only paths matched "
+            "by owns_paths, honor never_touch, do not spawn subagents, and do not "
+            "commit, merge, or push. The .agents control plane is read-only to you. "
+            "Return the canonical report as the final response between "
+            f"{REPORT_BEGIN} and {REPORT_END}; it must contain exact "
+            f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a STATUS "
+            "line whose value is exactly one of complete, partial, timeout, or unavailable."
+        )
+        # kimi-code rejects --yolo/--auto together with -p; prompt mode already
+        # auto-approves tool calls without asking.
+        command = [
+            binary,
+            "-p",
+            prompt + boundary + "\n",
+            "--model",
+            args.model,
+            "--output-format",
+            "stream-json",
+        ]
+        if not lease.is_new:
+            command[1:1] = ["-r", lease.record["session_id"]]
+        return command
     if args.provider != "agy":
         raise RuntimeError(f"unsupported provider {args.provider!r}")
     validate_agy_agent_definition()
@@ -595,7 +629,9 @@ def control_plane_root(run_dir: Path) -> Path:
     raise RuntimeError(f"run-dir must be inside a .agents control plane: {run_dir}")
 
 
-def provider_environment(provider: str) -> dict[str, str]:
+def provider_environment(
+    provider: str, *, reasoning_effort: str | None = None
+) -> dict[str, str]:
     allowed = (
         PROVIDER_ENV_KEYS
         | PROVIDER_AUTH_ENV_KEYS.get(provider, frozenset())
@@ -622,6 +658,11 @@ def provider_environment(provider: str) -> dict[str, str]:
                 "QWEN_CODE_NO_RELAUNCH": "1",
             }
         )
+    if provider == "kimi":
+        environment["KIMI_DISABLE_CRON"] = "1"
+        effort = KIMI_THINKING_EFFORT.get(reasoning_effort or "")
+        if effort:
+            environment["KIMI_MODEL_THINKING_EFFORT"] = effort
     return environment
 
 
@@ -736,6 +777,8 @@ def sandbox_provider_command(
         writable_paths = (home / ".grok", cwd)
     elif provider == "qwen":
         writable_paths = (home / ".qwen", cwd)
+    elif provider == "kimi":
+        writable_paths = (home / ".kimi-code", cwd)
     else:
         writable_paths = tuple(
             path for path in (cwd, provider_state_dir) if path is not None
@@ -748,12 +791,14 @@ def sandbox_provider_command(
     if provider == "agy":
         hidden_paths.add((home / ".codex").resolve())
         hidden_paths.add((home / ".grok").resolve())
+        hidden_paths.add((home / ".kimi-code").resolve())
         configured_codex_home = os.environ.get("CODEX_HOME")
         if configured_codex_home:
             hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
     elif provider == "grok":
         hidden_paths.add((home / ".codex").resolve())
         hidden_paths.add((home / ".gemini").resolve())
+        hidden_paths.add((home / ".kimi-code").resolve())
         configured_codex_home = os.environ.get("CODEX_HOME")
         if configured_codex_home:
             hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
@@ -761,6 +806,15 @@ def sandbox_provider_command(
         hidden_paths.add((home / ".codex").resolve())
         hidden_paths.add((home / ".gemini").resolve())
         hidden_paths.add((home / ".grok").resolve())
+        hidden_paths.add((home / ".kimi-code").resolve())
+        configured_codex_home = os.environ.get("CODEX_HOME")
+        if configured_codex_home:
+            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
+    elif provider == "kimi":
+        hidden_paths.add((home / ".codex").resolve())
+        hidden_paths.add((home / ".gemini").resolve())
+        hidden_paths.add((home / ".grok").resolve())
+        hidden_paths.add((home / ".qwen").resolve())
         configured_codex_home = os.environ.get("CODEX_HOME")
         if configured_codex_home:
             hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
@@ -770,6 +824,7 @@ def sandbox_provider_command(
                 (home / ".codex").resolve(),
                 (home / ".gemini").resolve(),
                 (home / ".grok").resolve(),
+                (home / ".kimi-code").resolve(),
             }
         )
     for hidden in sorted(hidden_paths, key=str):
@@ -1214,6 +1269,107 @@ def classify_qwen_failure(
     if error_event:
         return "qwen_protocol_failure", True, False, "protocol", evidence_digest
     return "qwen_provider_failed", True, False, "exit", evidence_digest
+
+
+def classify_kimi_failure(
+    evidence: bytes,
+    *,
+    provider_exit_code: int,
+    protocol_error: str | None,
+) -> tuple[str | None, bool, bool, str | None, str | None]:
+    if protocol_error is not None:
+        failure_class = (
+            "kimi_session_mismatch"
+            if protocol_error == "kimi resumed session_id mismatch"
+            else "kimi_protocol_failure"
+        )
+        return failure_class, True, False, "protocol", None
+    if provider_exit_code == 0:
+        return None, False, False, None, None
+
+    lower = evidence.decode("utf-8", errors="ignore").lower()
+    patterns: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+        (
+            "kimi_bootstrap_transient",
+            (
+                "failed to load config",
+                "config.invalid",
+                "dns error",
+                "temporary failure in name resolution",
+                "failed to lookup address information",
+                "re-authentication required",
+            ),
+            True,
+        ),
+        (
+            "kimi_model_unavailable",
+            (
+                "is not configured in config.toml",
+                "unknown model",
+                "model not found",
+                "unsupported model",
+                "model unavailable",
+                "invalid model",
+            ),
+            True,
+        ),
+        (
+            "kimi_quota_exhausted",
+            (
+                "rate limit",
+                "quota",
+                "usage limit",
+                "limit reached",
+                "status 429",
+                " 429 ",
+                "too many requests",
+                "insufficient quota",
+            ),
+            True,
+        ),
+        (
+            "kimi_auth_unavailable",
+            (
+                "unauthorized",
+                "authentication failed",
+                "login required",
+                "invalid token",
+                "invalid api key",
+                "status 401",
+                "kimi login",
+            ),
+            True,
+        ),
+        (
+            "kimi_region_unavailable",
+            (
+                "region unavailable",
+                "not available in your region",
+                "geo blocked",
+                "status 403",
+                "forbidden",
+            ),
+            True,
+        ),
+        (
+            "kimi_transport_transient",
+            (
+                "connection reset",
+                "timed out",
+                "timeout",
+                "status 503",
+                "service unavailable",
+                "status 502",
+                "bad gateway",
+            ),
+            True,
+        ),
+    )
+    evidence_digest = hashlib.sha256(evidence).hexdigest() if evidence else None
+    for failure_class, signatures, fallback_eligible in patterns:
+        if any(signature in lower for signature in signatures):
+            return failure_class, True, fallback_eligible, "provider", evidence_digest
+    return "kimi_provider_failed", True, False, "exit", evidence_digest
 
 
 def stream_codex_provider(
@@ -1825,6 +1981,195 @@ def stream_qwen_provider(
     )
 
 
+def stream_kimi_provider(
+    process: subprocess.Popen[bytes],
+    output: IO[bytes],
+    *,
+    expected_session_id: str | None,
+    task_id: str,
+    prompt_sha256: str,
+    report_path: Path,
+    report_root: Path,
+) -> StreamResult:
+    """Consume kimi-code role-based stream-json.
+
+    kimi emits neither an init event nor a terminal result envelope: the
+    session id arrives last as a meta hint, and there is no effective-model
+    echo, permission-mode echo, or usage payload to verify. Success is
+    therefore exit code 0 plus a canonical report inside the assistant text.
+    """
+    assert process.stdout is not None
+    assert process.stderr is not None
+    stdout_fd = process.stdout.fileno()
+    stderr_fd = process.stderr.fileno()
+    open_fds = {stdout_fd, stderr_fd}
+    pending = b""
+    log_bytes = 0
+    log_truncated = False
+    stderr_bytes = 0
+    failure_evidence = bytearray()
+    session_id: str | None = None
+    text_parts: list[str] = []
+    saw_assistant_text = False
+    protocol_error: str | None = None
+
+    def write_log(data: bytes) -> None:
+        nonlocal log_bytes, log_truncated
+        remaining = MAX_PROVIDER_LOG_BYTES - log_bytes
+        if remaining <= 0:
+            log_truncated = True
+            return
+        chunk = data[:remaining]
+        output.write(chunk)
+        output.flush()
+        log_bytes += len(chunk)
+        if len(chunk) < len(data):
+            log_truncated = True
+
+    def set_protocol_error(reason: str, line: bytes = b"") -> None:
+        nonlocal protocol_error
+        if protocol_error is None:
+            protocol_error = reason
+            bounded_evidence_append(failure_evidence, line)
+
+    def emit_text(text: str) -> None:
+        nonlocal saw_assistant_text
+        if not text:
+            return
+        saw_assistant_text = True
+        text_parts.append(text)
+        data = text.encode("utf-8", errors="replace")
+        write_log(data)
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+
+    def process_line(line: bytes) -> None:
+        nonlocal session_id
+        if not line.strip():
+            return
+        try:
+            payload = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            set_protocol_error("malformed kimi stream-json", line)
+            return
+        if not isinstance(payload, dict) or not isinstance(payload.get("role"), str):
+            set_protocol_error("kimi event must be an object with a string role", line)
+            return
+        role = payload["role"]
+        print(f"KIMI_EVENT {role}", flush=True)
+        if role == "assistant":
+            content = payload.get("content")
+            if isinstance(content, str):
+                emit_text(content)
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and isinstance(block.get("text"), str):
+                        emit_text(block["text"])
+            calls = payload.get("tool_calls")
+            if isinstance(calls, list):
+                for call in calls:
+                    function = call.get("function") if isinstance(call, dict) else None
+                    name = function.get("name") if isinstance(function, dict) else None
+                    write_log(
+                        f"\n[kimi tool_call: {name if isinstance(name, str) else 'unknown'}]\n".encode(
+                            "utf-8"
+                        )
+                    )
+        elif role == "meta":
+            if payload.get("type") != "session.resume_hint":
+                return
+            value = payload.get("session_id")
+            if not isinstance(value, str) or not value:
+                set_protocol_error("kimi session id is invalid", line)
+                return
+            if expected_session_id and value != expected_session_id:
+                set_protocol_error("kimi resumed session_id mismatch", line)
+                return
+            session_id = value
+
+    def consume_stdout(chunk: bytes) -> None:
+        nonlocal pending
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            process_line(line)
+
+    def consume_stderr(chunk: bytes) -> None:
+        nonlocal stderr_bytes
+        stderr_bytes += len(chunk)
+        bounded_evidence_append(failure_evidence, chunk)
+        digest = hashlib.sha256(chunk).hexdigest()[:16]
+        write_log(
+            f"\n[kimi stderr: bytes={len(chunk)}; sha256={digest}]\n".encode("utf-8")
+        )
+        print("KIMI_EVENT stderr", flush=True)
+
+    while open_fds:
+        ready, _, _ = select.select(list(open_fds), [], [], 0.1)
+        for fd in ready:
+            chunk = os.read(fd, 65536)
+            if chunk:
+                consume_stdout(chunk) if fd == stdout_fd else consume_stderr(chunk)
+            else:
+                open_fds.discard(fd)
+    if pending:
+        process_line(pending)
+
+    provider_exit_code = process.wait()
+    report_sha256: str | None = None
+    if provider_exit_code == 0 and protocol_error is None and not saw_assistant_text:
+        protocol_error = "kimi stream ended without an assistant message"
+    if provider_exit_code == 0 and protocol_error is None:
+        response = "".join(text_parts)
+        try:
+            report = extract_lane_report(
+                response,
+                task_id=task_id,
+                prompt_sha256=prompt_sha256,
+                begin_count=response.count(REPORT_BEGIN),
+                end_count=response.count(REPORT_END),
+            )
+            report_sha256 = materialize_lane_report(
+                report_path, report, root=report_root
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            protocol_error = str(exc)
+    exit_code = (
+        PROTOCOL_FAILURE_EXIT
+        if provider_exit_code == 0 and protocol_error is not None
+        else provider_exit_code
+    )
+    failure_class, retryable, fallback_eligible, source, evidence_sha256 = (
+        classify_kimi_failure(
+            bytes(failure_evidence),
+            provider_exit_code=provider_exit_code,
+            protocol_error=protocol_error,
+        )
+    )
+    return StreamResult(
+        provider_exit_code=provider_exit_code,
+        exit_code=exit_code,
+        session_id=session_id,
+        stop_reason="TurnCompleted" if exit_code == 0 else None,
+        usage=None,
+        model_usage=None,
+        num_turns=None,
+        total_cost_usd=None,
+        total_cost_usd_ticks=None,
+        cost_is_partial=None,
+        usage_is_incomplete=None,
+        protocol_error=protocol_error,
+        report_sha256=report_sha256,
+        log_truncated=log_truncated,
+        stderr_bytes=stderr_bytes,
+        failure_class=failure_class,
+        failure_retryable=retryable,
+        fallback_eligible=fallback_eligible,
+        failure_source=source,
+        failure_evidence_sha256=evidence_sha256,
+    )
+
+
 def stream_provider(
     process: subprocess.Popen[bytes],
     output: IO[bytes],
@@ -1863,6 +2208,16 @@ def stream_provider(
             output,
             expected_session_id=expected_session_id,
             requested_model=requested_model,
+            task_id=task_id,
+            prompt_sha256=prompt_sha256,
+            report_path=report_path,
+            report_root=report_root,
+        )
+    if provider == "kimi":
+        return stream_kimi_provider(
+            process,
+            output,
+            expected_session_id=expected_session_id,
             task_id=task_id,
             prompt_sha256=prompt_sha256,
             report_path=report_path,
@@ -2123,12 +2478,14 @@ def write_runtime_receipt(
         "agy": AGY_SANDBOX_PROFILE,
         "grok": GROK_SANDBOX_PROFILE,
         "qwen": QWEN_SANDBOX_PROFILE,
+        "kimi": KIMI_SANDBOX_PROFILE,
     }.get(args.provider, GROK_SANDBOX_PROFILE)
     permission_mode = {
         "codex": "never",
         "agy": "always-proceed",
         "grok": "bypassPermissions",
         "qwen": "yolo",
+        "kimi": "headless-auto",
     }.get(args.provider, "bypassPermissions")
     receipt: dict[str, object] = {
         "schema_version": 1,
@@ -2272,7 +2629,9 @@ def run_provider(args: argparse.Namespace) -> int:
         provider_argv = provider_command(args, lease, prompt_sha256=prompt_sha256)
         stdin_payload = provider_input(args, prompt_sha256=prompt_sha256)
         provider_state_dir = prepare_codex_home(args.provider)
-        provider_env = provider_environment(args.provider)
+        provider_env = provider_environment(
+            args.provider, reasoning_effort=args.reasoning_effort
+        )
         if provider_state_dir is not None:
             provider_env["CODEX_HOME"] = str(provider_state_dir)
         provider_home = Path(provider_env.get("HOME", str(Path.home()))).resolve()
@@ -2492,7 +2851,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="acquire a session slot and run one task")
-    run.add_argument("--provider", required=True, choices=("agy", "grok", "codex", "qwen"))
+    run.add_argument(
+        "--provider", required=True, choices=("agy", "grok", "codex", "qwen", "kimi")
+    )
     run.add_argument("--run-dir", required=True, type=Path)
     run.add_argument("--task-id", required=True)
     run.add_argument("--role", required=True)

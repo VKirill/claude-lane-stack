@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.10.0 — 2026-07-27
+
+### Added
+- **Kimi writer lane (`--provider kimi`).** `kimi-code` joins qwen/grok/agy as a
+  switchable primary writer: `lane-session` builds `kimi -p … --model … -r
+  <session>` (kimi rejects `--yolo`/`--auto` with `-p` and auto-approves tools in
+  prompt mode anyway), consumes its role-based `stream-json`, and reuses warm
+  sessions through the `session.resume_hint` id. Default model
+  `kimi-code/k3-256k`; profile `claude-kimi`; `agents-doctor` detects the binary
+  and requires the same bubblewrap boundary as the other writers. Receipts record
+  `permission_mode: headless-auto` and `provider_sandbox: off`, and `lane-ctl`
+  plus the board enforce that policy pair on accept.
+- **Thinking-effort mapping for kimi.** kimi exposes effort only through the
+  environment, so the lane maps `--reasoning-effort low|medium|high` onto
+  `KIMI_MODEL_THINKING_EFFORT` (`low|high|high`) and sets `KIMI_DISABLE_CRON=1`.
+
+### Changed
+- **Kimi is now the default writer.** `lane-ctl start`, `run-controller run`, and
+  `run-controller start` default to `--provider kimi`; `agents-doctor` auto-picks
+  Kimi before Qwen/Grok/AGY, and the `full` profile ships `fast_write`/
+  `main_write: kimi`. Qwen stays selectable with `--provider qwen`. Legacy
+  artifacts without a recorded `provider` still resolve to `qwen`, so older runs
+  keep verifying and accepting unchanged.
+- `~/.kimi-code` is masked inside every other writer's sandbox, and kimi's own
+  sandbox masks `~/.codex`, `~/.gemini`, `~/.grok`, and `~/.qwen`.
+- `night-fix-runner --provider` and night-fix lanes accept `kimi` (its own
+  default remains `grok`).
+
+### Known limits
+- kimi emits no init event, effective-model echo, permission-mode echo, or usage
+  payload, so kimi receipts carry no token/cost fields and cannot fail closed on
+  a model mismatch the way qwen/agy/grok do. Acceptance rests on exit code 0 plus
+  one task-bound report envelope.
+
 ## 1.9.0 — 2026-07-24
 
 ### Added

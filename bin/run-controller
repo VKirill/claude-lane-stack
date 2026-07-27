@@ -39,6 +39,7 @@ PRIMARY_MODELS = {
     "agy": "gemini-3.6-flash-high",
     "grok": "grok-4.5",
     "qwen": "qwen3.8-max-preview",
+    "kimi": "kimi-code/k3-256k",
 }
 TERMINAL_OUTCOME_EVENTS = frozenset({"task_accepted", "task_blocked"})
 OUTCOME_CRASH_FAILURES = frozenset(
@@ -837,7 +838,7 @@ def run_controller(args: argparse.Namespace) -> int:
                     provider = {}
                 provider_name = provider.get("name")
                 provider_model = provider.get("model")
-                if provider_name in {"agy", "grok", "codex", "qwen"}:
+                if provider_name in {"agy", "grok", "codex", "qwen", "kimi"}:
                     task_state["provider"] = provider_name
                 if isinstance(provider_model, str) and provider_model:
                     task_state["model"] = provider_model
@@ -1295,7 +1296,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--poll-interval", type=float, default=1.0)
     run.add_argument("--heartbeat-interval", type=float, default=30.0)
     run.add_argument("--retry-backoff", type=float, default=30.0)
-    run.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="qwen")
+    run.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="kimi")
     run.add_argument("--model")
     start = sub.add_parser("start", help="durably start the controller through lane-bg")
     start.add_argument("--run-dir", required=True)
@@ -1307,7 +1308,7 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--poll-interval", type=float, default=1.0)
     start.add_argument("--heartbeat-interval", type=float, default=30.0)
     start.add_argument("--retry-backoff", type=float, default=30.0)
-    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="qwen")
+    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="kimi")
     start.add_argument("--model")
     status = sub.add_parser("status", help="read the current controller receipt")
     status.add_argument("--run-dir", required=True)

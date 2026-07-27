@@ -99,7 +99,7 @@ class RunControllerTest(unittest.TestCase):
                                 item["status"] = "cancelled"
                             elif item.get("provider") == "codex" and task_id in plan.get("fallback_fail", []):
                                 item["status"] = "failed"
-                            elif item.get("provider") in {"agy", "grok", "qwen"} and task_id in plan.get("fail_always", []):
+                            elif item.get("provider") in {"agy", "grok", "qwen", "kimi"} and task_id in plan.get("fail_always", []):
                                 item["status"] = "failed"
                             elif task_id in plan.get("fail_first", []) and item["attempt"] == 1:
                                 item["status"] = "provider_failed"
@@ -121,12 +121,14 @@ class RunControllerTest(unittest.TestCase):
                                 if item.get("provider") == "agy"
                                 else "qwen3.8-max-preview"
                                 if item.get("provider") == "qwen"
+                                else "kimi-code/k3-256k"
+                                if item.get("provider") == "kimi"
                                 else "grok-4.5"
                             ),
                             "failure_class": (
                                 f"{item.get('provider')}_bootstrap_transient"
                                 if item["status"] == "failed"
-                                and item.get("provider") in {"agy", "grok", "qwen"}
+                                and item.get("provider") in {"agy", "grok", "qwen", "kimi"}
                                 and task_id in plan.get("eligible_failure", [])
                                 else "codex_provider_failed"
                                 if item["status"] == "failed" and item.get("provider") == "codex"
@@ -135,7 +137,7 @@ class RunControllerTest(unittest.TestCase):
                             "failure_retryable": item["status"] == "failed",
                             "fallback_eligible": (
                                 item["status"] == "failed"
-                                and item.get("provider") in {"agy", "grok", "qwen"}
+                                and item.get("provider") in {"agy", "grok", "qwen", "kimi"}
                                 and task_id in plan.get("eligible_failure", [])
                             ),
                         },
@@ -355,8 +357,8 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads((self.run_dir / "controller.json").read_text())
         self.assertEqual(receipt["stage"], "accepted")
-        self.assertEqual(receipt["tasks"]["001"]["provider"], "qwen")
-        self.assertEqual(receipt["tasks"]["001"]["model"], "qwen3.8-max-preview")
+        self.assertEqual(receipt["tasks"]["001"]["provider"], "kimi")
+        self.assertEqual(receipt["tasks"]["001"]["model"], "kimi-code/k3-256k")
         self.assertEqual(receipt["counts"], {"total": 3, "accepted": 3, "blocked": 0, "running": 0, "pending": 0})
         actions = self.actions()
         active: set[str] = set()

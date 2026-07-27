@@ -16,8 +16,8 @@ from pathlib import Path
 
 PROFILES = {
     "full": {
-        "fast_write": "qwen",
-        "main_write": "qwen",
+        "fast_write": "kimi",
+        "main_write": "kimi",
         "review": "codex",
         "emergency_write": "codex",
     },
@@ -26,6 +26,12 @@ PROFILES = {
         "main_write": "qwen",
         "review": "claude-reviewer",
         "emergency_write": "qwen",
+    },
+    "claude-kimi": {
+        "fast_write": "kimi",
+        "main_write": "kimi",
+        "review": "claude-reviewer",
+        "emergency_write": "kimi",
     },
     "claude-agy": {
         "fast_write": "agy",
@@ -63,6 +69,7 @@ AGENT_MAP = {
     "agy": "run-supervisor",
     "grok": "run-supervisor",
     "qwen": "run-supervisor",
+    "kimi": "run-supervisor",
     "codex": "codex-implementer",
     "claude-worker": "general-purpose",
     "claude-reviewer": "codex-reviewer",
@@ -273,6 +280,23 @@ def detect() -> dict:
             else None
         ),
     }
+    p = which("kimi")
+    tools["kimi"] = {
+        "present": bool(p and bwrap_ready and resolver_ready),
+        "binary_present": bool(p),
+        "path": p,
+        "version": run_version(["kimi", "--version"]) if p else None,
+        "required": False,
+        "unavailable_reason": (
+            "bubblewrap missing"
+            if p and not bwrap
+            else "bubblewrap probe failed"
+            if p and not bwrap_ready
+            else "bubblewrap resolver unavailable"
+            if p and not resolver_ready
+            else None
+        ),
+    }
     tools["bubblewrap"] = {
         "present": bool(bwrap),
         "operational": bwrap_ready,
@@ -295,10 +319,15 @@ def pick_profile(
     tools: dict, writer_provider: str = "auto"
 ) -> tuple[str, dict, list[str]]:
     notes: list[str] = []
-    has = {k: tools[k]["present"] for k in ("claude", "agy", "grok", "codex", "qwen")}
+    has = {
+        k: tools[k]["present"]
+        for k in ("claude", "agy", "grok", "codex", "qwen", "kimi")
+    }
     writer = (
         writer_provider
         if writer_provider != "auto" and has[writer_provider]
+        else "kimi"
+        if has["kimi"]
         else "qwen"
         if has["qwen"]
         else "grok"
@@ -322,6 +351,12 @@ def pick_profile(
         reason = tools["qwen"].get("unavailable_reason") or "bubblewrap unavailable"
         notes.append(
             "Qwen disabled — bubblewrap is required for safe writer lanes "
+            f"({reason})"
+        )
+    if tools["kimi"].get("binary_present") and not has["kimi"]:
+        reason = tools["kimi"].get("unavailable_reason") or "bubblewrap unavailable"
+        notes.append(
+            "Kimi disabled — bubblewrap is required for safe writer lanes "
             f"({reason})"
         )
     if not has["claude"]:
@@ -401,9 +436,9 @@ def main() -> int:
     )
     ap.add_argument(
         "--writer-provider",
-        choices=("auto", "qwen", "agy", "grok"),
+        choices=("auto", "kimi", "qwen", "agy", "grok"),
         default="auto",
-        help="preferred writer provider (default: auto, Qwen before Grok before AGY)",
+        help="preferred writer provider (default: auto, Kimi before Qwen before Grok before AGY)",
     )
     args = ap.parse_args()
 

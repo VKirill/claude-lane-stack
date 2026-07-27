@@ -7,7 +7,7 @@
 | Role | Who | Default model |
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
-| Write (all risks) | **Qwen 3.8** (default), Grok 4.5, or AGY 3.6 | selected programmer lane |
+| Write (all risks) | **Kimi K3-256k** (default), Qwen 3.8, Grok 4.5, or AGY 3.6 | selected programmer lane |
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
 | Fallback write | Codex | see claude-codex table |
@@ -31,7 +31,7 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
-| `risk: low` UI/wiring | **qwen** by default; `grok`/`agy` selectable | Qwen 3.8 max, Grok 4.5 medium, or Gemini 3.6 Flash high |
+| `risk: low` UI/wiring | **kimi** by default; `qwen`/`grok`/`agy` selectable | Kimi K3-256k (effort via `KIMI_MODEL_THINKING_EFFORT`), Qwen 3.8 max, Grok 4.5 medium, or Gemini 3.6 Flash high |
 | `risk: medium` | selected writer → Codex night shift | same receipt chain + gpt-5.6-sol xhigh nightly |
 | `risk: high` auth/pay/schema | selected writer solo → Codex night shift | no silent daytime reviewer |
 | Selected model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |
@@ -93,7 +93,7 @@ See [LANE-EXEC.md](LANE-EXEC.md). One source-read-only `run-supervisor` stays
 visible through bounded watches; the detached deterministic controller remains
 alive independently and makes all lifecycle decisions.
 
-Qwen, AGY, and Grok write tasks within the same run use `lane-session` affinity. The
+Kimi, Qwen, AGY, and Grok write tasks within the same run use `lane-session` affinity. The
 warmest free conversation is resumed, while concurrent tasks lease separate
 slots (five by default, configurable 1–10). Default rotation: seven successful tasks; review remains
 an independent cold session.
@@ -106,7 +106,7 @@ ownership, verification, cancellation, or an unknown failure.
 
 | Situation | Policy |
 |-----------|--------|
-| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, durable controller around one detached **Qwen/AGY/Grok** lane, no daytime reviewer |
+| Micro path (score 0–2, low risk, ≤2 files, no `high_risk_paths`) | main checkout, durable controller around one detached **Kimi/Qwen/AGY/Grok** lane, no daytime reviewer |
 | 1 low-risk write | main tree OK; typed `run-controller start` |
 | ≥2 writes OR score ≥ 4 | worktree; provider pool default 5 / max 10; durable progressive accept; disjoint owns_paths |
 | Verification | separate pool default 2 / max 10; exact task commands only |

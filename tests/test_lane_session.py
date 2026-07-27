@@ -315,6 +315,60 @@ class LaneSessionTest(unittest.TestCase):
                     )
                     raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
 
+                if os.environ.get("FAKE_PROVIDER_KIND") == "kimi":
+                    prompt = args[args.index("-p") + 1]
+                    task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
+                    prompt_sha256 = re.search(
+                        r"prompt_sha256=([0-9a-f]{64})", prompt
+                    ).group(1)
+                    session_id = os.environ.get("FAKE_KIMI_SESSION") or (
+                        args[args.index("-r") + 1]
+                        if "-r" in args
+                        else "kimi-session-test"
+                    )
+                    report = (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n"
+                        "SUMMARY: fake Kimi report\\n"
+                        "<<<LANE_REPORT:END>>>"
+                    )
+                    emit({"role": "assistant", "content": "planning the edit"})
+                    emit(
+                        {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "type": "function",
+                                    "id": "tool_1",
+                                    "function": {
+                                        "name": "Write",
+                                        "arguments": "{}",
+                                    },
+                                }
+                            ],
+                        }
+                    )
+                    emit(
+                        {
+                            "role": "tool",
+                            "tool_call_id": "tool_1",
+                            "content": "Wrote 2 bytes",
+                        }
+                    )
+                    if os.environ.get("FAKE_REPORT_MODE", "complete") != "missing":
+                        emit({"role": "assistant", "content": report})
+                    emit(
+                        {
+                            "role": "meta",
+                            "type": "session.resume_hint",
+                            "session_id": session_id,
+                            "command": f"kimi -r {session_id}",
+                        }
+                    )
+                    raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
+
                 if os.environ.get("FAKE_PROVIDER_KIND") == "" and "--conversation" not in args:
                     conversations = Path(os.environ["UNUSED_REMOVED"])
                     conversations.mkdir(parents=True, exist_ok=True)
@@ -594,10 +648,7 @@ class LaneSessionTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
 
-    def test_qwen_environment_does_not_set_invalid_sandbox(self) -> None:
-        # qwen only accepts QWEN_SANDBOX in {docker, podman, sandbox-exec};
-        # "off" makes it loop on "Invalid sandbox command" before init. The
-        # external bubblewrap provides the sandbox, so it must stay unset.
+    def _load_lane_session(self):
         import importlib.util
         from importlib.machinery import SourceFileLoader
 
@@ -610,10 +661,81 @@ class LaneSessionTest(unittest.TestCase):
             loader.exec_module(module)
         finally:
             sys.modules.pop(name, None)
-        env = module.provider_environment("qwen")
+        return module
+
+    def test_qwen_environment_does_not_set_invalid_sandbox(self) -> None:
+        # qwen only accepts QWEN_SANDBOX in {docker, podman, sandbox-exec};
+        # "off" makes it loop on "Invalid sandbox command" before init. The
+        # external bubblewrap provides the sandbox, so it must stay unset.
+        env = self._load_lane_session().provider_environment("qwen")
         self.assertNotIn("QWEN_SANDBOX", env)
         self.assertEqual(env["QWEN_CODE_SUPPRESS_YOLO_WARNING"], "1")
         self.assertEqual(env["QWEN_CODE_NO_RELAUNCH"], "1")
+
+    def test_kimi_uses_role_stream_and_reuses_session(self) -> None:
+        for task_id in ("kimi-001", "kimi-002"):
+            result = self._run(
+                "kimi", task_id, model="kimi-code/k3-256k", pool_size=1
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        first, second = self._calls()
+        self.assertEqual(first[first.index("--output-format") + 1], "stream-json")
+        self.assertIn("-p", first)
+        # kimi rejects --yolo/--auto together with -p
+        self.assertNotIn("--yolo", first)
+        self.assertNotIn("--auto", first)
+        self.assertNotIn("-r", first)
+        self.assertEqual(second[second.index("-r") + 1], "kimi-session-test")
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider"], "kimi")
+        self.assertEqual(receipt["model"], "kimi-code/k3-256k")
+        self.assertEqual(receipt["permission_mode"], "headless-auto")
+        self.assertEqual(receipt["provider_sandbox"], "off")
+        self.assertEqual(receipt["stop_reason"], "TurnCompleted")
+        self.assertEqual(receipt["session_id"], "kimi-session-test")
+        self.assertTrue(receipt["protocol_valid"])
+
+    def test_kimi_resumed_session_mismatch_fails_closed(self) -> None:
+        first = self._run("kimi", "kimi-010", model="kimi-code/k3-256k", pool_size=1)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        second = self._run(
+            "kimi",
+            "kimi-011",
+            model="kimi-code/k3-256k",
+            pool_size=1,
+            extra_env={"FAKE_KIMI_SESSION": "kimi-session-other"},
+            check=False,
+        )
+        self.assertNotEqual(second.returncode, 0)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertEqual(receipt["failure_class"], "kimi_session_mismatch")
+
+    def test_kimi_missing_report_fails_closed(self) -> None:
+        result = self._run(
+            "kimi",
+            "kimi-020",
+            model="kimi-code/k3-256k",
+            pool_size=1,
+            extra_env={"FAKE_REPORT_MODE": "missing"},
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertEqual(receipt["failure_class"], "kimi_protocol_failure")
+
+    def test_kimi_environment_maps_thinking_effort(self) -> None:
+        module = self._load_lane_session()
+        low = module.provider_environment("kimi", reasoning_effort="low")
+        self.assertEqual(low["KIMI_MODEL_THINKING_EFFORT"], "low")
+        self.assertEqual(low["KIMI_DISABLE_CRON"], "1")
+        medium = module.provider_environment("kimi", reasoning_effort="medium")
+        self.assertEqual(medium["KIMI_MODEL_THINKING_EFFORT"], "high")
+        self.assertNotIn(
+            "KIMI_MODEL_THINKING_EFFORT", module.provider_environment("qwen")
+        )
 
     def test_agy_rejects_tampered_agent_tool_allowlist_before_launch(self) -> None:
         agent = (

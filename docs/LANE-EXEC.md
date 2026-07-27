@@ -79,12 +79,20 @@ may create `attempts/03` with fixed provider/model/effort: `codex`,
 `gpt-5.6-sol`, `high`. No fourth attempt is permitted.
 
 Grok runs with `bypassPermissions`; AGY runs with `always-proceed` because headless interactive approval cannot
-wait for an operator. This does not grant control-plane ownership: an outer
+wait for an operator. Qwen runs with `yolo`. Kimi (`kimi-code`) rejects
+`--yolo`/`--auto` together with `-p` and auto-approves tools in prompt mode
+anyway, so its receipt records `headless-auto`. Kimi's stream is weaker than the
+others: it emits no init event, no effective-model echo, no permission-mode
+echo, and no usage payload — the session id arrives last as a
+`session.resume_hint`. Its acceptance therefore rests on exit code 0 plus one
+task-bound report envelope, and its receipts carry no token or cost fields.
+Thinking effort is not a kimi CLI flag: the lane maps `--reasoning-effort`
+(`low|medium|high`) onto `KIMI_MODEL_THINKING_EFFORT` (`low|high`). This does not grant control-plane ownership: an outer
 Bubblewrap boundary mounts the repository `.agents` tree read-only only for the
 provider. To avoid nested-sandbox denial of terminal commands, the primary provider's native
 sandbox is `off` inside that boundary; Bubblewrap itself exposes the project,
-private temp directories, and only its conversation state (`~/.grok` or
-`~/.gemini/antigravity-cli`) as writable, the rest of the host as
+private temp directories, and only its conversation state (`~/.grok`,
+`~/.qwen`, `~/.kimi-code`, or `~/.gemini/antigravity-cli`) as writable, the rest of the host as
 read-only, and then over-mounts `.agents` read-only. Host `/run`, `/tmp`, and
 `/var/tmp` are not shared; when `/etc/resolv.conf` targets a file below `/run`,
 only that resolved file is restored with a read-only bind so OIDC and provider

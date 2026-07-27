@@ -1,0 +1,7 @@
+# Claude + Kimi only (Codex unavailable)
+profile: claude-kimi
+lanes:
+  fast_write: kimi
+  main_write: kimi
+  review: claude-reviewer
+  emergency_write: kimi

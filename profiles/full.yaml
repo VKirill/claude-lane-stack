@@ -1,8 +1,8 @@
-# Claude + Qwen write (Grok/AGY selectable) + Codex review
+# Claude + Kimi write (Qwen/Grok/AGY selectable) + Codex review
 pm: claude
 profile: full
 lanes:
-  fast_write: qwen         # run-supervisor passes --provider qwen
-  main_write: qwen         # use --provider grok|agy to switch
+  fast_write: kimi         # run-supervisor passes --provider kimi
+  main_write: kimi         # use --provider qwen|grok|agy to switch
   review: codex            # codex-reviewer
   emergency_write: codex   # codex-implementer

@@ -271,8 +271,10 @@ def build_plan(
         if not isinstance(task_id, str) or not task_id or task_id in seen:
             raise RunnerError(f"invalid or duplicate task id in {task_path}")
         seen.add(task_id)
-        if task.get("schema_version") != 2 or task.get("lane") not in {"agy", "grok", "qwen"}:
-            raise RunnerError(f"night fix task {task_id} must be schema v2 lane agy/grok/qwen")
+        if task.get("schema_version") != 2 or task.get("lane") not in {"agy", "grok", "qwen", "kimi"}:
+            raise RunnerError(
+                f"night fix task {task_id} must be schema v2 lane agy/grok/qwen/kimi"
+            )
         if Path(str(task.get("project_cwd", ""))).resolve() != worktree:
             raise RunnerError(f"task {task_id} project_cwd does not match worktree")
         verification = task.get("verification")
@@ -936,7 +938,7 @@ def process_task(
             if (
                 attempt == 2
                 and isinstance(provider_receipt, dict)
-                and provider_receipt.get("name") in {"agy", "grok", "qwen"}
+                and provider_receipt.get("name") in {"agy", "grok", "qwen", "kimi"}
                 and provider_receipt.get("fallback_eligible") is True
             ):
                 fallback_argv = [
@@ -1241,7 +1243,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--auto-merge", action="store_true")
     ap.add_argument("--poll-interval", type=nonnegative_float, default=5.0)
     ap.add_argument("--provider-timeout", type=positive_int, default=7200)
-    ap.add_argument("--provider", choices=("agy", "grok", "qwen"), default="grok")
+    ap.add_argument("--provider", choices=("agy", "grok", "qwen", "kimi"), default="grok")
     ap.add_argument("--provider-bin")
     ap.add_argument("--codex-bin")
     ap.add_argument("--grok-bin", help=argparse.SUPPRESS)

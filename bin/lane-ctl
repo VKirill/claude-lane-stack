@@ -60,6 +60,7 @@ PRIMARY_MODELS = {
     "agy": "gemini-3.6-flash-high",
     "grok": "grok-4.5",
     "qwen": "qwen3.8-max-preview",
+    "kimi": "kimi-code/k3-256k",
 }
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 CODEX_FALLBACK_REASONING = "high"
@@ -580,7 +581,7 @@ def trusted_provider_report(
     provider = runtime.get("provider")
     expected_provider = expected_control.get("provider", "qwen")
     provider_identity_valid = (
-        provider in {"agy", "grok", "codex", "qwen"}
+        provider in {"agy", "grok", "codex", "qwen", "kimi"}
         and provider == expected_provider
         and runtime.get("model") == expected_control.get("model", runtime.get("model"))
         and runtime.get("reasoning_effort")
@@ -608,6 +609,11 @@ def trusted_provider_report(
         and runtime.get("stop_reason") == "TurnCompleted"
         and runtime.get("provider_sandbox") == "off"
         and runtime.get("permission_mode") == "yolo"
+    ) or (
+        provider == "kimi"
+        and runtime.get("stop_reason") == "TurnCompleted"
+        and runtime.get("provider_sandbox") == "off"
+        and runtime.get("permission_mode") == "headless-auto"
     )
     required_runtime = (
         control_identity_valid
@@ -1591,7 +1597,7 @@ def validate_recorded_argv(
         argv[session + 2 :], allowed=session_allowed, label="lane-session"
     )
     recorded_provider = control.get("provider", "qwen")
-    if recorded_provider not in {"agy", "grok", "codex", "qwen"}:
+    if recorded_provider not in {"agy", "grok", "codex", "qwen", "kimi"}:
         raise ContractError("recorded provider is unsupported")
     required = {
         "--provider": recorded_provider,
@@ -2862,7 +2868,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_run_selector(start, task_required=False)
     start.add_argument("--task-file", required=True)
     start.add_argument("--project-cwd", required=True)
-    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="qwen")
+    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="kimi")
     start.add_argument("--binary", help="provider binary override for tests")
     start.add_argument("--model", type=validate_model)
     start.add_argument(

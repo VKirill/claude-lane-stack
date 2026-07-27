@@ -18,11 +18,11 @@ so the operator can see that the run is still supervised.
 
 ## Inputs
 
-`RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`qwen`, `agy`, or
+`RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`kimi`, `qwen`, `agy`, or
 `grok`), optional `PM_NAME` (the dispatcher's teammate name to stream progress
 to; default `dev-orchestrator`), and optional provider/verification pool sizes.
 If `WRITER_PROVIDER` is absent, use `main_write` from `.agents/routing.profile.yaml`,
-falling back to `qwen`.
+falling back to `kimi`.
 
 ## Required loop
 

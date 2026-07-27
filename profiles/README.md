@@ -2,14 +2,15 @@
 
 **PM is always Claude Code** (`dev-orchestrator`, Fable/Opus).
 
-**Write programmer is switchable: Qwen (default), Grok, or AGY 3.6.** Claude's `run-supervisor` is source-read-only
+**Write programmer is switchable: Kimi (default), Qwen, Grok, or AGY 3.6.** Claude's `run-supervisor` is source-read-only
 and can issue only typed `run-controller` actions. `lane-supervisor` remains the
 typed one-lane diagnostic profile.
 
 | Profile | Aux CLIs | Write | Review |
 |---------|----------|-------|--------|
-| `full` | Qwen + Grok + AGY + Codex | **Qwen** (Grok/AGY selectable) | Codex **sol** |
+| `full` | Kimi + Qwen + Grok + AGY + Codex | **Kimi** (Qwen/Grok/AGY selectable) | Codex **sol** |
 | `claude-qwen` | Qwen | Qwen | Claude reviewer |
+| `claude-kimi` | Kimi | Kimi K3-256k | Claude reviewer |
 | `claude-agy` | AGY | AGY | Claude reviewer |
 | `claude-codex` | Codex only | **terra** (sol if high risk) | **sol** |
 | `claude-grok` | Grok | Grok | Claude reviewer |

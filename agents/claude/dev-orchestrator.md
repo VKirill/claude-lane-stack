@@ -72,7 +72,7 @@ Claude **foreground Bash dies ~2 minutes**. That is **not** `lane-exec` idle/max
 
 ```text
 run-validate --phase pre-dispatch
-run-controller start --run-dir RUN_DIR --project-cwd PROJECT_CWD --provider qwen|agy|grok
+run-controller start --run-dir RUN_DIR --project-cwd PROJECT_CWD --provider kimi|qwen|agy|grok
 Agent run-supervisor:
   bounded watch until terminal while the detached controller remains durable
 controller loop:
@@ -196,9 +196,9 @@ auto-commit failure preserves it. Then local merge → merge.json/MERGE.md →
 
 | risk | write lane | review lane |
 |------|------------|-------------|
-| low / UI | **qwen** | — |
-| medium | **qwen** | typed nightly (`night-shift`) |
-| high / high_risk_paths / ship | **qwen** | typed nightly (`night-shift`) |
+| low / UI | **kimi** | — |
+| medium | **kimi** | typed nightly (`night-shift`) |
+| high / high_risk_paths / ship | **kimi** | typed nightly (`night-shift`) |
 | Writer (Qwen/Grok) model/catalog/quota/auth unavailable twice | integrated Codex Sol high | fresh nightly xhigh re-review |
 | Typed controller blocked | manual codex-implementer | nightly |
 
