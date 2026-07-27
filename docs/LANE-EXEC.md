@@ -262,17 +262,22 @@ weekly loop for spotting recurring blocks and false positives, then fixing the
 contracts or the gate. Schedule it with the `loop` skill or cron.
 
 `gate-triage` automates that loop. Weekly, it feeds the blocking events to a
-read-only qwen analysis (isolated empty cwd, `--output-format stream-json`,
-result validated against `schemas/gate-triage-result-v1.schema.json`), persists
-the recurring false-positive / tooling findings as canonical `finding-v1`
-records in the tool repo's `.agents/findings/`, writes
+read-only **Codex Sol high** analysis (`codex exec --ephemeral
+--ignore-user-config --sandbox read-only` in an isolated empty cwd, prompt on
+stdin, final message read back through `--output-last-message`, result validated
+against `schemas/gate-triage-result-v1.schema.json`), persists the recurring
+false-positive / tooling findings as canonical `finding-v1` records in the tool
+repo's `.agents/findings/`, writes
 `~/.agents/logs/gate-triage/GATE-TRIAGE-<date>.md` (+ `.json`) and a backlog
 block into `agent-notes/OPEN.md`, then — unless `--no-repair` — drives the
 existing repair chain (`wt-create` → `night-review-engine compile-fixes` →
-`night-fix-runner --provider qwen`) so the fix lands in an isolated worktree
-with verify + fresh re-review + accept. Merge happens only when
-`.agents/night-shift.yaml` has `auto_merge: true` (gate-triage enables it with
-`--auto-merge`). A failed qwen analysis fails closed and never touches code.
+`night-fix-runner --provider <writer>`, default `kimi`) so the fix lands in an
+isolated worktree with verify + fresh re-review + accept. Classification and
+repair are split on purpose: review-grade reasoning decides, a cheaper writer
+lane edits. Merge happens only when `.agents/night-shift.yaml` has
+`auto_merge: true` (gate-triage enables it with `--auto-merge`). A failed
+analysis fails closed and never touches code. Override with `--model`,
+`--reasoning-effort`, `--codex-bin`, or `--repair-provider`.
 
 ```bash
 0 4 * * 0 PATH=$HOME/.agents/bin:$PATH $HOME/.agents/bin/gate-triage \

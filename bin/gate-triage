@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Weekly read-only qwen triage of the gate-event log + bounded auto-repair.
+"""Weekly read-only Codex triage of the gate-event log + bounded auto-repair.
 
 Reads the gate-event log (default ~/.agents/logs/gate-events.jsonl, last N
-days), asks qwen to classify recurring gate blocks (false positive vs real
-issue) and propose concrete fixes, persists schema-validated findings to the
-target repo's .agents/findings/, then drives the EXISTING night-fix repair
+days), asks Codex Sol (high) to classify recurring gate blocks (false positive
+vs real issue) and propose concrete fixes, persists schema-validated findings to
+the target repo's .agents/findings/, then drives the EXISTING night-fix repair
 chain (wt-create -> night-review-engine compile-fixes -> night-fix-runner with
-the qwen writer) so recurring gate/tooling bugs fix themselves. Merge is gated
-by .agents/night-shift.yaml auto_merge (gate-triage enables it for the target
-repo when --auto-merge is passed).
+the selected writer) so recurring gate/tooling bugs fix themselves. Analysis and
+repair are deliberately split: review-grade reasoning classifies, a cheaper
+writer lane fixes. Merge is gated by .agents/night-shift.yaml auto_merge
+(gate-triage enables it for the target repo when --auto-merge is passed).
 
 Schedule (weekly, Sunday 04:00), mirroring night-shift-all:
   0 4 * * 0 PATH=$HOME/.agents/bin:$PATH $HOME/.agents/bin/gate-triage \\
@@ -46,16 +47,13 @@ REVIEW_ENGINE = BIN_DIR / "night-review-engine"
 NIGHT_FIX_RUNNER = BIN_DIR / "night-fix-runner"
 
 RESULT_SCHEMA_NAME = "gate-triage-result-v1.schema.json"
-DEFAULT_MODEL = "qwen3.8-max-preview"
+DEFAULT_MODEL = "gpt-5.6-sol"
+DEFAULT_REASONING_EFFORT = "high"
+DEFAULT_REPAIR_PROVIDER = "kimi"
 DEFAULT_DAYS = 7
 MAX_BLOCKING_EVENTS_IN_PROMPT = 60
 MAX_EVENTS_IN_REPORT = 40
 REPORT_BEGIN = "```json"
-QWEN_AUTH_ENV_KEYS = (
-    "BAILIAN_TOKEN_PLAN_API_KEY",
-    "DASHSCOPE_API_KEY",
-    "QWEN_API_KEY",
-)
 
 ANALYSIS_CONTEXT = """\
 You are the read-only GATE TRIAGE analyst for Claude Lane Stack.
@@ -165,48 +163,7 @@ def tool_repo() -> Path | None:
     return None
 
 
-# --- qwen read-only structured analysis --------------------------------------
-
-def parse_qwen_stream(stdout_text: str) -> dict:
-    """Parse qwen --output-format stream-json; return the final result envelope."""
-    result_text = ""
-    subtype = None
-    is_error = False
-    session_id = None
-    saw_result = False
-    for line in stdout_text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(event, dict):
-            continue
-        etype = event.get("type")
-        if etype == "system" and event.get("subtype") == "init":
-            value = event.get("session_id")
-            if isinstance(value, str) and value:
-                session_id = value
-        elif etype == "result":
-            saw_result = True
-            value = event.get("subtype")
-            subtype = value if isinstance(value, str) else None
-            is_error = bool(event.get("is_error"))
-            text = event.get("result")
-            result_text = text if isinstance(text, str) else ""
-            value = event.get("session_id")
-            if isinstance(value, str) and value:
-                session_id = value
-    return {
-        "result": result_text,
-        "subtype": subtype,
-        "is_error": is_error,
-        "session_id": session_id,
-        "saw_result": saw_result,
-    }
-
+# --- Codex read-only structured analysis -------------------------------------
 
 def extract_json_payload(text: str) -> str:
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
@@ -216,22 +173,23 @@ def extract_json_payload(text: str) -> str:
     end = text.rfind("}")
     if start >= 0 and end > start:
         return text[start : end + 1]
-    raise TriageError("no JSON object found in qwen result")
+    raise TriageError("no JSON object found in Codex result")
 
 
-def _qwen_env() -> dict:
+def _codex_env() -> dict:
     env = os.environ.copy()
     env["CLAUDE_LANE_AUTOMATION"] = "1"
-    env["QWEN_CODE_SUPPRESS_YOLO_WARNING"] = "1"
-    env["QWEN_CODE_NO_RELAUNCH"] = "1"
     return env
 
 
-def _run_qwen(argv: list[str], cwd: Path, env: dict, timeout: int) -> subprocess.CompletedProcess:
+def _run_codex(
+    argv: list[str], cwd: Path, env: dict, timeout: int, prompt: str
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         argv,
         cwd=str(cwd),
         env=env,
+        input=prompt,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -240,46 +198,61 @@ def _run_qwen(argv: list[str], cwd: Path, env: dict, timeout: int) -> subprocess
     )
 
 
-def invoke_qwen_triage(
+def invoke_codex_triage(
     prompt: str,
     schema: dict,
     *,
     model: str,
-    qwen_bin: str,
+    reasoning_effort: str,
+    codex_bin: str,
     timeout: int,
 ) -> dict:
-    """Run a one-shot read-only qwen analysis in an isolated empty cwd.
+    """Run a one-shot read-only Codex analysis in an isolated empty cwd.
 
-    The cwd is a throwaway empty dir so even a stray write cannot touch a repo.
-    Returns the schema-validated result object.
+    The cwd is a throwaway empty dir and the Codex sandbox is read-only, so even
+    a stray write cannot touch a repo. The prompt arrives on stdin and the final
+    message is read back from --output-last-message instead of being scraped out
+    of the event stream. Returns the schema-validated result object.
     """
-    argv = [
-        qwen_bin,
-        "--yolo",
-        "-p",
-        prompt,
-        "--model",
-        model,
-        "--output-format",
-        "stream-json",
-    ]
-    with tempfile.TemporaryDirectory(prefix="gate-triage-qwen-") as raw:
-        completed = _run_qwen(argv, Path(raw), _qwen_env(), timeout)
+    with tempfile.TemporaryDirectory(prefix="gate-triage-codex-") as raw:
+        cwd = Path(raw)
+        last_message = cwd / "last-message.txt"
+        argv = [
+            codex_bin,
+            "exec",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--model",
+            model,
+            "-c",
+            f'model_reasoning_effort="{reasoning_effort}"',
+            "-c",
+            'approval_policy="never"',
+            "--sandbox",
+            "read-only",
+            "--cd",
+            str(cwd),
+            "--skip-git-repo-check",
+            "--output-last-message",
+            str(last_message),
+            "-",
+        ]
+        completed = _run_codex(argv, cwd, _codex_env(), timeout, prompt)
+        result_text = (
+            last_message.read_text(encoding="utf-8", errors="replace")
+            if last_message.is_file()
+            else ""
+        )
     if completed.returncode != 0:
         tail = (completed.stderr or completed.stdout or "")[-2000:]
-        raise TriageError(f"qwen triage exited {completed.returncode}: {tail}")
-    envelope = parse_qwen_stream(completed.stdout or "")
-    if not envelope["saw_result"]:
-        raise TriageError("qwen triage stream ended without a result event")
-    if envelope["is_error"] or envelope["subtype"] != "success":
-        raise TriageError(
-            f"qwen triage reported an error (subtype={envelope['subtype']!r})"
-        )
-    payload_text = extract_json_payload(envelope["result"])
+        raise TriageError(f"Codex triage exited {completed.returncode}: {tail}")
+    if not result_text.strip():
+        raise TriageError("Codex triage produced no final message")
+    payload_text = extract_json_payload(result_text)
     try:
         payload = json.loads(payload_text)
     except json.JSONDecodeError as exc:
-        raise TriageError(f"qwen triage returned invalid JSON: {exc}") from exc
+        raise TriageError(f"Codex triage returned invalid JSON: {exc}") from exc
     validate_schema(payload, schema, "gate-triage result")
     return payload
 
@@ -390,7 +363,7 @@ def render_report(meta: dict, agg: dict, findings: list[dict], events: list[dict
     else:
         lines.append("## Findings")
         lines.append("")
-        lines.append("_No findings — qwen found nothing actionable._ 🎉")
+        lines.append("_No findings — Codex found nothing actionable._ 🎉")
         lines.append("")
     lines.append(f"## Recent blocking events (last {MAX_EVENTS_IN_REPORT})")
     lines.append("")
@@ -457,8 +430,10 @@ def run_command(argv: list[str], *, timeout: int, check: bool = True) -> subproc
     return completed
 
 
-def repair_repo(repo: Path, slug: str, *, qwen_bin: str, provider_timeout: int, dry_run: bool) -> dict:
-    """wt-create -> compile-fixes -> night-fix-runner --auto-merge --provider qwen."""
+def repair_repo(
+    repo: Path, slug: str, *, provider: str, provider_timeout: int, dry_run: bool
+) -> dict:
+    """wt-create -> compile-fixes -> night-fix-runner --auto-merge --provider <writer>."""
     result = {"repo": str(repo), "slug": slug, "stages": []}
     if dry_run:
         result["stages"].append("dry-run: skipped wt-create/compile-fixes/night-fix-runner")
@@ -484,9 +459,7 @@ def repair_repo(repo: Path, slug: str, *, qwen_bin: str, provider_timeout: int, 
             str(run_dir),
             "--auto-merge",
             "--provider",
-            "qwen",
-            "--provider-bin",
-            qwen_bin,
+            provider,
             "--provider-timeout",
             str(provider_timeout),
         ],
@@ -535,8 +508,13 @@ def run_triage(args: argparse.Namespace) -> int:
     schema = load_schema(RESULT_SCHEMA_NAME)
     prompt = build_prompt(agg, blocking, schema)
     try:
-        payload = invoke_qwen_triage(
-            prompt, schema, model=args.model, qwen_bin=args.qwen_bin, timeout=args.analysis_timeout
+        payload = invoke_codex_triage(
+            prompt,
+            schema,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            codex_bin=args.codex_bin,
+            timeout=args.analysis_timeout,
         )
     except TriageError as exc:
         atomic_write_text(
@@ -587,19 +565,35 @@ def run_triage(args: argparse.Namespace) -> int:
     if args.auto_merge:
         ensure_auto_merge(repo)
     repair_result = repair_repo(
-        repo, slug, qwen_bin=args.qwen_bin, provider_timeout=args.provider_timeout, dry_run=args.dry_run
+        repo,
+        slug,
+        provider=args.repair_provider,
+        provider_timeout=args.provider_timeout,
+        dry_run=args.dry_run,
     )
     print(f"gate-triage: repair {json.dumps(repair_result, sort_keys=True)}")
     return 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="weekly qwen gate triage + bounded auto-repair")
+    parser = argparse.ArgumentParser(description="weekly Codex gate triage + bounded auto-repair")
     parser.add_argument("--days", type=int, default=DEFAULT_DAYS, help="lookback window (default 7)")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="qwen analysis model")
-    parser.add_argument("--qwen-bin", default=os.environ.get("GATE_TRIAGE_QWEN_BIN", "qwen"))
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Codex analysis model")
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+        default=DEFAULT_REASONING_EFFORT,
+        help="Codex analysis reasoning effort (default high)",
+    )
+    parser.add_argument("--codex-bin", default=os.environ.get("GATE_TRIAGE_CODEX_BIN", "codex"))
+    parser.add_argument(
+        "--repair-provider",
+        choices=("agy", "grok", "qwen", "kimi"),
+        default=DEFAULT_REPAIR_PROVIDER,
+        help="writer lane used by the bounded fix chain (default kimi)",
+    )
     parser.add_argument("--log", default=None, help="gate-event log path override")
-    parser.add_argument("--analysis-timeout", type=int, default=1800, help="qwen analysis wall-clock timeout (s)")
+    parser.add_argument("--analysis-timeout", type=int, default=1800, help="Codex analysis wall-clock timeout (s)")
     parser.add_argument("--provider-timeout", type=int, default=7200, help="per-fix writer timeout (s)")
     parser.add_argument("--no-repair", action="store_true", help="analyze + persist findings only; skip the fix chain")
     parser.add_argument("--auto-merge", action="store_true", help="enable auto_merge in the target repo and merge accepted fixes")

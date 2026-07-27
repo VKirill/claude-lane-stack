@@ -55,21 +55,6 @@ def fenced(payload: dict) -> str:
 
 
 class PureHelperTests(unittest.TestCase):
-    def test_parse_qwen_stream(self) -> None:
-        stdout = "\n".join(
-            [
-                json.dumps({"type": "system", "subtype": "init", "session_id": "s1", "permission_mode": "yolo"}),
-                json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "thinking..."}]}}),
-                json.dumps({"type": "result", "subtype": "success", "is_error": False, "session_id": "s1", "result": "```json\n{}\n```"}),
-            ]
-        )
-        envelope = gate_triage.parse_qwen_stream(stdout)
-        self.assertTrue(envelope["saw_result"])
-        self.assertEqual(envelope["subtype"], "success")
-        self.assertFalse(envelope["is_error"])
-        self.assertEqual(envelope["session_id"], "s1")
-        self.assertIn("```json", envelope["result"])
-
     def test_extract_json_payload_fenced_and_bare(self) -> None:
         self.assertEqual(gate_triage.extract_json_payload('x ```json\n{"a": 1}\n``` y'), '{"a": 1}')
         self.assertEqual(gate_triage.extract_json_payload('noise {"a": 1} tail'), '{"a": 1}')
@@ -140,17 +125,23 @@ class GateTriageEndToEndTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-        # stub qwen
+        # stub codex: writes the canned final message where --output-last-message points
         self.result_file = self.root / "stub-result.txt"
-        self.stub = self.root / "stub-qwen"
+        self.stub = self.root / "stub-codex"
         self.stub.write_text(
             "#!/usr/bin/env python3\n"
-            "import json, os\n"
+            "import os, sys\n"
+            "argv = sys.argv[1:]\n"
+            "assert argv[0] == 'exec', argv\n"
+            "assert '--sandbox' in argv and argv[argv.index('--sandbox') + 1] == 'read-only', argv\n"
+            "sys.stdin.read()\n"
+            "target = argv[argv.index('--output-last-message') + 1]\n"
             "body = open(os.environ['STUB_RESULT_FILE']).read()\n"
-            "print(json.dumps({'type':'system','subtype':'init','session_id':'stub','permission_mode':'yolo'}))\n"
-            "print(json.dumps({'type':'result','subtype':'success','is_error':False,'session_id':'stub','result':body,'num_turns':1}))\n",
+            "open(target, 'w').write(body)\n"
+            "open(os.environ['STUB_ARGV_LOG'], 'w').write('\\n'.join(argv))\n",
             encoding="utf-8",
         )
+        self.argv_log = self.root / "stub-argv.txt"
         self.stub.chmod(self.stub.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
     def tearDown(self) -> None:
@@ -161,6 +152,7 @@ class GateTriageEndToEndTests(unittest.TestCase):
         env = dict(os.environ)
         env["HOME"] = str(self.home)
         env["STUB_RESULT_FILE"] = str(self.result_file)
+        env["STUB_ARGV_LOG"] = str(self.argv_log)
         env.pop("CLAUDE_LANE_GATE_LOG", None)
         return subprocess.run(
             [
@@ -168,7 +160,7 @@ class GateTriageEndToEndTests(unittest.TestCase):
                 str(BIN / "gate-triage"),
                 "--log",
                 str(self.gate_log),
-                "--qwen-bin",
+                "--codex-bin",
                 str(self.stub),
                 *extra,
             ],
@@ -203,7 +195,18 @@ class GateTriageEndToEndTests(unittest.TestCase):
         self.assertTrue(backlog.is_file())
         self.assertIn("gate-triage", backlog.read_text())
 
-    def test_invalid_qwen_output_fails_closed(self) -> None:
+    def test_codex_invocation_is_sol_high_and_read_only(self) -> None:
+        result = self.run_triage("--no-repair", result_body=fenced(VALID_PAYLOAD))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        argv = self.argv_log.read_text().splitlines()
+        self.assertEqual(argv[argv.index("--model") + 1], "gpt-5.6-sol")
+        self.assertIn('model_reasoning_effort="high"', argv)
+        self.assertEqual(argv[argv.index("--sandbox") + 1], "read-only")
+        self.assertIn("--ephemeral", argv)
+        self.assertIn("--ignore-user-config", argv)
+        self.assertEqual(argv[-1], "-")
+
+    def test_invalid_codex_output_fails_closed(self) -> None:
         result = self.run_triage("--no-repair", result_body="```json\n{not valid json}\n```")
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         failures = list((self.home / ".agents" / "logs" / "gate-triage").glob("*.failures.md"))

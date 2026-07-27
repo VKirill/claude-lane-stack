@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.11.0 — 2026-07-27
+
+### Changed
+- **`gate-triage` analysis moved from qwen to Codex Sol high.** The weekly gate
+  review now runs `codex exec --ephemeral --ignore-user-config --model
+  gpt-5.6-sol -c model_reasoning_effort="high" --sandbox read-only` in a
+  throwaway empty cwd, feeds the prompt on stdin, and reads the final message
+  back through `--output-last-message` instead of scraping a provider event
+  stream — so `parse_qwen_stream` is gone. Local schema validation still gates
+  the result, and a failed analysis still fails closed without touching code.
+  New flags: `--reasoning-effort` (default `high`), `--codex-bin`
+  (`GATE_TRIAGE_CODEX_BIN`), `--repair-provider` (default `kimi`); `--qwen-bin`
+  is removed.
+- **Analysis and repair are now split by design:** review-grade Codex reasoning
+  classifies the recurring gate blocks, and a cheaper writer lane (default
+  `kimi`) executes the bounded fix chain.
+
 ## 1.10.1 — 2026-07-27
 
 ### Changed
