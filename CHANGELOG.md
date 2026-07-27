@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.1 — 2026-07-27
+
+### Changed
+- **`night-shift` / `night-shift-all --provider` accept `qwen` and `kimi`.**
+  `night-fix-runner` already handled both, but the nightly entrypoints clamped
+  the choice to `agy|grok`, so the selectable repair writers were unreachable
+  from cron. Default stays `grok`.
+
 ## 1.10.0 — 2026-07-27
 
 ### Added
@@ -25,9 +33,7 @@
   keep verifying and accepting unchanged.
 - `~/.kimi-code` is masked inside every other writer's sandbox, and kimi's own
   sandbox masks `~/.codex`, `~/.gemini`, `~/.grok`, and `~/.qwen`.
-- `night-fix-runner --provider` and night-fix lanes accept `kimi`, and the
-  `night-shift` / `night-shift-all` wrappers now pass `qwen`/`kimi` through as
-  well (their own default remains `grok`).
+- `night-fix-runner --provider` and night-fix lanes accept `kimi`.
 
 ### Known limits
 - kimi emits no init event, effective-model echo, permission-mode echo, or usage
