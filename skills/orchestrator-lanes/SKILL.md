@@ -32,8 +32,10 @@ Keeps generated schema-v2 PLAN/SPEC/STATUS files short; skips worktree,
 heartbeat ceremony, and reviewer.
 
 Keeps: strict task YAML from `run-init`, pre-dispatch validation, `lane-bg` for
-the CLI call, `check-owns-paths`, independent verify, `lane-ctl accept`, and PM
-commit to main.
+the CLI call, exactly one `Agent(run-supervisor)` that starts/watches the
+controller until terminal, `check-owns-paths`, independent verify,
+`lane-ctl accept`, and PM commit to main. The PM never runs `run-controller
+start/watch/status` directly, including on the micro path.
 
 Micro commit format: `<type>(<area>): <title> [micro:<slug>]`.
 
@@ -296,6 +298,8 @@ Ideas → **agent-todos**. Active build → this skill. Promote todo → run whe
 8. **English only** for all run/todo/docs files; chat with human may be Russian (`LANGUAGE.md`).
 9. **Progressive accept** when ≥2 writes: start detached, react to events,
    verify separately, write each acceptance receipt immediately.
-10. **Never** use one Claude subagent per provider. One source-read-only
-    `run-supervisor` may watch the durable deterministic controller for human
-    visibility; it is not the lifecycle decision maker.
+10. **Never** use one Claude subagent per provider. Exactly one source-read-only
+    `run-supervisor` **must** start and watch the durable deterministic controller
+    for every run, including micro; the PM must not run `run-controller
+    start/watch/status` directly. The supervisor is not the lifecycle decision
+    maker.

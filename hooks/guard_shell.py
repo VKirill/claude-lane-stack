@@ -21,6 +21,20 @@ def main() -> None:
 
     low = cmd.lower()
 
+    if p.get("agent_type") == "dev-orchestrator" and re.search(
+        r"(?:^|[;&|(\n]\s*|\b(?:until|while|if|then|do|exec|command)\s+)"
+        r"(?:[^\s;&|()]+/)?run-controller\s+(?:start|watch|status)\b",
+        cmd,
+    ):
+        emit_deny(
+            client,
+            "[orchestrator-guard] dev-orchestrator must not run run-controller "
+            "start/watch/status directly. Dispatch exactly one Agent(run-supervisor) "
+            "with RUN_DIR, PROJECT_CWD, WRITER_PROVIDER, and "
+            "PM_NAME=dev-orchestrator; wait for its terminal digest. Use "
+            "Agent(lane-supervisor) for manual status or recovery.",
+        )
+
     # git hook skip
     if re.search(r"\bgit\s+(commit|push|merge)\b", low) and (
         "--no-verify" in low or "husky=0" in low or "husky=false" in low

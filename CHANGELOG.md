@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.1 — 2026-07-29
+
+### Fixed
+- **Dev orchestrator can no longer bypass the required run supervisor.**
+  `orchestrator-lanes` now makes exactly one `run-supervisor` mandatory for
+  every controller run, including the micro path. A shared Claude
+  `PreToolUse` guard blocks direct `run-controller start/watch/status` calls
+  from `dev-orchestrator` and returns the correct supervisor dispatch contract.
+
 ## 1.11.0 — 2026-07-27
 
 ### Changed

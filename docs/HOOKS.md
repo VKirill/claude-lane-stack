@@ -7,7 +7,7 @@ Deterministic guards that catch agents mid-flight. Shared logic lives in
 
 | Script | When | What |
 |--------|------|------|
-| `guard_shell.py` | PreToolUse (shell) | `--no-verify`, force-push, DROP/TRUNCATE, DELETE without WHERE, reckless `rm -rf` |
+| `guard_shell.py` | PreToolUse (shell) | Dev-orchestrator controller bypass, `--no-verify`, force-push, DROP/TRUNCATE, DELETE without WHERE, reckless `rm -rf` |
 | `guard_code_quality.py` | PostToolUse (edit) | `any`, Prisma `$queryRawUnsafe`, `@ts-ignore`, eval, hardcoded secrets |
 | `lib_payload.py` | — | Normalize stdin JSON for Claude / Codex / Grok |
 
@@ -22,7 +22,7 @@ Escape hatch for code quality: `// guardian: allow <reason>` on the same line.
 Config: `~/.claude/settings.json` → `hooks`
 
 - PM guard: `guard-orchestrator-no-direct-edits.sh` (allows `.agents/todos|runs`)
-- Shell: lockfile, dangerous-bash, secrets, git-no-verify
+- Shell: shared `guard_shell.py`, lockfile, dangerous-bash, secrets, git-no-verify
 - Post edit: `guardian-code.sh` (local sibling of `guard_code_quality.py`)
 - Trace: `orchestrator-trace.sh`
 
