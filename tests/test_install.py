@@ -454,7 +454,7 @@ class InstallTest(unittest.TestCase):
             self.assertTrue(installed.is_file())
             content = installed.read_text(encoding="utf-8")
             self.assertIn('model = "gpt-5.6-sol"', content)
-            self.assertIn('model_reasoning_effort = "xhigh"', content)
+            self.assertIn('model_reasoning_effort = "high"', content)
             self.assertIn('sandbox_mode = "read-only"', content)
             self.assertIn('approval_policy = "never"', content)
 

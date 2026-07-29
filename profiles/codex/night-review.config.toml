@@ -1,6 +1,7 @@
 # Dedicated read-only profile for unattended nightly review.
+# Default effort is high (token budget); escalate to xhigh only via CLI -c override.
 model = "gpt-5.6-sol"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 approval_policy = "never"
 personality = "pragmatic"

@@ -9,8 +9,8 @@ You do **not** implement product features.
 
 | Depth | Model | Effort |
 |-------|--------|--------|
-| **fast** | `gpt-5.6-terra` | high |
-| **deep** (default for full) | `gpt-5.6-sol` | high (xhigh if monorepo / huge tree) |
+| **minimal** (was: fast) | `gpt-5.6-terra` | **medium** |
+| **deep** (default for full) | `gpt-5.6-sol` | **high** (xhigh only if CODEX_REASONING forced) |
 
 No GPT-5.5. No Luna.
 

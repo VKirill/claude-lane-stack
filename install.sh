@@ -194,6 +194,6 @@ echo "Control plane: lane-ctl start/status/events/tail/retry/cancel/verify/accep
 echo "Manual lane recovery: lane-supervisor (Kimi, Qwen, AGY, or Grok writer)"
 echo "Pools: provider default 5/max 10; verification default 2/max 10"
 echo "Warm lanes: lane-session resumes run-scoped Kimi, Qwen, AGY, or Grok conversations"
-echo "Night shift: night-shift-all (Codex Sol xhigh review; selectable Kimi/Qwen/AGY/Grok repair with typed Sol fallback)"
+echo "Night shift: night-shift-all (Codex Sol high review; selectable Kimi/Qwen/AGY/Grok repair with typed Sol fallback)"
 echo "Beginner: docs/BEGINNER.md · RU: docs/BEGINNER.ru.md"
 echo "Docs: $DEST/docs/ (ONBOARD-SCENARIOS, LANE-EXEC, ROUTING, LANGUAGE)"

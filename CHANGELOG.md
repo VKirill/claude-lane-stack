@@ -1,3 +1,9 @@
+### Codex effort budget (2026-07-30)
+
+- Default Codex reasoning is **high** (or **medium** for low-risk / minimal onboard), not xhigh.
+- Removed fast_write → expensive effort mapping; xhigh only on explicit escalate.
+- Night-review profile + engine use sol + high. ADR: docs/decisions/ADR-codex-effort.md.
+
 ### Control plane stability (2026-07-30)
 
 - run-controller: partial-block — one task blocked no longer freezes runnable siblings; upstream-blocked dependents cascade to blocked.

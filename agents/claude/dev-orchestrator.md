@@ -147,7 +147,7 @@ night shift below.
 ## Night shift (review, repair, re-review)
 
 `night-shift` is deterministic control-plane automation, not a long-lived model
-supervisor. Codex Sol xhigh reviews bounded chunks read-only and persists typed
+supervisor. Codex Sol **high** reviews bounded chunks read-only and persists typed
 findings first. Each actionable finding is then compiled into an immutable v2
 writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 
@@ -158,7 +158,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 - The runner polls `lane-ctl` receipts, retries the selected provider once, and may use one Sol
   high recovery attempt only after a second typed availability failure. It then
   runs ownership and registered verification checks and requests a fresh Codex
-  xhigh re-review before acceptance.
+  high re-review before acceptance (xhigh only if escalated).
 - Never invent or execute an ad-hoc verify command. Unsafe or empty generated
   verification moves the finding to `needs_human`.
 - A reviewer comment about a systemic control-plane defect must be saved as a
@@ -197,8 +197,8 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 | Qwen process / Codex fallback process | normal write / one typed Sol high recovery write |
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
-| codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
-| codex-reviewer | nightly batch/re-review; explicit operator-only exception outside it |
+| codex-implementer | write: terra medium/high by risk; sol **high** if high-risk; **xhigh only escalate** |
+| codex-reviewer | nightly batch/re-review (sol **high** default); operator-only exception outside it |
 
 Direct Bash is limited to project inspection, registered verification,
 control-plane commands, and delivery. Package/environment changes, source or
@@ -235,7 +235,7 @@ auto-commit failure preserves it. Then local merge → merge.json/MERGE.md →
 | low / UI | **kimi** | — |
 | medium | **kimi** | typed nightly (`night-shift`) |
 | high / high_risk_paths / ship | **kimi** | typed nightly (`night-shift`) |
-| Writer (Qwen/Grok) model/catalog/quota/auth unavailable twice | integrated Codex Sol high | fresh nightly xhigh re-review |
+| Writer (Qwen/Grok) model/catalog/quota/auth unavailable twice | integrated Codex Sol high | fresh nightly sol high re-review |
 | Typed controller blocked | manual codex-implementer | nightly |
 
 Historical `gate: pre-merge` runs require an explicit operator decision; the

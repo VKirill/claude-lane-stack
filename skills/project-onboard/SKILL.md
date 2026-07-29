@@ -10,7 +10,7 @@ description: Primary project onboarding for Claude Lane Stack. Dual scenario (mi
 | Role | Agent |
 |------|--------|
 | **Default writer** | **Codex** via `codex-onboarder` |
-| **fast** | `gpt-5.6-terra` + high |
+| **minimal** | `gpt-5.6-terra` + medium |
 | **deep** (default on full) | `gpt-5.6-sol` + high |
 | PM / slash | `/project-onboard` or natural language |
 | Fallback | shell `project-onboard` only (seeds; no deep fill) |

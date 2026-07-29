@@ -1,6 +1,6 @@
 ---
 name: codex-implementer
-description: "Codex write lane. Default Terra xhigh; Sol xhigh for high-risk/emergency. No GPT-5.5. File task contract."
+description: "Codex write lane. Terra/Sol with effort by risk (medium/high default; xhigh only escalate). No GPT-5.5. File task contract."
 model: sonnet
 tools: Bash, Read, Grep, Glob
 skills:
@@ -14,19 +14,25 @@ skills:
 
 Shell-out only. Do not implement product code yourself.
 
-## Model selection
+## Model + effort (token-aware)
 
-| Input | Model | Effort |
-|-------|-------|--------|
-| default / medium / fast_write | `gpt-5.6-terra` | `xhigh` (fast_write may use `high`) |
-| `risk: high` / `high_risk_paths` / emergency | `gpt-5.6-sol` | `xhigh` |
-| override | `CODEX_MODEL` / `CODEX_REASONING` env | — |
-| forbidden | gpt-5.5, luna for multi-file | — |
+| Trigger | Model | Effort |
+|---------|-------|--------|
+| `risk: low` and ≤3 `owns_paths` entries | `gpt-5.6-terra` | **`medium`** |
+| `risk: medium` / default | `gpt-5.6-terra` | **`high`** |
+| `risk: high` / `high_risk_paths` / emergency / terminal recovery | `gpt-5.6-sol` | **`high`** |
+| Only if PM sets `CODEX_REASONING=xhigh` or a prior high attempt failed | same | **`xhigh`** |
+| override | `CODEX_MODEL` / `CODEX_REASONING` | — |
+| forbidden | gpt-5.5; luna for multi-file | — |
+
+**No `fast_write` lane.** Do not burn high/xhigh "because fast".
+
+See `docs/decisions/ADR-codex-effort.md`.
 
 ```bash
-CODEX_MODEL="${CODEX_MODEL:-gpt-5.6-terra}"
-CODEX_REASONING="${CODEX_REASONING:-xhigh}"
-# if TASK risk high → force sol
+# Defaults — compute from TASK_FILE unless env override
+CODEX_MODEL="${CODEX_MODEL:-}"
+CODEX_REASONING="${CODEX_REASONING:-}"
 ```
 
 ## Inputs
@@ -61,13 +67,28 @@ if ! lane-mode-check --run-dir "$RUN_DIR" --mode "$MODE" --task "$SESSION_TASK_I
   exit 0
 fi
 command -v codex && codex --version
-# parse risk from yaml if high → CODEX_MODEL=gpt-5.6-sol
-if grep -qE 'risk:\s*high|high_risk_paths:\s*true' "$TASK_FILE"; then
-  CODEX_MODEL=gpt-5.6-sol
-  CODEX_REASONING=xhigh
+
+# --- effort policy (skip when CODEX_* already set) ---
+if [[ -z "${CODEX_MODEL:-}" || -z "${CODEX_REASONING:-}" ]]; then
+  RISK=$(grep -E '^risk:' "$TASK_FILE" | head -1 | awk '{print $2}' | tr -d '"' || true)
+  OWNS_N=$(grep -cE '^\s+-\s+' "$TASK_FILE" 2>/dev/null || echo 0)
+  # crude owns count: lines under owns_paths block; fallback medium/high
+  if grep -qE 'high_risk_paths:\s*true|risk:\s*high' "$TASK_FILE"; then
+    : "${CODEX_MODEL:=gpt-5.6-sol}"
+    : "${CODEX_REASONING:=high}"
+  elif [[ "${RISK:-medium}" == "low" ]]; then
+    : "${CODEX_MODEL:=gpt-5.6-terra}"
+    : "${CODEX_REASONING:=medium}"
+  else
+    : "${CODEX_MODEL:=gpt-5.6-terra}"
+    : "${CODEX_REASONING:=high}"
+  fi
 fi
 CODEX_MODEL="${CODEX_MODEL:-gpt-5.6-terra}"
-CODEX_REASONING="${CODEX_REASONING:-xhigh}"
+CODEX_REASONING="${CODEX_REASONING:-high}"
+# never default to xhigh
+[[ "$CODEX_REASONING" == "xhigh" ]] || true
+echo "CODEX_MODEL=$CODEX_MODEL CODEX_REASONING=$CODEX_REASONING"
 ```
 
 ## Run
@@ -99,7 +120,7 @@ if [[ "$MODE" != "finish" ]]; then
       -- bash -c 'codex exec --model "$0" -c model_reasoning_effort="$1" \
           --sandbox workspace-write --skip-git-repo-check --full-auto \
           --cd "$2" --output-last-message "$3" - < "$4" > "$5" 2>&1; \
-          echo CODEX_EXIT=$? CODEX_MODEL=$0 >> "$5"' \
+          echo CODEX_EXIT=$? CODEX_MODEL=$0 CODEX_REASONING=$1 >> "$5"' \
         "$CODEX_MODEL" "$CODEX_REASONING" "$PROJECT_CWD" "$OUT_MSG" "$SPEC" "$FINAL"
 fi
 

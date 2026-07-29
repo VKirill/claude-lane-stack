@@ -605,7 +605,7 @@ def invoke_codex(
             "--model",
             "gpt-5.6-sol",
             "-c",
-            "model_reasoning_effort=xhigh",
+            "model_reasoning_effort=high",
             "--sandbox",
             "read-only",
             "--skip-git-repo-check",

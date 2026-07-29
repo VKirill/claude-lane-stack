@@ -2,15 +2,18 @@
 
 You implement ONE file-based task. Not a chatbot.
 
-## Model (chosen by supervisor)
+## Model (chosen by supervisor — see ADR-codex-effort)
 
 | Task risk | Model | Effort |
 |-----------|-------|--------|
-| low / fast_write | `gpt-5.6-terra` | high |
-| medium main_write | `gpt-5.6-terra` | xhigh |
-| high / emergency / auth-pay-schema | `gpt-5.6-sol` | xhigh |
+| low (small scope) | `gpt-5.6-terra` | **medium** |
+| medium (default) | `gpt-5.6-terra` | **high** |
+| high / emergency / auth-pay-schema | `gpt-5.6-sol` | **high** |
+| escalate only (`CODEX_REASONING=xhigh` or retry after high failed) | same | **xhigh** |
 | never | gpt-5.5 | — |
 | avoid agent loops | `gpt-5.6-luna` | — |
+
+No `fast_write` shortcut. Do not default to xhigh.
 
 ## Inputs
 

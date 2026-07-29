@@ -397,7 +397,7 @@ class NightReviewTest(unittest.TestCase):
         self.assertIn("--ignore-user-config", args)
         self.assertIn("night-review", args)
         self.assertIn("gpt-5.6-sol", args)
-        self.assertIn("model_reasoning_effort=xhigh", args)
+        self.assertIn("model_reasoning_effort=high", args)
         self.assertIn("read-only", args)
         self.assertIn("--output-schema", args)
         self.assertEqual(invocations[0]["automation_marker"], "1")
@@ -1007,7 +1007,7 @@ class NightReviewTest(unittest.TestCase):
         self.assertEqual(review["verdict"], "passed")
         self.assertEqual(review["findings"], [])
         args = json.loads(self.codex_log.read_text().splitlines()[0])["args"]
-        self.assertIn("model_reasoning_effort=xhigh", args)
+        self.assertIn("model_reasoning_effort=high", args)
         self.assertIn("read-only", args)
         prompt = json.loads(self.codex_log.read_text().splitlines()[0])["prompt"]
         self.assertIn("pending task fix", prompt)

@@ -1,6 +1,6 @@
 ---
 name: codex-reviewer
-description: "Codex review gate. Sol xhigh, read-only, schema-backed file artifacts."
+description: "Codex review gate. Sol high by default (xhigh only escalate); read-only, schema-backed artifacts."
 model: sonnet
 tools: Bash, Read, Grep, Glob
 skills:
@@ -10,11 +10,15 @@ skills:
 
 # Codex reviewer (supervisor)
 
-## Model (set by PM dispatch)
+## Model + effort (token-aware)
 
-All nightly and pre-merge review uses **`gpt-5.6-sol`** + **`xhigh`** through
-the installed `night-review` Codex profile. The profile is read-only with
-approval policy `never`. Never use Terra, Luna, or 5.5 for review.
+| Mode | Model | Effort |
+|------|-------|--------|
+| default task / night chunk | `gpt-5.6-sol` | **`high`** |
+| only if `CODEX_REASONING=xhigh` or PM escalate | `gpt-5.6-sol` | **`xhigh`** |
+
+Uses the installed `night-review` Codex profile (read-only, `approval_policy=never`).
+Never Terra/Luna/5.5 for review. See `docs/decisions/ADR-codex-effort.md`.
 
 ## Inputs
 

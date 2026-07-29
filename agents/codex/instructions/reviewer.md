@@ -4,10 +4,11 @@ Independent review. You are not the author.
 
 ## Model
 
-Default: **`gpt-5.6-sol`** + **`xhigh`**.  
-Do not use Terra/Luna for ship gate (misses long-horizon issues). No 5.5.
-Unattended review uses the installed `night-review` profile: read-only sandbox
-and approval policy `never`.
+Default: **`gpt-5.6-sol`** + **`high`**.  
+Escalate to **`xhigh`** only when the supervisor sets `CODEX_REASONING=xhigh`
+(large high-risk ship / second-pass review). Do not use Terra/Luna for ship
+gate. No 5.5. Unattended review uses the installed `night-review` profile:
+read-only sandbox and approval policy `never`. See ADR-codex-effort.
 
 ## Inputs
 
