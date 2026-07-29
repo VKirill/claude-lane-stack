@@ -18,10 +18,30 @@ PM_READ_COMMANDS = {
     "sha256sum", "sort", "stat", "tail", "test", "true", "false", "type",
     "uniq", "wc", "which", "yq",
 }
+# Typed control-plane CLIs the PM may run directly (not writer lifecycle).
+# lane-ctl / run-controller start|watch|status stay delegated to supervisors.
 PM_CONTROL_COMMANDS = {
-    "agents-doctor", "resume-project", "run-board",
-    "run-finalize", "run-init", "run-validate", "wt-create", "wt-merge-main",
+    "agents-doctor",
+    "lane-stall-check",
+    "resume-project",
+    "run-board",
+    "run-finalize",
+    "run-init",
+    "run-validate",
+    "wt-create",
+    "wt-merge-main",
 }
+# Machine receipts under a run — owned by controller/lane-ctl, not hand-edited by PM.
+_PM_RUN_MACHINE_RECEIPT = re.compile(
+    r"^\.agents/runs/[^/]+/"
+    r"(?:"
+    r"controller(?:\.json|/)|"
+    r"artifacts/|"
+    r"events\.jsonl|"
+    r"sessions\.json"
+    r")"
+)
+_PM_TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".json", ".txt"}
 SQL_MUTATION = re.compile(
     r"\b(?:insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|"
     r"comment|vacuum|reindex|cluster|refresh)\b",
@@ -39,6 +59,12 @@ def _deny_pm(client: str, detail: str) -> None:
 
 
 def _pm_edit_allowed(path: str, cwd: object) -> bool:
+    """PM may edit control-plane docs only — never production source.
+
+    Aligns with SOLO/dev-orchestrator: `.agents/**`, `docs/plans/**`,
+    `PROGRESS.md` / `LESSONS.md`. Machine lifecycle receipts under a run
+    (controller, artifacts, events, sessions) stay tool-owned.
+    """
     if not isinstance(cwd, str) or not cwd:
         return False
     root = Path(cwd).resolve()
@@ -49,20 +75,20 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     if lexical.is_relative_to(root) and not target.is_relative_to(root):
         return False
     if requested.is_absolute() and target.is_relative_to(Path("/tmp")):
-        return suffix in {".md", ".yaml", ".yml", ".json", ".txt"}
+        return suffix in _PM_TEXT_SUFFIXES
     if not target.is_relative_to(root):
         return False
     relative = target.relative_to(root)
     normalized = relative.as_posix()
-    if normalized.startswith("docs/plans/"):
-        return suffix in {".md", ".yaml", ".yml", ".json"}
-    if normalized.startswith(".agents/todos/"):
-        return suffix in {".md", ".yaml", ".yml", ".json"}
-    if re.fullmatch(r"\.agents/runs/[^/]+/tasks/[^/]+\.ya?ml", normalized):
+    if normalized in {"PROGRESS.md", "LESSONS.md"}:
         return True
-    return bool(
-        re.fullmatch(r"\.agents/runs/[^/]+/(?:PLAN|SPEC)\.md", normalized)
-    )
+    if normalized.startswith("docs/plans/"):
+        return suffix in _PM_TEXT_SUFFIXES
+    if normalized.startswith(".agents/"):
+        if _PM_RUN_MACHINE_RECEIPT.search(normalized):
+            return False
+        return suffix in _PM_TEXT_SUFFIXES
+    return False
 
 
 def _subcommand(args: list[str], options_with_values: set[str]) -> str:

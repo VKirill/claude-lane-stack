@@ -158,4 +158,34 @@ Skill: `project-memory`.
 
 ## Orchestrator guard (PM allowlist)
 
-Policy should be stable for a session: PM may manage `.agents/**`, merge/commit/push main, and inspect receipts. PM must not use background shell (`nohup`, trailing `&`) or call `run-controller start/watch/status` directly — dispatch `run-supervisor` / `lane-supervisor` instead. Mid-session tightening without a session-start pin is a known defect class (`orchestrator-guard-midsession-tightening`).
+Policy lives in `hooks/guard_shell.py` and is installed into
+`~/.claude/settings.json` PreToolUse via `merge_claude_settings.py` on
+`install.sh`. It must stay aligned with SOLO / `dev-orchestrator`:
+
+**PM shell allow**
+- Read/inspect: `cat`, `jq`, `rg`, `git status/diff/log`, docker **logs/ps/inspect**, …
+- Control plane: `run-init`, `run-validate`, `run-board`, `run-finalize`,
+  `resume-project`, `wt-create`, `wt-merge-main`, `lane-stall-check`, `agents-doctor`
+- Delivery: `git add/commit/merge/push` (no `--force` without lease, no `--no-verify`)
+- Verification (L2): `npm|pnpm|yarn test|run typecheck|lint|build|check|verify`,
+  `pytest`, `cargo test`, …
+
+**PM shell deny**
+- `run-controller start|watch|status` (must be `Agent(run-supervisor)`)
+- `lane-ctl` lifecycle (start/accept/verify/…) — use `lane-supervisor`
+- Background / nohup / redirections (`&`, `>`, heredoc writes)
+- Package install/deploy, docker mutate, DB writes, process control, source sed -i
+
+**PM edit allow**
+- `PROGRESS.md`, `LESSONS.md`
+- `.agents/**` text/json/yaml **except** machine receipts:
+  `controller.json`, `controller/`, `artifacts/`, `events.jsonl`, `sessions.json`
+- `docs/plans/**`
+- `/tmp/*` short notes (md/yaml/json/txt)
+
+**Silence protocol:** read receipts with `cat`/`jq` on `controller.json` /
+`events.jsonl` (allowed). Do not invent nohup watchers (denied).
+
+Mid-session policy flips without install are a defect class
+(`orchestrator-guard-midsession-tightening`); pin by not rewriting
+`settings.json` mid-run and always passing `agent_type` on tool payloads.

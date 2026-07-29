@@ -95,6 +95,10 @@ class GuardShellTest(unittest.TestCase):
             "docker logs selfystudio-worker-1 --since 10m | tail -20",
             "docker exec db psql -c 'SELECT id FROM jobs LIMIT 1'",
             "npm -w apps/api run typecheck",
+            "npm -w apps/api run test",
+            "cat .agents/runs/demo/controller.json",
+            "jq . .agents/runs/demo/events.jsonl",
+            "lane-stall-check /srv/app --minutes 5",
             "run-init /srv/app demo && run-validate --phase pre-dispatch --run-dir /srv/app/.agents/runs/demo",
             "wt-merge-main /srv/app demo && git push origin main",
         ):
@@ -138,6 +142,9 @@ class GuardShellTest(unittest.TestCase):
             "sed --in-place 's/a/b/' src/fix.ts",
             "python3 -c \"from pathlib import Path; Path('src/fix.ts').write_text('x')\"",
             "node -e \"require('fs').writeFileSync('src/fix.ts','x')\"",
+            "nohup sleep 60 &",
+            "lane-ctl start --run-dir /tmp/r --task-file /tmp/t.yaml --project-cwd /tmp",
+            "lane-ctl accept --run-dir /tmp/r --task-id 001",
         ):
             with self.subTest(command=command):
                 result = run_hook("dev-orchestrator", command)
@@ -150,7 +157,14 @@ class GuardShellTest(unittest.TestCase):
     def test_dev_orchestrator_can_only_edit_control_plane_documents(self) -> None:
         for path in (
             "/srv/app/.agents/runs/demo/tasks/001.yaml",
+            "/srv/app/.agents/runs/demo/PLAN.md",
+            "/srv/app/.agents/runs/demo/STATUS.md",
+            "/srv/app/.agents/runs/demo/merge.json",
             "/srv/app/.agents/todos/idea.md",
+            "/srv/app/.agents/findings/foo.json",
+            "/srv/app/.agents/session-log/INDEX.md",
+            "/srv/app/PROGRESS.md",
+            "/srv/app/LESSONS.md",
             "/srv/app/docs/plans/demo.md",
             "docs/plans/demo.md",
             "/tmp/demo.md",
@@ -163,6 +177,10 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/.agents/runs/demo/fix.sh",
             "/srv/app/.agents/runs/demo/tasks/fix.py",
             "/srv/app/.agents/runs/demo/controller.json",
+            "/srv/app/.agents/runs/demo/events.jsonl",
+            "/srv/app/.agents/runs/demo/sessions.json",
+            "/srv/app/.agents/runs/demo/artifacts/001/state.json",
+            "/srv/app/.agents/runs/demo/controller/lane-bg.pid",
             "/srv/app/docs/plans/../../src/evil.md",
         ):
             with self.subTest(path=path):
