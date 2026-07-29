@@ -38,6 +38,19 @@ IGNORE_PREFIXES = (
     ".worktrees/",
     ".claude/worktrees/",
     "node_modules/",
+    # Package-manager / tool caches — writers often fill these while running
+    # typecheck/test/install; they are never product owns_paths.
+    ".npm-cache/",
+    "npm-cache/",
+    ".npm/",
+    ".pnpm-store/",
+    "pnpm-store/",
+    ".yarn/cache/",
+    ".yarn/unplugged/",
+    ".cache/",
+    ".turbo/",
+    ".next/cache/",
+    "coverage/",
     ".git/",
 )
 # Root-level living-memory files are maintained by orchestration tooling (the

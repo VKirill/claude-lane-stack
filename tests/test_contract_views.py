@@ -368,5 +368,46 @@ class ContractViewTests(unittest.TestCase):
             self.assertNotIn("apps/other/foreign.txt", receipt["violations"])
 
 
+    def test_owns_check_ignores_npm_cache_dirt(self) -> None:
+        """npm cache filled during typecheck/install must not owns-fail the lane."""
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run("git", "init", "-b", "main", cwd=repo)
+            run("git", "config", "user.email", "test@example.com", cwd=repo)
+            run("git", "config", "user.name", "Test", cwd=repo)
+            owned = repo / "src" / "owned.txt"
+            owned.parent.mkdir(parents=True)
+            owned.write_text("base\n", encoding="utf-8")
+            run("git", "add", "src/owned.txt", cwd=repo)
+            run("git", "commit", "-m", "base", cwd=repo)
+            owned.write_text("writer\n", encoding="utf-8")
+            cache = repo / ".npm-cache" / "_cacache" / "content-v2" / "sha512" / "ab" / "cd"
+            cache.mkdir(parents=True)
+            (cache / "blob").write_bytes(b"x" * 32)
+            # also bare npm-cache/ (some envs)
+            bare = repo / "npm-cache" / "_cacache" / "x"
+            bare.mkdir(parents=True)
+            (bare / "y").write_text("y\n", encoding="utf-8")
+            task_dir = repo / ".agents" / "runs" / "demo" / "tasks"
+            task_dir.mkdir(parents=True)
+            task = task_dir / "001.yaml"
+            task.write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\nowns_paths:\n  - src/**\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+
+            result = run(str(ROOT / "bin" / "check-owns-paths"), str(task), "--cwd", str(repo))
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            receipt = json.loads(
+                (repo / ".agents" / "runs" / "demo" / "artifacts" / "001" / "owns-check.json").read_text()
+            )
+            self.assertEqual(receipt["status"], "passed")
+            self.assertEqual(receipt["violations"], [])
+            changed = receipt["changed_files"]
+            self.assertTrue(any(c.endswith("owned.txt") or c == "src/owned.txt" for c in changed))
+            self.assertFalse(any("npm-cache" in c or ".npm-cache" in c for c in changed))
+
+
 if __name__ == "__main__":
     unittest.main()
