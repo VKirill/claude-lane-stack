@@ -7,7 +7,7 @@ Deterministic guards that catch agents mid-flight. Shared logic lives in
 
 | Script | When | What |
 |--------|------|------|
-| `guard_shell.py` | PreToolUse (shell) | Dev-orchestrator controller bypass, `--no-verify`, force-push, DROP/TRUNCATE, DELETE without WHERE, reckless `rm -rf` |
+| `guard_shell.py` | PreToolUse (shell + PM edits) | PM read/verify/control-plane allowlist; delegates package, source, process/service/container, and DB mutations; also blocks controller bypass, `--no-verify`, force-push, destructive SQL, and reckless `rm -rf` |
 | `guard_code_quality.py` | PostToolUse (edit) | `any`, Prisma `$queryRawUnsafe`, `@ts-ignore`, eval, hardcoded secrets |
 | `lib_payload.py` | — | Normalize stdin JSON for Claude / Codex / Grok |
 
@@ -21,7 +21,8 @@ Escape hatch for code quality: `// guardian: allow <reason>` on the same line.
 
 Config: `~/.claude/settings.json` → `hooks`
 
-- PM guard: `guard-orchestrator-no-direct-edits.sh` (allows `.agents/todos|runs`)
+- PM guard: shared `guard_shell.py` on `Bash|Edit|Write|MultiEdit|NotebookEdit`; installation
+  merges this matcher without replacing user hooks.
 - Shell: shared `guard_shell.py`, lockfile, dangerous-bash, secrets, git-no-verify
 - Post edit: `guardian-code.sh` (local sibling of `guard_code_quality.py`)
 - Trace: `orchestrator-trace.sh`
@@ -86,7 +87,8 @@ Check UI: `/hooks` after restart.
    - Claude: `settings.json` Pre/PostToolUse
    - Codex: `~/.codex/hooks.json`
    - Grok: `~/.grok/hooks/*.json`
-  3. Keep scripts **fast** (<2–5s). Fail-open except explicit deny.
+3. Keep scripts **fast** (<2–5s). PreToolUse payload errors fail closed;
+   nonblocking PostToolUse quality checks fail open.
 4. Document here.
 
 ---
@@ -153,3 +155,7 @@ Session ledger is the automatic cross-CLI layer; run reports are richer for inte
 See [PROJECT-MEMORY.md](./PROJECT-MEMORY.md). Init: `~/.agents/bin/project-memory-init .` 
 Night: `~/.agents/bin/night-audit .` 
 Skill: `project-memory`.
+
+## Orchestrator guard (PM allowlist)
+
+Policy should be stable for a session: PM may manage `.agents/**`, merge/commit/push main, and inspect receipts. PM must not use background shell (`nohup`, trailing `&`) or call `run-controller start/watch/status` directly — dispatch `run-supervisor` / `lane-supervisor` instead. Mid-session tightening without a session-start pin is a known defect class (`orchestrator-guard-midsession-tightening`).

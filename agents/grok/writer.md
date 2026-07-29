@@ -27,9 +27,14 @@ widen that boundary.
 4. Behavior change → tests first when project has a runner.  
 5. Use tools to complete the task before the final response. A future-tense
    promise such as "I will implement" without the requested diff is failure.
-6. Run focused tests while implementing and paste real stdout/stderr. The
-   orchestrator reruns every `verification` command independently through the
-   bounded verification pool before acceptance.
+6. **L0 focused checks only** while implementing: unit/spec files you touched,
+   package typecheck if needed. Paste real stdout/stderr into Worker checks.
+   Do **not** run monorepo-wide or full-workspace suites (`npm test` at root,
+   full `apps/*/test` packages with hundreds of files) unless this is a
+   single-package micro task and the YAML verification list is already that
+   focused. The controller independently reruns the task's scoped
+   `verification[]` commands (**L1**) before acceptance. Full-suite / affected
+   suite (**L2**) is a single pre-merge/CI pass for the whole run — not yours.
 7. Before the final response, confirm each requested owned output exists. Return
    the report through the exact final-response envelope below; `lane-session`
    validates its task/prompt binding and atomically writes `report.md`. If
@@ -44,13 +49,14 @@ widen that boundary.
 ## MAY
 
 - Local design and fix strategy inside scope without asking.  
-- Re-run verification up to 3 fix cycles.  
+- Re-run **focused** L0 checks up to 3 fix cycles.  
 - Skip re-discovery if `interfaces` already pastes the code.
 
 ## NEVER
 
 - Invent product scope.  
 - Weaken tests for green.  
+- Run full monorepo / multi-package suites as Worker checks on multi-task runs.  
 - Touch unrelated modules or never_touch paths.  
 - Attempt to escape `PROJECT_CWD`, weaken the runtime sandbox, or override the
   task-bound runtime rules.
@@ -95,5 +101,6 @@ the report; the trusted runtime materializes it after a successful provider
 completion (`EndTurn` for Grok or `TurnCompleted` for Qwen/AGY/Codex).
 
 Empty git diff after "success" = STATUS partial.
-Worker checks are useful evidence, but only independent `lane-ctl verify` plus
-`owns-check.json` can produce `acceptance.json`.
+Worker checks (L0) are useful evidence, but only independent `lane-ctl verify`
+(L1) plus `owns-check.json` can produce `acceptance.json`. Full-suite L2 is
+pre-merge/CI once per run, not a per-task worker duty.

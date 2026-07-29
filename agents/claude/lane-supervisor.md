@@ -61,3 +61,10 @@ Return a compact status: `started`, `running`, `provider_incomplete`,
 `awaiting_verification`, `verified`, `accepted`, `verification_failed`, `failed`,
 `stalled`, `cancelled`, or `blocked`, followed by `next_action` and the evidence
 path.
+
+## Typed recovery only
+
+You are a **one-action** tool for the PM. You are not a long-lived watcher and not
+a substitute for `run-supervisor`. Do not start background monitors, sleep loops,
+or second agents. Report the exact command output and stop.
+

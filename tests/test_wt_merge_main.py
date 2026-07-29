@@ -149,7 +149,20 @@ class WtMergeMainTest(unittest.TestCase):
         run("git", "add", "feature.txt", cwd=self.repo)
         run("git", "commit", "-m", "feature", cwd=self.repo)
         source_commit = run("git", "rev-parse", "HEAD", cwd=self.repo).stdout.strip()
+        source_tree = run("git", "rev-parse", "HEAD^{tree}", cwd=self.repo).stdout.strip()
+        source_parent = run("git", "rev-parse", "HEAD^", cwd=self.repo).stdout.strip()
         run("git", "checkout", "main", cwd=self.repo)
+        if schema_version == 2 and accepted:
+            state_path = artifact_dir / "state.json"
+            state = json.loads(state_path.read_text())
+            state.update(
+                accepted_source_head=source_parent,
+                accepted_source_tree=source_tree,
+                accepted_source_dirty=True,
+            )
+            state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+            run("git", "add", str(state_path.relative_to(self.repo)), cwd=self.repo)
+            run("git", "commit", "-m", "bind accepted source", cwd=self.repo)
         return source_commit
 
     def test_writes_schema_v2_receipt_without_remote(self) -> None:
@@ -216,6 +229,28 @@ class WtMergeMainTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("task_sha256", result.stderr)
+        self.assertEqual(run("git", "rev-parse", "main", cwd=self.repo).stdout.strip(), before)
+
+    def test_refuses_commit_created_after_acceptance(self) -> None:
+        self.prepare_run()
+        run("git", "checkout", "agent/demo", cwd=self.repo)
+        (self.repo / "post-accept.txt").write_text("late\n", encoding="utf-8")
+        run("git", "add", "post-accept.txt", cwd=self.repo)
+        run("git", "commit", "-m", "post accept", cwd=self.repo)
+        run("git", "checkout", "main", cwd=self.repo)
+        before = run("git", "rev-parse", "main", cwd=self.repo).stdout.strip()
+
+        result = run(
+            str(MERGE),
+            str(self.repo),
+            "demo",
+            cwd=self.repo,
+            env={"HOME": str(self.home)},
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("accepted source", result.stderr)
         self.assertEqual(run("git", "rev-parse", "main", cwd=self.repo).stdout.strip(), before)
 
     def test_legacy_task_remains_mergeable(self) -> None:

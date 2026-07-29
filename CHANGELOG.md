@@ -1,3 +1,10 @@
+### Control plane stability (2026-07-30)
+
+- run-controller: partial-block — one task blocked no longer freezes runnable siblings; upstream-blocked dependents cascade to blocked.
+- check-owns-paths: foreign dirt ignored; dirt-baseline at lane-ctl start catches new writer leaks.
+- Verification tiers L0/L1/L2 documented in writer, templates, skills, SOLO; run-validate warns on heavy multi-task L1.
+- Agents/skills aligned: roles matrix, silence/receipt protocol, typed recovery only.
+
 # Changelog
 
 ## 1.11.1 — 2026-07-29
@@ -412,7 +419,7 @@ Progressive accept: no more join-wait on multi-task waves.
 Nightly-only review, micro path, Lane Board dashboard, warm sessions.
 
 ### Added
-- **Diff-scoped review SPEC**: `BASE_REF` is required and the supervisor constructs `SPEC` from the task's changed paths, so reviewers inspect only the scoped diff and direct dependencies, never repo-wide context. See `agents/claude/codex-reviewer.md`, `agents/codex/reviewer.md`.
+- **Diff-scoped review SPEC**: `BASE_REF` is required and the supervisor constructs `SPEC` from the task's changed paths, so reviewers inspect only the scoped diff and direct dependencies, never repo-wide context. See `agents/claude/codex-reviewer.md`, `agents/codex/instructions/reviewer.md`.
 - **Nightly medium-tier review**: Medium changes merge after report + `check-owns-paths` + verify; review runs off the critical path in the nightly `night-review` batch, findings become morning fix tasks, and strong review remains synchronous pre-merge. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`.
 - **Tiered review policy**: `none` for micro/low, `codex-reviewer` (`gpt-5.6-sol` + `medium`) for `risk: medium`, and `codex-reviewer` (`gpt-5.6-sol` + `high`, escalating to `xhigh` for critical paths) for high-risk/ship; micro commits now include `[micro:<slug>]`. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `skills/orchestrator-lanes/SKILL.md`.
 - **Micro path tier** (score 0–2): skips PLAN/worktree/board/heartbeat/reviewer for trivial ≤2-file changes; adds `verify` field (`none`|`smoke`|`tests`) to the task YAML contract. See `docs/ROUTING.md`, `docs/SOLO-ORCHESTRATION.md`, `docs/FILE-CONTRACT.md`.

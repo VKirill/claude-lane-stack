@@ -61,7 +61,7 @@ Claude **foreground Bash dies ~2 minutes**. That is **not** `lane-exec` idle/max
 | Who | Rule |
 |-----|------|
 | **run-supervisor** | One visible, source-read-only agent per run. It starts the durable controller, streams a one-line progress message per task stage change, and returns the terminal digest only on accepted or blocked. |
-| **run-controller** | Deterministic background process. Dispatches the DAG, retries once, performs progressive ownership/verification/acceptance, and persists `controller.json`. |
+| **run-controller** | Deterministic background process. Dispatches the DAG, retries once, performs progressive ownership/verification/acceptance, and persists `controller.json`. One task `blocked` does **not** freeze siblings; run is terminal blocked only when no runnable work remains. |
 | **lane-supervisor** | Manual one-action diagnostic/recovery profile only; never the normal daytime liveness owner. |
 | **Qwen/AGY/Grok** | Switchable normal code writer in its task worktree. `lane-bg` / `lane-exec` keep it alive independently of Claude. |
 | **You (PM)** | Dispatch one `run-supervisor`, wait for its terminal digest, then validate, merge/commit, finalize, and push. |
@@ -80,9 +80,40 @@ controller loop:
   provider complete → owns check → verify → accept immediately
   provider incomplete/failed/stalled or verify failed → one same-provider retry
   second eligible writer availability failure → one Codex Sol high fallback
-  any other second failure → blocked
-all accepted → PM pre-merge validation → merge/commit → finalize → push
+  any other second failure → that task blocked (siblings continue)
+  depends_on of blocked upstream → dependent blocked (skip)
+all accepted → PM pre-merge L2 suite once → merge/commit → finalize → push
+any blocked + no runnable work → terminal blocked (may still have accepted tasks)
 ```
+
+
+## Silence protocol (receipts over chat)
+
+Claude/subagent idle ≠ run done. If `run-supervisor` goes idle, ends a turn early,
+or you have no stage line for ~2–3 minutes while the run should still be live:
+
+1. Read `RUN_DIR/controller.json` and `events.jsonl` (source of truth).
+2. If stage is `running` or `degraded` and the controller process is alive →
+   re-dispatch **one** `run-supervisor` (resume-safe start).
+3. If stage is terminal (`accepted`/`blocked`/`failed`) → proceed to validate/merge
+   or typed recovery — do not wait for more chat.
+4. **Never** invent PM nohup/sleep monitors or async `codex-implementer` "watch loops".
+   Recovery is only: same-provider retry (controller), typed Codex fallback,
+   `lane-supervisor` one-shot, or manual `codex-implementer` for blocked repair.
+
+## Roles matrix (single model — do not invent variants)
+
+| Role | Who | Form |
+|------|-----|------|
+| PM | you (`dev-orchestrator`) | Claude session |
+| Watch | **exactly one** `run-supervisor` per run | Claude Agent |
+| Lifecycle | `run-controller` | durable process (`lane-bg`) |
+| Writer | kimi/qwen/agy/grok | durable process — **not** a Claude subagent |
+| One-shot ops | `lane-supervisor` | Claude Agent, single typed action |
+| Emergency write | `codex-implementer` | only after controller terminal-blocked or typed recovery |
+
+**Forbidden:** one Claude subagent per writer process; PM long foreground Bash for
+writers; ad-hoc background shell monitors.
 
 **Forbidden:**
 - a live Claude subagent per provider process;
@@ -168,6 +199,11 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: **terra** xhigh; **sol** xhigh if risk high |
 | codex-reviewer | nightly batch/re-review; explicit operator-only exception outside it |
+
+Direct Bash is limited to project inspection, registered verification,
+control-plane commands, and delivery. Package/environment changes, source or
+receipt mutation, process/service/container control, and database writes must
+be delegated to a writer or typed recovery lane.
 
 ## Loop
 

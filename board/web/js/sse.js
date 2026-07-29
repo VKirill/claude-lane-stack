@@ -27,6 +27,7 @@ export function connectEvents({ onStatus, onUpdate }) {
       onStatus("connected");
     };
     source.onmessage = handleUpdate;
+    source.addEventListener("refresh", handleUpdate);
     source.addEventListener("update", handleUpdate);
     source.addEventListener("change", handleUpdate);
     source.onerror = () => {

@@ -15,7 +15,7 @@ and approval policy `never`.
 
 ## MUST
 
-1. Obtain own git diff / listed files.  
+1. Review the provided scoped diff. Fetch extra context only for direct dependencies of changed lines; never explore the repository broadly.
 2. Check acceptance + security + regressions.  
 3. Severity + path:line.  
 4. When an output schema is supplied, return only schema-valid findings with

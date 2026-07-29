@@ -42,6 +42,9 @@ PRIMARY_MODELS = {
     "kimi": "kimi-code/k3-256k",
 }
 TERMINAL_OUTCOME_EVENTS = frozenset({"task_accepted", "task_blocked"})
+TERMINAL_TASK_STAGES = frozenset({"accepted", "blocked"})
+RUN_TERMINAL_STAGES = frozenset({"accepted", "blocked", "failed"})
+RUN_ACTIVE_STAGES = frozenset({"running", "degraded"})
 OUTCOME_CRASH_FAILURES = frozenset(
     {"provider_failed", "provider_incomplete", "failed", "cancelled"}
 )
@@ -283,14 +286,128 @@ def counts(receipt: dict[str, Any]) -> dict[str, int]:
 
 
 def next_action(receipt: dict[str, Any]) -> str:
-    current = counts(receipt)
-    if receipt.get("stage") in {"blocked", "failed"} or current["blocked"]:
+    """Lifecycle hint for operators. Partial blocks do not freeze runnable work."""
+    if receipt.get("stage") == "failed":
         return "operator_intervention"
-    if current["accepted"] == current["total"]:
+    current = counts(receipt)
+    if current["accepted"] == current["total"] and current["total"] > 0:
         return "complete"
+    # Terminal blocked run: every task is accepted or blocked, and at least one blocked.
+    if (
+        receipt.get("stage") == "blocked"
+        and current["running"] == 0
+        and current["pending"] == 0
+    ):
+        return "operator_intervention"
     if current["running"]:
         return "poll"
+    if current["pending"]:
+        return "dispatch_ready"
+    if current["blocked"]:
+        return "operator_intervention"
     return "dispatch_ready"
+
+
+def recompute_run_stage(receipt: dict[str, Any]) -> str:
+    """Run stage from task stages. Partial blocks yield degraded, not terminal blocked."""
+    if receipt.get("stage") == "failed":
+        return "failed"
+    stages = [task["stage"] for task in receipt["tasks"].values()]
+    if not stages:
+        return "running"
+    if all(stage == "accepted" for stage in stages):
+        return "accepted"
+    if all(stage in TERMINAL_TASK_STAGES for stage in stages):
+        return "blocked"
+    if any(stage == "blocked" for stage in stages):
+        return "degraded"
+    return "running"
+
+
+def tasks_all_terminal(receipt: dict[str, Any]) -> bool:
+    return all(
+        task["stage"] in TERMINAL_TASK_STAGES for task in receipt["tasks"].values()
+    )
+
+
+def cascade_block_dependents(
+    receipt_path: Path,
+    receipt: dict[str, Any],
+    tasks: list[dict[str, Any]],
+) -> bool:
+    """Mark pending tasks blocked when any dependency is blocked. Returns True if any changed."""
+    blocked_ids = {
+        task_id
+        for task_id, task in receipt["tasks"].items()
+        if task["stage"] == "blocked"
+    }
+    task_by_id = {task["id"]: task for task in tasks}
+    progressed = False
+    changed = True
+    while changed:
+        changed = False
+        for task in tasks:
+            task_id = task["id"]
+            task_state = receipt["tasks"][task_id]
+            if task_state["stage"] != "pending":
+                continue
+            deps = set(task["depends_on"])
+            blocked_deps = sorted(deps & blocked_ids)
+            if not blocked_deps:
+                continue
+            detail = f"upstream blocked: {', '.join(blocked_deps)}"
+            transition(
+                receipt_path,
+                receipt,
+                "task_blocked",
+                task_id=task_id,
+                stage="blocked",
+                detail=detail,
+            )
+            blocked_ids.add(task_id)
+            changed = True
+            progressed = True
+    return progressed
+
+
+def mark_task_blocked(
+    receipt_path: Path,
+    receipt: dict[str, Any],
+    tasks: list[dict[str, Any]],
+    task_id: str,
+    detail: str,
+) -> None:
+    """Block one task and cascade dependents; keep run non-terminal while work remains."""
+    transition(
+        receipt_path,
+        receipt,
+        "task_blocked",
+        task_id=task_id,
+        stage="blocked",
+        detail=detail,
+    )
+    cascade_block_dependents(receipt_path, receipt, tasks)
+    receipt["stage"] = recompute_run_stage(receipt)
+    persist(receipt_path, receipt)
+
+
+def finalize_if_run_terminal(
+    receipt_path: Path, receipt: dict[str, Any]
+) -> int | None:
+    """Return exit code when the run is fully terminal; else None."""
+    if not tasks_all_terminal(receipt):
+        receipt["stage"] = recompute_run_stage(receipt)
+        persist(receipt_path, receipt)
+        return None
+    if all(task["stage"] == "accepted" for task in receipt["tasks"].values()):
+        receipt["stage"] = "accepted"
+        receipt["completed_at"] = utc_now()
+        transition(receipt_path, receipt, "run_accepted")
+        return 0
+    receipt["stage"] = "blocked"
+    receipt["completed_at"] = utc_now()
+    persist(receipt_path, receipt)
+    return 1
 
 
 def persist(receipt_path: Path, receipt: dict[str, Any]) -> None:
@@ -359,6 +476,12 @@ def write_task_outcome(receipt: dict[str, Any], task_id: str) -> None:
     failure_hint = failure_class or last_status
     retries = task_state.get("retries")
     fallbacks = task_state.get("fallbacks")
+    retry_count = (
+        retries if isinstance(retries, int) and not isinstance(retries, bool) else 0
+    )
+    fallback_count = (
+        fallbacks if isinstance(fallbacks, int) and not isinstance(fallbacks, bool) else 0
+    )
     outcome = {
         "schema_version": 1,
         "task_id": task_id,
@@ -369,8 +492,8 @@ def write_task_outcome(receipt: dict[str, Any], task_id: str) -> None:
         "exit_status": outcome_exit_status(stage, failure_hint),
         "failure_class": failure_class,
         "last_status": last_status,
-        "attempts": (retries + 1) if isinstance(retries, int) and not isinstance(retries, bool) else 1,
-        "fallbacks": fallbacks if isinstance(fallbacks, int) and not isinstance(fallbacks, bool) else 0,
+        "attempts": retry_count + fallback_count + 1,
+        "fallbacks": fallback_count,
         "files_changed": string_list(owns.get("changed_files")),
         "owns_paths_violations": string_list(owns.get("violations")),
         "never_touch_hits": string_list(owns.get("never_touch_hits")),
@@ -642,17 +765,14 @@ def run_controller(args: argparse.Namespace) -> int:
                 if phase == "owns":
                     if result.returncode != 0:
                         detail = result.stderr.strip() or result.stdout.strip() or "check-owns-paths failed"
-                        transition(
-                            receipt_path,
-                            receipt,
-                            "task_blocked",
-                            task_id=task_id,
-                            stage="blocked",
-                            detail=detail,
+                        mark_task_blocked(
+                            receipt_path, receipt, tasks, task_id, detail
                         )
-                        receipt["stage"] = "blocked"
-                        persist(receipt_path, receipt)
-                        return 1
+                        progress = True
+                        terminal = finalize_if_run_terminal(receipt_path, receipt)
+                        if terminal is not None:
+                            return terminal
+                        continue
                     transition(
                         receipt_path,
                         receipt,
@@ -723,17 +843,14 @@ def run_controller(args: argparse.Namespace) -> int:
                             progress = True
                             continue
                         detail = result.stderr.strip() or result.stdout.strip() or "verification_failed"
-                        transition(
-                            receipt_path,
-                            receipt,
-                            "task_blocked",
-                            task_id=task_id,
-                            stage="blocked",
-                            detail=detail,
+                        mark_task_blocked(
+                            receipt_path, receipt, tasks, task_id, detail
                         )
-                        receipt["stage"] = "blocked"
-                        persist(receipt_path, receipt)
-                        return 1
+                        progress = True
+                        terminal = finalize_if_run_terminal(receipt_path, receipt)
+                        if terminal is not None:
+                            return terminal
+                        continue
                     decode_action_result(result, label=f"verify {task_id}")
                     transition(
                         receipt_path,
@@ -986,49 +1103,46 @@ def run_controller(args: argparse.Namespace) -> int:
                         )
                         progress = True
                     else:
-                        transition(
-                            receipt_path,
-                            receipt,
-                            "task_blocked",
-                            task_id=task_id,
-                            stage="blocked",
-                            detail=str(lane_status),
+                        mark_task_blocked(
+                            receipt_path, receipt, tasks, task_id, str(lane_status)
                         )
-                        receipt["stage"] = "blocked"
-                        persist(receipt_path, receipt)
-                        return 1
+                        progress = True
+                        terminal = finalize_if_run_terminal(receipt_path, receipt)
+                        if terminal is not None:
+                            return terminal
+                        continue
                 elif lane_status == "not_started":
                     if task_state["stage"] == "pending":
                         continue
-                    transition(
+                    mark_task_blocked(
                         receipt_path,
                         receipt,
-                        "task_blocked",
-                        task_id=task_id,
-                        stage="blocked",
-                        detail="provider state regressed to not_started after dispatch",
+                        tasks,
+                        task_id,
+                        "provider state regressed to not_started after dispatch",
                     )
-                    receipt["stage"] = "blocked"
-                    persist(receipt_path, receipt)
-                    return 1
+                    progress = True
+                    terminal = finalize_if_run_terminal(receipt_path, receipt)
+                    if terminal is not None:
+                        return terminal
+                    continue
                 else:
-                    transition(
+                    mark_task_blocked(
                         receipt_path,
                         receipt,
-                        "task_blocked",
-                        task_id=task_id,
-                        stage="blocked",
-                        detail=f"unsupported status: {lane_status}",
+                        tasks,
+                        task_id,
+                        f"unsupported status: {lane_status}",
                     )
-                    receipt["stage"] = "blocked"
-                    persist(receipt_path, receipt)
-                    return 1
+                    progress = True
+                    terminal = finalize_if_run_terminal(receipt_path, receipt)
+                    if terminal is not None:
+                        return terminal
+                    continue
 
-            if all(task["stage"] == "accepted" for task in receipt["tasks"].values()):
-                receipt["stage"] = "accepted"
-                receipt["completed_at"] = utc_now()
-                transition(receipt_path, receipt, "run_accepted")
-                return 0
+            terminal = finalize_if_run_terminal(receipt_path, receipt)
+            if terminal is not None:
+                return terminal
 
             provider_active = sum(
                 task["stage"] == "running" for task in receipt["tasks"].values()
@@ -1147,11 +1261,50 @@ def start_controller(args: argparse.Namespace) -> int:
             recorded["last_event"] = failure
             persist(receipt_path, recorded)
             current = recorded
+        retryable_validation_failure = (
+            current.get("stage") == "failed"
+            and current.get("last_event", {}).get("event") == "controller_failed"
+            and str(current.get("last_event", {}).get("detail", "")).startswith(
+                "run-validate failed:"
+            )
+            and all(
+                task.get("stage") == "pending"
+                for task in current.get("tasks", {}).values()
+            )
+            and not any(
+                (run_dir / "artifacts" / task_id / "state.json").exists()
+                or (run_dir / "artifacts" / task_id / "attempts").exists()
+                for task_id in current.get("tasks", {})
+            )
+        )
+        if retryable_validation_failure:
+            try:
+                validate_run_contract(
+                    Path(args.run_validate).expanduser().resolve(), run_dir
+                )
+            except ControllerError as exc:
+                current["last_event"] = {
+                    "type": "transition",
+                    "event": "controller_failed",
+                    "at": utc_now(),
+                    "detail": str(exc),
+                }
+                current["updated_at"] = current["last_event"]["at"]
+                persist(receipt_path, current)
+            else:
+                archive = (
+                    controller_dir
+                    / f"controller.failed.{time.time_ns()}.json"
+                )
+                receipt_path.replace(archive)
+                current = {}
         if current.get("stage") in {"accepted", "blocked", "failed"}:
             payload = {
                 "schema_version": 1,
                 "status": "terminal",
                 "stage": current["stage"],
+                "last_event": current.get("last_event"),
+                "next_action": current.get("next_action"),
                 "run_dir": str(run_dir),
                 "pid": None,
                 "log": str(controller_dir / "lane-bg.supervisor.log"),
@@ -1225,6 +1378,19 @@ def watch_controller(args: argparse.Namespace) -> int:
                 print(encoded, flush=True)
                 last_observation = encoded
         if current is not None and current.get("stage") in {"accepted", "blocked", "failed"}:
+            controller_dir = receipt_path.parent / "controller"
+            pid_path = controller_dir / "lane-bg.pid"
+            exit_path = controller_dir / "lane-bg.exit"
+            if time.monotonic() < deadline and pid_path.is_file() and not exit_path.is_file():
+                try:
+                    still_finishing = pid_alive(
+                        int(pid_path.read_text(encoding="utf-8").strip())
+                    )
+                except (OSError, ValueError):
+                    still_finishing = False
+                if still_finishing:
+                    time.sleep(min(args.poll_interval, max(0.0, deadline - time.monotonic())))
+                    continue
             code = 0 if current.get("stage") == "accepted" else 1
             break
         if time.monotonic() >= deadline:

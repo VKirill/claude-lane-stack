@@ -138,12 +138,20 @@ async function readControllerSummary(runPath) {
   const exitReceipt = await readInteger('lane-bg.exit');
   const pid = pidReceipt.value;
   const exitCode = exitReceipt.value;
+  const controllerPid = Number.isInteger(value.pid) && value.pid > 1 ? value.pid : null;
+  const controllerPidInvalid = value.pid !== undefined && controllerPid === null;
+  const expectedStartTime = Number.isInteger(value.pid_start_time) && value.pid_start_time >= 0
+    ? value.pid_start_time
+    : null;
+  const pidMismatch = controllerPid !== null && pid !== null && controllerPid !== pid;
+  const observedPid = pid ?? controllerPid;
   let running = false;
-  if (pid !== null && pid > 1 && exitCode === null) {
+  if (!pidMismatch && observedPid !== null && observedPid > 1 && exitCode === null) {
     try {
-      const parts = (await readFile(`/proc/${pid}/stat`, 'utf8')).trim().split(/\s+/);
-      if (parts.length >= 22 && parts[2] !== 'Z') {
-        process.kill(pid, 0);
+      const parts = (await readFile(`/proc/${observedPid}/stat`, 'utf8')).trim().split(/\s+/);
+      if (parts.length >= 22 && parts[2] !== 'Z'
+        && (expectedStartTime === null || Number(parts[21]) === expectedStartTime)) {
+        process.kill(observedPid, 0);
         running = true;
       }
     } catch {
@@ -183,9 +191,11 @@ async function readControllerSummary(runPath) {
       };
     }
   }
-  if (!['accepted', 'blocked', 'failed'].includes(stage)
-    && (exitReceipt.invalid || pidReceipt.invalid || exitCode !== null || (pid !== null && !running))) {
-    const detail = exitReceipt.invalid || pidReceipt.invalid
+  if (pidMismatch || (!['accepted', 'blocked', 'failed'].includes(stage)
+    && (exitReceipt.invalid || pidReceipt.invalid || controllerPidInvalid || exitCode !== null || (observedPid !== null && !running)))) {
+    const detail = pidMismatch
+      ? 'controller receipt pid does not match controller summary pid'
+      : exitReceipt.invalid || pidReceipt.invalid || controllerPidInvalid
       ? 'controller process left an invalid pid or exit receipt'
       : exitCode !== null
         ? `controller process exited ${exitCode} without a terminal receipt`
@@ -209,7 +219,7 @@ async function readControllerSummary(runPath) {
     counts,
     last_event: lastEvent,
     next_action: nextAction,
-    pid: Number.isInteger(value.pid) && value.pid > 0 ? value.pid : pid,
+    pid: controllerPid ?? pid,
     updated_at: text('updated_at'),
   };
 }

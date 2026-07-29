@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, test } from 'node:test';
-import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -11,6 +11,7 @@ import {
   parseTaskDetail,
   readAllReviews,
   readLatestReview,
+  readTodoBody,
   readTasks,
   readTodos,
   readTaskDetail,
@@ -707,6 +708,45 @@ test('parses real review verdict format, findings, plans, and empty review input
   assert.equal(await readLatestReview(projectWithoutReview), null);
 });
 
+test('reads a newer night-review failure receipt as the latest failed review', async () => {
+  const project = await fixtureDirectory('lane-board-review-failure-');
+  const reviewsDirectory = path.join(project, '.agents', 'session-log');
+  await mkdir(reviewsDirectory, { recursive: true });
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-27.md'), 'run/old — VERDICT: passed\n');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-28.failures.json'), JSON.stringify({
+    schema_version: 1,
+    repo: project,
+    day: '2026-07-28',
+    recorded_at: '2026-07-28T00:00:18.241220+00:00',
+    failures: ['selected 890 sources exceeds --max-sources 200'],
+  }));
+
+  assert.deepEqual(await readLatestReview(project), {
+    date: '2026-07-28',
+    verdicts: [{ scope: 'night review', verdict: 'failed' }],
+    findings: [{ level: 'P1', text: 'selected 890 sources exceeds --max-sources 200' }],
+    fixPlan: [],
+  });
+});
+
+test('prefers a failure receipt over a successful review from the same day', async () => {
+  const project = await fixtureDirectory('lane-board-review-failure-priority-');
+  const reviewsDirectory = path.join(project, '.agents', 'session-log');
+  await mkdir(reviewsDirectory, { recursive: true });
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-28.md'), 'run/stale — VERDICT: passed\n');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-28.failures.json'), JSON.stringify({
+    schema_version: 1,
+    repo: project,
+    day: '2026-07-28',
+    recorded_at: '2026-07-28T01:00:00Z',
+    failures: ['review process failed'],
+  }));
+
+  assert.deepEqual((await readLatestReview(project)).verdicts, [
+    { scope: 'night review', verdict: 'failed' },
+  ]);
+});
+
 test('reads every review newest first and skips an empty malformed review', async () => {
   const project = await fixtureDirectory('lane-board-all-reviews-');
   const reviewsDirectory = path.join(project, '.agents', 'session-log');
@@ -719,6 +759,60 @@ test('reads every review newest first and skips an empty malformed review', asyn
 
   assert.deepEqual(reviews.map((review) => review.date), ['2026-07-13', '2026-07-10']);
   assert.deepEqual(reviews[0].verdicts, [{ scope: 'run/new', verdict: 'failed' }]);
+});
+
+test('includes failure receipts once and suppresses the same-day markdown review', async () => {
+  const project = await fixtureDirectory('lane-board-all-review-failures-');
+  const reviewsDirectory = path.join(project, '.agents', 'session-log');
+  await mkdir(reviewsDirectory, { recursive: true });
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-27.md'), 'run/old — VERDICT: passed\n');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-28.md'), 'run/stale — VERDICT: passed\n');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-28.failures.json'), JSON.stringify({
+    schema_version: 1,
+    repo: project,
+    day: '2026-07-28',
+    recorded_at: '2026-07-28T01:00:00Z',
+    failures: ['review process failed'],
+  }));
+
+  const reviews = await readAllReviews(project);
+
+  assert.deepEqual(reviews.map((review) => review.date), ['2026-07-28', '2026-07-27']);
+  assert.deepEqual(reviews[0].findings, [{ level: 'P1', text: 'review process failed' }]);
+});
+
+test('ignores invalid failure receipts without breaking review reads', async () => {
+  const project = await fixtureDirectory('lane-board-invalid-review-failure-');
+  const reviewsDirectory = path.join(project, '.agents', 'session-log');
+  await mkdir(reviewsDirectory, { recursive: true });
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-26.md'), 'run/valid — VERDICT: passed\n');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-27.failures.json'), '{not json');
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-28.failures.json'), JSON.stringify({
+    schema_version: 1,
+    repo: project,
+    day: '2026-07-28',
+    recorded_at: 'not-a-timestamp',
+    failures: [42],
+  }));
+
+  assert.equal((await readLatestReview(project)).date, '2026-07-26');
+  assert.deepEqual((await readAllReviews(project)).map((review) => review.date), ['2026-07-26']);
+});
+
+test('ignores a night-review failure receipt belonging to another project', async () => {
+  const project = await fixtureDirectory('lane-board-foreign-review-');
+  const reviewsDirectory = path.join(project, '.agents', 'session-log');
+  await mkdir(reviewsDirectory, { recursive: true });
+  await writeFile(path.join(reviewsDirectory, 'REVIEW-2026-07-28.failures.json'), JSON.stringify({
+    schema_version: 1,
+    repo: '/different/project',
+    day: '2026-07-28',
+    recorded_at: '2026-07-28T01:00:00Z',
+    failures: ['foreign failure'],
+  }));
+
+  assert.equal(await readLatestReview(project), null);
+  assert.deepEqual(await readAllReviews(project), []);
 });
 
 test('parses merge receipts with merge commits preferred over feature commits', () => {
@@ -792,6 +886,23 @@ test('parses a task detail scalar mix, block objectives, and only the done_when 
     objective: 'Folded syntax remains readable.\nThe endpoint keeps line breaks.',
     done_when: ['done'],
   });
+});
+
+test('task detail uses an exact id boundary and rejects symlinked content outside the project', async () => {
+  const project = await fixtureDirectory('lane-board-task-boundary-');
+  const outside = await fixtureDirectory('lane-board-task-outside-');
+  const runPath = path.join(project, '.agents', 'runs', 'demo');
+  await mkdir(path.join(runPath, 'tasks'), { recursive: true });
+  await mkdir(path.join(runPath, 'artifacts', '0010-other'), { recursive: true });
+  await writeFile(path.join(runPath, 'tasks', '0010-other.yaml'), 'id: 0010\nobjective: wrong task\n');
+  await writeFile(path.join(runPath, 'artifacts', '0010-other', 'report.md'), 'wrong report\n');
+
+  assert.equal(await readTaskDetail(project, 'demo', '001'), null);
+
+  await writeFile(path.join(outside, 'secret.md'), 'outside todo\n');
+  await mkdir(path.join(project, '.agents', 'todos', 'items'), { recursive: true });
+  await symlink(path.join(outside, 'secret.md'), path.join(project, '.agents', 'todos', 'items', 'secret.md'));
+  assert.equal(await readTodoBody(project, 'secret'), null);
 });
 
 test('readTaskDetail promotes pending task to done if run is merged', async () => {

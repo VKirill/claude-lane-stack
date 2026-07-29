@@ -225,7 +225,10 @@ class ContractViewTests(unittest.TestCase):
                 "--run-scope",
             )
 
-            self.assertEqual(individual.returncode, 1)
+            # Without a dirt baseline, sibling dirt outside owns is foreign-ignored
+            # (parallel-session / parallel-task safety). Run-scope still accepts the union.
+            self.assertEqual(individual.returncode, 0, individual.stdout + individual.stderr)
+            self.assertIn("foreign dirt ignored", individual.stdout)
             self.assertEqual(shared.returncode, 0, shared.stdout + shared.stderr)
             receipt = json.loads(
                 (
@@ -277,6 +280,92 @@ class ContractViewTests(unittest.TestCase):
             self.assertEqual(receipt["status"], "passed")
             self.assertEqual(receipt["changed_files"], ["src/owned.txt"])
             self.assertEqual(receipt["violations"], [])
+
+
+    def test_owns_check_ignores_foreign_dirt_without_baseline(self) -> None:
+        """Uncommitted files outside owns_paths that the writer did not claim do not fail."""
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run("git", "init", "-b", "main", cwd=repo)
+            run("git", "config", "user.email", "test@example.com", cwd=repo)
+            run("git", "config", "user.name", "Test", cwd=repo)
+            owned = repo / "src" / "owned.txt"
+            owned.parent.mkdir(parents=True)
+            owned.write_text("base\n", encoding="utf-8")
+            foreign = repo / "apps" / "other" / "foreign.txt"
+            foreign.parent.mkdir(parents=True)
+            foreign.write_text("base foreign\n", encoding="utf-8")
+            run("git", "add", "src/owned.txt", "apps/other/foreign.txt", cwd=repo)
+            run("git", "commit", "-m", "base", cwd=repo)
+            owned.write_text("writer change\n", encoding="utf-8")
+            foreign.write_text("parallel session dirt\n", encoding="utf-8")
+            task_dir = repo / ".agents" / "runs" / "demo" / "tasks"
+            task_dir.mkdir(parents=True)
+            task = task_dir / "001.yaml"
+            task.write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\nowns_paths:\n  - src/**\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+
+            result = run(str(ROOT / "bin" / "check-owns-paths"), str(task), "--cwd", str(repo))
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            receipt = json.loads(
+                (repo / ".agents" / "runs" / "demo" / "artifacts" / "001" / "owns-check.json").read_text()
+            )
+            self.assertEqual(receipt["status"], "passed")
+            self.assertEqual(receipt["violations"], [])
+            self.assertIn("apps/other/foreign.txt", receipt["foreign_ignored"])
+            self.assertIn("src/owned.txt", receipt["evaluated_files"])
+
+    def test_owns_check_fails_new_outside_owns_with_baseline(self) -> None:
+        """With dirt baseline, newly introduced outside-owns paths still fail (writer leak)."""
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run("git", "init", "-b", "main", cwd=repo)
+            run("git", "config", "user.email", "test@example.com", cwd=repo)
+            run("git", "config", "user.name", "Test", cwd=repo)
+            owned = repo / "src" / "owned.txt"
+            owned.parent.mkdir(parents=True)
+            owned.write_text("base\n", encoding="utf-8")
+            foreign = repo / "apps" / "other" / "foreign.txt"
+            foreign.parent.mkdir(parents=True)
+            foreign.write_text("base foreign\n", encoding="utf-8")
+            run("git", "add", "src/owned.txt", "apps/other/foreign.txt", cwd=repo)
+            run("git", "commit", "-m", "base", cwd=repo)
+            # Pre-existing parallel dirt
+            foreign.write_text("already dirty\n", encoding="utf-8")
+            task_dir = repo / ".agents" / "runs" / "demo" / "tasks"
+            task_dir.mkdir(parents=True)
+            task = task_dir / "001.yaml"
+            task.write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\nowns_paths:\n  - src/**\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+            artifact = repo / ".agents" / "runs" / "demo" / "artifacts" / "001"
+            artifact.mkdir(parents=True)
+            baseline = artifact / "dirt-baseline.json"
+            write = run(
+                str(ROOT / "bin" / "check-owns-paths"),
+                "--write-dirt-baseline",
+                str(baseline),
+                "--cwd",
+                str(repo),
+            )
+            self.assertEqual(write.returncode, 0, write.stdout + write.stderr)
+            # Writer edits owned + leaks a new file outside owns
+            owned.write_text("writer\n", encoding="utf-8")
+            leak = repo / "apps" / "other" / "leak.txt"
+            leak.write_text("writer leak\n", encoding="utf-8")
+
+            result = run(str(ROOT / "bin" / "check-owns-paths"), str(task), "--cwd", str(repo))
+
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            receipt = json.loads((artifact / "owns-check.json").read_text())
+            self.assertEqual(receipt["status"], "failed")
+            self.assertIn("apps/other/leak.txt", receipt["violations"])
+            self.assertIn("apps/other/foreign.txt", receipt["foreign_ignored"])
+            self.assertNotIn("apps/other/foreign.txt", receipt["violations"])
 
 
 if __name__ == "__main__":

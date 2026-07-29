@@ -169,6 +169,7 @@ class NightReviewTest(unittest.TestCase):
         self,
         *extra: str,
         env: dict[str, str] | None = None,
+        use_checkpoint: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         merged_env = os.environ.copy()
         merged_env.update(
@@ -182,8 +183,7 @@ class NightReviewTest(unittest.TestCase):
             [
                 str(NIGHT_REVIEW),
                 str(self.repo),
-                "--since",
-                self.base_sha,
+                *([] if use_checkpoint else ["--since", self.base_sha]),
                 "--day",
                 "2026-07-18",
                 *extra,
@@ -211,6 +211,143 @@ class NightReviewTest(unittest.TestCase):
         self.assertIn("missing-run", result.stdout)
         self.assertIn("Task context unavailable", result.stdout)
         self.assertIn(self.head_sha, result.stdout)
+
+    def test_first_parent_commits_attach_real_run_context_without_alias_source(self) -> None:
+        main_branch = self.git("branch", "--show-current")
+        self.git("switch", "-c", "feature")
+        self._write_commit("feature.txt", "side branch\n", "side branch change")
+        side_sha = self.git("rev-parse", "HEAD")
+        self.git("switch", main_branch)
+        self._write_commit("main.txt", "main branch\n", "main branch change")
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "merge",
+                "--no-ff",
+                "-qm",
+                "merge feature",
+                "feature",
+            ],
+            cwd=self.repo,
+            check=True,
+        )
+        merge_sha = self.git("rev-parse", "HEAD")
+        run_dir = self.repo / ".agents" / "runs" / "merged-run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "MERGE.md").write_text(
+            f"base: {self.base_sha}\nmerge commit: {merge_sha}\n",
+            encoding="utf-8",
+        )
+        (run_dir.parent / "merged-run-alias").symlink_to(
+            run_dir, target_is_directory=True
+        )
+
+        result = self.run_review("--codex-bin", str(self.fake_codex))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prompts = [
+            json.loads(line)["prompt"] for line in self.codex_log.read_text().splitlines()
+        ]
+        source_lines = [
+            line
+            for prompt in prompts
+            for line in prompt.splitlines()
+            if line.startswith("Source: ")
+        ]
+        self.assertTrue(source_lines)
+        self.assertTrue(all(line.startswith("Source: commit/") for line in source_lines))
+        self.assertFalse(any(side_sha in line for line in source_lines))
+        self.assertEqual("\n".join(prompts).count("Run: merged-run\n"), 1)
+        self.assertNotIn("merged-run-alias", "\n".join(prompts))
+
+    def test_all_run_contexts_attached_to_selected_commit_are_checkpointed(self) -> None:
+        for slug in ("run-a", "run-b"):
+            run_dir = self.repo / ".agents" / "runs" / slug
+            run_dir.mkdir(parents=True)
+            (run_dir / "MERGE.md").write_text(
+                f"merge commit: {self.head_sha}\n", encoding="utf-8"
+            )
+
+        result = self.run_review(
+            "--max-sources",
+            "1",
+            "--codex-bin",
+            str(self.fake_codex),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        checkpoint = json.loads(
+            (self.repo / ".agents" / "night-review" / "checkpoint.json").read_text()
+        )
+        self.assertEqual(set(checkpoint["runs"]), {"run-a", "run-b"})
+
+    def test_commit_diff_excludes_control_plane_and_lockfiles_only(self) -> None:
+        files = {
+            ".agents/generated.json": "agent-generated-secret-marker\n",
+            ".claude/settings.json": "claude-control-marker\n",
+            ".wiki-backup/page.md": "wiki-backup-marker\n",
+            ".worker-ui-verifier-snapshots/view.png": "snapshot-marker\n",
+            "AGENTS.md": "root-agents-marker\n",
+            "CLAUDE.md": "root-claude-marker\n",
+            "PROGRESS.md": "root-progress-marker\n",
+            "LESSONS.md": "root-lessons-marker\n",
+            "INDEX.md": "root-index-marker\n",
+            "package-lock.json": "root-lock-marker\n",
+            "web/pnpm-lock.yaml": "pnpm-lock-marker\n",
+            "web/yarn.lock": "yarn-lock-marker\n",
+            "package.json": '{"scripts":{"test":"true"}}\n',
+            "docs/public-guide.md": "public-doc-marker\n",
+        }
+        for name, content in files.items():
+            path = self.repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        self.git("add", "--all")
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "-qm",
+                "mixed public and generated changes",
+            ],
+            cwd=self.repo,
+            check=True,
+        )
+
+        result = self.run_review(
+            "--since",
+            self.head_sha,
+            "--codex-bin",
+            str(self.fake_codex),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        prompt = json.loads(self.codex_log.read_text().splitlines()[0])["prompt"]
+        self.assertIn("package.json", prompt)
+        self.assertIn("public-doc-marker", prompt)
+        for marker in (
+            "agent-generated-secret-marker",
+            "claude-control-marker",
+            "wiki-backup-marker",
+            "snapshot-marker",
+            "root-agents-marker",
+            "root-claude-marker",
+            "root-progress-marker",
+            "root-lessons-marker",
+            "root-index-marker",
+            "root-lock-marker",
+            "pnpm-lock-marker",
+            "yarn-lock-marker",
+        ):
+            self.assertNotIn(marker, prompt)
 
     def test_valid_results_persist_idempotently_and_compile_v2_fix_task(self) -> None:
         result = self.run_review(
@@ -374,6 +511,27 @@ class NightReviewTest(unittest.TestCase):
             (self.repo / ".agents" / "session-log" / "REVIEW-2026-07-18.failures.json").is_file()
         )
 
+    def test_successful_same_day_retry_removes_only_that_failure_receipt(self) -> None:
+        failed = self.run_review(
+            "--codex-bin",
+            str(self.fake_codex),
+            env={"FAKE_CODEX_MODE": "invalid"},
+        )
+        self.assertEqual(failed.returncode, 2)
+        session_log = self.repo / ".agents" / "session-log"
+        failure = session_log / "REVIEW-2026-07-18.failures.json"
+        other_failure = session_log / "REVIEW-2026-07-17.failures.json"
+        other_failure.write_text('{"older":true}\n', encoding="utf-8")
+
+        retried = self.run_review(
+            "--codex-bin",
+            str(self.fake_codex),
+        )
+
+        self.assertEqual(retried.returncode, 0, retried.stderr)
+        self.assertFalse(failure.exists())
+        self.assertTrue(other_failure.exists())
+
     def test_blank_verification_command_cannot_create_finding_or_task(self) -> None:
         result = self.run_review(
             "--project-cwd",
@@ -428,6 +586,172 @@ class NightReviewTest(unittest.TestCase):
             (self.repo / ".agents" / "night-review" / "checkpoint.json").exists()
         )
         self.assertFalse((self.repo / ".agents" / "findings").exists())
+
+    def test_max_sources_batches_at_commit_boundaries_and_resumes_without_repeats(
+        self,
+    ) -> None:
+        self._write_commit("second.txt", "second\n", "second reviewable commit")
+        generated = self.repo / ".agents" / "session-log" / "generated.json"
+        generated.parent.mkdir(parents=True)
+        generated.write_text('{"generated":true}\n', encoding="utf-8")
+        self.git("add", "--all")
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "-qm",
+                "ignored boundary commit",
+            ],
+            cwd=self.repo,
+            check=True,
+        )
+        ignored_boundary_sha = self.git("rev-parse", "HEAD")
+        self._write_commit("third.txt", "third\n", "third reviewable commit")
+        third_sha = self.git("rev-parse", "HEAD")
+
+        first = self.run_review(
+            "--max-sources",
+            "2",
+            "--codex-bin",
+            str(self.fake_codex),
+        )
+
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertIn("remaining=1", first.stdout)
+        checkpoint = json.loads(
+            (self.repo / ".agents" / "night-review" / "checkpoint.json").read_text()
+        )
+        self.assertEqual(checkpoint["head_sha"], ignored_boundary_sha)
+        report = (
+            self.repo / ".agents" / "session-log" / "REVIEW-2026-07-18.md"
+        ).read_text()
+        self.assertIn("Remaining sources: 1", report)
+
+        second = self.run_review(
+            "--max-sources",
+            "2",
+            "--codex-bin",
+            str(self.fake_codex),
+            use_checkpoint=True,
+        )
+
+        self.assertEqual(second.returncode, 0, second.stderr)
+        checkpoint = json.loads(
+            (self.repo / ".agents" / "night-review" / "checkpoint.json").read_text()
+        )
+        self.assertEqual(checkpoint["head_sha"], third_sha)
+        prompts = [
+            json.loads(line)["prompt"] for line in self.codex_log.read_text().splitlines()
+        ]
+        source_lines = [
+            line
+            for prompt in prompts
+            for line in prompt.splitlines()
+            if line.startswith("Source: commit/")
+        ]
+        self.assertEqual(len(source_lines), 3)
+        self.assertEqual(len(set(source_lines)), 3)
+
+    def test_ignored_only_commits_advance_checkpoint_without_model_calls(self) -> None:
+        generated = self.repo / ".agents" / "session-log" / "generated.json"
+        generated.parent.mkdir(parents=True)
+        generated.write_text('{"generated":true}\n', encoding="utf-8")
+        (self.repo / "package-lock.json").write_text(
+            "ignored-lockfile-marker\n", encoding="utf-8"
+        )
+        self.git("add", "--all")
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "-qm",
+                "generated state only",
+            ],
+            cwd=self.repo,
+            check=True,
+        )
+        ignored_sha = self.git("rev-parse", "HEAD")
+
+        result = self.run_review(
+            "--since",
+            self.head_sha,
+            "--codex-bin",
+            str(self.fake_codex),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.codex_log.exists())
+        self.assertFalse(self.codex_count.exists())
+        checkpoint = json.loads(
+            (self.repo / ".agents" / "night-review" / "checkpoint.json").read_text()
+        )
+        self.assertEqual(checkpoint["head_sha"], ignored_sha)
+
+    def test_carry_over_batches_resume_after_the_last_reviewed_finding(self) -> None:
+        initial = self.run_review(
+            "--codex-bin",
+            str(self.fake_codex),
+            env={"FAKE_CODEX_MODE": "finding"},
+        )
+        self.assertEqual(initial.returncode, 0, initial.stderr)
+        finding_path = next((self.repo / ".agents" / "findings").glob("*.json"))
+        duplicate = json.loads(finding_path.read_text())
+        duplicate["fingerprint"] = (
+            "0" * 64 if duplicate["fingerprint"] != "0" * 64 else "f" * 64
+        )
+        (
+            self.repo
+            / ".agents"
+            / "findings"
+            / f"{duplicate['fingerprint']}.json"
+        ).write_text(json.dumps(duplicate) + "\n", encoding="utf-8")
+        self.codex_log.unlink()
+        self.codex_count.unlink()
+
+        first = self.run_review(
+            "--max-sources",
+            "1",
+            "--codex-bin",
+            str(self.fake_codex),
+            use_checkpoint=True,
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+        first_prompt = json.loads(self.codex_log.read_text().splitlines()[0])["prompt"]
+        first_source = next(
+            line for line in first_prompt.splitlines() if line.startswith("Source: carry_over/")
+        )
+        checkpoint = json.loads(
+            (self.repo / ".agents" / "night-review" / "checkpoint.json").read_text()
+        )
+        self.assertEqual(checkpoint["carry_over_after"], first_source.rsplit("/", 1)[1])
+        self.codex_log.unlink()
+        self.codex_count.unlink()
+
+        second = self.run_review(
+            "--max-sources",
+            "1",
+            "--codex-bin",
+            str(self.fake_codex),
+            use_checkpoint=True,
+        )
+        self.assertEqual(second.returncode, 0, second.stderr)
+        second_prompt = json.loads(self.codex_log.read_text().splitlines()[0])["prompt"]
+        second_source = next(
+            line for line in second_prompt.splitlines() if line.startswith("Source: carry_over/")
+        )
+        self.assertNotEqual(second_source, first_source)
+        checkpoint = json.loads(
+            (self.repo / ".agents" / "night-review" / "checkpoint.json").read_text()
+        )
+        self.assertNotIn("carry_over_after", checkpoint)
 
     def test_oversized_commit_is_split_into_bounded_chunks(self) -> None:
         self._write_commit("large.txt", "x" * 3000 + "\n", "large change")

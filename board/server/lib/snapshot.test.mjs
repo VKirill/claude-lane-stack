@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
-import { mkdtemp, mkdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { buildProjectSnapshot, projectDetail, projectSummary, selectRecentRuns } from './snapshot.mjs';
@@ -156,6 +156,54 @@ test('invalid controller process receipt is shown as inferred failure', async ()
   assert.equal(detail.runs[0].controller.stage, 'failed');
   assert.equal(detail.runs[0].controller.status, 'failed');
   assert.match(detail.runs[0].controller.last_event.detail, /invalid pid or exit/);
+});
+
+test('controller summary rejects a reused pid when its recorded start time differs', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-controller-reused-pid-'));
+  fixtures.push(root);
+  const runPath = path.join(root, '.agents', 'runs', 'run-a');
+  const startTime = Number((await readFile(`/proc/${process.pid}/stat`, 'utf8')).trim().split(/\s+/)[21]);
+  await mkdir(path.join(runPath, 'tasks'), { recursive: true });
+  await mkdir(path.join(runPath, 'controller'), { recursive: true });
+  await writeFile(path.join(runPath, 'tasks', '001.yaml'), 'id: 001\ntitle: Visible task\n');
+  await writeFile(path.join(runPath, 'controller.json'), JSON.stringify({
+    schema_version: 1,
+    stage: 'running',
+    pid: process.pid,
+    pid_start_time: startTime + 1,
+    counts: { total: 1, accepted: 0, blocked: 0, running: 1, pending: 0 },
+    next_action: 'poll',
+    tasks: { '001': { stage: 'running' } },
+  }));
+  await writeFile(path.join(runPath, 'controller', 'lane-bg.pid'), `${process.pid}\n`);
+
+  const detail = projectDetail(await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root }));
+
+  assert.equal(detail.runs[0].controller.stage, 'failed');
+  assert.match(detail.runs[0].controller.last_event.detail, /dead without a terminal receipt/);
+});
+
+test('controller summary rejects conflicting receipt and controller pids', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-controller-pid-mismatch-'));
+  fixtures.push(root);
+  const runPath = path.join(root, '.agents', 'runs', 'run-a');
+  await mkdir(path.join(runPath, 'tasks'), { recursive: true });
+  await mkdir(path.join(runPath, 'controller'), { recursive: true });
+  await writeFile(path.join(runPath, 'tasks', '001.yaml'), 'id: 001\ntitle: Visible task\n');
+  await writeFile(path.join(runPath, 'controller.json'), JSON.stringify({
+    schema_version: 1,
+    stage: 'running',
+    pid: process.pid,
+    counts: { total: 1, accepted: 0, blocked: 0, running: 1, pending: 0 },
+    next_action: 'poll',
+    tasks: { '001': { stage: 'running' } },
+  }));
+  await writeFile(path.join(runPath, 'controller', 'lane-bg.pid'), '99999999\n');
+
+  const detail = projectDetail(await buildProjectSnapshot({ id: 'project-id', name: 'fixture', path: root }));
+
+  assert.equal(detail.runs[0].controller.stage, 'failed');
+  assert.match(detail.runs[0].controller.last_event.detail, /pid does not match/);
 });
 
 test('recent keeps every run with an unfinished task plus only the three newest fully-done runs', () => {

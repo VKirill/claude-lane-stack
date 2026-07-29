@@ -30,6 +30,8 @@ if [[ -z "$DIR" || $# -lt 1 ]]; then
 fi
 
 mkdir -p "$DIR"
+exec 9>"$DIR/.lane-bg.lock"
+flock 9
 PID_FILE="$DIR/lane-bg.pid"
 META="$DIR/lane-bg.meta"
 SUP_LOG="$DIR/lane-bg.supervisor.log"
@@ -79,7 +81,7 @@ WORKER_SCRIPT='
 '
 
 launch_nohup() {
-  nohup /bin/bash -c "$WORKER_SCRIPT" _ "$DIR" "$@" >/dev/null 2>&1 &
+  nohup /bin/bash -c "$WORKER_SCRIPT" _ "$DIR" "$@" 9>&- >/dev/null 2>&1 &
 }
 
 launch_systemd() {
@@ -90,7 +92,7 @@ launch_systemd() {
     --working-directory="$(pwd)" \
     --setenv="HOME=${HOME}" \
     --setenv="PATH=${PATH}" \
-    /bin/bash -c "$WORKER_SCRIPT" _ "$DIR" "$@"
+    /bin/bash -c "$WORKER_SCRIPT" _ "$DIR" "$@" 9>&-
 }
 
 SELECTED_BACKEND="$BACKEND"

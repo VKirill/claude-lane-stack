@@ -27,7 +27,7 @@ function health(summary) {
 function reviewFailed(reviews) {
   return reviews.some((review) => {
     const verdicts = Array.isArray(review && review.verdicts) ? review.verdicts : [review && review.verdicts];
-    return verdicts.some((verdict) => /fail|blocked/i.test(String(verdict || "")));
+    return verdicts.some((verdict) => /fail|blocked/i.test(String(verdict && typeof verdict === "object" ? verdict.verdict : verdict || "")));
   });
 }
 

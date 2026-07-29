@@ -157,20 +157,95 @@ def branch_changes(cwd: Path, base: str) -> list[str]:
     return filter_noise(files)
 
 
-def evaluate_details(changed: list[str], owns: list, never: list) -> dict:
-    violations, never_hits = [], []
+def load_dirt_baseline(path: Path | None) -> set[str] | None:
+    """Return pre-task dirty paths, or None when no baseline was recorded."""
+    if path is None or not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(payload, dict):
+        files = payload.get("files")
+    else:
+        files = payload
+    if not isinstance(files, list):
+        return None
+    return {str(item).lstrip("./") for item in files if str(item).strip()}
+
+
+def write_dirt_baseline(cwd: Path, path: Path) -> list[str]:
+    """Snapshot uncommitted dirt at writer start so later owns can ignore foreign files."""
+    files = uncommitted(cwd)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": 1,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "cwd": str(cwd),
+        "files": files,
+    }
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp, path)
+    return files
+
+
+def evaluate_details(
+    changed: list[str],
+    owns: list,
+    never: list,
+    *,
+    baseline: set[str] | None = None,
+) -> dict:
+    """Classify tree dirt into owns violations, never_touch hits, and foreign ignored.
+
+    Foreign/parallel-session dirt outside owns_paths must not fail the task when
+    the writer did not introduce it. With a dirt baseline (files dirty at lane
+    start), only *new* outside-owns paths fail (writer leak). Without a baseline,
+    outside-owns paths are treated as foreign (warn-only) so shared dirty mains
+    do not freeze runs; never_touch still hard-fails for newly introduced hits
+    (or all hits when no baseline).
+    """
+    violations: list[str] = []
+    never_hits: list[str] = []
+    foreign_ignored: list[str] = []
+    evaluated: list[str] = []
     for f in changed:
-        if match_any(f, never):
-            never_hits.append(f)
-        elif owns and not match_any(f, owns):
-            violations.append(f)
+        rel = f.lstrip("./")
+        in_baseline = baseline is not None and rel in baseline
+        if match_any(rel, never):
+            if in_baseline:
+                foreign_ignored.append(rel)
+            else:
+                never_hits.append(rel)
+                evaluated.append(rel)
+            continue
+        if owns and not match_any(rel, owns):
+            if baseline is not None:
+                if in_baseline:
+                    foreign_ignored.append(rel)
+                else:
+                    violations.append(rel)
+                    evaluated.append(rel)
+            else:
+                # No baseline: cannot attribute leak vs parallel dirt — ignore.
+                foreign_ignored.append(rel)
+            continue
+        evaluated.append(rel)
     return {
         "changed_files": changed,
+        "evaluated_files": evaluated,
         "owns_paths": owns,
         "never_touch": never,
         "violations": violations,
         "never_touch_hits": never_hits,
-        "status": "passed" if owns and not violations and not never_hits else ("skipped" if not owns else "failed"),
+        "foreign_ignored": foreign_ignored,
+        "baseline_used": baseline is not None,
+        "status": (
+            "passed"
+            if owns and not violations and not never_hits
+            else ("skipped" if not owns else "failed")
+        ),
     }
 
 
@@ -179,6 +254,7 @@ def print_evaluation(details: dict) -> int:
     owns = details["owns_paths"]
     violations = details["violations"]
     never_hits = details["never_touch_hits"]
+    foreign = details.get("foreign_ignored") or []
     if not owns:
         print("WARN: no owns_paths/files — skip strict check")
         return 0
@@ -186,6 +262,12 @@ def print_evaluation(details: dict) -> int:
         print("OK: no changed files to check")
         return 0
 
+    if foreign:
+        print("WARN foreign dirt ignored (outside owns / pre-existing):")
+        for f in foreign[:40]:
+            print(f"  {f}")
+        if len(foreign) > 40:
+            print(f"  ... +{len(foreign) - 40} more")
     if never_hits:
         print("FAIL never_touch:")
         for f in never_hits:
@@ -201,8 +283,12 @@ def print_evaluation(details: dict) -> int:
             print(f"  - {p}")
     if never_hits or violations:
         return 1
-    print(f"OK: {len(changed)} changed file(s) within owns_paths")
-    for f in changed[:30]:
+    evaluated = details.get("evaluated_files") or []
+    print(
+        f"OK: {len(evaluated)} evaluated file(s) within owns_paths"
+        + (f" ({len(foreign)} foreign ignored)" if foreign else "")
+    )
+    for f in evaluated[:30]:
         print(f"  {f}")
     return 0
 
@@ -262,7 +348,12 @@ def run_scope_ownership(task_path: Path, cwd: Path) -> tuple[list[str], list[str
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("task_file")
+    ap.add_argument(
+        "task_file",
+        nargs="?",
+        default="",
+        help="task YAML (omit with --write-dirt-baseline)",
+    )
     ap.add_argument("--cwd", default="")
     ap.add_argument("--base", default="")
     ap.add_argument("--uncommitted-only", action="store_true")
@@ -271,7 +362,32 @@ def main() -> int:
         action="store_true",
         help="check the union of validated task ownership for a shared run worktree",
     )
+    ap.add_argument(
+        "--dirt-baseline",
+        default="",
+        help="path to dirt-baseline.json (defaults to artifacts/<task_id>/dirt-baseline.json)",
+    )
+    ap.add_argument(
+        "--write-dirt-baseline",
+        default="",
+        help="write uncommitted dirt snapshot to this path and exit 0",
+    )
     args = ap.parse_args()
+
+    if args.write_dirt_baseline:
+        cwd = Path(args.cwd or ".").resolve()
+        out = Path(args.write_dirt_baseline).expanduser().resolve()
+        try:
+            files = write_dirt_baseline(cwd, out)
+        except GitCommandError as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 2
+        print(f"dirt-baseline: {out} ({len(files)} file(s))")
+        return 0
+
+    if not args.task_file:
+        print("FAIL: task_file is required unless --write-dirt-baseline is set", file=sys.stderr)
+        return 2
 
     task_path = Path(args.task_file).resolve()
     data = load_task(task_path)
@@ -298,6 +414,15 @@ def main() -> int:
             return 2
         scope = "run"
     mode = "git inspection failed"
+    receipt_path = receipt_path_for(task_path, task_id)
+    baseline_path: Path | None
+    if args.dirt_baseline:
+        baseline_path = Path(args.dirt_baseline).expanduser().resolve()
+    elif receipt_path is not None:
+        baseline_path = receipt_path.parent / "dirt-baseline.json"
+    else:
+        baseline_path = None
+    baseline = load_dirt_baseline(baseline_path)
     try:
         branch = run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD").strip()
         if args.uncommitted_only or (branch in ("main", "master") and not args.base):
@@ -308,21 +433,25 @@ def main() -> int:
             mode = f"vs {base}...HEAD + uncommitted on {branch}"
             changed = branch_changes(cwd, base)
         print(f"(mode: {mode})")
-        details = evaluate_details(changed, owns, never)
+        if baseline is not None:
+            print(f"(dirt-baseline: {baseline_path} · {len(baseline)} pre-existing)")
+        details = evaluate_details(changed, owns, never, baseline=baseline)
         exit_code = print_evaluation(details)
     except GitCommandError as exc:
         details = {
             "changed_files": [],
+            "evaluated_files": [],
             "owns_paths": owns,
             "never_touch": never,
             "violations": [],
             "never_touch_hits": [],
+            "foreign_ignored": [],
+            "baseline_used": baseline is not None,
             "status": "failed",
             "error": str(exc),
         }
         exit_code = 2
         print(f"FAIL: {exc}", file=sys.stderr)
-    receipt_path = receipt_path_for(task_path, task_id)
     if receipt_path is not None:
         receipt = {
             "schema_version": 2,
@@ -333,6 +462,7 @@ def main() -> int:
             "scope": scope,
             "scope_task_ids": scope_task_ids,
             "mode": mode,
+            "dirt_baseline": str(baseline_path) if baseline is not None else None,
             **details,
             "exit_code": exit_code,
         }

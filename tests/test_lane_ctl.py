@@ -878,6 +878,57 @@ class LaneCtlTest(unittest.TestCase):
         self.assertIn("verification pool path", escaped.stderr)
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_v2_verification_timeout_kills_the_process_group(self) -> None:
+        child_pid = self.project_cwd / "child.pid"
+        verifier = self.project_cwd / "spawn-child"
+        verifier.write_text(
+            "#!/bin/bash\nsleep 30 &\necho $! > child.pid\nwait\n",
+            encoding="utf-8",
+        )
+        verifier.chmod(0o755)
+        (self.root / ".agents" / "night-shift.yaml").write_text(
+            'verification_executables: ["spawn-child"]\n',
+            encoding="utf-8",
+        )
+        task_file = self.write_v2_task(
+            verification=[
+                {
+                    "command": "spawn-child",
+                    "cwd": ".",
+                    "timeout_sec": 1,
+                }
+            ]
+        )
+        self.start(
+            task_file,
+            env={"PATH": f"{self.project_cwd}:{os.environ['PATH']}"},
+        )
+        self.assertEqual(self.wait_status()["status"], "awaiting_verification")
+
+        result = self.run_ctl(
+            "verify",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-file",
+            str(task_file),
+            "--project-cwd",
+            str(self.project_cwd),
+            env={"PATH": f"{self.project_cwd}:{os.environ['PATH']}"},
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        pid = int(child_pid.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            self.fail(f"timed-out verification child remained alive: {pid}")
+
     def test_v2_requires_run_contract_and_freezes_task_yaml(self) -> None:
         task_file = self.write_v2_task(
             verification=[{"command": "node --version", "cwd": ".", "timeout_sec": 5}],
@@ -929,6 +980,20 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual(verified.returncode, 2)
         self.assertIn("sha256 mismatch", verified.stderr)
 
+    def test_v2_start_validation_failure_leaves_no_orphan_attempt(self) -> None:
+        task_file = self.write_v2_task(verify="none")
+
+        result = self.start(
+            task_file,
+            binary=str(self.root / "missing-provider"),
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        artifact = self.run_dir / "artifacts" / "001"
+        self.assertFalse((artifact / "attempts").exists())
+        self.assertFalse((artifact / "state.json").exists())
+
     def test_v2_retry_preserves_attempt_directories(self) -> None:
         task_file = self.write_v2_task(
             verification=[{"command": "node --version", "cwd": ".", "timeout_sec": 5}]
@@ -975,6 +1040,7 @@ class LaneCtlTest(unittest.TestCase):
         self.assertFalse((artifact / "control.json").exists())
 
     def test_v2_codex_sol_high_fallback_keeps_normal_acceptance_chain(self) -> None:
+        self.init_git_project()
         task_file = self.write_v2_task(
             verification=[{"command": "true", "cwd": ".", "timeout_sec": 5}],
             verify="tests",
@@ -1454,6 +1520,32 @@ class LaneCtlTest(unittest.TestCase):
         final_state = json.loads((artifact / "state.json").read_text())
         self.assertEqual(final_state["status"], "accepted")
         self.assertTrue(final_state["accepted"])
+        with tempfile.TemporaryDirectory() as index_dir:
+            index_env = os.environ.copy()
+            index_env["GIT_INDEX_FILE"] = str(Path(index_dir) / "index")
+            subprocess.run(
+                ["git", "read-tree", "HEAD"],
+                cwd=self.project_cwd,
+                env=index_env,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=self.project_cwd,
+                env=index_env,
+                check=True,
+            )
+            accepted_tree = subprocess.run(
+                ["git", "write-tree"],
+                cwd=self.project_cwd,
+                env=index_env,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+            ).stdout.strip()
+        self.assertEqual(final_state["accepted_source_head"], base_ref)
+        self.assertEqual(final_state["accepted_source_tree"], accepted_tree)
+        self.assertTrue(final_state["accepted_source_dirty"])
         self.assertEqual(self.wait_status()["status"], "accepted")
 
         review_path = artifact / "review.json"

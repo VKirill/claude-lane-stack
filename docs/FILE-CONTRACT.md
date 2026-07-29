@@ -76,6 +76,18 @@ Claude model is the lifecycle decision loop. See [LANE-EXEC.md](LANE-EXEC.md).
 The receipt follows `schemas/run-controller-v1.schema.json`; consumers must
 fail closed on unknown run/task stages instead of inferring success.
 
+**Run stages:** `running` (work in flight), `degraded` (some tasks blocked,
+others still runnable), terminal `accepted` / `blocked` / `failed`. Task stage
+`blocked` does not alone freeze the run.
+
+**Owns check:** `check-owns-paths` ignores foreign uncommitted dirt outside
+`owns_paths` (parallel sessions). `lane-ctl start` writes `dirt-baseline.json`
+so newly introduced writer leaks outside owns still fail. `never_touch` stays
+hard-fail for new hits.
+
+**Verification:** task YAML `verification[]` is **L1 focused** only. Writers do
+**L0 focused** checks. Full/affected suite is **L2 once** at pre-merge/CI.
+
 Grok write lanes run through `lane-session`. Sessions are scoped to this
 run, role, worktree, and model. One slot accepts one task at a time; concurrent
 tasks spill into a pool of five slots by default, configurable from 1–10. A slot rotates after seven
@@ -212,6 +224,7 @@ before the provider starts. Optional project verifier basenames come from
   "provider": "grok",
   "model": "grok-4.5",
   "report": "complete",
+  "report_sha256": "<SHA-256 of the accepted report.md bytes>",
   "owns_check": "passed",
   "verification": "passed",
   "review": "not_required",
@@ -221,8 +234,9 @@ before the provider starts. Optional project verifier basenames come from
 ```
 
 STATUS.md, BOARD.md, resume-project, and the merge gate derive completion from
-this receipt. A provider exit, a green worker claim, or a `status: done` line in
-legacy YAML is not sufficient for schema v2.
+this receipt. `report_sha256` must match both the accepted `report.md` bytes and
+the current attempt's trusted `runtime.json`; a provider exit, a green worker
+claim, or a `status: done` line in legacy YAML is not sufficient for schema v2.
 
 ## Lifecycle (orchestrator — solo)
 

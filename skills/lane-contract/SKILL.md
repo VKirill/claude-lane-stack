@@ -54,10 +54,11 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 2. Work only in `PROJECT_CWD`.
 3. Edit **only** `owns_paths` (or `files`). Honor `never_touch`.
 4. Do not write `.agents`; `lane-exec` owns heartbeat and lifecycle evidence.
-5. Return the exact report envelope from the writer contract after focused
+5. Return the exact report envelope from the writer contract after **focused L0**
    checks — **report body in English**. The trusted runtime atomically writes
-   `ARTIFACT_DIR/report.md`; the PM independently runs structured task
-   `verification` commands via `lane-ctl verify`.
+   `ARTIFACT_DIR/report.md`; the controller independently runs structured task
+   `verification` commands via `lane-ctl verify` (**L1**). Full monorepo suite is
+   **L2 once** at pre-merge/CI, not per-task Worker checks.
 6. **Never** `git checkout main`, merge to main, or `git push` unless task says otherwise (default: never).
 7. On build errors outside owns_paths: do not fix; note in report.
 8. All durable files English (see LANGUAGE.md).
@@ -72,13 +73,31 @@ Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
 Legacy task fields remain readable for existing runs. New runs must not include
 mutable `status`, `done_when`, or free-form verification strings.
 
+## Verification tiers (L0 / L1 / L2)
+
+| Tier | Who | What | When |
+|------|-----|------|------|
+| **L0** | Writer (kimi/qwen/agy/grok) | Focused unit/spec + optional package typecheck | While implementing |
+| **L1** | Controller `lane-ctl verify` | Task YAML `verification[]` — scoped only | After report, before accept |
+| **L2** | PM pre-merge / CI | One full or affected suite for the whole run | After all accepted |
+
+Do not put monorepo-wide suites in every task's `verification[]`. Prefer paths
+under `owns_paths`. Acceptance criteria describe behavior, not "all packages green".
+
 ## `verify` levels
 
 | Level | Meaning |
 |-------|---------|
 | none | No tests/build evidence needed (visual or trivial change) |
 | smoke | Build passes / page renders / command runs once |
-| tests | Real test run evidence required in report |
+| tests | Real focused test evidence required (L0/L1), not full monorepo |
 
 PM chooses `verify` at scoring time; the structured `verification` commands
 must provide evidence appropriate to that level.
+
+## Owns / foreign dirt
+
+`check-owns-paths` ignores pre-existing uncommitted files outside `owns_paths`
+(parallel-session dirt). Writer-introduced paths outside owns still fail when a
+dirt baseline exists (written at `lane-ctl start`). `never_touch` remains hard-fail
+for newly introduced hits.

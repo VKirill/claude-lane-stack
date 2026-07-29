@@ -76,7 +76,7 @@ class RunContractTest(unittest.TestCase):
         if verification is None:
             verification = [
                 {
-                    "command": "true",
+                    "command": "python3 -m unittest",
                     "cwd": str(self.repo.resolve()),
                     "timeout_sec": 30,
                 }
@@ -311,6 +311,78 @@ class RunContractTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("valid pre-dispatch", result.stdout)
 
+    def test_pre_dispatch_rejects_unsafe_verification_before_controller_start(self) -> None:
+        self.initialize()
+        for index, command in enumerate(
+            (
+                "npm ci",
+                "npm test && npm run lint",
+                "python3 -c 'print(1)'",
+            ),
+            start=1,
+        ):
+            self.write_task(
+                f"{index:03d}",
+                verification=[
+                    {
+                        "command": command,
+                        "cwd": str(self.repo.resolve()),
+                        "timeout_sec": 30,
+                    }
+                ],
+            )
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("may not mutate or fetch packages with npm", result.stderr)
+        self.assertIn("shell composition", result.stderr)
+        self.assertIn("inline code is forbidden", result.stderr)
+
+    def test_pre_dispatch_allows_registered_package_scripts(self) -> None:
+        self.initialize()
+        self.write_task(
+            "001",
+            verification=[
+                {
+                    "command": "npm -w apps/api run typecheck",
+                    "cwd": str(self.repo.resolve()),
+                    "timeout_sec": 30,
+                },
+                {
+                    "command": "npm run test:architecture",
+                    "cwd": str(self.repo.resolve()),
+                    "timeout_sec": 30,
+                },
+            ],
+        )
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_pre_dispatch_preserves_configured_verification_executable(self) -> None:
+        self.initialize()
+        policy = self.repo / ".agents" / "night-shift.yaml"
+        policy.write_text(
+            "verification_executables:\n  - project-check\n",
+            encoding="utf-8",
+        )
+        self.write_task(
+            "001",
+            verification=[
+                {
+                    "command": "project-check --fast",
+                    "cwd": str(self.repo.resolve()),
+                    "timeout_sec": 30,
+                }
+            ],
+        )
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_rejects_overlapping_owns_paths(self) -> None:
         self.initialize()
         self.write_task("001", owns_paths=["src/api/**"])
@@ -439,6 +511,21 @@ class RunContractTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2)
         self.assertIn("acceptance attempt is stale", result.stderr)
+
+    def test_pre_merge_requires_accepted_lifecycle_state(self) -> None:
+        self.initialize()
+        task = self.write_task("001")
+        self.accept_task(task)
+        state_path = self.run_dir / "artifacts" / "001" / "state.json"
+        state = json.loads(state_path.read_text())
+        state["status"] = "verified"
+        state["accepted"] = False
+        state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+
+        result = self.run_validate("pre-merge")
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("state is not accepted", result.stderr)
 
     def test_pre_merge_rejects_incomplete_machine_gate(self) -> None:
         self.initialize()

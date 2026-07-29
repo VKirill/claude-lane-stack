@@ -3,14 +3,15 @@ from __future__ import annotations
 import json, os, sys
 from typing import Any
 
-def read_payload() -> dict[str, Any]:
+def read_payload() -> dict[str, Any] | None:
     raw = sys.stdin.read()
     if not raw.strip():
-        return {}
+        return None
     try:
-        return json.loads(raw)
+        payload = json.loads(raw)
     except json.JSONDecodeError:
-        return {}
+        return None
+    return payload if isinstance(payload, dict) else None
 
 def detect_client(p: dict) -> str:
     env = os.environ.get("AGENT_HOOK_CLIENT", "").lower()
@@ -40,6 +41,11 @@ def tool_name(p: dict) -> str:
 def tool_input(p: dict) -> dict:
     if isinstance(p.get("toolCall"), dict):
         args = p["toolCall"].get("args") or p["toolCall"].get("arguments") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                return {}
         return args if isinstance(args, dict) else {}
     ti = p.get("tool_input") or p.get("toolInput") or {}
     return ti if isinstance(ti, dict) else {}
@@ -59,7 +65,10 @@ def shell_command(p: dict) -> str:
 
 def file_path(p: dict) -> str:
     ti = tool_input(p)
-    for k in ("file_path", "filePath", "path", "target_file", "TargetFile", "file"):
+    for k in (
+        "file_path", "filePath", "notebook_path", "notebookPath", "path",
+        "target_file", "TargetFile", "file",
+    ):
         v = ti.get(k)
         if isinstance(v, str) and v:
             return v
@@ -76,7 +85,7 @@ def is_shell_tool(name: str) -> bool:
 def is_edit_tool(name: str) -> bool:
     n = name.lower()
     return n in {
-        "edit", "write", "multiedit", "search_replace", "str_replace",
+        "edit", "write", "multiedit", "notebookedit", "search_replace", "str_replace",
         "apply_patch", "replace_file_content", "multi_replace_file_content",
         "write_to_file", "create_file", "edit_file",
     }

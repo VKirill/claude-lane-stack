@@ -4,15 +4,15 @@
 
 # 🏭 Claude Lane Stack
 
-### A small AI coding factory for one person · **v1.6.0**
+### A small AI coding factory for one person · **v1.11.1**
 
 **Multi-agent orchestration for Claude Code** — you talk to one AI project
-manager, it runs durable AGY or Grok work through acceptance, **merges finished code to
+manager, it runs durable Kimi, Qwen, AGY, or Grok work through acceptance, **merges finished code to
 `main`**, and sends independent review/fixes through the night shift. No five
 chats. No manual merges.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.11.1)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Start%20here-Beginner%20guide-brightgreen)](docs/BEGINNER.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -108,8 +108,10 @@ flowchart LR
 **Models (Codex):** GPT-**5.6** only — **Sol** (review / deep / high-risk), **Terra** (scoped write / docs), **Luna** (trivia only). No 5.5. See [docs/ROUTING.md](docs/ROUTING.md).
 
 > [!NOTE]
-> **Only Claude Code is required.** Missing workers are fine — `agents-doctor` detects what's installed and the PM adapts, down to pure `claude-only` mode.
-> Linux AGY/Grok writer lanes additionally require `bubblewrap` (`sudo apt install
+> **Claude Code is the only required AI CLI.** The host also needs Git, Python 3
+> with PyYAML/jsonschema, Node.js, rsync, and `flock`. Missing writer CLIs are fine —
+> `agents-doctor` adapts down to pure `claude-only` mode.
+> Linux Kimi/Qwen/AGY/Grok writer lanes additionally require `bubblewrap` (`sudo apt install
 > bubblewrap` on Ubuntu) for the read-only `.agents` boundary.
 
 ---
@@ -119,7 +121,7 @@ flowchart LR
 ```bash
 # 1️⃣  Install the stack — once per computer
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.6.0 # or: main
+cd claude-lane-stack && git checkout v1.11.1 # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH" # or open a new terminal
 
@@ -142,7 +144,7 @@ Then in chat:
 > [!IMPORTANT]
 > `/resume-project` is a *"welcome back"* command — **not** an installation step.
 
-📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.6.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0)**
+📖 Walkthrough: **[docs/BEGINNER.md](docs/BEGINNER.md)** · Release notes: **[v1.11.1](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.11.1)**
 
 ---
 
@@ -185,31 +187,31 @@ Full guide: [docs/ONBOARD-SCENARIOS.md](docs/ONBOARD-SCENARIOS.md)
 
 Claude Code **kills foreground Bash around ~2 minutes**. That is a **host** limit, not `lane-exec`.
 
-Long AGY/Grok jobs start through the typed control plane. AGY 3.6 is the
-default; choose Grok explicitly with `--provider grok`:
+Long writer jobs start through the typed control plane. Kimi is the default;
+choose Qwen, AGY, or Grok explicitly with `--provider`:
 
 ```bash
 RUN_DIR="$(run-init "$(pwd)" "$SLUG" --score 7)"
 run-validate --run-dir "$RUN_DIR" --phase pre-dispatch
-run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD" --provider grok
+run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD"
 run-controller watch --run-dir "$RUN_DIR" --timeout 240
 run-controller status --run-dir "$RUN_DIR" --json
 ```
 
 | Tool | Role |
 |------|------|
-| **`run-controller`** | durable DAG dispatch, persisted AGY/Grok retry, typed Codex fallback, progressive owns/verify/accept |
+| **`run-controller`** | durable DAG dispatch, persisted writer retry, typed Codex fallback, progressive owns/verify/accept |
 | **`lane-ctl`** | typed start/status/events/tail/retry/fallback/cancel/verify/accept control plane |
 | **`lane-bg`** | low-level transient user-systemd service; explicit nohup fallback |
 | **`lane-exec`** | activity-aware idle + absolute max **on the detached process** |
-| **`lane-session`** | resumes AGY/Grok context and runs one-shot Codex fallback; provider default 5/max 10 |
+| **`lane-session`** | resumes writer context and runs one-shot Codex fallback; provider default 5/max 10 |
 
 One read-only `run-supervisor` visibly watches the durable controller until the
 run is accepted or blocked. `lane-supervisor` remains a one-action diagnostic
 profile. Verification has a separate default 2/max 10 pool. Details:
 [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
 
-AGY and Grok no longer relearn the repository on every task in a run. The first
+Writer lanes no longer relearn the repository on every task in a run. The first
 task creates a conversation; later related tasks resume it. A busy conversation
 is never shared concurrently—parallel tasks lease another slot (five by default,
 configurable from one to ten).
@@ -282,7 +284,7 @@ schema_version: 2
 id: "001"
 title: Add dark mode
 risk: low
-lane: grok             # default writer; agy remains supported
+lane: kimi             # default writer; qwen, agy, and grok remain supported
 project_cwd: /absolute/path/to/worktree
 read_first: [AGENTS.md]
 interfaces: ["ThemeToggle(settings)"]
@@ -372,12 +374,14 @@ Rules: [docs/SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md)
 
 ## 🚦 Capability profiles
 
-`agents-doctor` detects both writer CLIs. It prefers AGY when both are healthy;
-use `--writer-provider grok` to select Grok for a project.
+`agents-doctor` detects all writer CLIs. It prefers Kimi, then Qwen, Grok, and
+AGY; use `--writer-provider` to select an available writer for a project.
 
 | Profile | You have | Write lane | Review lane |
 |---------|----------|------------|-------------|
-| `full` | AGY and/or Grok + Codex | Grok default; AGY selectable | Codex Sol |
+| `full` | Any writer CLI + Codex | Kimi default; Qwen/Grok/AGY selectable | Codex Sol |
+| `claude-kimi` | Kimi | Kimi | Claude |
+| `claude-qwen` | Qwen | Qwen | Claude |
 | `claude-agy` | AGY | AGY | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |
@@ -496,7 +500,7 @@ Each CLI talks only to its own vendor. No extra servers. Don't put secrets in ta
 | 📝 Ideas backlog | [docs/TODOS.md](docs/TODOS.md) |<!-- guardian: allow — link to existing docs/TODOS.md file, not a new TODO marker -->
 | 🔌 MCP (lean / hybrid) | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Release v1.6.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0) |
+| 🚀 Release v1.11.1 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.11.1) |
 | 🤝 Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | 🔐 Security | [SECURITY.md](SECURITY.md) |
 

@@ -51,6 +51,40 @@ class LaneBgTest(unittest.TestCase):
             )
             self.assertIn("backend=nohup", (artifact / "lane-bg.meta").read_text())
 
+    def test_concurrent_launches_start_only_one_worker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = Path(tmp) / "locked"
+            launches = Path(tmp) / "launches"
+            env = os.environ.copy()
+            env["LANE_BG_BACKEND"] = "nohup"
+            command = [
+                str(LANE_BG),
+                "--dir",
+                str(artifact),
+                "--",
+                "/bin/bash",
+                "-c",
+                f"echo launched >> {launches}; sleep 0.3",
+            ]
+            processes = [
+                subprocess.Popen(
+                    command,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                )
+                for _ in range(2)
+            ]
+            results = [process.communicate(timeout=5) for process in processes]
+
+            self.assertEqual([process.returncode for process in processes], [0, 0])
+            self.assertEqual(launches.read_text(encoding="utf-8").splitlines(), ["launched"])
+            self.assertEqual(
+                sum("LANE_BG_ALREADY_RUNNING" in stdout for stdout, _ in results),
+                1,
+            )
+
     @unittest.skipUnless(
         subprocess.run(
             ["systemctl", "--user", "show-environment"],

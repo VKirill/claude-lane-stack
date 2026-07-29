@@ -19,6 +19,7 @@ try:
 except Exception:  # pragma: no cover - observability must never break the gate
     def record_gate_event(*args, **kwargs):  # type: ignore
         pass
+from verification_safety import verification_error
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +69,19 @@ def load_schema(name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ContractError(f"schema must contain a JSON object: {path}")
     return value
+
+
+def configured_verification_executables(run_dir: Path) -> set[str]:
+    policy_path = run_dir.parent.parent / "night-shift.yaml"
+    if not policy_path.is_file():
+        return set()
+    policy = load_yaml(policy_path, "night-shift policy")
+    value = policy.get("verification_executables", [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item and "/" not in item for item in value
+    ):
+        raise ContractError("verification_executables must be executable basenames")
+    return set(value)
 
 
 def schema_errors(value: object, schema: dict[str, Any], label: str) -> list[str]:
@@ -237,6 +251,8 @@ def validate_acceptances(
                     )
                 if state.get("task_sha256") != current_hash:
                     errors.append(f"task {task_id}: state task_sha256 is stale")
+                if state.get("status") != "accepted" or state.get("accepted") is not True:
+                    errors.append(f"task {task_id}: state is not accepted")
         task = load_yaml(task_path, f"task {task_id}")
         if (
             run_contract.get("gate") == "pre-merge"
@@ -283,6 +299,11 @@ def validate_run(run_dir: Path, phase: str) -> int:
     task_paths = sorted((run_dir / "tasks").glob("*.yaml"))
     if not task_paths:
         errors.append("run has no task contracts under tasks/*.yaml")
+    try:
+        verification_executables = configured_verification_executables(run_dir)
+    except ContractError as exc:
+        errors.append(str(exc))
+        verification_executables = set()
 
     tasks: dict[str, dict[str, Any]] = {}
     task_files: dict[str, Path] = {}
@@ -326,6 +347,13 @@ def validate_run(run_dir: Path, phase: str) -> int:
                     errors.append(f"task {task_id}: {field} entry {scope!r} {detail}")
 
         for index, verification in enumerate(task["verification"]):
+            safety_error = verification_error(
+                verification["command"], verification_executables
+            )
+            if safety_error:
+                errors.append(
+                    f"task {task_id}: verification[{index}]: {safety_error}"
+                )
             cwd_raw = Path(verification["cwd"])
             if not cwd_raw.is_absolute():
                 errors.append(
@@ -345,6 +373,22 @@ def validate_run(run_dir: Path, phase: str) -> int:
             if not 1 <= timeout <= MAX_VERIFICATION_TIMEOUT:
                 errors.append(
                     f"task {task_id}: verification[{index}].timeout_sec must be 1-{MAX_VERIFICATION_TIMEOUT}"
+                )
+            # L1 should stay focused. Full-suite L2 belongs once at pre-merge/CI.
+            command_text = str(verification.get("command") or "")
+            heavy = timeout > 900 or bool(
+                re.search(
+                    r"(^|[;&|]\s*)(npm test|pnpm test|yarn test|pytest\s*$|cargo test\s*$)",
+                    command_text,
+                    re.I,
+                )
+            )
+            if heavy and len(task_files) > 1 and phase == "pre-dispatch":
+                print(
+                    f"run-validate: WARN task {task_id} verification[{index}] looks like "
+                    f"a heavy full suite (timeout={timeout}); prefer focused L1 per task "
+                    f"and one L2 suite at pre-merge/CI",
+                    file=sys.stderr,
                 )
 
     owners = [
@@ -385,6 +429,11 @@ def validate_run(run_dir: Path, phase: str) -> int:
     if errors:
         raise ContractError("\n".join(dict.fromkeys(errors)))
     print(f"run-validate: valid {phase} tasks={len(tasks)} run_dir={run_dir}")
+    if phase == "pre-merge" and len(tasks) > 1:
+        print(
+            "run-validate: L2 reminder — run one focused full/affected suite for the "
+            "whole run (or CI) before ship; per-task verification is L1 only"
+        )
     return 0
 
 

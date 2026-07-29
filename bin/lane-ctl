@@ -19,6 +19,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -1169,10 +1170,9 @@ def cmd_start_v2(
         extra_executables=verification_executables,
     )
     attempt = 1
-    attempt_dir = attempt_dir_for(artifact, attempt, create=True)
+    attempt_dir = attempt_dir_for(artifact, attempt)
     prompt = prompt_for(context)
     prompt_path = safe_child_file(attempt_dir, "prompt.md")
-    atomic_write(prompt_path, prompt)
     heartbeat_path = safe_child_file(artifact, "heartbeat.json")
     argv = build_launch_argv(
         context,
@@ -1180,6 +1180,24 @@ def cmd_start_v2(
         runtime_dir=attempt_dir,
         heartbeat_path=heartbeat_path,
     )
+    attempt_dir.mkdir(parents=True)
+    atomic_write(prompt_path, prompt)
+    # Snapshot pre-existing dirty tree so check-owns-paths can ignore foreign dirt.
+    try:
+        subprocess.run(
+            [
+                str(Path(__file__).resolve().parent / "check-owns-paths"),
+                "--write-dirt-baseline",
+                str(safe_child_file(artifact, "dirt-baseline.json")),
+                "--cwd",
+                str(context.project_cwd),
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
     control = {
         "version": 2,
         "schema_version": 2,
@@ -1274,6 +1292,21 @@ def cmd_start(args: argparse.Namespace) -> int:
             safe_child_file(context.artifact_dir, stale).unlink(missing_ok=True)
         prompt = prompt_for(context)
         atomic_write(context.artifact_dir / "prompt.md", prompt)
+        try:
+            subprocess.run(
+                [
+                    str(Path(__file__).resolve().parent / "check-owns-paths"),
+                    "--write-dirt-baseline",
+                    str(safe_child_file(context.artifact_dir, "dirt-baseline.json")),
+                    "--cwd",
+                    str(context.project_cwd),
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            pass
         argv = build_launch_argv(context, args)
         control = {
             "version": 1,
@@ -2157,6 +2190,36 @@ def resolve_verification_cwd(project_cwd: Path, value: str) -> Path:
     return path
 
 
+def run_verification_command(
+    argv: list[str], *, cwd: Path, timeout: int
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    try:
+        output, _ = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            output, _ = process.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            output, _ = process.communicate()
+        return subprocess.CompletedProcess(argv, 124, output)
+    return subprocess.CompletedProcess(argv, process.returncode, output)
+
+
 def cmd_verify_v2(
     context: TaskContext, args: argparse.Namespace, state: dict
 ) -> int:
@@ -2247,25 +2310,17 @@ def cmd_verify_v2(
                 timeout_sec = entry["timeout_sec"]
                 command_started = utc_now()
                 try:
-                    completed = subprocess.run(
+                    completed = run_verification_command(
                         command_argv,
                         cwd=command_cwd,
-                        text=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
                         timeout=timeout_sec,
-                        check=False,
                     )
                     exit_code = completed.returncode
                     output = completed.stdout
-                except subprocess.TimeoutExpired as exc:
-                    exit_code = 124
-                    partial = exc.stdout or ""
-                    if isinstance(partial, bytes):
-                        partial = partial.decode("utf-8", errors="replace")
-                    output = str(partial) + (
-                        f"verification command timed out after {timeout_sec}s\n"
-                    )
+                    if exit_code == 124:
+                        output += (
+                            f"verification command timed out after {timeout_sec}s\n"
+                        )
                 except OSError as exc:
                     exit_code = 127
                     output = f"cannot execute verification command: {exc}\n"
@@ -2412,26 +2467,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
             for command in commands:
                 command_started = utc_now()
                 try:
-                    completed = subprocess.run(
+                    completed = run_verification_command(
                         ["/bin/bash", "-c", command],
                         cwd=context.project_cwd,
-                        text=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
                         timeout=args.command_timeout,
-                        check=False,
                     )
                     exit_code = completed.returncode
                     output = completed.stdout
-                except subprocess.TimeoutExpired as exc:
-                    exit_code = 124
-                    partial = exc.stdout or ""
-                    if isinstance(partial, bytes):
-                        partial = partial.decode("utf-8", errors="replace")
-                    output = (
-                        str(partial)
-                        + f"verification command timed out after {args.command_timeout}s\n"
-                    )
+                    if exit_code == 124:
+                        output += (
+                            "verification command timed out after "
+                            f"{args.command_timeout}s\n"
+                        )
                 except OSError as exc:
                     exit_code = 127
                     output = f"cannot execute verification command: {exc}\n"
@@ -2591,6 +2638,40 @@ def git_read(project_cwd: Path, *args: str) -> bytes:
             f"cannot inspect reviewed Git worktree: {error or 'git failed'}"
         )
     return result.stdout
+
+
+def accepted_source_identity(project_cwd: Path) -> tuple[str, str, bool]:
+    head = (
+        git_read(project_cwd, "rev-parse", "--verify", "HEAD^{commit}")
+        .decode()
+        .strip()
+    )
+    dirty = bool(git_read(project_cwd, "status", "--porcelain"))
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env = os.environ.copy()
+            env["GIT_INDEX_FILE"] = str(Path(temp_dir) / "index")
+            for args in (("read-tree", "HEAD"), ("add", "-A")):
+                subprocess.run(
+                    ["git", *args],
+                    cwd=project_cwd,
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                )
+            tree = subprocess.run(
+                ["git", "write-tree"],
+                cwd=project_cwd,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            ).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ContractError(f"cannot bind acceptance to source tree: {exc}") from exc
+    return head, tree, dirty
 
 
 def reviewed_worktree_digests(
@@ -2820,6 +2901,9 @@ def _cmd_accept_impl(args: argparse.Namespace, gate_ctx: dict) -> int:
             review_status = "not_required"
 
         accepted_at = utc_now()
+        accepted_head, accepted_tree, accepted_dirty = accepted_source_identity(
+            context.project_cwd
+        )
         receipt = {
             "schema_version": 2,
             "task_id": task_id,
@@ -2840,6 +2924,9 @@ def _cmd_accept_impl(args: argparse.Namespace, gate_ctx: dict) -> int:
         state["status"] = "accepted"
         state["accepted"] = True
         state["accepted_at"] = accepted_at
+        state["accepted_source_head"] = accepted_head
+        state["accepted_source_tree"] = accepted_tree
+        state["accepted_source_dirty"] = accepted_dirty
         state["updated_at"] = accepted_at
         write_task_state(artifact, state)
         append_event(

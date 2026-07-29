@@ -121,6 +121,58 @@ fi
 SOURCE_COMMIT="$(git rev-parse "${BRANCH}^{commit}")"
 
 if [[ "$RUN_SCHEMA_VERSION" == "2" ]]; then
+  python3 - "$RUN_DIR" "$SOURCE_COMMIT" <<'PY'
+import json
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+run_dir = Path(sys.argv[1])
+source_commit = sys.argv[2]
+accepted = []
+for receipt_path in sorted((run_dir / "artifacts").glob("*/acceptance.json")):
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        state = json.loads((receipt_path.parent / "state.json").read_text(encoding="utf-8"))
+        accepted_at = datetime.fromisoformat(receipt["accepted_at"].replace("Z", "+00:00"))
+    except (OSError, ValueError, KeyError, AttributeError) as exc:
+        print(f"wt-merge-main: cannot inspect accepted source for {receipt_path.parent.name}: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    accepted.append((accepted_at, receipt_path.parent.name, state))
+if not accepted:
+    print("wt-merge-main: schema-v2 run has no acceptance.json source state", file=sys.stderr)
+    raise SystemExit(1)
+_, task_id, state = max(accepted, key=lambda item: item[0])
+head = state.get("accepted_source_head")
+tree = state.get("accepted_source_tree")
+dirty = state.get("accepted_source_dirty")
+if not isinstance(head, str) or not isinstance(tree, str) or not isinstance(dirty, bool):
+    print(f"wt-merge-main: task {task_id} accepted source identity is missing", file=sys.stderr)
+    raise SystemExit(1)
+
+def git(*args):
+    return subprocess.run(
+        ["git", *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    ).stdout.strip()
+
+try:
+    source_tree = git("rev-parse", f"{source_commit}^{{tree}}")
+    source_parent = git("rev-parse", f"{source_commit}^") if dirty else source_commit
+except subprocess.CalledProcessError as exc:
+    print(f"wt-merge-main: cannot resolve accepted source identity: {exc.stderr.strip()}", file=sys.stderr)
+    raise SystemExit(1)
+if source_tree != tree or source_parent != head:
+    print(
+        f"wt-merge-main: accepted source changed after task {task_id} acceptance",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
   RUN_VALIDATE_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-validate"
   if [[ ! -x "$RUN_VALIDATE_BIN" ]]; then
     RUN_VALIDATE_BIN="$(command -v run-validate || true)"

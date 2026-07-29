@@ -31,8 +31,13 @@ jobs:
             jsonschema==4.26.0
       - name: Compile hooks and doctor
         run: |
-          python3 -m py_compile hooks/*.py bin/agents-doctor bin/check-owns-paths bin/lane-stall-check bin/lane-heartbeat bin/lane-session bin/run-board
-          python3 bin/agents-doctor --json || true
+          python3 -m py_compile hooks/*.py
+          while IFS= read -r -d '' file; do
+            [[ "$file" == hooks/* ]] && continue
+            [[ "$(head -n 1 "$file")" == '#!/usr/bin/env python3' ]] || continue
+            python3 -m py_compile "$file"
+          done < <(find hooks bin -maxdepth 1 -type f -print0)
+          python3 bin/agents-doctor --help
       - name: Shell scripts syntax
         if: always()
         run: |

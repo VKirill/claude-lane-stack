@@ -1,4 +1,4 @@
-import { lstat, readdir, readFile, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -124,6 +124,19 @@ async function readRegularJson(filePath) {
     const value = JSON.parse(source);
     return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } catch {
+    return null;
+  }
+}
+
+async function readProjectFile(projectPath, filePath) {
+  try {
+    const [projectRoot, target] = await Promise.all([realpath(projectPath), realpath(filePath)]);
+    const relative = path.relative(projectRoot, target);
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+    const info = await lstat(filePath);
+    return info.isFile() ? await readFile(filePath, 'utf8') : null;
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
     return null;
   }
 }
@@ -595,11 +608,8 @@ export async function readTodoBody(projectPath, todoId) {
     path.join(itemsDirectory, todoId, 'README.md'),
   ];
   for (const filePath of candidates) {
-    try {
-      return await readFile(filePath, 'utf8');
-    } catch (error) {
-      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
-    }
+    const source = await readProjectFile(projectPath, filePath);
+    if (source !== null) return source;
   }
   return null;
 }
@@ -687,49 +697,39 @@ export function parseTaskDetail(source) {
   return detail;
 }
 
-async function readTaskSource(tasksDirectory, taskId) {
+async function readTaskSource(projectPath, tasksDirectory, taskId) {
   const exactPath = path.join(tasksDirectory, `${taskId}.yaml`);
-  try {
-    return await readFile(exactPath, 'utf8');
-  } catch (error) {
-    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${exactPath}`, error);
-  }
+  const exact = await readProjectFile(projectPath, exactPath);
+  if (exact !== null) return exact;
 
   const entries = await readDirectory(tasksDirectory);
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (!entry.isFile() || !entry.name.startsWith(taskId) || !entry.name.endsWith('.yaml')) continue;
+    if (!entry.isFile() || !entry.name.startsWith(`${taskId}-`) || !entry.name.endsWith('.yaml')) continue;
     const filePath = path.join(tasksDirectory, entry.name);
-    try {
-      return await readFile(filePath, 'utf8');
-    } catch (error) {
-      warn(`could not read ${filePath}`, error);
-    }
+    const source = await readProjectFile(projectPath, filePath);
+    if (source !== null) return source;
   }
   return null;
 }
 
-async function readTaskReport(runPath, taskId) {
+async function readTaskReport(projectPath, runPath, taskId) {
   const artifactsDirectory = path.join(runPath, 'artifacts');
   const entries = await readDirectory(artifactsDirectory);
   const exact = entries.find((entry) => entry.isDirectory() && entry.name === taskId);
   const artifact = exact ?? entries
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith(taskId))
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${taskId}-`))
     .sort((left, right) => right.name.localeCompare(left.name))[0];
   if (!artifact) return null;
 
   const filePath = path.join(artifactsDirectory, artifact.name, 'report.md');
-  try {
-    return (await readFile(filePath, 'utf8')).split(/\r?\n/).slice(0, 60).join('\n');
-  } catch (error) {
-    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') warn(`could not read ${filePath}`, error);
-    return null;
-  }
+  const source = await readProjectFile(projectPath, filePath);
+  return source === null ? null : source.split(/\r?\n/).slice(0, 60).join('\n');
 }
 
 export async function readTaskDetail(projectPath, run, taskId) {
   if (!safePathSegment(run) || !safePathSegment(taskId)) return null;
   const runPath = path.join(projectPath, '.agents', 'runs', run);
-  const source = await readTaskSource(path.join(runPath, 'tasks'), taskId);
+  const source = await readTaskSource(projectPath, path.join(runPath, 'tasks'), taskId);
   if (source === null) return null;
   const detail = parseTaskDetail(source);
   const taskSha256 = createHash('sha256').update(source).digest('hex');
@@ -741,7 +741,7 @@ export async function readTaskDetail(projectPath, run, taskId) {
     const merged = await readMerge(runPath);
     detail.status = promoteMergedTaskStatus(detail.status, merged);
   }
-  return { ...detail, report: await readTaskReport(runPath, taskId) };
+  return { ...detail, report: await readTaskReport(projectPath, runPath, taskId) };
 }
 
 export function parseReview(source, date) {
@@ -780,17 +780,43 @@ export function parseReview(source, date) {
   return review;
 }
 
+function parseReviewFailure(receipt, date, projectPath) {
+  const failures = receipt?.failures;
+  if (receipt?.schema_version !== 1
+    || receipt.day !== date
+    || typeof receipt.repo !== 'string'
+    || receipt.repo !== projectPath
+    || typeof receipt.recorded_at !== 'string'
+    || !/(?:Z|[+-]\d{2}:\d{2})$/.test(receipt.recorded_at)
+    || !Number.isFinite(Date.parse(receipt.recorded_at))
+    || !Array.isArray(failures)
+    || failures.length === 0
+    || failures.some((failure) => typeof failure !== 'string' || !failure.trim())) return null;
+  return {
+    date,
+    verdicts: [{ scope: 'night review', verdict: 'failed' }],
+    findings: failures.map((failure) => ({ level: 'P1', text: failure.trim() })),
+    fixPlan: [],
+  };
+}
+
 export async function readLatestReview(projectPath) {
   const directory = path.join(projectPath, '.agents', 'session-log');
   const entries = await readDirectory(directory);
   const reviewFiles = entries
     .filter((entry) => entry.isFile())
-    .map((entry) => ({ entry, match: entry.name.match(/^REVIEW-(\d{4}-\d{2}-\d{2})\.md$/) }))
+    .map((entry) => ({ entry, match: entry.name.match(/^REVIEW-(\d{4}-\d{2}-\d{2})(\.failures\.json|\.md)$/) }))
     .filter(({ match }) => match)
-    .sort((left, right) => right.match[1].localeCompare(left.match[1]));
+    .sort((left, right) => right.match[1].localeCompare(left.match[1])
+      || Number(right.match[2] === '.failures.json') - Number(left.match[2] === '.failures.json'));
 
   for (const { entry, match } of reviewFiles) {
     const filePath = path.join(directory, entry.name);
+    if (match[2] === '.failures.json') {
+      const review = parseReviewFailure(await readJsonObject(filePath), match[1], projectPath);
+      if (review) return review;
+      continue;
+    }
     try {
       return parseReview(await readFile(filePath, 'utf8'), match[1]);
     } catch (error) {
@@ -805,13 +831,23 @@ export async function readAllReviews(projectPath) {
   const entries = await readDirectory(directory);
   const reviewFiles = entries
     .filter((entry) => entry.isFile())
-    .map((entry) => ({ entry, match: entry.name.match(/^REVIEW-(\d{4}-\d{2}-\d{2})\.md$/) }))
+    .map((entry) => ({ entry, match: entry.name.match(/^REVIEW-(\d{4}-\d{2}-\d{2})(\.failures\.json|\.md)$/) }))
     .filter(({ match }) => match)
-    .sort((left, right) => right.match[1].localeCompare(left.match[1]));
+    .sort((left, right) => right.match[1].localeCompare(left.match[1])
+      || Number(right.match[2] === '.failures.json') - Number(left.match[2] === '.failures.json'));
   const reviews = [];
+  const seenDates = new Set();
 
   for (const { entry, match } of reviewFiles) {
+    if (seenDates.has(match[1])) continue;
     const filePath = path.join(directory, entry.name);
+    if (match[2] === '.failures.json') {
+      const review = parseReviewFailure(await readJsonObject(filePath), match[1], projectPath);
+      if (!review) continue;
+      reviews.push(review);
+      seenDates.add(match[1]);
+      continue;
+    }
     try {
       const source = await readFile(filePath, 'utf8');
       if (!source.trim()) {
@@ -819,6 +855,7 @@ export async function readAllReviews(projectPath) {
         continue;
       }
       reviews.push(parseReview(source, match[1]));
+      seenDates.add(match[1]);
     } catch (error) {
       warn(`could not read ${filePath}`, error);
     }

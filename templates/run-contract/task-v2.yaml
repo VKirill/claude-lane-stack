@@ -20,9 +20,12 @@ depends_on: []
 objective: |
   REPLACE_ME requested behavior and smallest acceptable implementation.
 acceptance:
-  - "REPLACE_ME observable completion condition"
+  - "REPLACE_ME observable completion condition (behavior, not monorepo-green)"
 verify: tests
+# L1 only: focused commands for this task's owns_paths (unit/spec + package
+# typecheck). Do NOT put full monorepo/package suites here — that is L2 once
+# at pre-merge / CI for the whole run.
 verification:
-  - command: "REPLACE_ME verification command"
+  - command: "REPLACE_ME focused test or typecheck for this task only"
     cwd: {{project_cwd_yaml}}
-    timeout_sec: 600
+    timeout_sec: 300

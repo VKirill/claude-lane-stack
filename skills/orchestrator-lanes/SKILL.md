@@ -105,10 +105,13 @@ and non-ledger safety hooks remain available.
 1) `run-controller start` validates/resumes one durable worker for the run.
 2) Agent run-supervisor watches bounded state changes until terminal.
 3) Controller fills provider slots with ready DAG tasks.
-4) Complete provider report → owns check → verify → accept immediately.
+4) Complete provider report → owns check → verify (L1) → accept immediately.
 5) Incomplete/failed/stalled provider or failed verification retries once.
-6) A second fallback-eligible Grok availability failure starts one typed Codex
-   Sol high attempt; every other second failure becomes blocked.
+6) A second fallback-eligible writer failure may start one typed Codex Sol high
+   attempt; every other second failure blocks **that task only**.
+7) Depends_on of a blocked upstream is skipped (blocked cascade). Siblings and
+   other ready DAG branches continue. Run terminal-blocked only when no runnable
+   work remains (may still have accepted tasks).
 ```
 
 Required run dispatch fields are `RUN_DIR` and `PROJECT_CWD`. `lane-ctl start`
@@ -225,6 +228,7 @@ When **all** tasks in the run are accepted:
 
 ```bash
 run-validate --run-dir "$(pwd)/.agents/runs/<slug>" --phase pre-merge
+# L2 once: full or affected suite for the whole run (not per-task, not inside writer)
 ```
 
 ### Worktree path
@@ -273,13 +277,20 @@ generated STATUS view → suggest fresh orchestrator session (`/resume-project`)
 Writers remain run-scoped Grok sessions; supervision is one fresh
 `run-supervisor` per run, never one model agent per provider.
 
-## Recovery ladder
+## Recovery ladder (typed only — no PM nohup/async watchers)
 
-1. Same Grok lane + attempt-scoped retry after persisted backoff
-2. Integrated Codex Sol high fallback when runtime marks the Grok failure eligible
-3. Manual `codex-implementer` only after the typed controller blocks
-4. Before first start, amend the task; after start, create a replacement task
-5. `blocked` + STATUS note (then ask user only if business/irreversible)
+1. Same provider lane + attempt-scoped retry after persisted backoff (controller)
+2. Integrated Codex Sol high fallback when runtime marks the failure eligible
+3. `lane-supervisor` one-shot (status/verify/accept/cancel/retry)
+4. Manual `codex-implementer` only after the typed controller is terminal-blocked
+5. Before first start, amend the task; after start, create a replacement task
+6. Terminal `blocked` + STATUS note (ask user only if business/irreversible)
+
+## Silence protocol
+
+Idle supervisor or missing stage lines ≠ done. Read `controller.json` +
+`events.jsonl`. Re-dispatch one `run-supervisor` if stage is `running`/`degraded`
+and the controller is alive. Never start shell sleep/nohup monitors from the PM.
 
 ## TODOs vs runs
 
@@ -303,3 +314,7 @@ Ideas → **agent-todos**. Active build → this skill. Promote todo → run whe
     for every run, including micro; the PM must not run `run-controller
     start/watch/status` directly. The supervisor is not the lifecycle decision
     maker.
+11. **Partial block:** one task owns/verify failure does not freeze the run while
+    other tasks remain runnable.
+12. **Verify tiers:** L0 focused (writer) → L1 scoped (controller) → L2 once
+    (pre-merge/CI).

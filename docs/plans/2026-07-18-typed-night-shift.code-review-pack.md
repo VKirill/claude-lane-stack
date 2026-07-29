@@ -22,7 +22,6 @@ Typed Claude -> Grok -> Codex night orchestration: schema-v2 lane lifecycle, run
 - `agents/claude/lane-supervisor.md`
 - `agents/codex/instructions/reviewer.md`
 - `agents/codex/instructions/writer-emergency.md`
-- `agents/codex/reviewer.md`
 - `agents/codex/writer-emergency.md`
 - `agents/grok/writer.md`
 - `bin/check-owns-paths`

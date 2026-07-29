@@ -8,6 +8,10 @@ if [[ -z "$SLUG" ]]; then
   echo "Usage: wt-create <repo> <slug>" >&2
   exit 2
 fi
+if [[ ! "$SLUG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || [[ "$SLUG" == "." || "$SLUG" == ".." ]]; then
+  echo "wt-create: invalid run slug: $SLUG" >&2
+  exit 2
+fi
 
 REPO="$(cd "$REPO" && pwd)"
 cd "$REPO"
@@ -32,6 +36,11 @@ if ! grep -qxF '.worktrees/' "$EXCLUDE_FILE" 2>/dev/null; then
 fi
 
 if [[ -d "$WT_PATH" ]]; then
+  if [[ "$(git -C "$WT_PATH" rev-parse --show-toplevel 2>/dev/null || true)" != "$WT_PATH" ]] ||
+     [[ "$(git -C "$WT_PATH" symbolic-ref --short -q HEAD 2>/dev/null || true)" != "$BRANCH" ]]; then
+    echo "wt-create: stale directory is not a registered worktree for $BRANCH: $WT_PATH" >&2
+    exit 1
+  fi
   echo "Worktree already exists: $WT_PATH" >&2
   echo "WORKTREE_PATH=$WT_PATH"
   echo "BRANCH=$BRANCH"

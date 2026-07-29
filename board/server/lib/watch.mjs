@@ -65,6 +65,7 @@ export async function projectSignal(project) {
         await addStat(parts, path.join(attemptPath, 'control.json'));
         await addStat(parts, path.join(attemptPath, 'lane-bg.pid'));
         await addStat(parts, path.join(attemptPath, 'lane-bg.exit'));
+        await addStat(parts, path.join(attemptPath, 'runtime.json'));
         await addStat(parts, path.join(attemptPath, 'verification.json'));
       }
     }
@@ -83,7 +84,7 @@ export async function projectSignal(project) {
   const sessionLogPath = path.join(agentsPath, 'session-log');
   await addStat(parts, sessionLogPath);
   for (const entry of await readDirectory(sessionLogPath)) {
-    if (entry.isFile() && /^REVIEW-\d{4}-\d{2}-\d{2}\.md$/.test(entry.name)) {
+    if (entry.isFile() && /^REVIEW-\d{4}-\d{2}-\d{2}(?:\.failures\.json|\.md)$/.test(entry.name)) {
       await addStat(parts, path.join(sessionLogPath, entry.name));
     }
   }
@@ -101,6 +102,17 @@ export function createProjectWatcher({ getProjects, intervalMs = 5000 } = {}) {
   const signals = new Map();
   let timer = null;
   let polling = false;
+  let initialized = false;
+
+  function notify(projectId) {
+    for (const listener of listeners) {
+      try {
+        listener(projectId);
+      } catch (error) {
+        warn(`watch subscriber failed for ${projectId}`, error);
+      }
+    }
+  }
 
   async function poll() {
     if (polling) return;
@@ -113,19 +125,17 @@ export function createProjectWatcher({ getProjects, intervalMs = 5000 } = {}) {
         const nextSignal = await projectSignal(project);
         const previousSignal = signals.get(project.id);
         signals.set(project.id, nextSignal);
-        if (previousSignal !== undefined && previousSignal !== nextSignal) {
-          for (const listener of listeners) {
-            try {
-              listener(project.id);
-            } catch (error) {
-              warn(`watch subscriber failed for ${project.id}`, error);
-            }
-          }
+        if ((previousSignal === undefined && initialized) || (previousSignal !== undefined && previousSignal !== nextSignal)) {
+          notify(project.id);
         }
       }
       for (const id of signals.keys()) {
-        if (!knownIds.has(id)) signals.delete(id);
+        if (!knownIds.has(id)) {
+          signals.delete(id);
+          if (initialized) notify(id);
+        }
       }
+      initialized = true;
     } catch (error) {
       warn('project polling failed', error);
     } finally {

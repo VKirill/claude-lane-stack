@@ -50,6 +50,66 @@ test('emits a project refresh when a task state receipt changes', async () => {
   watcher.stop();
 });
 
+test('emits a project refresh when a night-review failure receipt changes', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-watch-review-failure-'));
+  fixtures.push(root);
+  const sessionLog = path.join(root, '.agents', 'session-log');
+  await mkdir(sessionLog, { recursive: true });
+  const receipt = path.join(sessionLog, 'REVIEW-2026-07-28.failures.json');
+  await writeFile(receipt, '{"failures":["first failure"]}\n');
+
+  const project = { id: 'fixture-project', name: 'fixture', path: root };
+  const refreshed = [];
+  const watcher = createProjectWatcher({ getProjects: async () => [project] });
+  watcher.subscribe((projectId) => refreshed.push(projectId));
+
+  await watcher.poll();
+  await writeFile(receipt, '{"failures":["a changed, longer failure"]}\n');
+  await watcher.poll();
+
+  assert.deepEqual(refreshed, ['fixture-project']);
+  watcher.stop();
+});
+
+test('emits refreshes when a project is added or removed after the initial poll', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-watch-project-list-'));
+  fixtures.push(root);
+  const project = { id: 'fixture-project', name: 'fixture', path: root };
+  let projects = [];
+  const refreshed = [];
+  const watcher = createProjectWatcher({ getProjects: async () => projects });
+  watcher.subscribe((projectId) => refreshed.push(projectId));
+
+  await watcher.poll();
+  projects = [project];
+  await watcher.poll();
+  projects = [];
+  await watcher.poll();
+
+  assert.deepEqual(refreshed, ['fixture-project', 'fixture-project']);
+  watcher.stop();
+});
+
+test('emits a project refresh when attempt runtime metadata changes', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-watch-attempt-runtime-'));
+  fixtures.push(root);
+  const attempt = path.join(root, '.agents', 'runs', 'demo', 'artifacts', '001', 'attempts', '01');
+  await mkdir(attempt, { recursive: true });
+  const runtime = path.join(attempt, 'runtime.json');
+  await writeFile(runtime, '{"provider":"claude"}\n');
+  const project = { id: 'fixture-project', name: 'fixture', path: root };
+  const refreshed = [];
+  const watcher = createProjectWatcher({ getProjects: async () => [project] });
+  watcher.subscribe((projectId) => refreshed.push(projectId));
+
+  await watcher.poll();
+  await writeFile(runtime, '{"provider":"codex","model":"gpt-5.6-sol"}\n');
+  await watcher.poll();
+
+  assert.deepEqual(refreshed, ['fixture-project']);
+  watcher.stop();
+});
+
 test('emits refreshes for controller, heartbeat, report, and current-attempt evidence', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'lane-board-watch-runtime-'));
   fixtures.push(root);

@@ -337,3 +337,10 @@ The fresh `review.json` is an identity-bound schema-v2 receipt, not only a model
 verdict. It records the task hash, current attempt, full base commit and exact
 reviewed diff/tree digests. `lane-ctl accept` recomputes the same state and
 rejects stale receipts or any post-review tracked/untracked mutation.
+
+## Partial block and dirt baseline
+
+- Controller stage `degraded`: some tasks blocked, others still runnable.
+- Terminal `blocked` only when every task is accepted or blocked.
+- `lane-ctl start` writes `dirt-baseline.json`; owns-check ignores foreign pre-existing dirt outside owns_paths.
+- Verification: L0 writer focused, L1 controller scoped, L2 pre-merge once.

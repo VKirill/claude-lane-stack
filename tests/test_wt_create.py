@@ -11,6 +11,26 @@ WT_CREATE = ROOT / "bin" / "wt-create"
 
 
 class WorktreeCreateTest(unittest.TestCase):
+    def init_repo(self, repo: Path) -> None:
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+        subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+            cwd=repo,
+            check=True,
+        )
+
     def test_uses_local_git_exclude_without_dirtying_tracked_gitignore(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             repo = Path(raw_tmp) / "repo"
@@ -54,6 +74,31 @@ class WorktreeCreateTest(unittest.TestCase):
                 check=True,
             ).stdout
             self.assertEqual(status, "")
+
+    def test_rejects_unsafe_slug_and_stale_worktree_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            repo = Path(raw_tmp) / "repo"
+            self.init_repo(repo)
+
+            unsafe = subprocess.run(
+                [str(WT_CREATE), str(repo), "../escape"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(unsafe.returncode, 2)
+            self.assertIn("invalid run slug", unsafe.stderr)
+
+            stale = repo / ".worktrees" / "demo"
+            stale.mkdir(parents=True)
+            result = subprocess.run(
+                [str(WT_CREATE), str(repo), "demo"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("not a registered worktree", result.stderr)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,10 @@ falling back to `kimi`.
 1. Read `RUN_DIR/run.yaml` only to confirm the run identity.
 2. Run one direct `run-controller start ... --provider WRITER_PROVIDER` command.
    It is idempotent and
-   returns the durable controller PID and evidence paths.
+   returns the durable controller PID and evidence paths. A previous
+   never-dispatched pre-dispatch validation failure is retried only after the
+   corrected contract passes the current validator; other terminal failures
+   remain fail-closed.
 3. Keep a "reported stages" map (task_id → stage), initially empty.
 4. Watch loop — repeat until the controller is terminal:
    a. Run one direct `run-controller watch --run-dir RUN_DIR --timeout 30`.
@@ -45,7 +48,22 @@ falling back to `kimi`.
 5. If watch returns `0`, run `run-controller status --run-dir RUN_DIR --json`
    once and return `accepted` with the controller receipt path.
 6. If watch returns `1`, run the same status command once and return `blocked`
-   with the exact task, reason, next action, and evidence path.
+   or `failed` with the exact task, current `last_event`, next action, and
+   evidence path. Trust `controller.json`, not an older append-only log line.
+   A run may end `blocked` with some tasks `accepted` (partial success).
+
+## Silence / non-idle rules (mandatory)
+
+- Every assistant turn while the run is non-terminal MUST issue exactly one
+  `run-controller watch` (or `status` then `watch`) tool call. Never end a turn
+  with prose like "waiting up to 30s" without the next watch call in the same
+  turn.
+- Do not idle, yield, or ask the PM to poll. If watch returns 2 (still running),
+  loop again immediately.
+- Terminal digest only when controller stage is `accepted`, `blocked`, or
+  `failed`. Stage `degraded` means some tasks are blocked but others remain
+  runnable — keep watching.
+- Partial task blocks are normal: the controller continues other DAG branches.
 
 ## Hard rules
 

@@ -25,7 +25,7 @@ TASK_SCHEMA_PATH = SCHEMAS / "task-v2.schema.json"
 RUN_SCHEMA_PATH = SCHEMAS / "run-v2.schema.json"
 TASK_REVIEW_SCHEMA_PATH = SCHEMAS / "task-review-receipt-v2.schema.json"
 DEFAULT_MAX_CHUNK_BYTES = 120_000
-DEFAULT_MAX_SOURCES = 200
+DEFAULT_MAX_SOURCES = 25
 UNRESOLVED = frozenset({"open", "needs_human", "in_progress"})
 RUNNABLE = frozenset({"open", "in_progress"})
 SEVERITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -49,7 +49,7 @@ class Source:
     sha: str | None = None
     task_id: str | None = None
     attempt: int | None = None
-    run_signature: tuple[str, str] | None = None
+    run_signatures: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -264,6 +264,8 @@ def load_checkpoint(repo: Path) -> dict[str, Any]:
         raise ReviewError("unsupported night-review checkpoint schema")
     if not isinstance(checkpoint.get("runs", {}), dict):
         raise ReviewError("night-review checkpoint runs must be an object")
+    if not isinstance(checkpoint.get("carry_over_after", ""), str):
+        raise ReviewError("night-review checkpoint carry_over_after must be a string")
     return checkpoint
 
 
@@ -297,13 +299,29 @@ def task_context(repo: Path, slug: str) -> tuple[str, str | None, int | None]:
 
 
 def commit_diff(repo: Path, sha: str) -> str:
+    paths = (
+        "--",
+        ".",
+        ":(top,exclude).agents/**",
+        ":(top,exclude).claude/**",
+        ":(top,exclude).wiki-backup/**",
+        ":(top,exclude).worker-ui-verifier-snapshots/**",
+        ":(top,exclude)AGENTS.md",
+        ":(top,exclude)CLAUDE.md",
+        ":(top,exclude)PROGRESS.md",
+        ":(top,exclude)LESSONS.md",
+        ":(top,exclude)INDEX.md",
+        ":(top,glob,exclude)**/package-lock.json",
+        ":(top,glob,exclude)**/pnpm-lock.yaml",
+        ":(top,glob,exclude)**/yarn.lock",
+    )
     parent = run_command(
         ["git", "-C", str(repo), "rev-parse", "--verify", f"{sha}^"],
         check=False,
     )
     if parent.returncode == 0:
-        return git(repo, "diff", "--no-ext-diff", f"{sha}^", sha, "--")
-    return git(repo, "show", "--format=", "--no-ext-diff", sha, "--")
+        return git(repo, "diff", "--no-ext-diff", f"{sha}^", sha, *paths)
+    return git(repo, "show", "--format=", "--no-ext-diff", sha, *paths)
 
 
 def commits_to_review(
@@ -315,11 +333,19 @@ def commits_to_review(
         if legacy.is_file():
             effective_since = legacy.read_text(encoding="utf-8").strip() or None
     if effective_since:
-        output = git(repo, "log", "--reverse", "--format=%H%x09%s", f"{effective_since}..HEAD")
+        output = git(
+            repo,
+            "log",
+            "--first-parent",
+            "--reverse",
+            "--format=%H%x09%s",
+            f"{effective_since}..HEAD",
+        )
     else:
         output = git(
             repo,
             "log",
+            "--first-parent",
             "--reverse",
             "--format=%H%x09%s",
             f"--since={day} 00:00:00",
@@ -350,57 +376,73 @@ def select_sources(
     since: str | None,
     checkpoint: dict[str, Any],
     finding_schema: dict[str, Any],
-) -> tuple[list[Source], str, dict[str, str]]:
+) -> tuple[list[Source], str, dict[str, str], list[str]]:
     head_sha = git(repo, "rev-parse", "HEAD")
     sources: list[Source] = []
     selected_runs: dict[str, str] = {}
     checkpoint_runs = checkpoint.get("runs", {})
+    run_contexts: dict[
+        str, list[tuple[str, str, str, str | None, int | None]]
+    ] = {}
+    commits = commits_to_review(repo, day, since, checkpoint)
+    commit_shas = {sha for sha, _ in commits}
 
-    for merge_path in sorted((repo / ".agents" / "runs").glob("*/MERGE.md")):
+    runs_root = repo / ".agents" / "runs"
+    run_dirs = sorted(runs_root.iterdir()) if runs_root.is_dir() else []
+    for run_dir in run_dirs:
+        if run_dir.is_symlink() or not run_dir.is_dir():
+            continue
+        merge_path = run_dir / "MERGE.md"
+        if merge_path.is_symlink() or not merge_path.is_file():
+            continue
         signature = hashlib.sha256(merge_path.read_bytes()).hexdigest()
-        slug = merge_path.parent.name
+        slug = run_dir.name
         if checkpoint_runs.get(slug) == signature:
             continue
         merge_text = merge_path.read_text(encoding="utf-8", errors="replace")
-        match = SHA_RE.search(merge_text)
-        sha = match.group(0).lower() if match else None
-        context, task_id, attempt = task_context(repo, slug)
-        diff = "_Merge commit unavailable._"
-        if sha:
+        sha = None
+        for candidate in reversed(SHA_RE.findall(merge_text)):
             verified = run_command(
-                ["git", "-C", str(repo), "rev-parse", "--verify", f"{sha}^{{commit}}"],
+                [
+                    "git",
+                    "-C",
+                    str(repo),
+                    "rev-parse",
+                    "--verify",
+                    f"{candidate}^{{commit}}",
+                ],
                 check=False,
             )
-            if verified.returncode == 0:
-                sha = verified.stdout.strip().lower()
-                diff = commit_diff(repo, sha)
-        content = (
-            f"Run: {slug}\n{context}\n\nMERGE.md:\n{merge_text}\n\n"
-            f"Diff:\n```diff\n{diff}\n```\n"
+            resolved = verified.stdout.strip().lower()
+            if verified.returncode == 0 and resolved in commit_shas:
+                sha = resolved
+                break
+        if sha is None:
+            continue
+        context, task_id, attempt = task_context(repo, slug)
+        run_contexts.setdefault(sha, []).append(
+            (slug, signature, f"Run: {slug}\n{context}\n\nMERGE.md:\n{merge_text}", task_id, attempt)
         )
-        sources.append(
-            Source(
-                kind="run",
-                key=slug,
-                content=content,
-                sha=sha,
-                task_id=task_id,
-                attempt=attempt,
-                run_signature=(slug, signature),
-            )
-        )
-        selected_runs[slug] = signature
 
-    for sha, subject in commits_to_review(repo, day, since, checkpoint):
+    for sha, subject in commits:
+        diff = commit_diff(repo, sha)
+        if not diff:
+            continue
         context = "_Task context unavailable._"
         task_id = None
         attempt = None
         micro = MICRO_RE.search(subject)
         if micro:
             context, task_id, attempt = task_context(repo, micro.group(1))
+        runs = run_contexts.get(sha, [])
+        if runs:
+            context += "\n\n" + "\n\n".join(item[2] for item in runs)
+            task_id = task_id or next((item[3] for item in runs if item[3]), None)
+            attempt = attempt or next((item[4] for item in runs if item[4]), None)
+            selected_runs.update((item[0], item[1]) for item in runs)
         content = (
             f"Commit: {sha}\nSubject: {subject}\n{context}\n\n"
-            f"Diff:\n```diff\n{commit_diff(repo, sha)}\n```\n"
+            f"Diff:\n```diff\n{diff}\n```\n"
         )
         sources.append(
             Source(
@@ -410,10 +452,14 @@ def select_sources(
                 sha=sha,
                 task_id=task_id,
                 attempt=attempt,
+                run_signatures=tuple((item[0], item[1]) for item in runs),
             )
         )
 
+    carry_over_after = checkpoint.get("carry_over_after")
     for fingerprint, finding in sorted(load_findings(repo, finding_schema).items()):
+        if carry_over_after and fingerprint <= carry_over_after:
+            continue
         if finding["status"] not in UNRESOLVED:
             continue
         content = (
@@ -432,7 +478,7 @@ def select_sources(
                 attempt=finding["source_attempt"],
             )
         )
-    return sources, head_sha, selected_runs
+    return sources, head_sha, selected_runs, [sha for sha, _ in commits]
 
 
 def split_text(text: str, max_bytes: int) -> list[str]:
@@ -1001,6 +1047,7 @@ def render_report(
     results: list[dict[str, Any]],
     findings: dict[str, dict[str, Any]],
     fix_run: Path | None,
+    remaining_sources: int,
 ) -> Path:
     report = repo / ".agents" / "session-log" / f"REVIEW-{day}.md"
     lines = [
@@ -1009,6 +1056,7 @@ def render_report(
         f"Repo: `{repo}`",
         f"Generated: {utc_now()}",
         f"Chunks: {len(chunks)}",
+        f"Remaining sources: {remaining_sources}",
         "",
         "## Chunk verdicts",
         "",
@@ -1138,13 +1186,48 @@ def review_repo(args: argparse.Namespace) -> int:
     finding_schema = load_schema(FINDING_SCHEMA_PATH)
     checkpoint = load_checkpoint(repo)
     try:
-        sources, head_sha, selected_runs = select_sources(
+        sources, head_sha, selected_runs, commit_shas = select_sources(
             repo, args.day, args.since, checkpoint, finding_schema
         )
-        if len(sources) > args.max_sources:
-            raise ReviewError(
-                f"selected {len(sources)} sources exceeds --max-sources {args.max_sources}"
+        all_sources = sources
+        sources = all_sources[: args.max_sources]
+        remaining_sources = len(all_sources) - len(sources)
+        next_commit = next(
+            (
+                source.sha
+                for source in all_sources[len(sources) :]
+                if source.kind == "commit"
+            ),
+            None,
+        )
+        if next_commit:
+            next_index = commit_shas.index(next_commit)
+            checkpoint_sha = commit_shas[next_index - 1]
+        else:
+            checkpoint_sha = head_sha
+        selected_run_keys = {
+            slug
+            for source in sources
+            for slug, _ in source.run_signatures
+        }
+        selected_runs = {
+            slug: signature
+            for slug, signature in selected_runs.items()
+            if slug in selected_run_keys
+        }
+        selected_carry_overs = [
+            source.key for source in sources if source.kind == "carry_over"
+        ]
+        carry_overs_remain = any(
+            source.kind == "carry_over" for source in all_sources[len(sources) :]
+        )
+        carry_over_after = checkpoint.get("carry_over_after")
+        if selected_carry_overs:
+            carry_over_after = (
+                selected_carry_overs[-1] if carry_overs_remain else None
             )
+        elif not carry_overs_remain:
+            carry_over_after = None
         chunks = build_chunks(sources, args.max_chunk_bytes)
     except ReviewError as exc:
         if args.dry_run:
@@ -1154,12 +1237,44 @@ def review_repo(args: argparse.Namespace) -> int:
         raise
 
     if not chunks:
+        if not args.dry_run:
+            runs = dict(checkpoint.get("runs", {}))
+            runs.update(selected_runs)
+            try:
+                atomic_write_json(
+                    checkpoint_path(repo),
+                    {
+                        "schema_version": 1,
+                        "head_sha": checkpoint_sha,
+                        "reviewed_at": utc_now(),
+                        "runs": runs,
+                        "chunks": [],
+                        **(
+                            {"carry_over_after": carry_over_after}
+                            if carry_over_after
+                            else {}
+                        ),
+                    },
+                )
+                legacy_marker = (
+                    repo / ".agents" / "session-log" / ".night-review-last"
+                )
+                atomic_write_text(legacy_marker, checkpoint_sha + "\n")
+                (
+                    repo
+                    / ".agents"
+                    / "session-log"
+                    / f"REVIEW-{args.day}.failures.json"
+                ).unlink(missing_ok=True)
+            except OSError as exc:
+                write_failure(repo, args.day, [str(exc)])
+                raise ReviewError(f"post-review persistence failed: {exc}") from exc
         print("nothing to review")
         return 0
     if args.dry_run:
         print(
             f"Night review dry-run: sources={len(sources)} chunks={len(chunks)} "
-            f"max_bytes={args.max_chunk_bytes}"
+            f"remaining={remaining_sources} max_bytes={args.max_chunk_bytes}"
         )
         for chunk in chunks:
             print(f"\n===== {chunk.chunk_id} bytes={len(chunk.prompt.encode('utf-8'))} =====")
@@ -1187,7 +1302,15 @@ def review_repo(args: argparse.Namespace) -> int:
             finding_schema,
         )
         findings = load_findings(repo, finding_schema)
-        report = render_report(repo, args.day, chunks, results, findings, fix_run)
+        report = render_report(
+            repo,
+            args.day,
+            chunks,
+            results,
+            findings,
+            fix_run,
+            remaining_sources,
+        )
         render_open_projection(repo, findings)
         render_todos(repo, findings)
         runs = dict(checkpoint.get("runs", {}))
@@ -1196,21 +1319,29 @@ def review_repo(args: argparse.Namespace) -> int:
             checkpoint_path(repo),
             {
                 "schema_version": 1,
-                "head_sha": head_sha,
+                "head_sha": checkpoint_sha,
                 "reviewed_at": utc_now(),
                 "runs": runs,
                 "chunks": [chunk.chunk_id for chunk in chunks],
+                **(
+                    {"carry_over_after": carry_over_after}
+                    if carry_over_after
+                    else {}
+                ),
             },
         )
         legacy_marker = repo / ".agents" / "session-log" / ".night-review-last"
         try:
-            atomic_write_text(legacy_marker, head_sha + "\n")
+            atomic_write_text(legacy_marker, checkpoint_sha + "\n")
         except OSError as exc:
             print(f"night-review: warning: legacy marker write failed: {exc}", file=sys.stderr)
+        (
+            repo / ".agents" / "session-log" / f"REVIEW-{args.day}.failures.json"
+        ).unlink(missing_ok=True)
     except (OSError, ReviewError) as exc:
         write_failure(repo, args.day, [str(exc)])
         raise ReviewError(f"post-review persistence failed: {exc}") from exc
-    print(f"wrote {report}")
+    print(f"wrote {report} remaining={remaining_sources}")
     if fix_run:
         print(f"compiled {fix_run}")
     else:

@@ -5,6 +5,7 @@
   "attempt": 1,
   "provider_exit": 0,
   "report": "complete",
+  "report_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "owns_check": "passed",
   "verification": "passed",
   "review": "not_required",

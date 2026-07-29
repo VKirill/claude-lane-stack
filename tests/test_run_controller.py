@@ -763,6 +763,10 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(task["provider"], "codex")
         self.assertEqual(task["model"], "gpt-5.6-sol")
         self.assertEqual(task["stage"], "accepted")
+        outcome = json.loads(
+            (self.run_dir / "artifacts" / "001" / "outcome.json").read_text()
+        )
+        self.assertEqual(outcome["attempts"], 3)
 
     def test_duplicate_controller_lock_fails_fast(self) -> None:
         self.write_run(provider_slots=1)
@@ -1024,6 +1028,7 @@ class RunControllerTest(unittest.TestCase):
         assert watch is not None
         self.assertEqual(watch.returncode, 0, watch.stderr)
         self.assertEqual(json.loads(watch.stdout)["stage"], "accepted")
+        self.assertTrue((self.run_dir / "controller" / "lane-bg.exit").is_file())
 
     def test_watch_exit_codes_are_read_only_and_timeout_is_bounded(self) -> None:
         receipt_path = self.run_dir / "controller.json"
@@ -1292,6 +1297,90 @@ class RunControllerTest(unittest.TestCase):
             [{"action": "start", "task_id": "001"}],
         )
 
+    def test_start_retries_corrected_pre_dispatch_controller_failure(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        failed_env = self.env()
+        failed_env["FAKE_VALIDATE_FAIL"] = "1"
+        failed = subprocess.run(
+            [
+                str(CONTROLLER),
+                "run",
+                "--run-dir",
+                str(self.run_dir),
+                "--lane-ctl",
+                str(self.fake_lane_ctl),
+                "--check-owns-paths",
+                str(self.fake_owns),
+                "--run-validate",
+                str(self.fake_run_validate),
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=failed_env,
+            check=False,
+            timeout=3,
+        )
+        self.assertEqual(failed.returncode, 1)
+        self.assertEqual(
+            json.loads((self.run_dir / "controller.json").read_text())["stage"],
+            "failed",
+        )
+
+        retried = subprocess.run(
+            [
+                str(CONTROLLER),
+                "start",
+                "--run-dir",
+                str(self.run_dir),
+                "--lane-ctl",
+                str(self.fake_lane_ctl),
+                "--check-owns-paths",
+                str(self.fake_owns),
+                "--run-validate",
+                str(self.fake_run_validate),
+                "--lane-bg",
+                str(ROOT / "bin" / "lane-bg"),
+                "--poll-interval",
+                "0.01",
+                "--retry-backoff",
+                "0",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.env(),
+            check=False,
+            timeout=3,
+        )
+
+        self.assertEqual(retried.returncode, 0, retried.stderr)
+        watch = subprocess.run(
+            [
+                str(CONTROLLER),
+                "watch",
+                "--run-dir",
+                str(self.run_dir),
+                "--timeout",
+                "5",
+                "--poll-interval",
+                "0.02",
+                "--json",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=6,
+        )
+        self.assertEqual(watch.returncode, 0, watch.stderr)
+        self.assertEqual(json.loads(watch.stdout)["stage"], "accepted")
+        self.assertEqual(
+            len(list((self.run_dir / "controller").glob("controller.failed.*.json"))),
+            1,
+        )
+
     def test_durable_status_error_writes_failed_receipt_and_watch_returns_one(self) -> None:
         self.write_run(provider_slots=1)
         self.write_task("001")
@@ -1450,6 +1539,102 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(maximum, 1)
         receipt = json.loads((self.run_dir / "controller.json").read_text())
         self.assertEqual(receipt["stage"], "accepted")
+
+
+    def test_partial_block_sibling_continues_after_owns_fail(self) -> None:
+        """One task owns-blocks; independent sibling still accepts; run not frozen early."""
+        self.write_run(provider_slots=2)
+        self.write_task("001")
+        self.write_task("002")
+        self.write_task("003", ["001"])
+        # 002 fails owns immediately; 001 and then 003 should still complete.
+        self.fake_owns.write_text(
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env python3
+                import json
+                import os
+                import sys
+                from pathlib import Path
+
+                task_id = None
+                for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+                    if line.startswith("id:"):
+                        task_id = line.split(":", 1)[1].strip().strip("'\\\"")
+                        break
+                with Path(os.environ["FAKE_CTL_LOG"]).open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps({"action": "owns", "task_id": task_id}) + "\\n")
+                if task_id == "002":
+                    print("FAIL outside owns_paths: foreign.txt", file=sys.stderr)
+                    raise SystemExit(1)
+                """
+            ),
+            encoding="utf-8",
+        )
+        self.fake_owns.chmod(0o755)
+        self.fake_plan.write_text(
+            json.dumps({"finish_after": {"001": 1, "002": 1, "003": 1}}),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["tasks"]["002"]["stage"], "blocked")
+        self.assertEqual(receipt["tasks"]["001"]["stage"], "accepted")
+        self.assertEqual(receipt["tasks"]["003"]["stage"], "accepted")
+        self.assertEqual(receipt["stage"], "blocked")
+        self.assertEqual(receipt["counts"]["accepted"], 2)
+        self.assertEqual(receipt["counts"]["blocked"], 1)
+        actions = self.actions()
+        self.assertIn({"action": "start", "task_id": "003"}, actions)
+        self.assertIn({"action": "accept", "task_id": "001"}, actions)
+        self.assertIn({"action": "accept", "task_id": "003"}, actions)
+
+    def test_blocked_upstream_cascades_to_dependent(self) -> None:
+        """Dependent of a blocked task is skipped as blocked, not left pending forever."""
+        self.write_run(provider_slots=2)
+        self.write_task("001")
+        self.write_task("002", ["001"])
+        self.fake_owns.write_text(
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env python3
+                import json
+                import os
+                import sys
+                from pathlib import Path
+
+                task_id = None
+                for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+                    if line.startswith("id:"):
+                        task_id = line.split(":", 1)[1].strip().strip("'\\\"")
+                        break
+                with Path(os.environ["FAKE_CTL_LOG"]).open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps({"action": "owns", "task_id": task_id}) + "\\n")
+                if task_id == "001":
+                    print("FAIL owns", file=sys.stderr)
+                    raise SystemExit(1)
+                """
+            ),
+            encoding="utf-8",
+        )
+        self.fake_owns.chmod(0o755)
+        self.fake_plan.write_text(
+            json.dumps({"finish_after": {"001": 1, "002": 1}}),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["tasks"]["001"]["stage"], "blocked")
+        self.assertEqual(receipt["tasks"]["002"]["stage"], "blocked")
+        self.assertEqual(receipt["stage"], "blocked")
+        actions = self.actions()
+        self.assertNotIn({"action": "start", "task_id": "002"}, actions)
 
 
 if __name__ == "__main__":

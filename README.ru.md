@@ -4,15 +4,15 @@
 
 # 🏭 Claude Lane Stack
 
-### Маленький ИИ-завод для одного человека · **v1.6.0**
+### Маленький ИИ-завод для одного человека · **v1.11.1**
 
 **Мульти-агентная оркестрация для Claude Code** — вы говорите с одним ИИ-менеджером проекта,
-он ведёт долговечные задачи AGY или Grok до приёмки, **сам мержит готовый код в
+он ведёт долговечные задачи Kimi, Qwen, AGY или Grok до приёмки, **сам мержит готовый код в
 `main`**, а независимое ревью/исправление выполняет ночью. Без пяти чатов. Без
 ручных merge.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.11.1)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Старт-Гайд%20для%20новичков-brightgreen)](docs/BEGINNER.ru.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -104,8 +104,10 @@ flowchart LR
 **Модели Codex:** только GPT-**5.6** — **Sol** (ревью / deep / high-risk), **Terra** (обычный write / docs), **Luna** (мелочь). Без 5.5. См. [docs/ROUTING.md](docs/ROUTING.md).
 
 > [!NOTE]
-> **Обязателен только Claude Code.** Остальное опционально — `agents-doctor` подстроит профиль, вплоть до `claude-only`.
-> Для пишущих AGY/Grok-лейнов на Linux также нужен `bubblewrap` (`sudo apt install
+> **Claude Code — единственный обязательный ИИ-CLI.** На хосте также нужны Git,
+> Python 3 с PyYAML/jsonschema, Node.js, rsync и `flock`. Остальные writer-CLI опциональны:
+> `agents-doctor` подстроит профиль вплоть до `claude-only`.
+> Для пишущих Kimi/Qwen/AGY/Grok-лейнов на Linux также нужен `bubblewrap` (`sudo apt install
 > bubblewrap` в Ubuntu): он обеспечивает read-only границу для `.agents`.
 
 ---
@@ -115,7 +117,7 @@ flowchart LR
 ```bash
 # 1️⃣  Установить завод — один раз на машину
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.6.0 # или main
+cd claude-lane-stack && git checkout v1.11.1 # или main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 
@@ -138,7 +140,7 @@ claude --agent dev-orchestrator
 > [!IMPORTANT]
 > `/resume-project` — это «с возвращением», **не** шаг установки.
 
-📖 Гайд: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)** · Релиз: **[v1.6.0](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0)**
+📖 Гайд: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)** · Релиз: **[v1.11.1](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.11.1)**
 
 ---
 
@@ -197,13 +199,13 @@ run-controller status --run-dir "$RUN_DIR" --json
 | **`lane-ctl`** | start/status/events/tail/retry/cancel/verify/accept |
 | **`lane-bg`** | transient user-systemd service; явный nohup fallback |
 | **`lane-exec`** | idle/max на **отцепленном** процессе |
-| **`lane-session`** | продолжает контекст AGY/Grok; provider-пул 5 по умолчанию, максимум 10 |
+| **`lane-session`** | продолжает контекст writer-лейна; provider-пул 5 по умолчанию, максимум 10 |
 
 Один read-only `run-supervisor` остаётся видимым до accepted/blocked;
 `lane-supervisor` теперь служит для одиночной диагностики. Verify-пул отдельный,
 2 по умолчанию, максимум 10. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md)
 
-AGY и Grok больше не изучают репозиторий заново перед каждой задачей одного run.
+Writer-лейны больше не изучают репозиторий заново перед каждой задачей одного run.
 Первая задача создаёт conversation, следующие связанные задачи продолжают её.
 Занятая conversation не используется одновременно: параллельная задача получает
 другой слот (5 по умолчанию, настраивается 1–10). По умолчанию сессия ротируется после семи успешных задач,
@@ -251,7 +253,7 @@ schema_version: 2
 id: "001"
 title: Add dark mode
 risk: low
-lane: grok # по умолчанию; agy поддерживается
+lane: kimi # по умолчанию; qwen, grok и agy поддерживаются
 project_cwd: /absolute/path/to/worktree
 read_first: [AGENTS.md]
 interfaces: ["ThemeToggle(settings)"]
@@ -339,7 +341,9 @@ verification:
 
 | Профиль | Есть | Пишет | Ревью |
 |---------|------|-------|-------|
-| `full` | AGY и/или Grok + Codex | Grok по умолчанию; AGY выбирается | Codex Sol |
+| `full` | Любой writer CLI + Codex | Kimi по умолчанию; Qwen/Grok/AGY выбираются | Codex Sol |
+| `claude-kimi` | Kimi | Kimi | Claude |
+| `claude-qwen` | Qwen | Qwen | Claude |
 | `claude-agy` | AGY | AGY | Claude |
 | `claude-grok` | Grok | Grok | Claude |
 | `claude-codex` | Codex | Codex Terra/Sol | Codex Sol |
@@ -452,7 +456,7 @@ service. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md). После апдейта
 | 📝 Идеи | [docs/TODOS.md](docs/TODOS.md) |
 | 🔌 MCP | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Релиз v1.6.0 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.6.0) |
+| 🚀 Релиз v1.11.1 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.11.1) |
 
 ---
 

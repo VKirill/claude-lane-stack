@@ -12,13 +12,18 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.
 5. **One visible supervisor per run.** `run-supervisor` watches one durable
    deterministic controller; AGY or Grok resumes only the writer session pool owned by
-   that run and rotates after seven successful tasks.
+   that run and rotates after seven successful tasks. **Never** one Claude
+   subagent per writer process.
 6. **Receipts are truth.** Task YAML is immutable; `state.json` drives live
-   STATUS/BOARD and only `acceptance.json` means done.
+   STATUS/BOARD and only `acceptance.json` means done. Chat/idle is not status —
+   read `controller.json` / `events.jsonl` on silence.
 7. **Stall is recoverable.** No heartbeat → stalled → re-dispatch or other lane.
-8. **Durable progressive accept.** `run-controller` dispatches detached AGY/Grok
+8. **Durable progressive accept.** `run-controller` dispatches detached writer
    processes, reacts to receipts, and accepts each ready task without waiting
    for the slowest concurrent lane. The controller survives Claude restarts.
+   **Partial block:** one task blocked (owns/verify/provider) does not freeze
+   siblings; dependents of a blocked upstream are skipped; the run is terminal
+   blocked only when no runnable work remains.
 9. **Bounded pools.** Provider default 5/max 10; verification default 2/max 10.
 10. **Fail-closed ship.** Commit, validation, finalize, then push; branch and
     worktree stay recoverable on any failure.
@@ -33,6 +38,20 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
     dispatching the run. Repeated identical hand-fixes are process loss; the
     third occurrence of the same fix is a control-plane defect and must be
     recorded as a canonical finding.
+
+### Verification tiers
+
+| Tier | Owner | Scope |
+|------|-------|-------|
+| L0 | Writer process | Focused tests while coding |
+| L1 | Controller `lane-ctl verify` | Task `verification[]` (scoped) |
+| L2 | PM pre-merge / CI | One full or affected suite per run |
+
+### Roles (do not invent variants)
+
+PM (dev-orchestrator) → one run-supervisor → durable run-controller → process
+writers. Recovery: controller retry → typed Codex fallback → lane-supervisor
+one-shot → codex-implementer. No PM nohup/async ad-hoc monitors.
 
 Daytime: micro/medium ship fast with exact checks and **no daytime LLM review**.
 Night: `night-shift` performs typed Codex Sol

@@ -8,6 +8,7 @@ const state = {
   boardFilters: new Map(),
   runSelections: new Map(),
   todoSelection: 0,
+  cacheVersion: 0,
 };
 
 function asArray(value) {
@@ -62,9 +63,11 @@ export function getTodoSelection() {
 
 export async function loadProjects(force = false) {
   if (!force && state.projects.length > 0) return state.projects;
+  const cacheVersion = state.cacheVersion;
   const payload = await api.projects();
-  state.projects = readProjects(payload);
-  return state.projects;
+  const projects = readProjects(payload);
+  if (cacheVersion === state.cacheVersion) state.projects = projects;
+  return projects;
 }
 
 export function getProjects() {
@@ -75,20 +78,24 @@ export async function loadProject(projectId, scope = getScope(projectId), force 
   const normalizedScope = scope === "all" ? "all" : "recent";
   const key = `${projectId}:${normalizedScope}`;
   if (!force && state.projectCache.has(key)) return state.projectCache.get(key);
+  const cacheVersion = state.cacheVersion;
   const payload = await api.project(projectId, normalizedScope);
-  state.projectCache.set(key, payload || {});
-  return payload || {};
+  const project = payload || {};
+  if (cacheVersion === state.cacheVersion) state.projectCache.set(key, project);
+  return project;
 }
 
 export async function loadReviews(projectId, force = false) {
   if (!force && state.reviewsCache.has(projectId)) return state.reviewsCache.get(projectId);
+  const cacheVersion = state.cacheVersion;
   const payload = await api.reviews(projectId);
   const reviews = asArray(payload && payload.reviews);
-  state.reviewsCache.set(projectId, reviews);
+  if (cacheVersion === state.cacheVersion) state.reviewsCache.set(projectId, reviews);
   return reviews;
 }
 
 export function invalidate() {
+  state.cacheVersion += 1;
   state.projectCache.clear();
   state.reviewsCache.clear();
 }

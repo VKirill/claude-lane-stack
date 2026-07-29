@@ -236,13 +236,18 @@ export async function startLaneBoardServer({
 } = {}) {
   const { server, watcher } = createLaneBoardServer(options);
   await watcher.start();
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(Number.isInteger(port) && port > 0 ? port : 4311, host, () => {
-      server.off('error', reject);
-      resolve();
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(Number.isInteger(port) && port > 0 ? port : 4311, host, () => {
+        server.off('error', reject);
+        resolve();
+      });
     });
-  });
+  } catch (error) {
+    watcher.stop();
+    throw error;
+  }
   return { server, watcher };
 }
 
