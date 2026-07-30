@@ -126,6 +126,69 @@ def scope_error(raw: str) -> str | None:
     return None
 
 
+_SPEC_STUB_MARKERS = (
+    "record interfaces, invariants, constraints, and the definition of done here",
+    "replace_me one paragraph",
+    "replace_me stable apis",
+    "replace_me what must keep working",
+    "replace_me explicit non-goals",
+    "replace_me observable acceptance",
+)
+
+_HEAVY_FULL_PACKAGE = re.compile(
+    r"(?:^|[;&|]\s*)(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:build|test)(?:\s|$)",
+    re.I,
+)
+
+
+def spec_document_errors(run_dir: Path, run: dict[str, Any], task_count: int) -> list[str]:
+    """Reject template SPEC stubs when the run is non-trivial."""
+    score = run.get("score", 0)
+    try:
+        score_n = int(score)
+    except (TypeError, ValueError):
+        score_n = 0
+    required = score_n >= 7 or task_count >= 2
+    if not required:
+        return []
+    path = run_dir / "SPEC.md"
+    if not path.is_file():
+        return ["SPEC.md is required when score≥7 or the run has ≥2 tasks"]
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return [f"SPEC.md cannot be read: {exc}"]
+    lowered = text.lower()
+    for marker in _SPEC_STUB_MARKERS:
+        if marker in lowered:
+            return [
+                "SPEC.md is still a template stub — fill Goal, Interfaces, "
+                "Invariants, Out of scope, and Definition of done (English)"
+            ]
+    # Body after headings must carry substance
+    body = re.sub(r"(?m)^#.*$", "", text).strip()
+    body = re.sub(r"(?m)^Project working directory:.*$", "", body).strip()
+    if len(body) < 160:
+        return [
+            "SPEC.md is too thin for a multi-task or score≥7 run "
+            f"(need substantive English contract, got {len(body)} chars of body)"
+        ]
+    return []
+
+
+def verification_is_heavy_full_package(command: str) -> bool:
+    """True for unscoped package build/test used as L1 on multi-task runs."""
+    cmd = command.strip()
+    if not _HEAVY_FULL_PACKAGE.search(cmd):
+        return False
+    # Path-scoped test runners after -- are focused L1, not full-package green.
+    if " -- " in f" {cmd} " or re.search(r"\s--\s+\S", cmd):
+        return False
+    if re.search(r"(test:unit|vitest|jest).+\.(ts|tsx|js|mjs|cjs|py)\b", cmd, re.I):
+        return False
+    return True
+
+
 def placeholder_locations(value: Any, prefix: str = "") -> list[str]:
     locations: list[str] = []
     if isinstance(value, str) and "REPLACE_ME" in value:
@@ -374,22 +437,33 @@ def validate_run(run_dir: Path, phase: str) -> int:
                 errors.append(
                     f"task {task_id}: verification[{index}].timeout_sec must be 1-{MAX_VERIFICATION_TIMEOUT}"
                 )
-            # L1 should stay focused. Full-suite L2 belongs once at pre-merge/CI.
-            command_text = str(verification.get("command") or "")
-            heavy = timeout > 900 or bool(
-                re.search(
-                    r"(^|[;&|]\s*)(npm test|pnpm test|yarn test|pytest\s*$|cargo test\s*$)",
-                    command_text,
-                    re.I,
+            # L1 heaviness is evaluated after all tasks are known (see below).
+
+    # Multi-task L1 must stay focused. Use final task count (not mid-loop size).
+    if phase == "pre-dispatch" and len(tasks) > 1:
+        score = run.get("score", 0)
+        try:
+            score_n = int(score)
+        except (TypeError, ValueError):
+            score_n = 0
+        for task_id, task in task_entries:
+            for index, verification in enumerate(task["verification"]):
+                command_text = str(verification.get("command") or "")
+                timeout = verification["timeout_sec"]
+                heavy = timeout > 900 or verification_is_heavy_full_package(
+                    command_text
                 )
-            )
-            if heavy and len(task_files) > 1 and phase == "pre-dispatch":
-                print(
-                    f"run-validate: WARN task {task_id} verification[{index}] looks like "
-                    f"a heavy full suite (timeout={timeout}); prefer focused L1 per task "
-                    f"and one L2 suite at pre-merge/CI",
-                    file=sys.stderr,
+                if not heavy:
+                    continue
+                msg = (
+                    f"task {task_id}: verification[{index}] looks like an unscoped "
+                    f"full-package build/test (timeout={timeout}) — use focused L1 "
+                    f"paths/suites; full suite is L2 once at pre-merge"
                 )
+                if score_n >= 7:
+                    errors.append(msg)
+                else:
+                    print(f"run-validate: WARN {msg}", file=sys.stderr)
 
     owners = [
         (task_id, scope)
@@ -419,6 +493,8 @@ def validate_run(run_dir: Path, phase: str) -> int:
                 )
 
     errors.extend(dependency_errors(tasks))
+    if phase == "pre-dispatch":
+        errors.extend(spec_document_errors(run_dir, run, len(tasks)))
     if phase == "pre-merge":
         errors.extend(
             validate_acceptances(

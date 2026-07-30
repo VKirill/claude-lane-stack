@@ -194,7 +194,11 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 | gitnexus | discovery for task YAML |
 | Agent → run-supervisor | durable start + bounded watch until accepted/blocked; no source writes |
 | Agent → lane-supervisor | one typed diagnostic/recovery action; no source writes |
-| Qwen process / Codex fallback process | normal write / one typed Sol high recovery write |
+| Kimi/Qwen/… process / Codex fallback | normal write / one typed Sol high recovery write |
+
+**Task authoring:** follow skill `orchestrator-lanes` decomposition +
+`lane-contract` owns/L1 checklist. Owns-fail on only `.npm-cache` → re-verify,
+never expand owns with caches.
 | Agent → **codex-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **codex-docs-maintainer** | nightly docs (`terra` high) |
 | codex-implementer | write: terra medium/high by risk; sol **high** if high-risk; **xhigh only escalate** |
@@ -208,10 +212,12 @@ be delegated to a writer or typed recovery lane.
 ## Loop
 
 0. Cold start → `resume-project`
-1. Score · 2. `run-init`, replace strict task placeholders, split the DAG, then
-`run-validate --phase pre-dispatch` ·
+1. Score · 2. **Decompose** (skill orchestrator-lanes: one outcome per task;
+minimal unlock tasks for depends_on; never glue feature rewrite + mass delete) ·
+3. `run-init`, fill **PLAN + real SPEC** (not stub when score≥7 or ≥2 tasks),
+replace task placeholders, then `run-validate --phase pre-dispatch` ·
 1a. score 0–2 & low risk & ≤2 files & no `high_risk_paths` → **Micro path**:
-one strict **Qwen** task, same receipts, commit main — keep generated docs short.
+one strict writer task, same receipts, commit main — keep generated docs short.
 3. `wt-create` if needed ·
 4. Dispatch exactly one `run-supervisor` for the run, passing `PM_NAME=dev-orchestrator`
 so it can stream progress. It starts/resumes the durable controller and does not

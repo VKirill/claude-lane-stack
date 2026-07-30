@@ -1,3 +1,9 @@
+### PM decomposition skill + pre-dispatch gates (2026-07-30)
+
+- Professional `orchestrator-lanes` + `lane-contract`: one-outcome tasks, unlock vs feature, owns completeness, owns-noise recovery (never cache-in-owns).
+- `run-validate`: reject stub SPEC when score≥7 or ≥2 tasks; reject unscoped full-package L1 on multi-task score≥7.
+- SPEC template structured (Goal/Interfaces/Invariants/Out of scope/Done).
+
 ### Codex effort budget (2026-07-30)
 
 - Default Codex reasoning is **high** (or **medium** for low-risk / minimal onboard), not xhigh.

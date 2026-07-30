@@ -279,3 +279,7 @@ claim, or a `status: done` line in legacy YAML is not sufficient for schema v2.
 
 - Task ids: `001`, `002` (sort = plan order). 
 - Never put secrets in YAML.
+
+## Task decomposition (PM)
+
+See skill `orchestrator-lanes`: one product outcome per task; minimal unlock tasks for `depends_on`; L1 focused verification; never put package caches in `owns_paths`. SPEC.md must be filled when score≥7 or the run has ≥2 tasks (`run-validate` enforces).

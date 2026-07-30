@@ -1,15 +1,18 @@
 ---
 name: orchestrator-lanes
-description: Solo file-based multi-lane orchestration. Durable switchable AGY/Grok controller, no daytime LLM review, nightly Codex review/fix, PM auto-merges to main.
+description: Solo file-based multi-lane orchestration. Durable switchable Kimi/Qwen/AGY/Grok controller, no daytime LLM review, nightly Codex review/fix, PM auto-merges to main. Use when planning runs, splitting DAGs, dispatching writers, recovering blocked tasks, or shipping to main.
 ---
 
 # Orchestrator lanes — solo operator
 
 Load: **karpathy-guidelines**, **lane-contract**, **project-memory**, **resume-project**.
 
-Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md` under `/home/ubuntu/.agents/docs/`.
+Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md`,
+`docs/decisions/ADR-codex-effort.md` under the lane-stack / `~/.agents/docs/`.
 
 You are the **only** person who merges to `main`. Human never merges.
+
+---
 
 ## Phase 0 — Score (announce once)
 
@@ -17,304 +20,206 @@ You are the **only** person who merges to `main`. Human never merges.
 
 | Score | Path |
 |------:|------|
-| 0–2 | Micro: 1 short generated contract, no heartbeat/reviewer, **commit main** |
+| 0–2 | Micro: 1 short contract, **commit main** |
 | 3–6 | Express: 1 task, dispatch, verify, **commit/merge main** |
-| 7–8 | Brief: 2–4 tasks, PLAN.md, worktree if ≥2 writes |
-| 9–10 | Full: SPEC + DAG + worktree |
+| 7–8 | Brief: 2–4 tasks, **filled** PLAN + SPEC, worktree if ≥2 writes |
+| 9–10 | Full: rich SPEC + DAG + worktree |
 | 11+ | Split feature; ask user |
 
-### Micro path (score 0–2)
+Default daytime writer: **kimi** (or project `main_write`). Codex = recovery / night review / onboard / docs only.
 
-Trigger: score 0–2 **and** risk low **and** ≤2 files **and** no
-`high_risk_paths` (auth/pay/schema/migrations/security).
+---
 
-Keeps generated schema-v2 PLAN/SPEC/STATUS files short; skips worktree,
-heartbeat ceremony, and reviewer.
+## Task decomposition (MUST — non-negotiable)
 
-Keeps: strict task YAML from `run-init`, pre-dispatch validation, `lane-bg` for
-the CLI call, exactly one `Agent(run-supervisor)` that starts/watches the
-controller until terminal, `check-owns-paths`, independent verify,
-`lane-ctl accept`, and PM commit to main. The PM never runs `run-controller
-start/watch/status` directly, including on the micro path.
+Bad multi-task runs almost always start here. Apply **before** `run-init` / before filling YAML.
 
-Micro commit format: `<type>(<area>): <title> [micro:<slug>]`.
+### One outcome per task
 
-Default writer is Grok 4.5; AGY `gemini-3.6-flash-high` remains selectable with
-`--provider agy`. The controller retries the selected provider once after a persisted
-backoff; a second classified model/catalog/quota/auth/transport failure uses one
-integrated `gpt-5.6-sol` + `high` Codex attempt through the same receipt chain.
+| Rule | Do | Don't |
+|------|----|--------|
+| Single product outcome | One shippable behavior per task id | Bundle “rewrite feature A” + “delete subsystem B” in one task |
+| Unlock vs feature | Minimal **decouple** task if B must compile without A’s modules | Make a large feature rewrite block a pure deletion DAG edge |
+| Risk class | Keep similar risk/blast in one task | Mix low UI polish with high auth/schema in one YAML |
+| Owns completeness | Every file the objective **must** touch is in `owns_paths` (companions included) | Rely on OFF-SPEC edits (“I had to touch intent_qa”) |
+| depends_on | Only real compile/data edges | “002 waits on 001 because the chat summary listed them in order” |
 
-Target latency: < 3 minutes word-to-commit.
+### Patterns
+
+```text
+# Good — unlock then delete then optional feature
+001-decouple  owns: callers that import doomed modules
+002-delete    depends_on: [001]   owns: modules + routes to remove
+003-ui        depends_on: []      parallel if disjoint owns
+004-feature   depends_on: [] or [001]  new behavior (e.g. SERP v4) — separate outcome
+
+# Bad — combos that stall ships
+001 = full SERP rewrite + remove all structure imports  → 002 waits on unrelated SERP work
+001 owns missing companion files the prompt forces the writer to edit
+```
+
+### Size budgets (soft, then hard)
+
+| Signal | Action |
+|--------|--------|
+| `owns_paths` ≥ 12 entries **or** objective > ~80 lines | Prefer split |
+| Two independent user-visible outcomes | Prefer two tasks or two runs |
+| Delete fan-out + new algorithm | **Always** split (delete DAG ≠ greenfield feature) |
+
+### Parallelism
+
+- Parallel only with **disjoint** `owns_paths` (and disjoint runtime side effects when possible).
+- Shared worktree is fine; do not put package caches in owns (see owns noise recovery).
+
+---
 
 ## Phase 1 — Files
 
-**Not** `docs/plans/` for coding execution.
-`docs/plans/` = strategy (COCOON, product). Promote strategy → run when implementing.
+**Not** `docs/plans/` for coding execution. Strategy stays in `docs/plans/`; promote to a run when implementing.
 
 ```bash
 run-init "$(pwd)" <slug> --score <score>
-# Replace every REPLACE_ME in tasks/001.yaml; split into numbered tasks as needed.
+# Fill PLAN.md, SPEC.md (required content when score≥7 or ≥2 tasks), tasks/*.yaml
 run-validate --run-dir "$(pwd)/.agents/runs/<slug>" --phase pre-dispatch
 run-board "$(pwd)"
 ```
 
-`run-controller` repeats this validation at startup and before every new DAG
-dispatch wave; a changed contract never rides on an earlier successful check.
+### PLAN.md
 
-Every new task is schema v2 and immutable after first start. It must declare
-`read_first`, `interfaces`, `invariants`, `out_of_scope`, `expected_outputs`,
-`owns_paths`, `never_touch`, `depends_on`, behavioral `acceptance`, and
-structured verification commands. Parallel tasks: **disjoint** owns_paths.
+DAG table, goals, out-of-scope, verification plan (L1 vs L2), risk notes.
 
-Repeated correction rule: while filling generated task placeholders, if you
-notice you are re-typing a correction you already made in an earlier run of
-this project (same command rewrite, same path fix), persist it as a project
-convention in CLAUDE.md/LESSONS.md first, then fill the task; generated plans
-must be right on first generation.
+### SPEC.md (professional, not a stub)
+
+Required when **score ≥ 7** or **≥ 2 tasks**. Must include, in English:
+
+1. **Goal** — one paragraph  
+2. **Interfaces** — stable exports/routes/types the writer must honor  
+3. **Invariants** — what must not break  
+4. **Out of scope** — explicit non-goals  
+5. **Definition of done** — observable, testable  
+
+Reject template-only text (“Record interfaces, invariants…”). `run-validate` enforces this.
+
+### Task YAML
+
+Immutable after first start. Required fields per **lane-contract**.  
+`verification[]` = **L1 focused** only (see below).
+
+Repeated correction rule: if you retype the same path/command fix twice in a project, persist it in CLAUDE.md / LESSONS.md first, then regenerate the plan.
+
+---
 
 ## Phase 2 — Isolation
 
 | Condition | Action |
 |-----------|--------|
-| score ≥ 4 **or** ≥2 write tasks | `wt-create "$(pwd)" <slug>` → set all `project_cwd` to worktree path |
-| 1 low-risk task | may use main checkout; still only PM commits |
-| high-risk write | worktree + **no** parallel writers |
+| score ≥ 4 **or** ≥2 write tasks | `wt-create` → all `project_cwd` = worktree |
+| 1 low-risk task | may use main; still only PM commits |
+| high-risk write | worktree; avoid parallel writers on overlapping blast radius |
 
-```bash
-wt-create /abs/repo <slug>
-# → prints WORKTREE_PATH=... BRANCH=agent/<slug>
-```
+---
 
 ## Phase 3 — Dispatch (durable, bounded)
 
-Provider concurrency defaults to **5** and is configurable from **1–10**.
-Verification has a separate pool, default **2**, also bounded at **10**. High
-risk work remains solo. Parallel writers require **disjoint owns_paths**.
-
-One source-read-only `run-supervisor` stays visible for the whole run. It starts
-the durable `run-controller`, performs bounded `watch` calls, and returns only
-when the run is accepted or blocked. The controller, not the model, owns the
-DAG and progressive acceptance. `lane-bg`, `lane-exec`, and `lane-session` own
-the detached controller/provider process lifetimes.
-Automated Grok writer processes disable imported Claude lifecycle hooks and
-set the lane automation marker consumed by the native session-ledger hook.
-Neither source can mutate the task worktree; Claude-compatible skills, rules,
-and non-ledger safety hooks remain available.
-
 ```text
-1) `run-controller start` validates/resumes one durable worker for the run.
-2) Agent run-supervisor watches bounded state changes until terminal.
-3) Controller fills provider slots with ready DAG tasks.
-4) Complete provider report → owns check → verify (L1) → accept immediately.
-5) Incomplete/failed/stalled provider or failed verification retries once.
-6) A second fallback-eligible writer failure may start one typed Codex Sol high
-   attempt; every other second failure blocks **that task only**.
-7) Depends_on of a blocked upstream is skipped (blocked cascade). Siblings and
-   other ready DAG branches continue. Run terminal-blocked only when no runnable
-   work remains (may still have accepted tasks).
+run-controller start → one run-supervisor watches
+provider slots (default 5) release ready DAG tasks
+complete → owns → L1 verify → accept (progressive)
+retry once; eligible 2nd failure → Codex Sol high fallback (not xhigh by default)
+task blocked → siblings continue; dependents of blocked upstream cascade-blocked
 ```
 
-Required run dispatch fields are `RUN_DIR` and `PROJECT_CWD`. `lane-ctl start`
-builds each writer prompt from the shared `agents/grok/writer.md` contract plus the raw task YAML,
-registers immutable argv in
-`attempts/<nn>/control.json`, and appends lifecycle records to run-level
-`events.jsonl`.
+**Never** one Claude subagent per writer. Writers = durable processes (kimi/…).  
+**Never** PM `run-controller start|watch|status` — only `Agent(run-supervisor)`.  
+**Never** PM nohup/async ad-hoc monitors.
 
-```text
-You are run-supervisor.
-RUN_DIR: /absolute/repo/.agents/runs/<slug>
-PROJECT_CWD: /absolute/worktree
-Run `run-controller start --provider agy|grok`, then bounded `watch` calls until accepted/blocked.
-Never edit source and never return while the controller is still running.
-```
+| Lane | Who |
+|------|-----|
+| kimi / qwen / agy / grok | process writer via controller |
+| codex fallback | one Sol **high** after two eligible writer failures |
+| codex-implementer | manual emergency after terminal block |
+| codex-reviewer | nightly (sol **high**; xhigh only escalate) |
 
-| `lane` | Agent |
-|--------|--------|
-| agy / grok | one run-supervisor (read-only watch); selected provider processes are writers |
-| codex fallback | automatic Sol high write only after two eligible Grok failures |
-| codex-implementer | manual emergency recovery after the typed controller blocks |
-| codex-review-medium | codex-reviewer (sol xhigh) |
-| codex-review | codex-reviewer |
+---
 
-### Control-plane commands
+## Verification tiers (L0 / L1 / L2)
 
-```bash
-run-controller start --run-dir "$RUN_DIR" --project-cwd "$PROJECT_CWD" --provider grok
-run-controller watch --run-dir "$RUN_DIR" --timeout 240
-run-controller status --run-dir "$RUN_DIR" --json
-lane-ctl start --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
-lane-ctl status --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
-lane-ctl events --run-dir "$RUN_DIR" --task-id "$TASK_ID" --json
-lane-ctl fallback --run-dir "$RUN_DIR" --task-id "$TASK_ID" # controller/recovery only
-lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
-check-owns-paths "$TASK_FILE" --run-scope
-lane-ctl accept --run-dir "$RUN_DIR" --task-file "$TASK_FILE" --project-cwd "$PROJECT_CWD"
-```
+| Tier | Owner | Scope | When |
+|------|-------|-------|------|
+| **L0** | Writer | Unit/spec under owns; optional package typecheck | During implement |
+| **L1** | Controller | Task `verification[]` — **focused** paths/suites only | After report → accept |
+| **L2** | PM pre-merge / CI | **One** full or affected suite for the whole run | After all accepted |
 
-Docs: `~/.agents/docs/LANE-EXEC.md`. Primary run bin: `run-controller`; `lane-ctl`
-is the typed task control layer. Low-level
-compatibility bins remain `lane-bg`, `lane-wait`, `lane-poll`, `lane-mode-check`,
-`lane-exec`, and `lane-session`.
+### L1 rules (PM when authoring YAML)
 
-After controller start, `controller.json` exposes the exact run stage, counts,
-last event, and next action. Each task `state.json` exposes its exact stage.
-Never edit task YAML after dispatch.
-After each accept: `acceptance.json` becomes the sole done receipt, freeing the
-slot and unlocking `depends_on` dependents.
+- Prefer: `npm run test:unit -- path/to/spec --silent`, single-package typecheck, path-scoped vitest/jest.  
+- **Do not** put bare monorepo `npm run build` / root `npm test` on every task when the run has ≥2 tasks — that is L2.  
+- Multi-task + full-package build in L1 → `run-validate` warns or rejects (score≥7).  
+- Acceptance = **behavior**, not “entire monorepo green”.
 
-**Detached heartbeat:** `lane-exec --heartbeat ARTIFACT/heartbeat.json` writes
-only on real activity (stdout/CPU). Run-level events distinguish registered live
-work from old task YAML and completed historical runs.
+### L2
 
-## Phase 4 — Accept (per-task, as soon as ready)
+After all accepted: `run-validate --phase pre-merge`, then **one** build/test pass, then merge.
 
-**Progressive accept is mandatory for multi-task runs.** When task A verifies
-while B and C still run: accept A **now**, write its done receipt, free its slot, start the
-next ready task if any. **Never** defer accept until the last concurrent task
-completes.
+---
 
-1. Canonical `report.md` with `STATUS: complete` + provider evidence,
-   materialized by `lane-session` from the single task/prompt-bound final
-   envelope; the Grok process never writes `.agents` directly. Trust only a
-   report whose digest matches the current attempt's `runtime.json`; `lane-ctl`
-   enforces this for status, verify, and accept.
-2. Controller `check-owns-paths "$TASK_FILE" --run-scope` exit 0 +
-   `owns-check.json`. The run-scoped union is required for a shared worktree;
-   direct/night single-task calls stay per-task.
-3. `lane-ctl verify` exit 0 + attempt-scoped `verification.json`.
-4. No full-diff re-read on happy path.
-5. Weak/empty/partial → one retry or recovery lane.
-6. No daytime LLM review; the nightly loop reviews accepted and shipped work.
-7. `lane-ctl accept` writes `acceptance.json`; without a receipt matching the
-   immutable task hash and current attempt, the task is not done.
+## Phase 4 — Accept (progressive)
 
-Acceptance for **all** tiers is report + the appropriate `check-owns-paths`
-scope + verify + machine
-`acceptance.json`.
-Merge to main only when **all** tasks in the run are `done` (Phase 6) — but
-individual tasks become `done` as they finish, not as a batch.
+When A verifies while B runs: **accept A now**. Done only with `acceptance.json`.  
+No daytime LLM review; medium/high → nightly tier.
 
-| Tier    | Trigger                            | Review |
-|---------|-------------------------------------|--------|
-| none    | micro path / risk low               | verify field + check-owns-paths only |
-| nightly | everything else (medium/high/ship)  | typed Sol xhigh findings; bounded Grok repair; fresh re-review |
+---
 
-Normal daytime runs never invoke a reviewer. Historical or explicitly
-configured `gate: pre-merge` runs stop for an operator decision rather than
-silently spending a review call. The standard independent review/fix loop is
-nightly.
-
-Nightly/batch **reviews** may still group finished work later. That is not
-join-wait on write accept — write accept stays per-task progressive.
-
-Micro path still uses the durable controller around one detached Grok task.
-Acceptance is the same machine receipt; no daytime reviewer.
-
-Never mark task YAML done. A task is done only when `acceptance.json.accepted`
-is true.
-
-## Phase 5 — Stall recovery
+## Phase 5 — Stall & owns recovery
 
 ```bash
 lane-stall-check "$(pwd)" --minutes 5
 ```
 
-The controller marks stalled from exact runtime evidence, retries the same lane
-once, then records blocked with the evidence and next action.
+### Owns blocked — diagnose before “rewrite the task”
 
-## Phase 6 — Ship to main (PM only — always)
+1. Read `artifacts/<id>/owns-check.json` (`violations`, `foreign_ignored`, `baseline_used`).  
+2. If violations are **only** package caches (`.npm-cache`, `node_modules`, `.pnpm-store`, …) → gate bug/noise: **do not** add caches to `owns_paths`. Re-run owns/verify after stack ignore fix / clean cache.  
+3. If violations are **product files** outside owns → contract bug: add missing companion to owns (replacement task) or revert OFF-SPEC.  
+4. If upstream blocked only for noise → after fix, siblings/dependents can proceed (partial-block controller).  
+5. **Never** recommend “add `.npm-cache` to owns_paths”.
 
-When **all** tasks in the run are accepted:
+---
 
-```bash
-run-validate --run-dir "$(pwd)/.agents/runs/<slug>" --phase pre-merge
-# L2 once: full or affected suite for the whole run (not per-task, not inside writer)
-```
+## Phase 6 — Ship
 
-### Worktree path
+All accepted → pre-merge validate → L2 once → `wt-merge-main` or commit main → push if remote.
 
-```bash
-# optional final suite in worktree
-wt-merge-main "$(pwd)" <slug>
-# freezes agent/<slug>, validates receipts, merges locally, runs finalize,
-# pushes only after finalize succeeds, then removes the clean worktree
-```
+---
 
-If the worktree auto-commit, finalize, or push fails, `wt-merge-main` exits
-non-zero and preserves the branch/worktree for recovery. It never suppresses a
-commit failure and never force-removes a failed run.
+## Phase 7 — Context budget
 
-### Main-tree path (single low task)
+After ~6 tasks or heavy transcripts: handoff to PROGRESS; fresh orchestrator session if needed.
 
-PM commits on main yourself (Bash git in project):
+---
 
-```bash
-git add -A && git status
-git commit -m "feat(<slug>): <title>"
-# Micro path: git commit -m "<type>(<area>): <title> [micro:<slug>]"
-git push origin main # if remote exists — merge+push = one ship step
-```
+## Recovery ladder (typed only)
 
-medium runs enter the typed nightly review queue (`night-shift`). Findings are
-canonical `.agents/findings/*.json`; never leave a defect only in chat or a
-free-form daily report. Codex reviews and re-reviews read-only; Grok is the only
-normal repair writer. The deterministic runner retries Grok once, may use one
-typed Sol high recovery after a second eligible availability failure, and may
-merge or push only when `.agents/night-shift.yaml` explicitly opts in. A fresh
-Sol xhigh re-review remains mandatory after either writer provider.
+1. Same-provider retry (controller)  
+2. Codex Sol **high** fallback if `fallback_eligible`  
+3. `lane-supervisor` one-shot  
+4. `codex-implementer` after terminal block (effort by ADR-codex-effort)  
+5. Replacement task if YAML wrong after start  
+6. Human only for business / irreversible  
 
-Treat `.agents/runs/<slug>/merge.json` as the machine receipt and `MERGE.md` as
-its human view. `run-finalize` deterministically updates PROGRESS/BOARD/OPEN
-from `run.yaml.finalize` and writes `finalize.json`.
-Commit messages must be meaningful: conventional type(scope): what changed + why in the body when the reason is not obvious. Micro commits keep the [micro:<slug>] suffix.
+Silence protocol: idle ≠ done — read `controller.json` / `events.jsonl`; re-dispatch one `run-supervisor` if `running`/`degraded`.
 
-**NEVER** ask the human to merge. **NEVER** leave a worktree as the “result”.
-
-## Phase 7 — Context budget (PM)
-
-After ~6 tasks or heavy transcripts: write handoff to PROGRESS; rebuild the
-generated STATUS view → suggest fresh orchestrator session (`/resume-project`).
-Writers remain run-scoped Grok sessions; supervision is one fresh
-`run-supervisor` per run, never one model agent per provider.
-
-## Recovery ladder (typed only — no PM nohup/async watchers)
-
-1. Same provider lane + attempt-scoped retry after persisted backoff (controller)
-2. Integrated Codex Sol high fallback when runtime marks the failure eligible
-3. `lane-supervisor` one-shot (status/verify/accept/cancel/retry)
-4. Manual `codex-implementer` only after the typed controller is terminal-blocked
-5. Before first start, amend the task; after start, create a replacement task
-6. Terminal `blocked` + STATUS note (ask user only if business/irreversible)
-
-## Silence protocol
-
-Idle supervisor or missing stage lines ≠ done. Read `controller.json` +
-`events.jsonl`. Re-dispatch one `run-supervisor` if stage is `running`/`degraded`
-and the controller is alive. Never start shell sleep/nohup monitors from the PM.
-
-## TODOs vs runs
-
-Ideas → **agent-todos**. Active build → this skill. Promote todo → run when starting work.
+---
 
 ## Hard rules (MUST)
 
-1. No production Edit/Write — only `.agents/**`, `docs/plans/**`, PROGRESS/LESSONS.
-2. No orchestrator-mcp / `task` CLI for queue.
-3. Parallel = disjoint owns_paths only.
-4. Merge to main = **you** when run green.
-5. Workers never `git push` / merge main.
-6. Provider slots default to 5 and are bounded at 10; verification defaults to 2 and has its own semaphore.
-7. Done = immutable task hash + complete report + owns check + independent
-   verification + accepted `acceptance.json`. Review is nightly.
-8. **English only** for all run/todo/docs files; chat with human may be Russian (`LANGUAGE.md`).
-9. **Progressive accept** when ≥2 writes: start detached, react to events,
-   verify separately, write each acceptance receipt immediately.
-10. **Never** use one Claude subagent per provider. Exactly one source-read-only
-    `run-supervisor` **must** start and watch the durable deterministic controller
-    for every run, including micro; the PM must not run `run-controller
-    start/watch/status` directly. The supervisor is not the lifecycle decision
-    maker.
-11. **Partial block:** one task owns/verify failure does not freeze the run while
-    other tasks remain runnable.
-12. **Verify tiers:** L0 focused (writer) → L1 scoped (controller) → L2 once
-    (pre-merge/CI).
+1. No production Edit/Write — only `.agents/**`, `docs/plans/**`, PROGRESS/LESSONS.  
+2. No task MCP queue.  
+3. Parallel = disjoint owns only.  
+4. You merge main when green; workers never push/merge main.  
+5. Provider pool ≤10; verification pool separate.  
+6. Done = report + owns + L1 verify + `acceptance.json`.  
+7. English for all run/docs files; Russian OK in chat with human.  
+8. Progressive accept; partial block; L0/L1/L2.  
+9. **Decompose** before dispatch; **SPEC** real when score≥7 or ≥2 tasks.  
+10. Never Claude-subagent-per-writer; never PM nohup; never cache-in-owns.  

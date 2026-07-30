@@ -1,103 +1,117 @@
 ---
 name: lane-contract
-description: File-based task contracts under .agents/runs/ with owns_paths and solo merge rules.
+description: File-based task contracts under .agents/runs/ with owns_paths, verification tiers L0/L1/L2, and solo merge rules. Use when authoring or reviewing task YAML, owns_paths, acceptance, or verification commands.
 ---
 
 # Lane contract (files only)
 
-Canonical: `/home/ubuntu/.agents/docs/FILE-CONTRACT.md`.
-Solo: `/home/ubuntu/.agents/docs/SOLO-ORCHESTRATION.md`.
+Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
+`docs/decisions/ADR-codex-effort.md`, skill **orchestrator-lanes** (decomposition).
+
+---
 
 ## Orchestrator must
 
-1. Create new runs with `run-init`, write strict schema-v2 tasks, then run
-   `run-validate --phase pre-dispatch` before dispatch.
-2. Set **`owns_paths`** + **`never_touch`** + behavioral `acceptance`.
-3. Paste code excerpts into `interfaces` and declare `read_first`, `invariants`,
-   `out_of_scope`, and `expected_outputs`.
-4. Pass absolute `PROJECT_CWD` and `RUN_DIR` to one `run-supervisor` for the
-   whole run. Use `lane-supervisor` only for an explicit one-lane diagnostic.
-5. Ensure parallel tasks have **disjoint** owns_paths.
-6. Start the durable `run-controller`. It must run `check-owns-paths`, verify,
-   and accept evidence **immediately** after each lane finishes (progressive —
-   do not wait for other concurrent tasks).
-7. Treat `tasks/*.yaml` as immutable after first start. Runtime status belongs
-   to `artifacts/<id>/state.json`; completion exists only in `acceptance.json`.
-8. Before merge run `run-validate --phase pre-merge`; then **merge to main**
-   (`wt-merge-main` or commit) — human never merges.
-9. No task CLI / orchestrator MCP for queue.
-10. Normal daytime work flows through `run-controller` and its typed `lane-ctl`
-    actions. The run supervisor is source-read-only; Grok is the default and
-    Grok is a selectable
-    detached writer. One Codex Sol high writer attempt is allowed only after
-    two classified fallback-eligible primary-provider availability failures. There is no
-    daytime LLM review.
-11. Keep provider slots (default 5, range 1–10) separate from verification slots
-    (default 2, range 1–10).
-12. Run automated writers/reviewers with the lane automation marker. Imported
-    Claude hooks are disabled for AGY/Grok and the shared native session-ledger
-    exits without writing; skills, rules, and non-ledger safety hooks remain.
-13. Treat `Cancelled`, `Error`, any unknown provider terminal reason, and exit
-    zero without a valid task/prompt-bound report as retryable failure, never as
-    ready for verification. AGY/Grok never writes `.agents`; `lane-session`
-    validates the final-response envelope, materializes root `report.md`, and
-    binds it to the current attempt through `runtime.json.report_sha256`.
-14. Preserve provider identity across receipts. The controller persists a
-    retry deadline, replays the selected provider once, and may call typed
-    `lane-ctl fallback` only when the second primary runtime has
-    `fallback_eligible: true`. Attempt 3
-    is fixed to `codex` / `gpt-5.6-sol` / `high`; no fourth attempt exists.
+1. `run-init` → fill PLAN/SPEC/tasks → `run-validate --phase pre-dispatch` before dispatch.  
+2. Set **`owns_paths`**, **`never_touch`**, behavioral **`acceptance`**.  
+3. Paste real interfaces into `interfaces`; declare `read_first`, `invariants`, `out_of_scope`, `expected_outputs`.  
+4. One `run-supervisor` per run; `lane-supervisor` only for typed one-shots.  
+5. Parallel only with **disjoint** owns_paths.  
+6. Controller: owns → L1 verify → accept **progressively**.  
+7. Task YAML immutable after first start.  
+8. Pre-merge validate → merge main (PM only).  
+9. Writers via durable controller (kimi/…); Codex write = recovery only.  
+10. Separate provider vs verification pools.  
+11. **Decompose** per orchestrator-lanes (one outcome per task; unlock ≠ feature).  
+12. **SPEC.md** is real content when score ≥ 7 or ≥ 2 tasks (not the template stub).  
 
-## Lane must
+---
 
-1. `Read` TASK_FILE first.
-2. Work only in `PROJECT_CWD`.
-3. Edit **only** `owns_paths` (or `files`). Honor `never_touch`.
-4. Do not write `.agents`; `lane-exec` owns heartbeat and lifecycle evidence.
-5. Return the exact report envelope from the writer contract after **focused L0**
-   checks — **report body in English**. The trusted runtime atomically writes
-   `ARTIFACT_DIR/report.md`; the controller independently runs structured task
-   `verification` commands via `lane-ctl verify` (**L1**). Full monorepo suite is
-   **L2 once** at pre-merge/CI, not per-task Worker checks.
-6. **Never** `git checkout main`, merge to main, or `git push` unless task says otherwise (default: never).
-7. On build errors outside owns_paths: do not fix; note in report.
-8. All durable files English (see LANGUAGE.md).
+## Authoring checklist (before pre-dispatch)
+
+### Decomposition
+
+- [ ] Each task id has **one** product outcome  
+- [ ] `depends_on` is a real compile/data edge, not narrative order  
+- [ ] Large delete vs new algorithm are **separate** tasks  
+- [ ] Parallel tasks have disjoint owns  
+
+### Owns completeness
+
+- [ ] Every path the objective **requires** editing is listed (including companion modules the prompt forces — e.g. quality gates that still reference a removed field)  
+- [ ] Package caches, `node_modules`, `.npm-cache`, build caches are **never** in owns  
+- [ ] `never_touch` covers secrets, prisma (if frozen), unrelated products  
+
+### Verification (L1)
+
+- [ ] Commands are path-scoped unit/typecheck for **this** task  
+- [ ] No bare monorepo `npm run build` / root `npm test` on multi-task runs (that is L2)  
+- [ ] Timeouts realistic (unit 60–300s; avoid 1800s full suites per task)  
+
+### Acceptance
+
+- [ ] Observable behavior, not “all packages green”  
+- [ ] Matches objective; greps/sweeps named when deletion tasks  
+
+---
+
+## Lane must (writer)
+
+1. Read TASK_FILE completely.  
+2. Work only in `PROJECT_CWD`.  
+3. Edit **only** `owns_paths`. Honor `never_touch`.  
+4. Do not write `.agents`.  
+5. **L0 focused** checks only; report in English.  
+6. No git merge/push main.  
+7. Outside-owns build break → report Gaps, do not “fix the world”.  
+8. No monorepo full suite as Worker checks on multi-task runs.  
+
+---
 
 ## Required schema-v2 task fields
 
 `schema_version`, `id`, `title`, `risk`, `lane`, `project_cwd`, `read_first`,
 `interfaces`, `invariants`, `out_of_scope`, `expected_outputs`, `owns_paths`,
-`never_touch`, `depends_on`, `objective`, `acceptance`, `verify`, and structured
-`verification` entries (`command`, absolute `cwd`, bounded `timeout_sec`).
+`never_touch`, `depends_on`, `objective`, `acceptance`, `verify`, structured
+`verification` (`command`, absolute `cwd`, `timeout_sec`).
 
-Legacy task fields remain readable for existing runs. New runs must not include
-mutable `status`, `done_when`, or free-form verification strings.
+No mutable `status` / free-form verify strings on new runs.
 
-## Verification tiers (L0 / L1 / L2)
+---
 
-| Tier | Who | What | When |
-|------|-----|------|------|
-| **L0** | Writer (kimi/qwen/agy/grok) | Focused unit/spec + optional package typecheck | While implementing |
-| **L1** | Controller `lane-ctl verify` | Task YAML `verification[]` — scoped only | After report, before accept |
-| **L2** | PM pre-merge / CI | One full or affected suite for the whole run | After all accepted |
+## Verification tiers
 
-Do not put monorepo-wide suites in every task's `verification[]`. Prefer paths
-under `owns_paths`. Acceptance criteria describe behavior, not "all packages green".
+| Tier | Who | What |
+|------|-----|------|
+| **L0** | Writer | Focused tests while coding |
+| **L1** | `lane-ctl verify` | Task `verification[]` only |
+| **L2** | PM / CI | One full or affected suite per run |
 
-## `verify` levels
+### `verify` levels
 
 | Level | Meaning |
 |-------|---------|
-| none | No tests/build evidence needed (visual or trivial change) |
-| smoke | Build passes / page renders / command runs once |
-| tests | Real focused test evidence required (L0/L1), not full monorepo |
+| none | Trivial / visual |
+| smoke | Single cheap command |
+| tests | Focused automated tests (not monorepo green) |
 
-PM chooses `verify` at scoring time; the structured `verification` commands
-must provide evidence appropriate to that level.
+---
 
-## Owns / foreign dirt
+## Owns / dirt / caches
 
-`check-owns-paths` ignores pre-existing uncommitted files outside `owns_paths`
-(parallel-session dirt). Writer-introduced paths outside owns still fail when a
-dirt baseline exists (written at `lane-ctl start`). `never_touch` remains hard-fail
-for newly introduced hits.
+| Class | Policy |
+|-------|--------|
+| Pre-existing dirt outside owns | Foreign ignored (baseline / no-baseline policy) |
+| New product files outside owns | **Fail** (writer leak or missing owns entry) |
+| `.npm-cache`, `node_modules`, pnpm/yarn/turbo caches | **Ignored** by gate — never put in owns |
+| `never_touch` hits (new) | **Fail** |
+
+If owns fails with only cache paths: treat as control-plane noise, not “expand owns”.
+
+---
+
+## SPEC.md contract (run level)
+
+When required (score ≥ 7 or ≥ 2 tasks), SPEC must state goal, interfaces,
+invariants, out of scope, definition of done — in English, not the run-init stub.
+`run-validate --phase pre-dispatch` rejects stubs.

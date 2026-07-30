@@ -61,6 +61,42 @@ class RunContractTest(unittest.TestCase):
         result = self.run_init("--gate", "pre-merge")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def write_real_spec(self) -> None:
+        """Non-stub SPEC for multi-task / high-score pre-dispatch."""
+        cwd = self.repo.resolve()
+        (self.run_dir / "SPEC.md").write_text(
+            "\n".join(
+                [
+                    "# Specification: contract-test",
+                    "",
+                    f"Project working directory: `{cwd}`",
+                    "",
+                    "## Goal",
+                    "",
+                    "Deliver the contract-test feature with focused verification only.",
+                    "",
+                    "## Interfaces",
+                    "",
+                    "- Task YAML schema v2 fields used by the run controller.",
+                    "",
+                    "## Invariants",
+                    "",
+                    "- Preserve unrelated work in the fixture repo.",
+                    "- No production secrets committed.",
+                    "",
+                    "## Out of scope",
+                    "",
+                    "- Unrelated packages and infrastructure.",
+                    "",
+                    "## Definition of done",
+                    "",
+                    "- Focused verification passes for each task; run validates pre-dispatch.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
     def write_task(
         self,
         task_id: str,
@@ -303,6 +339,7 @@ class RunContractTest(unittest.TestCase):
 
     def test_valid_run_passes_pre_dispatch(self) -> None:
         self.initialize()
+        self.write_real_spec()
         self.write_task("001")
         self.write_task("002", depends_on=["001"])
 
@@ -313,6 +350,7 @@ class RunContractTest(unittest.TestCase):
 
     def test_pre_dispatch_rejects_unsafe_verification_before_controller_start(self) -> None:
         self.initialize()
+        self.write_real_spec()
         for index, command in enumerate(
             (
                 "npm ci",
@@ -567,6 +605,51 @@ class RunContractTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2)
         self.assertIn("schema v1 unsupported for strict validation", result.stderr)
+
+
+    def test_pre_dispatch_rejects_stub_spec_when_multi_task(self) -> None:
+        self.initialize()
+        self.write_task("001")
+        self.write_task("002", depends_on=["001"])
+        # leave SPEC as run-init stub
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("SPEC.md", result.stderr)
+
+    def test_pre_dispatch_rejects_unscoped_full_build_l1_on_score_ge_7(self) -> None:
+        self.initialize()
+        run = yaml.safe_load((self.run_dir / "run.yaml").read_text())
+        run["score"] = 8
+        (self.run_dir / "run.yaml").write_text(yaml.safe_dump(run, sort_keys=False), encoding="utf-8")
+        self.write_real_spec()
+        self.write_task(
+            "001",
+            verification=[
+                {
+                    "command": "npm run build",
+                    "cwd": str(self.repo.resolve()),
+                    "timeout_sec": 900,
+                }
+            ],
+        )
+        self.write_task(
+            "002",
+            depends_on=["001"],
+            verification=[
+                {
+                    "command": "python3 -m unittest",
+                    "cwd": str(self.repo.resolve()),
+                    "timeout_sec": 30,
+                }
+            ],
+        )
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("full-package", result.stderr.lower())
 
 
 if __name__ == "__main__":
