@@ -215,7 +215,7 @@ Silence protocol: idle ≠ done — read `controller.json` / `events.jsonl`; re-
 
 ## Hard rules (MUST)
 
-1. No production Edit/Write — only `.agents/**`, `docs/plans/**`, PROGRESS/LESSONS.  
+1. No production Edit/Write — only `.agents/**`, `docs/plans/**`, PROGRESS/LESSONS, and dotenv (`.env`, `.env.*`) for secrets (keep keys out of writer prompts).  
 2. No task MCP queue.  
 3. Parallel = disjoint owns only.  
 4. You merge main when green; workers never push/merge main.  

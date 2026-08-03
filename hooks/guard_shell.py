@@ -58,12 +58,29 @@ def _deny_pm(client: str, detail: str) -> None:
     )
 
 
+def _is_env_secret_file(name: str) -> bool:
+    """True for dotenv-style files the PM may write without involving writers.
+
+    Allows placing API keys/secrets in env files so they never pass through
+    coder-lane prompts. Basename only: `.env`, `.env.local`, `.env.production`, …
+    Not arbitrary source (e.g. `config.ts`).
+    """
+    base = Path(name).name
+    if base == ".env":
+        return True
+    # .env.local, .env.development, .env.production.local, .env.example, …
+    if base.startswith(".env."):
+        return True
+    return False
+
+
 def _pm_edit_allowed(path: str, cwd: object) -> bool:
-    """PM may edit control-plane docs only — never production source.
+    """PM may edit control-plane docs + dotenv files — never production source.
 
     Aligns with SOLO/dev-orchestrator: `.agents/**`, `docs/plans/**`,
-    `PROGRESS.md` / `LESSONS.md`. Machine lifecycle receipts under a run
-    (controller, artifacts, events, sessions) stay tool-owned.
+    `PROGRESS.md` / `LESSONS.md`, and dotenv (`.env*`) for secrets the human
+    trusts the PM with. Machine lifecycle receipts under a run (controller,
+    artifacts, events, sessions) stay tool-owned.
     """
     if not isinstance(cwd, str) or not cwd:
         return False
@@ -81,6 +98,8 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     relative = target.relative_to(root)
     normalized = relative.as_posix()
     if normalized in {"PROGRESS.md", "LESSONS.md"}:
+        return True
+    if _is_env_secret_file(normalized):
         return True
     if normalized.startswith("docs/plans/"):
         return suffix in _PM_TEXT_SUFFIXES

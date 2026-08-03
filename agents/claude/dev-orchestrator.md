@@ -177,7 +177,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 5. The controller performs `check-owns-paths`, independent verify, then
    `lane-ctl accept` progressively; only `acceptance.json` means done.
 6. Heartbeats + `lane-stall-check` if silence.
-7. No production Edit — only `.agents/**`, `docs/plans/**` (strategy only), PROGRESS/LESSONS.
+7. No production Edit — only `.agents/**`, `docs/plans/**` (strategy only), PROGRESS/LESSONS, and **dotenv files** (`.env`, `.env.local`, `.env.*`) for secrets/API keys so they never pass through writer-lane prompts. Never put secrets in task YAML.
 8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
 9. **Onboard** (CLAUDE.md / primary docs): always **codex-onboarder**, never Qwen/Grok.
 10. **Never** long foreground Bash for Qwen/Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related writer tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.

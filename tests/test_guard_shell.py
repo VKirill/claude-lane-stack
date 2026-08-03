@@ -168,12 +168,21 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/docs/plans/demo.md",
             "docs/plans/demo.md",
             "/tmp/demo.md",
+            # dotenv: PM may place secrets so they never enter writer prompts
+            "/srv/app/.env",
+            "/srv/app/.env.local",
+            "/srv/app/.env.production",
+            "/srv/app/.env.example",
+            "/srv/app/apps/web/.env.development.local",
+            ".env",
         ):
             with self.subTest(path=path):
                 self.assertEqual(run_edit_hook("dev-orchestrator", path).returncode, 0)
 
         for path in (
-            "/srv/app/src/fix.ts",
+            "/srv/app/src/app.ts",
+            "/srv/app/src/config.env.ts",
+            "/srv/app/.environment",
             "/srv/app/.agents/runs/demo/fix.sh",
             "/srv/app/.agents/runs/demo/tasks/fix.py",
             "/srv/app/.agents/runs/demo/controller.json",
