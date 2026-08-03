@@ -296,6 +296,13 @@ def main() -> int:
             and existing.get("files", {}).get("open_notes", {}).get("after_sha256") == before_hashes["open_notes"]
         ):
             run_board(repo)
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+                from handoff_lib import write_handoff  # type: ignore
+
+                write_handoff(repo)
+            except Exception:
+                pass
             print(f"FINALIZED={receipt_path}")
             print("IDEMPOTENT=true")
             return 0
@@ -338,6 +345,18 @@ def main() -> int:
             "board": {"command": board_command, "success": True},
         }
         atomic_write(receipt_path, json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        try:
+            from handoff_lib import write_handoff  # type: ignore
+
+            write_handoff(repo)
+        except Exception:
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+                from handoff_lib import write_handoff  # type: ignore
+
+                write_handoff(repo)
+            except Exception:
+                pass
         print(f"FINALIZED={receipt_path}")
         print("IDEMPOTENT=false")
         return 0

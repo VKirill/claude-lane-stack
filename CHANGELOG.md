@@ -1,3 +1,9 @@
+## 1.13.0 — 2026-08-03
+
+### Added
+- **Day-path handoff:** `handoff-write` builds `.agents/HANDOFF.json` + `HANDOFF.md` (now / blocked / next acts / profile). Auto-refresh when a run becomes terminal (`run-controller`) and on `run-finalize`. `resume-project` defaults to **compact** (HANDOFF-first); `--full` for legacy dump.
+- **Contract failure policy:** verify failures classified as `verification_script_missing` (missing check.py etc.) skip blind retry and block immediately with handoff `next_act: fix_contract` — keeps daytime fast (write→L1→accept; LLM review stays night-only).
+
 ## 1.12.9 — 2026-08-03
 
 ### Fixed

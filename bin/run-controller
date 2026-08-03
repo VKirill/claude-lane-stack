@@ -400,6 +400,31 @@ def mark_task_blocked(
     persist(receipt_path, receipt)
 
 
+def _write_project_handoff(receipt: dict[str, Any]) -> None:
+    """Best-effort HANDOFF.json refresh when a run becomes terminal."""
+    try:
+        from handoff_lib import write_handoff  # type: ignore
+    except ImportError:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from handoff_lib import write_handoff  # type: ignore
+        except ImportError:
+            return
+    root: Path | None = None
+    project_cwd = receipt.get("project_cwd")
+    run_dir = receipt.get("run_dir")
+    if isinstance(project_cwd, str) and project_cwd:
+        root = Path(project_cwd)
+    elif isinstance(run_dir, str) and run_dir:
+        root = Path(run_dir)
+    if root is None:
+        return
+    try:
+        write_handoff(root)
+    except OSError:
+        return
+
+
 def finalize_if_run_terminal(
     receipt_path: Path, receipt: dict[str, Any]
 ) -> int | None:
@@ -412,10 +437,12 @@ def finalize_if_run_terminal(
         receipt["stage"] = "accepted"
         receipt["completed_at"] = utc_now()
         transition(receipt_path, receipt, "run_accepted")
+        _write_project_handoff(receipt)
         return 0
     receipt["stage"] = "blocked"
     receipt["completed_at"] = utc_now()
     persist(receipt_path, receipt)
+    _write_project_handoff(receipt)
     return 1
 
 
@@ -839,30 +866,57 @@ def run_controller(args: argparse.Namespace) -> int:
 
                 if phase == "verify":
                     if result.returncode != 0:
-                        if task_state["retries"] < 1:
-                            task_state["last_failure_class"] = "verification_failed"
-                            task_state["retry_not_before"] = (
-                                datetime.now(timezone.utc)
-                                + timedelta(seconds=args.retry_backoff)
-                            ).isoformat()
-                            transition(
+                        detail = (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "verification_failed"
+                        )
+                        try:
+                            from handoff_lib import (  # type: ignore
+                                CONTRACT_NO_RETRY_CLASSES,
+                                classify_verify_failure,
+                            )
+                        except ImportError:
+                            sys.path.insert(0, str(Path(__file__).resolve().parent))
+                            from handoff_lib import (  # type: ignore
+                                CONTRACT_NO_RETRY_CLASSES,
+                                classify_verify_failure,
+                            )
+                        failure_class = classify_verify_failure(detail)
+                        task_state["last_failure_class"] = failure_class
+                        # Contract bugs (missing check.py, lane mismatch): block
+                        # immediately — retry wastes the day path attempt budget.
+                        if (
+                            failure_class in CONTRACT_NO_RETRY_CLASSES
+                            or task_state["retries"] >= 1
+                        ):
+                            mark_task_blocked(
                                 receipt_path,
                                 receipt,
-                                "task_retry_scheduled",
-                                task_id=task_id,
-                                stage="retry_wait",
-                                detail="verification_failed",
+                                tasks,
+                                task_id,
+                                f"{failure_class}: {detail[:500]}",
                             )
                             progress = True
+                            terminal = finalize_if_run_terminal(
+                                receipt_path, receipt
+                            )
+                            if terminal is not None:
+                                return terminal
                             continue
-                        detail = result.stderr.strip() or result.stdout.strip() or "verification_failed"
-                        mark_task_blocked(
-                            receipt_path, receipt, tasks, task_id, detail
+                        task_state["retry_not_before"] = (
+                            datetime.now(timezone.utc)
+                            + timedelta(seconds=args.retry_backoff)
+                        ).isoformat()
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_retry_scheduled",
+                            task_id=task_id,
+                            stage="retry_wait",
+                            detail=failure_class,
                         )
                         progress = True
-                        terminal = finalize_if_run_terminal(receipt_path, receipt)
-                        if terminal is not None:
-                            return terminal
                         continue
                     decode_action_result(result, label=f"verify {task_id}")
                     transition(

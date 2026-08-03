@@ -1,15 +1,61 @@
 #!/usr/bin/env bash
-# Cold-start brief for orchestrator / human: PROGRESS + BOARD + OPEN + recent logs + runs
+# Cold-start brief for orchestrator / human: HANDOFF first, then optional full dump.
 set -euo pipefail
 
-REPO="${1:-.}"
+MODE=compact
+REPO="."
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --compact|-c)
+      MODE=compact
+      shift
+      ;;
+    --full)
+      MODE=full
+      shift
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: resume-project [repo] [--compact|--full]
+
+  --compact   HANDOFF + git + stall (default; day cold-start)
+  --full      legacy dump: PROGRESS, BOARD, all runs, session-log, stall
+EOF
+      exit 0
+      ;;
+    *)
+      REPO="$1"
+      shift
+      ;;
+  esac
+done
+
 REPO="$(cd "$REPO" && pwd)"
-export PATH="/home/ubuntu/.agents/bin:$PATH"
+export PATH="${HOME}/.agents/bin:/home/ubuntu/.agents/bin:$PATH"
 BIN_ROOT="$(cd "$(dirname "$0")" && pwd)"
+export PATH="$BIN_ROOT:$PATH"
+
+# Refresh board quietly when possible
+if [[ -x "$BIN_ROOT/run-board" ]]; then
+  "$BIN_ROOT/run-board" "$REPO" >/dev/null 2>&1 || true
+elif command -v run-board >/dev/null 2>&1; then
+  run-board "$REPO" >/dev/null 2>&1 || true
+fi
+
+# Always regenerate handoff when tool is available
+if [[ -x "$BIN_ROOT/handoff-write" ]]; then
+  "$BIN_ROOT/handoff-write" "$REPO" >/dev/null 2>&1 || true
+elif command -v handoff-write >/dev/null 2>&1; then
+  handoff-write "$REPO" >/dev/null 2>&1 || true
+fi
+
+HANDOFF_JSON="$REPO/.agents/HANDOFF.json"
+HANDOFF_MD="$REPO/.agents/HANDOFF.md"
 
 echo "======== RESUME PROJECT ========"
 echo "REPO: $REPO"
 echo "TIME: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "MODE: $MODE"
 echo
 
 if [[ -d "$REPO/.git" ]] || git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -19,16 +65,37 @@ if [[ -d "$REPO/.git" ]] || git -C "$REPO" rev-parse --is-inside-work-tree >/dev
   echo
 fi
 
-if [[ -x "$BIN_ROOT/run-board" ]]; then
-  "$BIN_ROOT/run-board" "$REPO" >/dev/null 2>&1 || true
-elif command -v run-board >/dev/null 2>&1; then
-  run-board "$REPO" >/dev/null 2>&1 || true
+if [[ -f "$HANDOFF_MD" ]]; then
+  echo "======== HANDOFF ========"
+  cat "$HANDOFF_MD"
+  echo
+elif [[ -f "$HANDOFF_JSON" ]]; then
+  echo "======== HANDOFF.json ========"
+  head -n 80 "$HANDOFF_JSON"
+  echo
 fi
 
+if [[ "$MODE" == "compact" ]]; then
+  echo "======== stall (quick) ========"
+  if [[ -x "$BIN_ROOT/lane-stall-check" ]]; then
+    "$BIN_ROOT/lane-stall-check" "$REPO" --minutes 5 2>/dev/null | head -n 30 || true
+  elif command -v lane-stall-check >/dev/null 2>&1; then
+    lane-stall-check "$REPO" --minutes 5 2>/dev/null | head -n 30 || true
+  fi
+  echo
+  echo "======== next actions for PM ========"
+  echo "1. Follow HANDOFF Next (typed acts)"
+  echo "2. Day: write→L1→accept→merge; do NOT wait for LLM review"
+  echo "3. Night: night-shift review/fix only"
+  echo "4. Full dump: resume-project \"$REPO\" --full"
+  echo "======== END RESUME (compact) ========"
+  exit 0
+fi
+
+# ── full dump (legacy) ───────────────────────────────────────────────
 for f in PROGRESS.md LESSONS.md docs/decisions.md .agents/agent-notes/OPEN.md .agents/runs/BOARD.md; do
   if [[ -f "$REPO/$f" ]]; then
     echo "======== $f ========"
-    # skip huge auto sections partially
     head -n 80 "$REPO/$f"
     echo
   fi
@@ -59,6 +126,9 @@ if [[ -d "$REPO/.agents/runs" ]]; then
     if [[ -f "$d/STATUS.md" ]]; then
       head -n 40 "$d/STATUS.md"
     fi
+    if [[ -f "$d/controller.json" ]]; then
+      echo "controller.stage: $(python3 -c "import json;print(json.load(open('$d/controller.json')).get('stage'))" 2>/dev/null || echo '?')"
+    fi
     if [[ -f "$d/worktree.json" ]]; then
       echo "worktree: $(cat "$d/worktree.json")"
     fi
@@ -74,7 +144,6 @@ fi
 echo "======== recent session-log ========"
 LOGDIR="$REPO/.agents/session-log"
 if [[ -d "$LOGDIR" ]]; then
-  # latest 3 md files
   find "$LOGDIR" -name '*.md' ! -name 'INDEX.md' ! -name 'AUDIT-*' -type f -printf '%T@ %p\n' 2>/dev/null \
     | sort -nr | head -3 | while read -r _ p; do
       echo "--- $p ---"
@@ -94,7 +163,7 @@ elif command -v lane-stall-check >/dev/null 2>&1; then
 fi
 
 echo "======== next actions for PM ========"
-echo "1. Read BOARD + PROGRESS Now/Next"
-echo "2. Resume stalled/running tasks or start new run"
-echo "3. Never ask human to merge — use wt-merge-main when run green"
+echo "1. Read HANDOFF Next + BOARD"
+echo "2. Day: dispatch writers, L1 only — no daytime LLM review"
+echo "3. Night: night-shift for review/fix"
 echo "======== END RESUME ========"

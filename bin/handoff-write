@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Write project HANDOFF.json + HANDOFF.md for cold-start resume."""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+BIN = Path(__file__).resolve().parent
+if str(BIN) not in sys.path:
+    sys.path.insert(0, str(BIN))
+
+from handoff_lib import build_handoff, write_handoff  # noqa: E402
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Regenerate .agents/HANDOFF.json + HANDOFF.md from runs/profile"
+    )
+    ap.add_argument("repo", nargs="?", default=".", help="project root (default: .)")
+    ap.add_argument(
+        "--print",
+        action="store_true",
+        help="print compact markdown to stdout after write",
+    )
+    ap.add_argument(
+        "--json-stdout",
+        action="store_true",
+        help="print HANDOFF.json to stdout (still writes files)",
+    )
+    args = ap.parse_args()
+    repo = Path(args.repo).expanduser().resolve()
+    try:
+        path = write_handoff(repo)
+    except OSError as exc:
+        print(f"handoff-write: {exc}", file=sys.stderr)
+        return 2
+    if args.json_stdout:
+        print(path.read_text(encoding="utf-8"), end="")
+    elif args.print:
+        md = path.with_name("HANDOFF.md")
+        if md.is_file():
+            print(md.read_text(encoding="utf-8"), end="")
+        else:
+            data = build_handoff(repo)
+            from handoff_lib import render_handoff_md
+
+            print(render_handoff_md(data), end="")
+    else:
+        print(f"HANDOFF={path}")
+        print(f"HANDOFF_MD={path.with_name('HANDOFF.md')}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
