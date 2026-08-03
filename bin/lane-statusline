@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Claude Code statusLine wrapper: pulse bars + Lane Stack HANDOFF chip.
+
+Claude Code runs this on each TUI redraw with session JSON on stdin.
+We forward stdin to claude-pulse (usage/cost bars), then append a short
+factory chip from .agents/HANDOFF.json when present.
+
+Does NOT regenerate handoff (too heavy for every tick) — only reads.
+Refresh handoff via handoff-write / run terminal / resume-project.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+PULSE = Path(os.environ.get("CLAUDE_PULSE_STATUS", "/home/ubuntu/.claude-pulse/claude_status.py"))
+HANDOFF_NAME = "HANDOFF.json"
+MAX_CHIP = 72  # keep footer readable
+
+
+def _cwd_from_stdin(data: dict) -> Path | None:
+    # Claude Code shapes vary: top-level or nested under "data"
+    roots = [data]
+    if isinstance(data.get("data"), dict):
+        roots.append(data["data"])
+    for root in roots:
+        for key in ("cwd", "cwd_path"):
+            val = root.get(key)
+            if isinstance(val, str) and val:
+                return Path(val)
+        ws = root.get("workspace")
+        if isinstance(ws, dict):
+            for key in ("current_dir", "cwd", "path"):
+                val = ws.get(key)
+                if isinstance(val, str) and val:
+                    return Path(val)
+    return None
+
+
+def _find_handoff(start: Path | None) -> Path | None:
+    candidates: list[Path] = []
+    if start is not None:
+        candidates.append(start.expanduser().resolve())
+    try:
+        candidates.append(Path.cwd().resolve())
+    except OSError:
+        pass
+    seen: set[Path] = set()
+    for base in candidates:
+        if base in seen:
+            continue
+        seen.add(base)
+        # strip worktree
+        parts = list(base.parts)
+        if ".worktrees" in parts:
+            idx = parts.index(".worktrees")
+            base = Path(*parts[:idx])
+        for cur in (base, *base.parents):
+            handoff = cur / ".agents" / HANDOFF_NAME
+            if handoff.is_file():
+                return handoff
+            if cur.parent == cur:
+                break
+    return None
+
+
+def _chip(handoff_path: Path) -> str:
+    try:
+        data = json.loads(handoff_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+
+    prof = data.get("profile") if isinstance(data.get("profile"), dict) else {}
+    mw = prof.get("main_write") or "?"
+    ws = prof.get("workspace_mode") or "?"
+    if ws == "in_place":
+        ws = "main"
+    elif ws == "worktree":
+        ws = "wt"
+
+    blocked = data.get("blocked") if isinstance(data.get("blocked"), list) else []
+    active = data.get("active_runs") if isinstance(data.get("active_runs"), list) else []
+    nxt = data.get("next") if isinstance(data.get("next"), list) else []
+
+    # Prefer a running run for the chip
+    run_bit = ""
+    for a in active:
+        if not isinstance(a, dict):
+            continue
+        stage = str(a.get("stage") or "")
+        if stage in {"running", "degraded", "dispatching"} or stage not in {
+            "accepted",
+            "blocked",
+            "failed",
+            "planning",
+        }:
+            slug = str(a.get("slug") or "")[:18]
+            counts = a.get("counts") if isinstance(a.get("counts"), dict) else {}
+            acc = counts.get("accepted")
+            tot = counts.get("total")
+            if isinstance(acc, int) and isinstance(tot, int) and tot:
+                run_bit = f"▶{slug} {acc}/{tot}"
+            else:
+                run_bit = f"▶{slug}"
+            break
+    if not run_bit and active:
+        a0 = active[0] if isinstance(active[0], dict) else {}
+        slug = str(a0.get("slug") or "")[:18]
+        if slug:
+            run_bit = f"·{slug}"
+
+    blk_n = len(blocked)
+    blk_bit = f"⚠{blk_n}" if blk_n else "✓"
+
+    next_bit = ""
+    if nxt and isinstance(nxt[0], dict):
+        act = str(nxt[0].get("action") or "")
+        if act and act != "idle":
+            next_bit = f"→{act}"
+        elif act == "idle":
+            next_bit = "idle"
+
+    parts = [f"{mw}/{ws}", blk_bit]
+    if run_bit:
+        parts.insert(1, run_bit)
+    if next_bit:
+        parts.append(next_bit)
+    chip = " | ".join(parts)
+    if len(chip) > MAX_CHIP:
+        chip = chip[: MAX_CHIP - 1] + "…"
+    # Dim separator + cyan-ish lane chip (ANSI)
+    return f" \033[2m│\033[0m \033[36m{chip}\033[0m"
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    # 1) Pulse (or fallback minimal line)
+    pulse_out = ""
+    if PULSE.is_file():
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(PULSE)],
+                input=raw,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            pulse_out = (proc.stdout or "").rstrip("\n")
+        except (OSError, subprocess.TimeoutExpired):
+            pulse_out = ""
+    if not pulse_out:
+        pulse_out = "lane"
+
+    # 2) Handoff chip
+    cwd = None
+    try:
+        payload = json.loads(raw) if raw.strip() else {}
+        if isinstance(payload, dict):
+            cwd = _cwd_from_stdin(payload)
+    except json.JSONDecodeError:
+        payload = {}
+
+    handoff = _find_handoff(cwd)
+    chip = _chip(handoff) if handoff else ""
+
+    # chip already starts with " │ "; keep pulse + chip on one line
+    sys.stdout.write(pulse_out.rstrip("\n") + chip + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

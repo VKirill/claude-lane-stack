@@ -1,3 +1,8 @@
+## 1.13.2 — 2026-08-03
+
+### Added
+- **`lane-statusline`**: Claude Code `statusLine` wrapper — keeps claude-pulse usage bars and appends a factory chip from `.agents/HANDOFF.json` (`main_write/workspace`, active run, blocked count, next_act). Wired in host `~/.claude/settings.json`.
+
 ## 1.13.1 — 2026-08-03
 
 ### Fixed
