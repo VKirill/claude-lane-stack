@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Short alias for agents-doctor (project routing TUI / setup).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+exec "$ROOT/agents-doctor" "$@"

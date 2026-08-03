@@ -804,10 +804,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=(
             "Claude Lane Stack doctor — detect CLIs and configure project routing.\n"
-            "  agents-doctor              # TUI in a terminal (cwd project)\n"
-            "  agents-doctor tui [path]   # same, explicit\n"
-            "  agents-doctor setup [path] # linear wizard (no full-screen UI)\n"
-            "  agents-doctor --apply …    # non-interactive flags"
+            "  adoc / agents-doctor              # TUI in a terminal (cwd project)\n"
+            "  adoc tui [path]                   # same, explicit\n"
+            "  adoc setup [path]                 # linear wizard (no full-screen UI)\n"
+            "  adoc --apply --writer-provider …  # non-interactive flags\n"
+            "Short name: adoc  (same binary path via wrapper)"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

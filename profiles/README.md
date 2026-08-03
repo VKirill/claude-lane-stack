@@ -20,8 +20,8 @@ GPT-5.6 only on Codex: **sol** · **terra** · **luna** (optional trivia). **No 
 
 ```bash
 # New / existing project — full-screen TUI (tabs, toggles)
-cd your-project && agents-doctor
-# same: agents-doctor tui .
+cd your-project && adoc
+# same: agents-doctor · agents-doctor tui · adoc tui .
 
 # Linear wizard (no full-screen)
 agents-doctor setup .
