@@ -228,7 +228,10 @@ def _scan_runs(repo: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], 
                 fc = tstate.get("last_failure_class")
                 if not isinstance(fc, str):
                     fc = None
-                # enrich from verification output if generic
+                outcome = _load_json(run_dir / "artifacts" / str(tid) / "outcome.json")
+                if outcome and isinstance(outcome.get("failure_class"), str):
+                    fc = outcome["failure_class"] or fc
+                # Prefer concrete class from verify output (missing check.py etc.)
                 if fc in {None, "verification_failed"}:
                     for att in ("02", "01"):
                         vpath = (
@@ -246,11 +249,10 @@ def _scan_runs(repo: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], 
                         if isinstance(cmds, list) and cmds:
                             out = str(cmds[0].get("output") or "")
                             if out:
-                                fc = classify_verify_failure(out)
+                                refined = classify_verify_failure(out)
+                                if refined != "verification_failed":
+                                    fc = refined
                                 break
-                outcome = _load_json(run_dir / "artifacts" / str(tid) / "outcome.json")
-                if outcome and isinstance(outcome.get("failure_class"), str):
-                    fc = outcome["failure_class"] or fc
                 blocked.append(
                     {
                         "run": slug,
