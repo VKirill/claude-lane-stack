@@ -410,6 +410,10 @@ def write_outputs(
     *,
     writer_model: str | None = None,
     writer_effort: str | None = None,
+    workspace_mode: str | None = None,
+    worktree_min_score: int = 4,
+    worktree_on_multi_write: bool = True,
+    ui_language: str | None = None,
     quiet: bool = False,
 ) -> None:
     agents = repo / ".agents"
@@ -435,6 +439,10 @@ def write_outputs(
             writer_model = default_models[main_write]
         if not writer_effort:
             writer_effort = default_efforts[main_write]
+    ws_mode = (workspace_mode or "auto").strip().lower()
+    if ws_mode not in {"in_place", "worktree", "auto"}:
+        ws_mode = "auto"
+    ws_min = max(0, min(10, int(worktree_min_score)))
     caps = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tools": tools,
@@ -446,6 +454,16 @@ def write_outputs(
             "provider": main_write,
             "model": writer_model,
             "reasoning_effort": writer_effort,
+        },
+        "workspace": {
+            "mode": ws_mode,
+            "worktree_min_score": ws_min,
+            "worktree_on_multi_write": bool(worktree_on_multi_write),
+        },
+        "ui": {
+            "language": (ui_language or "en").strip().lower()
+            if (ui_language or "en").strip().lower() in {"en", "ru"}
+            else "en",
         },
     }
     (agents / "capabilities.json").write_text(
@@ -476,6 +494,22 @@ def write_outputs(
             lines.append(f"  model: {writer_model}")
         if writer_effort:
             lines.append(f"  reasoning_effort: {writer_effort}")
+    # Workspace: where writers edit (main checkout vs isolated worktree).
+    lines.append("workspace:")
+    lines.append(
+        f"  mode: {ws_mode}  # in_place | worktree | auto"
+    )
+    lines.append(
+        f"  worktree_min_score: {ws_min}  # auto: use worktree when score ≥ this"
+    )
+    lines.append(
+        "  worktree_on_multi_write: "
+        f"{'true' if worktree_on_multi_write else 'false'}  "
+        "# auto: worktree when ≥2 write tasks"
+    )
+    ui_lang = caps["ui"]["language"]
+    lines.append("ui:")
+    lines.append(f"  language: {ui_lang}  # en | ru  (agents-doctor TUI only)")
     lines.append("notes:")
     if notes:
         for n in notes:
@@ -848,6 +882,24 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="with --apply --night-review on: set auto_merge (default false)",
     )
+    ap.add_argument(
+        "--workspace-mode",
+        choices=("in_place", "worktree", "auto"),
+        default=None,
+        help="with --apply: where writers edit (default: auto)",
+    )
+    ap.add_argument(
+        "--worktree-min-score",
+        type=int,
+        default=4,
+        help="with --apply: auto mode uses worktree when score ≥ N (default 4)",
+    )
+    ap.add_argument(
+        "--worktree-on-multi-write",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="with --apply: auto mode uses worktree for ≥2 write tasks (default true)",
+    )
     args = ap.parse_args(argv)
 
     # Default interactive entry: full-screen project configurator.
@@ -859,6 +911,7 @@ def main(argv: list[str] | None = None) -> int:
         and sys.stdout.isatty()
         and args.writer_provider == "auto"
         and args.night_review is None
+        and args.workspace_mode is None
     )
     if want_tui:
         repo = Path(args.repo).expanduser().resolve()
@@ -899,7 +952,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.apply:
         repo = Path(args.repo).expanduser().resolve()
-        write_outputs(repo, tools, profile, lanes, notes)
+        write_outputs(
+            repo,
+            tools,
+            profile,
+            lanes,
+            notes,
+            workspace_mode=args.workspace_mode or "auto",
+            worktree_min_score=max(0, min(10, int(args.worktree_min_score))),
+            worktree_on_multi_write=bool(args.worktree_on_multi_write),
+        )
         if args.night_review is not None:
             writer = lanes.get("main_write")
             provider = (

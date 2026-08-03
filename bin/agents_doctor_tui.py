@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-"""Full-screen TUI for agents-doctor — coder / model / effort / night config.
+"""Full-screen TUI for agents-doctor — coder / workspace / night / UI language.
 
 Layout (single column, no fragile box-drawing):
   header · tabs · body · summary strip · footer
 
-Coder UX (form + drill-down, not multi-level ↑↓ cycling):
-  • Form: ↑↓ only moves between fields (Provider / Model / Effort)
-  • Enter opens a full option list for the focused field
-  • In the list: ↑↓ pick a value, Enter confirms, Esc goes back
-
-This matches classic TUI patterns (nmtui, dialog menus): one level of
-navigation per screen, never mix field-focus and value-cycling on the
-same arrows.
+Coder UX: form + drill-down lists (↑↓ fields, Enter open list).
+UI language: en | ru (project ui.language + global ~/.agents/doctor.ui.yaml).
 """
 from __future__ import annotations
 
@@ -19,16 +13,21 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+# Sibling import when loaded via SourceFileLoader from agents-doctor.
+_BIN = Path(__file__).resolve().parent
+if str(_BIN) not in sys.path:
+    sys.path.insert(0, str(_BIN))
 
-APP_TITLE = "Lane Stack · Project Setup"
+from agents_doctor_tui_i18n import (  # type: ignore  # noqa: E402
+    LANG_LABEL,
+    LANGS,
+    normalize_lang,
+    tr,
+    writer_blurb,
+)
 
 # Form field order on the Coder tab (stable indices for ↑↓).
 CODER_FIELDS = ("writer", "model", "effort")
-FIELD_LABEL = {
-    "writer": "Provider",
-    "model": "Model",
-    "effort": "Effort",
-}
 
 # Default catalogs (stack defaults + common options).
 WRITER_MODELS: dict[str, list[str]] = {
@@ -59,36 +58,12 @@ WRITER_EFFORTS: dict[str, list[str]] = {
 }
 
 WRITER_META: dict[str, dict[str, str]] = {
-    "qwen": {
-        "title": "Qwen",
-        "badge": "FAST",
-        "blurb": "Fast everyday coder for product work",
-    },
-    "kimi": {
-        "title": "Kimi",
-        "badge": "LONG CTX",
-        "blurb": "Long-context Kimi K3 (256k)",
-    },
-    "grok": {
-        "title": "Grok",
-        "badge": "XAI",
-        "blurb": "xAI Grok writer lane",
-    },
-    "agy": {
-        "title": "AGY",
-        "badge": "GEMINI",
-        "blurb": "Gemini Flash high via AGY",
-    },
-    "codex": {
-        "title": "Codex",
-        "badge": "OPENAI",
-        "blurb": "Bare Codex lane-writer (no host MCP/plugins)",
-    },
-    "auto": {
-        "title": "Auto",
-        "badge": "STACK",
-        "blurb": "First available: Kimi → Qwen → Grok → AGY",
-    },
+    "qwen": {"title": "Qwen", "badge": "FAST"},
+    "kimi": {"title": "Kimi", "badge": "LONG CTX"},
+    "grok": {"title": "Grok", "badge": "XAI"},
+    "agy": {"title": "AGY", "badge": "GEMINI"},
+    "codex": {"title": "Codex", "badge": "OPENAI"},
+    "auto": {"title": "Auto", "badge": "STACK"},
 }
 
 DEFAULT_MODEL = {
@@ -109,12 +84,10 @@ DEFAULT_EFFORT = {
     "auto": "medium",
 }
 
-TAB_META = [
-    ("coder", "Coder", "CLI + model + effort"),
-    ("night", "Night", "Review & repair"),
-    ("status", "Status", "Host CLIs"),
-    ("apply", "Apply", "Save to project"),
-]
+# Tab ids (labels come from i18n).
+TAB_IDS = ("coder", "work", "night", "ui", "status", "apply")
+
+WORKSPACE_MODES = ("in_place", "worktree", "auto")
 
 
 class SetupState:
@@ -130,14 +103,18 @@ class SetupState:
         night_provider: str = "qwen",
         max_fix_tasks: int = 5,
         auto_merge: bool = False,
+        workspace_mode: str = "auto",
+        worktree_min_score: int = 4,
+        worktree_on_multi_write: bool = True,
+        lang: str = "en",
         message: str = "",
         last_apply: str = "",
         cursor: int = 0,
-        focus: str = "writer",  # form field or night_writer
-        view: str = "form",  # form | pick  (coder drill-down)
-        pick_kind: str = "writer",  # writer | model | effort
+        focus: str = "writer",
+        view: str = "form",
+        pick_kind: str = "writer",
         pick_cursor: int = 0,
-        field_i: int = 0,  # 0..2 on coder form (CODER_FIELDS)
+        field_i: int = 0,
     ) -> None:
         self.repo = repo
         self.tools = tools
@@ -149,6 +126,10 @@ class SetupState:
         self.night_provider = night_provider
         self.max_fix_tasks = max_fix_tasks
         self.auto_merge = auto_merge
+        self.workspace_mode = workspace_mode
+        self.worktree_min_score = worktree_min_score
+        self.worktree_on_multi_write = worktree_on_multi_write
+        self.lang = normalize_lang(lang)
         self.message = message
         self.last_apply = last_apply
         self.cursor = cursor
@@ -157,6 +138,40 @@ class SetupState:
         self.pick_kind = pick_kind
         self.pick_cursor = pick_cursor
         self.field_i = field_i
+
+
+def _t(state: SetupState, key: str, **kwargs: Any) -> str:
+    return tr(state.lang, key, **kwargs)
+
+
+def _global_ui_path() -> Path:
+    return Path.home() / ".agents" / "doctor.ui.yaml"
+
+
+def _load_global_lang() -> str | None:
+    path = _global_ui_path()
+    if not path.is_file():
+        return None
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("language:"):
+                return normalize_lang(s.split(":", 1)[1].strip().split()[0])
+    except OSError:
+        return None
+    return None
+
+
+def _save_global_lang(lang: str) -> None:
+    path = _global_ui_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"# agents-doctor TUI preferences (global)\nlanguage: {normalize_lang(lang)}\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
 
 def _load_existing(repo: Path) -> dict[str, Any]:
@@ -174,6 +189,12 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                 if s == "writer:" or s.startswith("writer:"):
                     section = "writer"
                     continue
+                if s == "workspace:" or s.startswith("workspace:"):
+                    section = "workspace"
+                    continue
+                if s == "ui:" or s.startswith("ui:"):
+                    section = "ui"
+                    continue
                 if section == "writer":
                     if raw and not raw.startswith(" ") and not raw.startswith("\t"):
                         section = None
@@ -183,6 +204,29 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                         out["model"] = s.split(":", 1)[1].strip().strip("\"'")
                     elif s.startswith("reasoning_effort:") or s.startswith("effort:"):
                         out["effort"] = s.split(":", 1)[1].strip().split()[0]
+                if section == "workspace":
+                    if raw and not raw.startswith(" ") and not raw.startswith("\t"):
+                        section = None
+                    elif s.startswith("mode:"):
+                        mode = s.split(":", 1)[1].strip().split()[0]
+                        if mode in WORKSPACE_MODES:
+                            out["workspace_mode"] = mode
+                    elif s.startswith("worktree_min_score:"):
+                        try:
+                            out["worktree_min_score"] = int(
+                                s.split(":", 1)[1].strip().split()[0]
+                            )
+                        except ValueError:
+                            pass
+                    elif s.startswith("worktree_on_multi_write:"):
+                        out["worktree_on_multi_write"] = "true" in s.lower()
+                if section == "ui":
+                    if raw and not raw.startswith(" ") and not raw.startswith("\t"):
+                        section = None
+                    elif s.startswith("language:"):
+                        out["lang"] = normalize_lang(
+                            s.split(":", 1)[1].strip().split()[0]
+                        )
         except OSError:
             pass
     if night.is_file():
@@ -235,6 +279,30 @@ def _ensure_effort(writer: str, effort: str) -> str:
     return DEFAULT_EFFORT.get(writer, opts[0])
 
 
+def _field_label(state: SetupState, kind: str) -> str:
+    return {
+        "writer": _t(state, "field_provider"),
+        "model": _t(state, "field_model"),
+        "effort": _t(state, "field_effort"),
+    }.get(kind, kind)
+
+
+def _ws_title(state: SetupState, mode: str) -> str:
+    return _t(state, f"ws_{mode}_title")
+
+
+def _ws_blurb(state: SetupState, mode: str) -> str:
+    return _t(state, f"ws_{mode}_blurb")
+
+
+def _tab_label(state: SetupState, tid: str) -> str:
+    return _t(state, f"tab_{tid}")
+
+
+def _tab_sub(state: SetupState, tid: str) -> str:
+    return _t(state, f"tab_{tid}_sub")
+
+
 def run_tui(repo: Path, doctor: Any) -> int:
     try:
         from prompt_toolkit.application import Application
@@ -242,15 +310,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
         from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
         from prompt_toolkit.styles import Style
     except ImportError:
-        print(
-            "TUI needs prompt_toolkit. Falling back to: agents-doctor setup",
-            file=sys.stderr,
-        )
+        print(tr("en", "err_no_pt"), file=sys.stderr)
         return doctor.run_setup(repo, interactive=True)
 
     tools = doctor.detect()
     if not tools.get("claude", {}).get("present"):
-        print("ERROR: Claude Code is required as PM.", file=sys.stderr)
+        print(tr("en", "err_no_claude"), file=sys.stderr)
         return 1
 
     writers = list(doctor.available_writers(tools))
@@ -271,6 +336,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
     night_w0 = existing.get("night_provider")
     if night_w0 not in writers:
         night_w0 = writer0 if writer0 != "auto" else writers[0]
+    ws0 = existing.get("workspace_mode") or "auto"
+    if ws0 not in WORKSPACE_MODES:
+        ws0 = "auto"
+    ws_score0 = max(0, min(10, int(existing.get("worktree_min_score", 4))))
+    lang0 = existing.get("lang") or _load_global_lang() or "en"
+    lang0 = normalize_lang(lang0)
 
     state = SetupState(
         repo=repo,
@@ -283,7 +354,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
         night_provider=night_w0,
         max_fix_tasks=int(existing.get("max_fix_tasks", 5)),
         auto_merge=bool(existing.get("auto_merge", False)),
-        message="↑↓ fields · Enter open list · Esc back · ? help",
+        workspace_mode=ws0,
+        worktree_min_score=ws_score0,
+        worktree_on_multi_write=bool(existing.get("worktree_on_multi_write", True)),
+        lang=lang0,
+        message=tr(lang0, "msg_boot"),
         cursor=max(0, writers.index(writer0) if writer0 in writers else 0),
         focus="writer",
         view="form",
@@ -292,20 +367,20 @@ def run_tui(repo: Path, doctor: Any) -> int:
         field_i=0,
     )
 
-    tab_ids = [t[0] for t in TAB_META]
     tab_i = {"i": 0}
-
-    # ── rendering (no fixed-width unicode boxes — they break on narrow terms) ─
 
     def header() -> list[tuple[str, str]]:
         short = str(state.repo)
         if len(short) > 56:
             short = "…" + short[-55:]
+        lang_badge = state.lang.upper()
         return [
             ("class:hdr", "  "),
             ("class:brand", "◆ LANE"),
             ("class:hdr", "  "),
-            ("class:hdr-title", APP_TITLE),
+            ("class:hdr-title", _t(state, "app_title")),
+            ("class:hdr", "  "),
+            ("class:hdr-sub", f"[{lang_badge}]"),
             ("class:hdr", "\n"),
             ("class:hdr-sub", f"  {short}"),
             ("class:hdr", "\n"),
@@ -313,28 +388,39 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     def tabs() -> list[tuple[str, str]]:
         parts: list[tuple[str, str]] = [("class:tabbar", " ")]
-        for i, (_tid, label, _sub) in enumerate(TAB_META):
+        for i, tid in enumerate(TAB_IDS):
             on = i == tab_i["i"]
             st = "class:tab-on" if on else "class:tab-off"
             arrow = "▸" if on else " "
-            parts.append((st, f" {arrow}{i + 1}.{label} "))
+            parts.append((st, f" {arrow}{i + 1}.{_tab_label(state, tid)} "))
             parts.append(("class:tabbar", " "))
         parts.append(("class:tabbar", "\n"))
-        _, label, sub = TAB_META[tab_i["i"]]
-        parts.append(("class:tab-hint", f"  {label} — {sub}\n"))
+        tid = TAB_IDS[tab_i["i"]]
+        parts.append(
+            ("class:tab-hint", f"  {_tab_label(state, tid)} — {_tab_sub(state, tid)}\n")
+        )
         return parts
 
     def summary_strip() -> list[tuple[str, str]]:
         meta = WRITER_META.get(state.writer, {})
-        night = "night:ON" if state.night_review else "night:off"
+        night = _t(state, "sum_night_on" if state.night_review else "sum_night_off")
+        ws_label = {
+            "in_place": "main",
+            "worktree": "worktree",
+            "auto": "auto",
+        }.get(state.workspace_mode, state.workspace_mode)
         return [
             ("class:sum", "  "),
-            ("class:sum-label", "coder "),
+            ("class:sum-label", _t(state, "sum_coder")),
             ("class:sum-hi", f"{meta.get('title', state.writer)}"),
             ("class:sum", "  "),
             ("class:sum-dim", state.model),
             ("class:sum", "  "),
             ("class:sum-dim", f"effort:{state.effort}"),
+            ("class:sum", "  ·  "),
+            ("class:sum-dim", f"ws:{ws_label}"),
+            ("class:sum", "  ·  "),
+            ("class:sum-dim", state.lang),
             ("class:sum", "  ·  "),
             ("class:sum-on" if state.night_review else "class:sum-dim", night),
             ("class:sum", "\n"),
@@ -370,81 +456,66 @@ def run_tui(repo: Path, doctor: Any) -> int:
             mi = models.index(state.model)
         except ValueError:
             mi = 0
-        try:
-            ei = efforts.index(state.effort)
-        except ValueError:
-            ei = 0
-
         lines: list[tuple[str, str]] = [
-            ("class:h1", "  Daytime coder\n"),
-            (
-                "class:help",
-                "  Who implements task YAML. Claude remains PM/orchestrator.\n"
-                "  One level at a time: ↑↓ fields → Enter list → Enter confirm.\n\n",
-            ),
-            ("class:h2", "  Settings\n"),
+            ("class:h1", _t(state, "coder_h1")),
+            ("class:help", _t(state, "coder_help")),
+            ("class:h2", _t(state, "coder_settings")),
         ]
-
-        # Compact form rows — one active field, values as summary (not nested lists).
         rows = [
             (
                 "writer",
-                "Provider",
-                f"{meta.get('title', state.writer)}  ·  {meta.get('badge', '')}".rstrip(" ·"),
-                meta.get("blurb", ""),
+                _t(state, "field_provider"),
+                f"{meta.get('title', state.writer)}  ·  {meta.get('badge', '')}".rstrip(
+                    " ·"
+                ),
+                writer_blurb(state.lang, state.writer),
             ),
             (
                 "model",
-                "Model",
+                _t(state, "field_model"),
                 state.model,
-                f"{mi + 1}/{len(models)} options for {meta.get('title', state.writer)}",
+                _t(
+                    state,
+                    "coder_models_of",
+                    n=mi + 1,
+                    total=len(models),
+                    writer=meta.get("title", state.writer),
+                ),
             ),
             (
                 "effort",
-                "Effort",
+                _t(state, "field_effort"),
                 state.effort,
                 " · ".join(
                     (f"[{x}]" if x == state.effort else x) for x in efforts
                 ),
             ),
         ]
-        for i, (kind, label, value, hint) in enumerate(rows):
+        for i, (_kind, label, value, hint) in enumerate(rows):
             focused = state.field_i == i and state.view == "form"
             st = "class:row-on-focus" if focused else "class:row-on"
             caret = "▸" if focused else " "
-            open_hint = "  ⏎ list" if focused else ""
+            open_hint = _t(state, "coder_open_list") if focused else ""
             lines.append((st, f"  {caret} {label:<10}  {value}{open_hint}\n"))
             if focused and hint:
                 lines.append(("class:row-detail", f"      {hint}\n"))
-
-        lines.append(
-            (
-                "class:help",
-                "\n  Shortcuts: p provider · m model · e effort (open that list).\n"
-                "  When done: 4 or Tab → Apply → Enter to save.\n",
-            )
-        )
+        lines.append(("class:help", _t(state, "coder_tip")))
         return lines
 
     def body_coder_pick() -> list[tuple[str, str]]:
         kind = state.pick_kind
         opts = _options_for(kind)
-        label = FIELD_LABEL.get(kind, kind)
+        label = _field_label(state, kind)
         parent = ""
         if kind != "writer":
             parent = f" · {WRITER_META.get(state.writer, {}).get('title', state.writer)}"
-
         lines: list[tuple[str, str]] = [
-            ("class:h1", f"  Choose {label}{parent}\n"),
-            (
-                "class:help",
-                "  ↑↓ move · Enter confirm · Esc / ← back to form\n\n",
-            ),
+            ("class:h1", _t(state, "pick_h1", label=label, parent=parent)),
+            ("class:help", _t(state, "pick_help")),
         ]
         if not opts:
-            lines.append(("class:warn", "  (no options)\n"))
+            lines.append(("class:warn", _t(state, "pick_none")))
             return lines
-
         current = _current_value(kind)
         for i, opt in enumerate(opts):
             selected = opt == current
@@ -457,20 +528,22 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 st = "class:row-on"
             else:
                 st = "class:row"
-            mark = _radio(selected)
             caret = "▸" if focused else " "
-            text = _display_value(kind, opt)
-            lines.append((st, f"  {caret} {mark}  {text}\n"))
+            lines.append((st, f"  {caret} {_radio(selected)}  {_display_value(kind, opt)}\n"))
             if kind == "writer" and focused:
-                blurb = WRITER_META.get(opt, {}).get("blurb", "")
+                blurb = writer_blurb(state.lang, opt)
                 if blurb:
                     lines.append(("class:row-detail", f"        {blurb}\n"))
-
         lines.append(
             (
                 "class:help",
-                f"\n  {state.pick_cursor + 1}/{len(opts)}"
-                f"  ·  current: {_current_value(kind)}\n",
+                _t(
+                    state,
+                    "pick_footer",
+                    n=state.pick_cursor + 1,
+                    total=len(opts),
+                    current=_current_value(kind),
+                ),
             )
         )
         return lines
@@ -480,43 +553,78 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return body_coder_pick()
         return body_coder_form()
 
+    def body_work() -> list[tuple[str, str]]:
+        lines: list[tuple[str, str]] = [
+            ("class:h1", _t(state, "work_h1")),
+            ("class:help", _t(state, "work_help")),
+            ("class:h2", _t(state, "work_mode_h2")),
+        ]
+        for i, mode in enumerate(WORKSPACE_MODES):
+            selected = mode == state.workspace_mode
+            focused = state.focus == "work_mode" and i == state.cursor
+            if selected and focused:
+                st = "class:row-on-focus"
+            elif selected:
+                st = "class:row-on"
+            elif focused:
+                st = "class:row-focus"
+            else:
+                st = "class:row"
+            lines.append((st, f"  {_radio(selected)}  {_ws_title(state, mode)}\n"))
+            if selected or focused:
+                lines.append(
+                    ("class:row-detail", f"      {_ws_blurb(state, mode)}\n")
+                )
+        lines.append(("class:h2", _t(state, "work_auto_h2")))
+        active = state.workspace_mode == "auto"
+        st_thr = "class:row-on" if active else "class:dim"
+        lines.append(
+            (
+                st_thr,
+                _t(state, "work_score_line", n=state.worktree_min_score),
+            )
+        )
+        lines.append(
+            (
+                st_thr,
+                _t(
+                    state,
+                    "work_multi_line",
+                    sw=_switch(state.worktree_on_multi_write),
+                ),
+            )
+        )
+        if not active:
+            lines.append(("class:dim", _t(state, "work_thr_ignored")))
+        lines.append(("class:help", _t(state, "work_footer")))
+        return lines
+
     def body_night() -> list[tuple[str, str]]:
         lines: list[tuple[str, str]] = [
-            ("class:h1", "  Night shift\n"),
-            (
-                "class:help",
-                "  Optional Codex Sol review + bounded fix tasks via cron.\n"
-                "  Keep OFF for simple/static sites.\n\n",
-            ),
+            ("class:h1", _t(state, "night_h1")),
+            ("class:help", _t(state, "night_help")),
             (
                 "class:row-on" if state.night_review else "class:row",
-                f"  {_switch(state.night_review)}  Night review + repair"
-                f"     [Space]\n\n",
+                _t(state, "night_toggle", sw=_switch(state.night_review)),
             ),
         ]
         if not state.night_review:
-            lines.append(
-                ("class:dim", "  Night disabled → enabled: false in night-shift.yaml\n")
-            )
+            lines.append(("class:dim", _t(state, "night_off_note")))
             return lines
-
         bar = "●" * state.max_fix_tasks + "○" * (10 - state.max_fix_tasks)
-        lines.append(("class:h2", "  Fix budget  (+/-)\n"))
+        lines.append(("class:h2", _t(state, "night_budget_h2")))
         lines.append(
-            ("class:row", f"  max_fix_tasks = {state.max_fix_tasks} / 10\n")
+            ("class:row", _t(state, "night_budget_line", n=state.max_fix_tasks))
         )
         lines.append(("class:dim", f"  {bar}\n\n"))
-
-        lines.append(("class:h2", "  Auto-merge  (a)\n"))
+        lines.append(("class:h2", _t(state, "night_merge_h2")))
         lines.append(
             (
                 "class:row-on" if state.auto_merge else "class:row",
-                f"  {_switch(state.auto_merge)}  Merge to main when green"
-                f"  (usually OFF)\n\n",
+                _t(state, "night_merge_line", sw=_switch(state.auto_merge)),
             )
         )
-
-        lines.append(("class:h2", "  Night fix writer  (n, ↑↓)\n"))
+        lines.append(("class:h2", _t(state, "night_writer_h2")))
         opts = [w for w in state.writers if w != "auto"]
         for i, w in enumerate(opts):
             meta = WRITER_META.get(w, {"title": w})
@@ -535,10 +643,33 @@ def run_tui(repo: Path, doctor: Any) -> int:
             )
         return lines
 
+    def body_ui() -> list[tuple[str, str]]:
+        lines: list[tuple[str, str]] = [
+            ("class:h1", _t(state, "ui_h1")),
+            ("class:help", _t(state, "ui_help")),
+            ("class:h2", _t(state, "ui_lang_h2")),
+        ]
+        for i, code in enumerate(LANGS):
+            selected = code == state.lang
+            focused = state.focus == "ui_lang" and i == state.cursor
+            if selected and focused:
+                st = "class:row-on-focus"
+            elif selected:
+                st = "class:row-on"
+            elif focused:
+                st = "class:row-focus"
+            else:
+                st = "class:row"
+            lines.append(
+                (st, f"  {_radio(selected)}  {LANG_LABEL[code]}  ({code})\n")
+            )
+        lines.append(("class:help", _t(state, "ui_note")))
+        return lines
+
     def body_status() -> list[tuple[str, str]]:
         lines: list[tuple[str, str]] = [
-            ("class:h1", "  Host tooling\n"),
-            ("class:help", "  Green = ready for writer lanes.\n\n"),
+            ("class:h1", _t(state, "status_h1")),
+            ("class:help", _t(state, "status_help")),
         ]
         order = ["claude", "qwen", "kimi", "grok", "agy", "codex", "bubblewrap"]
         seen: set[str] = set()
@@ -556,82 +687,81 @@ def run_tui(repo: Path, doctor: Any) -> int:
             if reason and not ok:
                 lines.append(("class:warn", f"       {reason}\n"))
         profile, lanes, notes = doctor.pick_profile(state.tools, state.writer)
-        lines.append(("class:h2", f"\n  Profile preview · {profile}\n"))
+        lines.append(
+            ("class:h2", _t(state, "status_profile", profile=profile))
+        )
         for k, v in (lanes or {}).items():
             lines.append(("class:dim", f"    {k:<16} {v}\n"))
         lines.append(("class:dim", f"    model            {state.model}\n"))
         lines.append(("class:dim", f"    reasoning_effort {state.effort}\n"))
+        lines.append(("class:dim", f"    workspace        {state.workspace_mode}\n"))
+        lines.append(("class:dim", f"    language         {state.lang}\n"))
         if notes:
-            lines.append(("class:warn", "\n  Notes\n"))
             for n in notes:
                 lines.append(("class:warn", f"    · {n}\n"))
-        lines.append(("class:help", "\n  r  rescan CLIs\n"))
+        lines.append(("class:help", _t(state, "status_rescan")))
         return lines
 
     def body_apply() -> list[tuple[str, str]]:
-        profile, lanes, _ = doctor.pick_profile(state.tools, state.writer)
+        profile, _lanes, _ = doctor.pick_profile(state.tools, state.writer)
         meta = WRITER_META.get(state.writer, {})
+        night_txt = (
+            f"{_t(state, 'on')}  fix={state.night_provider}  max={state.max_fix_tasks}"
+            if state.night_review
+            else _t(state, "off")
+        )
         lines: list[tuple[str, str]] = [
-            ("class:h1", "  Save to this project\n"),
-            (
-                "class:help",
-                "  Writes routing + night-shift. Safe to re-run anytime.\n\n",
-            ),
-            ("class:h2", "  Summary\n"),
-            ("class:row-on", f"  project   {state.repo}\n"),
+            ("class:h1", _t(state, "apply_h1")),
+            ("class:help", _t(state, "apply_help")),
+            ("class:h2", _t(state, "apply_summary")),
+            ("class:row-on", _t(state, "apply_project", repo=state.repo)),
             (
                 "class:row-on",
-                f"  coder     {meta.get('title', state.writer)}  ({state.writer})\n",
+                _t(
+                    state,
+                    "apply_coder",
+                    title=meta.get("title", state.writer),
+                    writer=state.writer,
+                ),
             ),
-            ("class:row-on", f"  model     {state.model}\n"),
-            ("class:row-on", f"  effort    {state.effort}\n"),
+            ("class:row-on", _t(state, "apply_model", model=state.model)),
+            ("class:row-on", _t(state, "apply_effort", effort=state.effort)),
             (
                 "class:row-on",
-                f"  night     {'ON' if state.night_review else 'off'}"
-                + (
-                    f"  fix={state.night_provider}  max={state.max_fix_tasks}"
-                    if state.night_review
-                    else ""
-                )
-                + "\n",
+                _t(state, "apply_workspace", ws=_ws_title(state, state.workspace_mode)),
             ),
-            ("class:row-on", f"  profile   {profile}\n\n"),
-            ("class:h2", "  Files\n"),
+            (
+                "class:row-on",
+                _t(state, "apply_lang", lang=LANG_LABEL.get(state.lang, state.lang)),
+            ),
+            ("class:row-on", _t(state, "apply_night", night=night_txt)),
+            ("class:row-on", _t(state, "apply_profile", profile=profile)),
+            ("class:h2", _t(state, "apply_files")),
             ("class:dim", "    .agents/routing.profile.yaml\n"),
             ("class:dim", "    .agents/capabilities.json\n"),
             ("class:dim", "    .agents/night-shift.yaml\n\n"),
-            ("class:accent", "  ╔══════════════════════════════════╗\n"),
-            ("class:accent", "  ║   ENTER  ·  Save & close TUI     ║\n"),
-            ("class:accent", "  ╚══════════════════════════════════╝\n"),
+            ("class:accent", _t(state, "apply_box1")),
+            ("class:accent", _t(state, "apply_box2")),
+            ("class:accent", _t(state, "apply_box3")),
+            ("class:help", _t(state, "apply_footer")),
         ]
-        lines.append(
-            (
-                "class:help",
-                "\n  Saves routing + night-shift, then exits the interface.\n"
-                "  New runs pick up main_write + model/effort.\n",
-            )
-        )
         return lines
 
     bodies: dict[str, Callable[[], list[tuple[str, str]]]] = {
         "coder": body_coder,
+        "work": body_work,
         "night": body_night,
+        "ui": body_ui,
         "status": body_status,
         "apply": body_apply,
     }
 
     def footer() -> list[tuple[str, str]]:
-        tid = tab_ids[tab_i["i"]]
+        tid = TAB_IDS[tab_i["i"]]
         if tid == "coder" and state.view == "pick":
-            keys_txt = "↑↓ choose · Enter confirm · Esc back · q quit"
+            keys_txt = _t(state, "keys_coder_pick")
         else:
-            keys = {
-                "coder": "↑↓ field · Enter list · Tab tabs · 4 Apply",
-                "night": "Space night · a merge · +/- budget · n writer",
-                "status": "r rescan · 1-4 tabs · q quit",
-                "apply": "ENTER save · q quit",
-            }
-            keys_txt = keys.get(tid, "")
+            keys_txt = _t(state, f"keys_{tid}")
         return [
             ("class:ftr", "  "),
             ("class:ftr-msg", (state.message or "")[:44]),
@@ -640,7 +770,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         ]
 
     def main_view() -> list[tuple[str, str]]:
-        return bodies[tab_ids[tab_i["i"]]]()
+        return bodies[TAB_IDS[tab_i["i"]]]()
 
     # ── actions ───────────────────────────────────────────────────────────
 
@@ -648,13 +778,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.writer = w
         state.model = _ensure_model(w, DEFAULT_MODEL.get(w, state.model))
         state.effort = _ensure_effort(w, DEFAULT_EFFORT.get(w, state.effort))
-        state.message = f"Coder → {WRITER_META.get(w, {}).get('title', w)}"
+        state.message = _t(
+            state, "msg_coder", name=WRITER_META.get(w, {}).get("title", w)
+        )
 
     def open_pick(kind: str) -> None:
-        """Drill into a full list for one field (classic form→menu pattern)."""
         opts = _options_for(kind)
         if not opts:
-            state.message = f"No options for {FIELD_LABEL.get(kind, kind)}"
+            state.message = _t(state, "msg_no_opts", name=_field_label(state, kind))
             return
         state.view = "pick"
         state.pick_kind = kind
@@ -664,7 +795,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.pick_cursor = opts.index(current)
         except ValueError:
             state.pick_cursor = 0
-        state.message = f"Pick {FIELD_LABEL.get(kind, kind)} · ↑↓ · Enter"
+        state.message = _t(state, "msg_pick", name=_field_label(state, kind))
 
     def close_pick(confirm: bool) -> None:
         if state.view != "pick":
@@ -676,18 +807,17 @@ def run_tui(repo: Path, doctor: Any) -> int:
             chosen = opts[i]
             if kind == "writer":
                 set_writer(chosen)
-                # After provider change, nudge user to model next.
                 state.field_i = 1
             elif kind == "model":
                 state.model = chosen
-                state.message = f"Model → {chosen}"
+                state.message = _t(state, "msg_model", name=chosen)
                 state.field_i = 2
             else:
                 state.effort = chosen
-                state.message = f"Effort → {chosen}"
+                state.message = _t(state, "msg_effort", name=chosen)
                 state.field_i = 2
         else:
-            state.message = "Cancelled"
+            state.message = _t(state, "msg_cancelled")
         state.view = "form"
         state.focus = CODER_FIELDS[state.field_i]
 
@@ -695,7 +825,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.view = "form"
         state.field_i = (state.field_i + delta) % len(CODER_FIELDS)
         state.focus = CODER_FIELDS[state.field_i]
-        state.message = f"Field → {FIELD_LABEL[state.focus]}"
+        state.message = _t(
+            state, "msg_focus", name=_field_label(state, state.focus)
+        )
 
     def move_pick(delta: int) -> None:
         opts = _options_for(state.pick_kind)
@@ -715,10 +847,47 @@ def run_tui(repo: Path, doctor: Any) -> int:
         i = (i + delta) % len(opts)
         state.cursor = i
         state.night_provider = opts[i]
-        state.message = f"Night fix writer → {state.night_provider}"
+        state.message = _t(state, "msg_night_fix", name=state.night_provider)
+
+    def move_work_mode(delta: int) -> None:
+        state.focus = "work_mode"
+        try:
+            i = WORKSPACE_MODES.index(state.workspace_mode)
+        except ValueError:
+            i = 0
+        i = (i + delta) % len(WORKSPACE_MODES)
+        state.cursor = i
+        state.workspace_mode = WORKSPACE_MODES[i]
+        state.message = _t(
+            state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
+        )
+
+    def move_ui_lang(delta: int) -> None:
+        state.focus = "ui_lang"
+        try:
+            i = LANGS.index(state.lang)
+        except ValueError:
+            i = 0
+        i = (i + delta) % len(LANGS)
+        state.cursor = i
+        state.lang = LANGS[i]
+        state.message = _t(
+            state, "msg_lang", name=LANG_LABEL.get(state.lang, state.lang)
+        )
+
+    def cycle_lang() -> None:
+        try:
+            i = LANGS.index(state.lang)
+        except ValueError:
+            i = 0
+        state.lang = LANGS[(i + 1) % len(LANGS)]
+        if state.focus == "ui_lang":
+            state.cursor = LANGS.index(state.lang)
+        state.message = _t(
+            state, "msg_lang", name=LANG_LABEL.get(state.lang, state.lang)
+        )
 
     def do_apply(app: Any | None = None) -> None:
-        """Write project files without polluting the fullscreen TUI (no stdout)."""
         import contextlib
         import io
 
@@ -740,11 +909,41 @@ def run_tui(repo: Path, doctor: Any) -> int:
                         notes,
                         writer_model=model,
                         writer_effort=effort,
+                        workspace_mode=state.workspace_mode,
+                        worktree_min_score=state.worktree_min_score,
+                        worktree_on_multi_write=state.worktree_on_multi_write,
+                        ui_language=state.lang,
                         quiet=True,
                     )
                 except TypeError:
-                    # older signature without model/effort/quiet
-                    write(state.repo, state.tools, profile, lanes, notes)
+                    try:
+                        write(
+                            state.repo,
+                            state.tools,
+                            profile,
+                            lanes,
+                            notes,
+                            writer_model=model,
+                            writer_effort=effort,
+                            workspace_mode=state.workspace_mode,
+                            worktree_min_score=state.worktree_min_score,
+                            worktree_on_multi_write=state.worktree_on_multi_write,
+                            quiet=True,
+                        )
+                    except TypeError:
+                        try:
+                            write(
+                                state.repo,
+                                state.tools,
+                                profile,
+                                lanes,
+                                notes,
+                                writer_model=model,
+                                writer_effort=effort,
+                                quiet=True,
+                            )
+                        except TypeError:
+                            write(state.repo, state.tools, profile, lanes, notes)
                 try:
                     doctor.write_night_shift(
                         state.repo,
@@ -763,22 +962,19 @@ def run_tui(repo: Path, doctor: Any) -> int:
                         auto_merge=state.auto_merge if state.night_review else False,
                     )
         except Exception as exc:  # noqa: BLE001
-            state.message = f"Apply failed: {exc}"
+            state.message = _t(state, "msg_apply_fail", err=exc)
             return
 
-        meta = WRITER_META.get(state.writer, {})
-        state.last_apply = (
-            f"{meta.get('title', state.writer)} · {state.model} · {state.effort} · "
-            f"night={'on' if state.night_review else 'off'}"
-        )
-        state.message = "✓ Saved — closing…"
-        # Exit fullscreen cleanly; print a short summary after the UI tears down.
+        _save_global_lang(state.lang)
+        state.message = _t(state, "msg_saved")
         result = {
             "ok": True,
             "repo": str(state.repo),
             "writer": state.writer,
             "model": state.model,
             "effort": state.effort,
+            "workspace_mode": state.workspace_mode,
+            "lang": state.lang,
             "night": state.night_review,
             "night_provider": state.night_provider if state.night_review else None,
             "max_fix_tasks": state.max_fix_tasks if state.night_review else None,
@@ -802,7 +998,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         if state.writer not in state.writers:
             set_writer(state.writers[0])
             state.cursor = 0
-        state.message = "Host tooling rescanned"
+        state.message = _t(state, "msg_rescan")
 
     # ── keys ──────────────────────────────────────────────────────────────
 
@@ -813,125 +1009,177 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.view = "form"
             state.focus = CODER_FIELDS[state.field_i]
 
+    def on_tab_enter() -> None:
+        tid = TAB_IDS[tab_i["i"]]
+        if tid == "work":
+            state.focus = "work_mode"
+            try:
+                state.cursor = WORKSPACE_MODES.index(state.workspace_mode)
+            except ValueError:
+                state.cursor = 0
+        elif tid == "ui":
+            state.focus = "ui_lang"
+            try:
+                state.cursor = LANGS.index(state.lang)
+            except ValueError:
+                state.cursor = 0
+        state.message = _t(state, "msg_tab", name=_tab_label(state, tid))
+
     @kb.add("q")
     @kb.add("c-c")
     def _(event) -> None:
-        # From a picker, q exits the whole app (same as before); Esc backs out.
         event.app.exit(result=0)
 
     @kb.add("escape")
     @kb.add("backspace")
     def _(event) -> None:
-        tid = tab_ids[tab_i["i"]]
-        if tid == "coder" and state.view == "pick":
+        if TAB_IDS[tab_i["i"]] == "coder" and state.view == "pick":
             close_pick(confirm=False)
 
     @kb.add("tab")
     def _(event) -> None:
-        # Tabs only — never reuse Tab for field focus (that mixed levels before).
         leave_pick_if_any()
-        tab_i["i"] = (tab_i["i"] + 1) % len(tab_ids)
-        state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
+        tab_i["i"] = (tab_i["i"] + 1) % len(TAB_IDS)
+        on_tab_enter()
 
     @kb.add("s-tab")
     def _(event) -> None:
         leave_pick_if_any()
-        tab_i["i"] = (tab_i["i"] - 1) % len(tab_ids)
-        state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
+        tab_i["i"] = (tab_i["i"] - 1) % len(TAB_IDS)
+        on_tab_enter()
 
     @kb.add("right")
     def _(event) -> None:
-        tid = tab_ids[tab_i["i"]]
+        tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "form":
                 open_pick(CODER_FIELDS[state.field_i])
-            # in pick: right is inert (avoid accidental tab jumps)
             return
-        tab_i["i"] = (tab_i["i"] + 1) % len(tab_ids)
-        state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
+        tab_i["i"] = (tab_i["i"] + 1) % len(TAB_IDS)
+        on_tab_enter()
 
     @kb.add("left")
     def _(event) -> None:
-        tid = tab_ids[tab_i["i"]]
+        tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "pick":
                 close_pick(confirm=False)
             return
-        tab_i["i"] = (tab_i["i"] - 1) % len(tab_ids)
-        state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
+        tab_i["i"] = (tab_i["i"] - 1) % len(TAB_IDS)
+        on_tab_enter()
 
-    for n in range(1, 5):
+    for n in range(1, 7):
 
         @kb.add(str(n))
         def _(event, n=n) -> None:
             leave_pick_if_any()
             tab_i["i"] = n - 1
-            if tab_ids[tab_i["i"]] == "coder":
+            if TAB_IDS[tab_i["i"]] == "coder":
                 state.view = "form"
                 state.field_i = 0
                 state.focus = "writer"
-            state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
+            on_tab_enter()
 
     @kb.add("up")
     @kb.add("k")
     def _(event) -> None:
-        tid = tab_ids[tab_i["i"]]
+        tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "pick":
                 move_pick(-1)
             else:
                 move_form_field(-1)
+        elif tid == "work":
+            move_work_mode(-1)
+        elif tid == "ui":
+            move_ui_lang(-1)
         elif tid == "night" and state.night_review:
             move_night_writer(-1)
 
     @kb.add("down")
     @kb.add("j")
     def _(event) -> None:
-        tid = tab_ids[tab_i["i"]]
+        tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "pick":
                 move_pick(1)
             else:
                 move_form_field(1)
+        elif tid == "work":
+            move_work_mode(1)
+        elif tid == "ui":
+            move_ui_lang(1)
         elif tid == "night" and state.night_review:
             move_night_writer(1)
 
-    # Optional shortcuts: jump straight into a field's list (still no cycling).
+    @kb.add("L")
+    @kb.add("l")
+    def _(event) -> None:
+        # Always available language cycle (does not steal 'l' only when capital L
+        # preferred — both bound; coder list uses j/k for nav).
+        if TAB_IDS[tab_i["i"]] == "coder" and state.view == "pick":
+            return
+        cycle_lang()
+
     @kb.add("m")
     def _(event) -> None:
-        if tab_ids[tab_i["i"]] == "coder":
+        tid = TAB_IDS[tab_i["i"]]
+        if tid == "coder":
             state.field_i = 1
             open_pick("model")
+        elif tid == "work":
+            state.worktree_on_multi_write = not state.worktree_on_multi_write
+            state.message = _t(
+                state,
+                "msg_multi",
+                on=("on" if state.worktree_on_multi_write else "off"),
+            )
 
     @kb.add("e")
     def _(event) -> None:
-        if tab_ids[tab_i["i"]] == "coder":
+        if TAB_IDS[tab_i["i"]] == "coder":
             state.field_i = 2
             open_pick("effort")
 
     @kb.add("p")
     def _(event) -> None:
-        if tab_ids[tab_i["i"]] == "coder":
+        if TAB_IDS[tab_i["i"]] == "coder":
             state.field_i = 0
             open_pick("writer")
 
     @kb.add(" ")
     def _(event) -> None:
-        tid = tab_ids[tab_i["i"]]
+        tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "pick":
                 close_pick(confirm=True)
             else:
                 open_pick(CODER_FIELDS[state.field_i])
+        elif tid == "work":
+            i = max(0, min(state.cursor, len(WORKSPACE_MODES) - 1))
+            state.workspace_mode = WORKSPACE_MODES[i]
+            state.message = _t(
+                state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
+            )
+        elif tid == "ui":
+            i = max(0, min(state.cursor, len(LANGS) - 1))
+            state.lang = LANGS[i]
+            state.message = _t(
+                state, "msg_lang", name=LANG_LABEL.get(state.lang, state.lang)
+            )
         elif tid == "night":
             state.night_review = not state.night_review
-            state.message = f"Night → {'ON' if state.night_review else 'off'}"
+            state.message = _t(
+                state,
+                "msg_night",
+                on=(_t(state, "on") if state.night_review else _t(state, "off")),
+            )
         elif tid == "apply":
             do_apply(event.app)
 
     @kb.add("enter")
     def _(event) -> None:
-        tid = tab_ids[tab_i["i"]]
+        tid = TAB_IDS[tab_i["i"]]
         if tid == "apply":
             do_apply(event.app)
         elif tid == "coder":
@@ -939,39 +1187,68 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 close_pick(confirm=True)
             else:
                 open_pick(CODER_FIELDS[state.field_i])
+        elif tid == "work":
+            i = max(0, min(state.cursor, len(WORKSPACE_MODES) - 1))
+            state.workspace_mode = WORKSPACE_MODES[i]
+            state.message = _t(
+                state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
+            )
+        elif tid == "ui":
+            i = max(0, min(state.cursor, len(LANGS) - 1))
+            state.lang = LANGS[i]
+            state.message = _t(
+                state, "msg_lang", name=LANG_LABEL.get(state.lang, state.lang)
+            )
         elif tid == "night":
             state.night_review = not state.night_review
-            state.message = f"Night → {'ON' if state.night_review else 'off'}"
+            state.message = _t(
+                state,
+                "msg_night",
+                on=(_t(state, "on") if state.night_review else _t(state, "off")),
+            )
         else:
-            tab_i["i"] = tab_ids.index("apply")
+            tab_i["i"] = TAB_IDS.index("apply")
+            on_tab_enter()
 
     @kb.add("a")
     def _(event) -> None:
-        if state.night_review:
+        if TAB_IDS[tab_i["i"]] == "night" and state.night_review:
             state.auto_merge = not state.auto_merge
-            state.message = f"Auto-merge → {state.auto_merge}"
+            state.message = _t(state, "msg_merge", on=str(state.auto_merge))
 
     @kb.add("n")
     def _(event) -> None:
-        if tab_ids[tab_i["i"]] == "night" and state.night_review:
+        if TAB_IDS[tab_i["i"]] == "night" and state.night_review:
             state.focus = "night_writer"
             opts = [w for w in state.writers if w != "auto"]
             if opts and state.night_provider in opts:
                 state.cursor = opts.index(state.night_provider)
-            state.message = "Night writer list · ↑↓"
+            state.message = _t(state, "msg_night_writer")
 
     @kb.add("+")
     @kb.add("=")
     def _(event) -> None:
-        if state.night_review:
+        tid = TAB_IDS[tab_i["i"]]
+        if tid == "work":
+            state.worktree_min_score = min(10, state.worktree_min_score + 1)
+            state.message = _t(
+                state, "msg_ws_score", n=state.worktree_min_score
+            )
+        elif state.night_review:
             state.max_fix_tasks = min(10, state.max_fix_tasks + 1)
-            state.message = f"Max fix tasks → {state.max_fix_tasks}"
+            state.message = _t(state, "msg_max_fix", n=state.max_fix_tasks)
 
     @kb.add("-")
     def _(event) -> None:
-        if state.night_review:
+        tid = TAB_IDS[tab_i["i"]]
+        if tid == "work":
+            state.worktree_min_score = max(0, state.worktree_min_score - 1)
+            state.message = _t(
+                state, "msg_ws_score", n=state.worktree_min_score
+            )
+        elif state.night_review:
             state.max_fix_tasks = max(1, state.max_fix_tasks - 1)
-            state.message = f"Max fix tasks → {state.max_fix_tasks}"
+            state.message = _t(state, "msg_max_fix", n=state.max_fix_tasks)
 
     @kb.add("r")
     def _(event) -> None:
@@ -980,13 +1257,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
     @kb.add("?")
     def _(event) -> None:
         if state.view == "pick":
-            state.message = "↑↓ choose · Enter ok · Esc back · q quit"
+            state.message = _t(state, "msg_help_pick")
         else:
-            state.message = (
-                "↑↓ fields · Enter list · p/m/e jump · 1-4 tabs · 4 Apply · q quit"
-            )
-
-    # ── layout (single column — no side panel collision) ──────────────────
+            state.message = _t(state, "msg_help")
 
     root = HSplit(
         [
@@ -1050,30 +1323,30 @@ def run_tui(repo: Path, doctor: Any) -> int:
     try:
         result = app.run()
     except Exception as exc:  # noqa: BLE001
-        print(f"TUI error: {exc}\nFalling back to setup wizard.", file=sys.stderr)
+        print(tr("en", "err_tui", err=exc), file=sys.stderr)
         return doctor.run_setup(repo, interactive=True)
 
-    # After fullscreen tears down — clean terminal summary (no mid-UI prints).
     if isinstance(result, dict) and result.get("ok"):
         agents = Path(result["repo"]) / ".agents"
+        lang = normalize_lang(result.get("lang") or "en")
         print()
-        print("✓ Project configured")
-        print(f"  path:    {result['repo']}")
-        print(f"  coder:   {result['writer']}")
-        print(f"  model:   {result.get('model') or '—'}")
-        print(f"  effort:  {result.get('effort') or '—'}")
-        print(
-            f"  night:   {'on' if result.get('night') else 'off'}"
-            + (
-                f" (fix={result.get('night_provider')}, max={result.get('max_fix_tasks')})"
-                if result.get("night")
-                else ""
-            )
+        print(tr(lang, "done_title"))
+        print(tr(lang, "done_path", v=result["repo"]))
+        print(tr(lang, "done_coder", v=result["writer"]))
+        print(tr(lang, "done_model", v=result.get("model") or "—"))
+        print(tr(lang, "done_effort", v=result.get("effort") or "—"))
+        print(tr(lang, "done_ws", v=result.get("workspace_mode") or "auto"))
+        print(tr(lang, "done_lang", v=lang))
+        night_v = (
+            f"on (fix={result.get('night_provider')}, max={result.get('max_fix_tasks')})"
+            if result.get("night")
+            else "off"
         )
-        print(f"  wrote:   {agents / 'routing.profile.yaml'}")
+        print(tr(lang, "done_night", v=night_v))
+        print(tr(lang, "done_wrote", v=str(agents / "routing.profile.yaml")))
         print(f"           {agents / 'night-shift.yaml'}")
         print()
-        print("New runs use this coder. Re-open anytime: agents-doctor")
+        print(tr(lang, "done_hint"))
         return 0
     return int(result or 0) if isinstance(result, int) else 0
 
@@ -1083,6 +1356,16 @@ if __name__ == "__main__":
     import importlib.util
 
     here = Path(__file__).resolve().parent
+    # Load sibling i18n if running as script
+    i18n_path = here / "agents_doctor_tui_i18n.py"
+    if i18n_path.is_file() and "agents_doctor_tui_i18n" not in sys.modules:
+        loader = SourceFileLoader("agents_doctor_tui_i18n", str(i18n_path))
+        spec = importlib.util.spec_from_loader("agents_doctor_tui_i18n", loader)
+        assert spec and spec.loader
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agents_doctor_tui_i18n"] = mod
+        spec.loader.exec_module(mod)
+
     loader = SourceFileLoader("agents_doctor", str(here / "agents-doctor"))
     spec = importlib.util.spec_from_loader("agents_doctor", loader)
     assert spec and spec.loader

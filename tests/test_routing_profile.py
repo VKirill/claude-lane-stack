@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "bin"))
 from routing_profile import (  # noqa: E402
     lane_matches_profile,
     load_routing_profile,
+    resolve_workspace,
     resolve_writer,
 )
 
@@ -60,6 +61,62 @@ class RoutingProfileTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             resolved = resolve_writer(Path(tmp), provider_explicit=False)
             self.assertEqual(resolved["provider"], "kimi")
+
+    def test_resolve_workspace_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".agents").mkdir()
+            profile = root / ".agents" / "routing.profile.yaml"
+            profile.write_text(
+                textwrap.dedent(
+                    """\
+                    workspace:
+                      mode: in_place
+                      worktree_min_score: 4
+                      worktree_on_multi_write: true
+                    """
+                ),
+                encoding="utf-8",
+            )
+            ws = resolve_workspace(root, score=9, write_task_count=3)
+            self.assertEqual(ws["mode_setting"], "in_place")
+            self.assertEqual(ws["effective"], "in_place")
+
+            profile.write_text(
+                textwrap.dedent(
+                    """\
+                    workspace:
+                      mode: worktree
+                    """
+                ),
+                encoding="utf-8",
+            )
+            ws = resolve_workspace(root, score=0, write_task_count=1)
+            self.assertEqual(ws["effective"], "worktree")
+
+            profile.write_text(
+                textwrap.dedent(
+                    """\
+                    workspace:
+                      mode: auto
+                      worktree_min_score: 4
+                      worktree_on_multi_write: true
+                    """
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                resolve_workspace(root, score=1, write_task_count=1)["effective"],
+                "in_place",
+            )
+            self.assertEqual(
+                resolve_workspace(root, score=4, write_task_count=1)["effective"],
+                "worktree",
+            )
+            self.assertEqual(
+                resolve_workspace(root, score=1, write_task_count=2)["effective"],
+                "worktree",
+            )
 
 
 if __name__ == "__main__":

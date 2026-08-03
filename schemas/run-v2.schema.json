@@ -54,6 +54,17 @@
           "uniqueItems": true
         }
       }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode_setting", "effective"],
+      "properties": {
+        "mode_setting": {"enum": ["in_place", "worktree", "auto"]},
+        "effective": {"enum": ["in_place", "worktree"]},
+        "worktree_min_score": {"type": "integer", "minimum": 0, "maximum": 10},
+        "worktree_on_multi_write": {"type": "boolean"}
+      }
     }
   }
 }

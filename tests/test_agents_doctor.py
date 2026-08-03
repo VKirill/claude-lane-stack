@@ -255,6 +255,33 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertIn("provider: codex", profile)
             self.assertIn("model: gpt-5.6-luna", profile)
             self.assertIn("reasoning_effort: max", profile)
+            self.assertIn("workspace:", profile)
+            self.assertIn("mode: auto", profile)
+            self.assertIn("ui:", profile)
+            self.assertIn("language: en", profile)
+
+            in_place = subprocess.run(
+                [
+                    str(DOCTOR),
+                    "--apply",
+                    "--writer-provider",
+                    "codex",
+                    "--workspace-mode",
+                    "in_place",
+                    "--night-review",
+                    "off",
+                    str(repo),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(in_place.returncode, 0, in_place.stderr + in_place.stdout)
+            profile2 = (repo / ".agents" / "routing.profile.yaml").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("mode: in_place", profile2)
 
     def test_setup_writes_routing_and_night_shift(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

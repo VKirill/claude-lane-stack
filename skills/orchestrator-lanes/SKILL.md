@@ -22,17 +22,18 @@ You are the **only** person who merges to `main`. Human never merges.
 |------:|------|
 | 0–2 | Micro: 1 short contract, **commit main** |
 | 3–6 | Express: 1 task, dispatch, verify, **commit/merge main** |
-| 7–8 | Brief: 2–4 tasks, **filled** PLAN + SPEC, worktree if ≥2 writes |
-| 9–10 | Full: rich SPEC + DAG + worktree |
+| 7–8 | Brief: 2–4 tasks, **filled** PLAN + SPEC; workspace per `adoc` profile |
+| 9–10 | Full: rich SPEC + DAG; workspace per `adoc` profile |
 | 11+ | Split feature; ask user |
 
 **Writer source of truth = `adoc` / `agents-doctor`** → `.agents/routing.profile.yaml`
-(`lanes.main_write`, `writer.model`, `writer.reasoning_effort`).
+(`lanes.main_write`, `writer.model`, `writer.reasoning_effort`, **`workspace.mode`**).
 
 - Every task YAML **must** set `lane: <main_write>` exactly (e.g. `lane: codex`).
 - Never hardcode `lane: kimi` unless adoc says so. `run-validate` rejects mismatch.
 - `run-controller` defaults `--provider` / model / effort from the same profile.
 - Selectable writers: kimi / qwen / grok / agy / **codex**. Codex Sol remains recovery + night review / onboard / docs.
+- **Workspace** (adoc tab **Work**): `in_place` | `worktree` | `auto` — see Phase 2.
 
 ---
 
@@ -115,13 +116,17 @@ Repeated correction rule: if you retype the same path/command fix twice in a pro
 
 ---
 
-## Phase 2 — Isolation
+## Phase 2 — Isolation (workspace from adoc)
 
-| Condition | Action |
-|-----------|--------|
-| score ≥ 4 **or** ≥2 write tasks | `wt-create` → all `project_cwd` = worktree |
-| 1 low-risk task | may use main; still only PM commits |
-| high-risk write | worktree; avoid parallel writers on overlapping blast radius |
+Read `.agents/routing.profile.yaml` → `workspace.mode` (default **auto** if missing).
+
+| `workspace.mode` | Action |
+|------------------|--------|
+| **in_place** | `project_cwd` = repo; **no** `wt-create`; PM **commits main** |
+| **worktree** | always `wt-create` → `project_cwd` = `.worktrees/<slug>`; PM `wt-merge-main` |
+| **auto** | worktree when `score ≥ worktree_min_score` (default 4) **or** (`worktree_on_multi_write` and ≥2 write tasks); else in-place |
+
+Also: high-risk write → prefer worktree even under auto; avoid parallel writers on overlapping blast radius.
 
 ---
 

@@ -1,3 +1,13 @@
+## 1.12.6 — 2026-08-03
+
+### Added
+- **TUI languages EN + RU** (tab **UI**, hotkey **L**). All tabs/labels/help switch live; preference saved as `ui.language` in the project profile and as global default `~/.agents/doctor.ui.yaml` on Apply. Run/task YAML stay English.
+
+## 1.12.5 — 2026-08-03
+
+### Added
+- **Workspace mode in `adoc` TUI (tab Work)** and routing profile: `workspace.mode` = `in_place` | `worktree` | `auto`, plus auto thresholds (`worktree_min_score`, `worktree_on_multi_write`). Writers can edit the main checkout or always use isolated worktrees; auto keeps the old score/multi-write heuristic. CLI: `--workspace-mode`, `--worktree-min-score`, `--worktree-on-multi-write`. `run-init` stamps `workspace` on `run.yaml` and hints when profile prefers worktree but init is in-place.
+
 ## 1.12.4 — 2026-08-03
 
 ### Fixed

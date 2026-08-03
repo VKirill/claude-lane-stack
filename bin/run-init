@@ -152,6 +152,33 @@ def create_run(args: argparse.Namespace) -> Path:
             raise ContractError(f"project_cwd is not a directory: {project_cwd}")
         base_sha = git_head(repo)
     created_at = datetime.now(timezone.utc).isoformat()
+
+    # agents-doctor routing.profile.yaml is source of truth for task.lane + workspace
+    try:
+        from routing_profile import resolve_writer, resolve_workspace  # type: ignore
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from routing_profile import resolve_writer, resolve_workspace  # type: ignore
+
+    resolved = resolve_writer(project_cwd, provider_explicit=False)
+    default_lane = resolved.get("main_write") or resolved.get("provider") or "kimi"
+    workspace = resolve_workspace(
+        repo if not adopted else project_cwd,
+        score=int(args.score or 0),
+        write_task_count=1,
+    )
+    if (
+        not adopted
+        and workspace["effective"] == "worktree"
+        and project_cwd == repo
+    ):
+        print(
+            "run-init: profile workspace prefers worktree — "
+            "for isolated runs: wt-create <repo> <slug> && "
+            "run-init <repo> <slug> --adopt-worktree",
+            file=sys.stderr,
+        )
+
     data: dict[str, object] = {
         "schema_version": 2,
         "slug": args.slug,
@@ -170,6 +197,12 @@ def create_run(args: argparse.Namespace) -> Path:
             "close_next": [],
             "close_open": [],
         },
+        "workspace": {
+            "mode_setting": workspace["mode_setting"],
+            "effective": workspace["effective"],
+            "worktree_min_score": workspace["worktree_min_score"],
+            "worktree_on_multi_write": workspace["worktree_on_multi_write"],
+        },
     }
     validate_generated(data)
     try:
@@ -183,15 +216,6 @@ def create_run(args: argparse.Namespace) -> Path:
         except FileExistsError as exc:
             raise ContractError(f"run already exists: {run_dir}") from exc
 
-    # agents-doctor routing.profile.yaml is source of truth for task.lane
-    try:
-        from routing_profile import resolve_writer  # type: ignore
-    except ImportError:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from routing_profile import resolve_writer  # type: ignore
-
-    resolved = resolve_writer(project_cwd, provider_explicit=False)
-    default_lane = resolved.get("main_write") or resolved.get("provider") or "kimi"
     values = {
         "slug": args.slug,
         "repo": str(repo),
