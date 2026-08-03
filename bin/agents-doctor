@@ -410,6 +410,7 @@ def write_outputs(
     *,
     writer_model: str | None = None,
     writer_effort: str | None = None,
+    quiet: bool = False,
 ) -> None:
     agents = repo / ".agents"
     agents.mkdir(parents=True, exist_ok=True)
@@ -483,8 +484,9 @@ def write_outputs(
         lines.append("  - []")
     lines.append("")
     (agents / "routing.profile.yaml").write_text("\n".join(lines), encoding="utf-8")
-    print(f"Wrote {agents / 'capabilities.json'}")
-    print(f"Wrote {agents / 'routing.profile.yaml'}")
+    if not quiet:
+        print(f"Wrote {agents / 'capabilities.json'}")
+        print(f"Wrote {agents / 'routing.profile.yaml'}")
 
 
 def write_night_shift(
@@ -494,6 +496,7 @@ def write_night_shift(
     provider: str | None,
     max_fix_tasks: int = 5,
     auto_merge: bool = False,
+    quiet: bool = False,
 ) -> Path:
     """Write .agents/night-shift.yaml (opt-in/out for night-shift-all)."""
     agents = repo / ".agents"
@@ -516,7 +519,8 @@ def write_night_shift(
         lines.append("# Re-enable: set enabled: true (or re-run agents-doctor setup).")
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"Wrote {path}")
+    if not quiet:
+        print(f"Wrote {path}")
     return path
 
 

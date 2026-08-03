@@ -512,16 +512,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
             ("class:dim", "    .agents/capabilities.json\n"),
             ("class:dim", "    .agents/night-shift.yaml\n\n"),
             ("class:accent", "  ╔══════════════════════════════════╗\n"),
-            ("class:accent", "  ║   ENTER  ·  Apply configuration  ║\n"),
+            ("class:accent", "  ║   ENTER  ·  Save & close TUI     ║\n"),
             ("class:accent", "  ╚══════════════════════════════════╝\n"),
         ]
-        if state.last_apply:
-            lines.append(("class:ok", f"\n  ✓ {state.last_apply}\n"))
         lines.append(
             (
                 "class:help",
-                "\n  New runs pick up main_write + model/effort.\n"
-                "  Already-running tasks keep their old lane until restarted.\n",
+                "\n  Saves routing + night-shift, then exits the interface.\n"
+                "  New runs pick up main_write + model/effort.\n",
             )
         )
         return lines
@@ -604,40 +602,81 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.night_provider = opts[i]
         state.message = f"Night fix writer → {state.night_provider}"
 
-    def do_apply() -> None:
+    def do_apply(app: Any | None = None) -> None:
+        """Write project files without polluting the fullscreen TUI (no stdout)."""
+        import contextlib
+        import io
+
         profile, lanes, notes = doctor.pick_profile(state.tools, state.writer)
         model = state.model if state.writer != "auto" else None
         effort = state.effort if state.writer != "auto" else None
-        # Prefer write_outputs with model/effort if supported
         write = getattr(doctor, "write_outputs", None)
         if write is None:
             raise RuntimeError("doctor.write_outputs missing")
+        sink = io.StringIO()
         try:
-            write(
-                state.repo,
-                state.tools,
-                profile,
-                lanes,
-                notes,
-                writer_model=model,
-                writer_effort=effort,
-            )
-        except TypeError:
-            # older signature without model/effort
-            write(state.repo, state.tools, profile, lanes, notes)
-        doctor.write_night_shift(
-            state.repo,
-            enabled=state.night_review,
-            provider=state.night_provider,
-            max_fix_tasks=state.max_fix_tasks,
-            auto_merge=state.auto_merge if state.night_review else False,
-        )
+            with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+                try:
+                    write(
+                        state.repo,
+                        state.tools,
+                        profile,
+                        lanes,
+                        notes,
+                        writer_model=model,
+                        writer_effort=effort,
+                        quiet=True,
+                    )
+                except TypeError:
+                    # older signature without model/effort/quiet
+                    write(state.repo, state.tools, profile, lanes, notes)
+                try:
+                    doctor.write_night_shift(
+                        state.repo,
+                        enabled=state.night_review,
+                        provider=state.night_provider,
+                        max_fix_tasks=state.max_fix_tasks,
+                        auto_merge=state.auto_merge if state.night_review else False,
+                        quiet=True,
+                    )
+                except TypeError:
+                    doctor.write_night_shift(
+                        state.repo,
+                        enabled=state.night_review,
+                        provider=state.night_provider,
+                        max_fix_tasks=state.max_fix_tasks,
+                        auto_merge=state.auto_merge if state.night_review else False,
+                    )
+        except Exception as exc:  # noqa: BLE001
+            state.message = f"Apply failed: {exc}"
+            return
+
         meta = WRITER_META.get(state.writer, {})
         state.last_apply = (
             f"{meta.get('title', state.writer)} · {state.model} · {state.effort} · "
             f"night={'on' if state.night_review else 'off'}"
         )
-        state.message = "✓ Saved. New runs use this coder/model/effort."
+        state.message = "✓ Saved — closing…"
+        # Exit fullscreen cleanly; print a short summary after the UI tears down.
+        result = {
+            "ok": True,
+            "repo": str(state.repo),
+            "writer": state.writer,
+            "model": state.model,
+            "effort": state.effort,
+            "night": state.night_review,
+            "night_provider": state.night_provider if state.night_review else None,
+            "max_fix_tasks": state.max_fix_tasks if state.night_review else None,
+        }
+        if app is not None:
+            app.exit(result=result)
+        else:
+            from prompt_toolkit.application.current import get_app
+
+            try:
+                get_app().exit(result=result)
+            except Exception:  # noqa: BLE001
+                pass
 
     def rescan() -> None:
         state.tools = doctor.detect()
@@ -770,13 +809,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.night_review = not state.night_review
             state.message = f"Night → {'ON' if state.night_review else 'off'}"
         elif tid == "apply":
-            do_apply()
+            do_apply(event.app)
 
     @kb.add("enter")
     def _(event) -> None:
         tid = tab_ids[tab_i["i"]]
         if tid == "apply":
-            do_apply()
+            do_apply(event.app)
         elif tid == "coder":
             tab_i["i"] = tab_ids.index("apply")
             state.message = "Review & press Enter to save"
@@ -886,10 +925,34 @@ def run_tui(repo: Path, doctor: Any) -> int:
         mouse_support=False,
     )
     try:
-        return int(app.run() or 0)
+        result = app.run()
     except Exception as exc:  # noqa: BLE001
         print(f"TUI error: {exc}\nFalling back to setup wizard.", file=sys.stderr)
         return doctor.run_setup(repo, interactive=True)
+
+    # After fullscreen tears down — clean terminal summary (no mid-UI prints).
+    if isinstance(result, dict) and result.get("ok"):
+        agents = Path(result["repo"]) / ".agents"
+        print()
+        print("✓ Project configured")
+        print(f"  path:    {result['repo']}")
+        print(f"  coder:   {result['writer']}")
+        print(f"  model:   {result.get('model') or '—'}")
+        print(f"  effort:  {result.get('effort') or '—'}")
+        print(
+            f"  night:   {'on' if result.get('night') else 'off'}"
+            + (
+                f" (fix={result.get('night_provider')}, max={result.get('max_fix_tasks')})"
+                if result.get("night")
+                else ""
+            )
+        )
+        print(f"  wrote:   {agents / 'routing.profile.yaml'}")
+        print(f"           {agents / 'night-shift.yaml'}")
+        print()
+        print("New runs use this coder. Re-open anytime: agents-doctor")
+        return 0
+    return int(result or 0) if isinstance(result, int) else 0
 
 
 if __name__ == "__main__":

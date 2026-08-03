@@ -1,3 +1,8 @@
+## 1.12.1 — 2026-08-03
+
+### Fixed
+- **agents-doctor TUI apply no longer floods the screen.** Writes use `quiet=True` (stdout redirected); after successful Apply the UI closes and prints a clean summary outside fullscreen. Enter on Apply = save & exit.
+
 ## 1.12.0 — 2026-08-03
 
 ### Added
