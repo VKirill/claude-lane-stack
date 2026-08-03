@@ -175,6 +175,11 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/.env.example",
             "/srv/app/apps/web/.env.development.local",
             ".env",
+            # Pre-authored L1 checkers (PM may Write before dispatch)
+            "/srv/app/.agents/runs/demo/check.py",
+            "/srv/app/.agents/runs/demo/artifacts/001/check.py",
+            "/srv/app/.agents/runs/admin-tabs/artifacts/002/check.py",
+            "/srv/app/.worktrees/feature/.agents/runs/demo/artifacts/001/check.py",
         ):
             with self.subTest(path=path):
                 self.assertEqual(run_edit_hook("dev-orchestrator", path).returncode, 0)
@@ -185,10 +190,13 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/.environment",
             "/srv/app/.agents/runs/demo/fix.sh",
             "/srv/app/.agents/runs/demo/tasks/fix.py",
+            "/srv/app/.agents/runs/demo/artifacts/001/helper.py",
+            "/srv/app/.agents/runs/demo/artifacts/001/check.ts",
             "/srv/app/.agents/runs/demo/controller.json",
             "/srv/app/.agents/runs/demo/events.jsonl",
             "/srv/app/.agents/runs/demo/sessions.json",
             "/srv/app/.agents/runs/demo/artifacts/001/state.json",
+            "/srv/app/.agents/runs/demo/artifacts/001/report.md",
             "/srv/app/.agents/runs/demo/controller/lane-bg.pid",
             "/srv/app/docs/plans/../../src/evil.md",
         ):

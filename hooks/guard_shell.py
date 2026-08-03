@@ -41,6 +41,17 @@ _PM_RUN_MACHINE_RECEIPT = re.compile(
     r"sessions\.json"
     r")"
 )
+# Exception: pre-authored L1 checkers the PM must place before dispatch.
+# Matches main or worktree-relative trees:
+#   .agents/runs/<slug>/check.py
+#   .agents/runs/<slug>/artifacts/<task_id>/check.py
+#   .worktrees/<wt>/.agents/runs/<slug>/.../check.py
+_PM_L1_CHECK_SCRIPT = re.compile(
+    r"^(?:\.worktrees/[^/]+/)?"
+    r"\.agents/runs/[^/]+/"
+    r"(?:artifacts/[^/]+/)?"
+    r"check\.py$"
+)
 _PM_TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".json", ".txt"}
 SQL_MUTATION = re.compile(
     r"\b(?:insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|"
@@ -80,7 +91,10 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     Aligns with SOLO/dev-orchestrator: `.agents/**`, `docs/plans/**`,
     `PROGRESS.md` / `LESSONS.md`, and dotenv (`.env*`) for secrets the human
     trusts the PM with. Machine lifecycle receipts under a run (controller,
-    artifacts, events, sessions) stay tool-owned.
+    state/report under artifacts, events, sessions) stay tool-owned.
+
+    Exception: basename exactly ``check.py`` under a run's artifacts (or run
+    root) — pre-authored L1 verification scripts required before dispatch.
     """
     if not isinstance(cwd, str) or not cwd:
         return False
@@ -103,10 +117,19 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
         return True
     if normalized.startswith("docs/plans/"):
         return suffix in _PM_TEXT_SUFFIXES
-    if normalized.startswith(".agents/"):
-        if _PM_RUN_MACHINE_RECEIPT.search(normalized):
+    # Worktree-local or main-repo L1 checkers (must be check.py only).
+    if _PM_L1_CHECK_SCRIPT.fullmatch(normalized):
+        return True
+    if normalized.startswith(".agents/") or "/.agents/" in normalized:
+        # Strip optional .worktrees/<name>/ prefix for receipt matching.
+        receipt_path = normalized
+        if normalized.startswith(".worktrees/"):
+            parts = normalized.split("/", 2)
+            receipt_path = parts[2] if len(parts) >= 3 else normalized
+        if _PM_RUN_MACHINE_RECEIPT.search(receipt_path):
             return False
-        return suffix in _PM_TEXT_SUFFIXES
+        if receipt_path.startswith(".agents/"):
+            return suffix in _PM_TEXT_SUFFIXES
     return False
 
 

@@ -48,8 +48,10 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 - [ ] No bare monorepo `npm run build` / root `npm test` on multi-task runs (that is L2)  
 - [ ] Timeouts realistic (unit 60–300s; avoid 1800s full suites per task)  
 - [ ] **Every script path in `verification[].command` exists on disk under `verification[].cwd` before pre-dispatch**  
-- [ ] If `project_cwd` is a **worktree**: do **not** assume main-repo `.agents/runs/...` is visible — copy pre-authored `check.py` into the worktree path **or** put tests under product `tests/` in owns; absolute paths to main are rejected  
+- [ ] If `project_cwd` is a **worktree**: do **not** assume main-repo `.agents/runs/...` is visible — write/copy `check.py` into the worktree path **or** put tests under product `tests/` in owns; absolute paths to main are rejected  
 - [ ] Prefer product tests (`tests/test_*.py`) over `.agents/**/check.py` when possible  
+- [ ] PM **may** Write only basename `check.py` under `.agents/runs/<slug>/[artifacts/<id>/]` (guard allowlist); not other `.py`, not `state.json`/reports  
+
 
 ### Acceptance
 

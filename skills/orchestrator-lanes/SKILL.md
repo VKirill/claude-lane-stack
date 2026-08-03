@@ -186,6 +186,9 @@ script args resolve **there**, not in the main checkout.
 2. **Worktree-local pre-authored check**:  
    `worktree/.agents/runs/<slug>/artifacts/<id>/check.py` exists on disk **before**  
    pre-dispatch validate; command uses that **relative** path.  
+   PM **may** `Write` only basename `check.py` under  
+   `.agents/runs/<slug>/[artifacts/<id>/]check.py` (or under `.worktrees/...` same
+   shape) — not `helper.py`, not `state.json` / reports.  
 3. **in_place** (`adoc` Work → In-place): one tree — main `.agents/runs/...` paths work.
 
 `run-validate --phase pre-dispatch` **rejects** missing script files under

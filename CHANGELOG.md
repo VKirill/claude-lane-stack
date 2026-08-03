@@ -1,3 +1,8 @@
+## 1.12.9 — 2026-08-03
+
+### Fixed
+- **PM may Write pre-authored L1 `check.py`.** Guard previously blocked all `.py` and everything under `artifacts/`, so dev-orchestrator could not pre-author verification scripts (skills required them; guard forbade them). Allow only basename `check.py` at `.agents/runs/<slug>/check.py` or `.../artifacts/<task_id>/check.py` (also under `.worktrees/<wt>/...`). Still deny `state.json`, reports, `helper.py`, production source.
+
 ## 1.12.8 — 2026-08-03
 
 ### Fixed
