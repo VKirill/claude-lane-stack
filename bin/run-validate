@@ -403,6 +403,38 @@ def validate_run(run_dir: Path, phase: str) -> int:
         elif task_cwd != project_cwd:
             errors.append(f"task {task_id}: project_cwd must equal run project_cwd")
 
+        # agents-doctor routing.profile.yaml is source of truth for writer lane.
+        try:
+            from routing_profile import (  # type: ignore
+                KNOWN_WRITERS,
+                load_routing_profile,
+                lane_matches_profile,
+            )
+        except ImportError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from routing_profile import (  # type: ignore
+                KNOWN_WRITERS,
+                load_routing_profile,
+                lane_matches_profile,
+            )
+        routing = load_routing_profile(project_cwd)
+        main_write = (routing.get("lanes") or {}).get("main_write") or (
+            routing.get("writer") or {}
+        ).get("provider")
+        task_lane = str(task.get("lane") or "").strip()
+        if (
+            main_write in KNOWN_WRITERS
+            and task_lane
+            and not lane_matches_profile(task_lane, main_write)
+        ):
+            profile_path = routing.get("_path") or ".agents/routing.profile.yaml"
+            errors.append(
+                f"task {task_id}: lane {task_lane!r} != project main_write "
+                f"{main_write!r} from {profile_path}. "
+                f"Set `lane: {main_write}` (agents-doctor / adoc is source of truth) "
+                f"or re-run `adoc` if the profile is wrong."
+            )
+
         for field in ("owns_paths", "never_touch"):
             for scope in task[field]:
                 detail = scope_error(scope)

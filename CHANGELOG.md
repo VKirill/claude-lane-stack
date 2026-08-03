@@ -1,3 +1,8 @@
+## 1.12.2 — 2026-08-03
+
+### Changed
+- **agents-doctor / adoc is source of truth for the daytime writer.** `run-controller` defaults provider/model/effort from `.agents/routing.profile.yaml` when CLI flags are omitted. `run-validate` rejects tasks whose `lane:` ≠ `main_write`. `run-init` seeds `lane: {{main_write}}` from the profile. PM skills/agents updated: never hardcode `lane: kimi`.
+
 ## 1.12.1 — 2026-08-03
 
 ### Fixed

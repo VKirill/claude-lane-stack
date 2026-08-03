@@ -34,7 +34,11 @@ agents-doctor --apply --writer-provider qwen --night-review on --max-fix-tasks 5
 # → .agents/routing.profile.yaml (+ .agents/night-shift.yaml when night flags used)
 ```
 
-Without a project profile the orchestrator defaults to **kimi**. Always run setup (or `--apply --writer-provider …`) once per repo.
+Without a project profile the orchestrator defaults to **kimi**. Always run `adoc` (or `--apply --writer-provider …`) once per repo.
+
+**Source of truth:** after `adoc`, every task must use `lane: <main_write>`.
+`run-validate` rejects mismatch; `run-controller` defaults provider/model/effort
+from the same profile when CLI flags are omitted.
 
 See `docs/ROUTING.md`.
 **Codex programmer (`main_write: codex`):** bare profile

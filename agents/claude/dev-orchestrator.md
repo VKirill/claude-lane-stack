@@ -181,7 +181,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
 9. **Onboard** (CLAUDE.md / primary docs): always **codex-onboarder**, never Qwen/Grok.
 10. **Never** long foreground Bash for Qwen/Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related writer tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.
-11. Write programmer is Qwen; `run-supervisor` and `lane-supervisor` have no source-write tools. Codex write remains recovery-only.
+11. Write programmer = **`adoc` profile** (`main_write` + model/effort). When authoring tasks set `lane: <main_write>` exactly (never invent `kimi` if profile is `codex`). `run-supervisor` has no source-write tools. Codex Sol remains recovery + night review; Codex luna is a valid daytime writer when selected via adoc.
 12. Provider concurrency and verification concurrency are separate bounded pools; a model is never the lifecycle decision loop.
 13. **Read `outcome.json` before shipping.** For every task in a run, read `RUN_DIR/artifacts/<task_id>/outcome.json`. Never merge or report a run as done unless **every** outcome has `exit_status: completed`. For any `crashed`/`timeout`/`blocked` outcome, report the task id and its `failure_class`; always report each task's `files_changed`. Do not infer worker results from the relay digest or from logs — the outcome manifest is the source of truth.
 

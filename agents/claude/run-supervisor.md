@@ -23,15 +23,15 @@ so the operator can see that the run is still supervised.
 `PM_NAME` (default `dev-orchestrator`), and optional provider/verification pool
 sizes.
 
-If `WRITER_PROVIDER` is absent, read `.agents/routing.profile.yaml` in the
-project (parent of `RUN_DIR` or `PROJECT_CWD`):
+**Prefer omitting `--provider`** so `run-controller` loads agents-doctor profile:
 
-- `lanes.main_write` → provider (fallback `kimi`)
-- `writer.model` → pass `--model` when set
-- `writer.reasoning_effort` → pass `--reasoning-effort` when set
+- `lanes.main_write` → provider (fallback `kimi` only if no profile)
+- `writer.model` → `--model`
+- `writer.reasoning_effort` → `--reasoning-effort`
 
-`codex` is the durable bare lane-writer (default model `gpt-5.6-luna`, effort
-`max` unless profile overrides). Not the Sol night-review path.
+If `WRITER_PROVIDER` is passed, it overrides the profile. Task field `lane:`
+must match `main_write` (enforced by `run-validate`); it is not a second routing
+source. `codex` = durable bare lane-writer (luna+max by default), not Sol night review.
 
 ## Required loop
 

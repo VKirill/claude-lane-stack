@@ -183,6 +183,15 @@ def create_run(args: argparse.Namespace) -> Path:
         except FileExistsError as exc:
             raise ContractError(f"run already exists: {run_dir}") from exc
 
+    # agents-doctor routing.profile.yaml is source of truth for task.lane
+    try:
+        from routing_profile import resolve_writer  # type: ignore
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from routing_profile import resolve_writer  # type: ignore
+
+    resolved = resolve_writer(project_cwd, provider_explicit=False)
+    default_lane = resolved.get("main_write") or resolved.get("provider") or "kimi"
     values = {
         "slug": args.slug,
         "repo": str(repo),
@@ -190,6 +199,9 @@ def create_run(args: argparse.Namespace) -> Path:
         "project_cwd_yaml": json.dumps(str(project_cwd)),
         "created_at": created_at,
         "base_sha": base_sha,
+        "lane": default_lane,
+        "writer_model": resolved.get("model") or "",
+        "writer_effort": resolved.get("reasoning_effort") or "",
     }
     try:
         (run_dir / "run.yaml").write_text(

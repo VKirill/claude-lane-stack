@@ -687,17 +687,14 @@ def run_controller(args: argparse.Namespace) -> int:
         raise ControllerError(f"run directory does not exist: {run_dir}")
     if not 0 <= args.retry_backoff <= 300:
         raise ControllerError("retry backoff must be between 0 and 300 seconds")
-    if args.provider not in PRIMARY_MODELS:
-        raise ControllerError(f"unsupported provider: {args.provider}")
-    writer_model = args.model or PRIMARY_MODELS[args.provider]
-    writer_effort = (
-        args.reasoning_effort
-        if getattr(args, "reasoning_effort", None)
-        else PRIMARY_EFFORTS.get(args.provider, "medium")
-    )
     project_cwd, provider_slots, verification_slots, gate, tasks = discover(
         run_dir, args.project_cwd
     )
+    apply_routing_defaults(args, project_cwd)
+    if args.provider not in PRIMARY_MODELS:
+        raise ControllerError(f"unsupported provider: {args.provider}")
+    writer_model = args.model or PRIMARY_MODELS[args.provider]
+    writer_effort = args.reasoning_effort or PRIMARY_EFFORTS.get(args.provider, "medium")
     run_validate = Path(args.run_validate).expanduser().resolve()
     receipt_path = run_dir / "controller.json"
     lock_dir = run_dir / "controller"
@@ -1262,10 +1259,45 @@ def worker_argv(args: argparse.Namespace) -> list[str]:
     return argv
 
 
+def apply_routing_defaults(args: argparse.Namespace, project_cwd: Path) -> None:
+    """Fill provider/model/effort from agents-doctor profile when CLI omitted them."""
+    try:
+        from routing_profile import resolve_writer  # type: ignore
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from routing_profile import resolve_writer  # type: ignore
+
+    provider_explicit = bool(getattr(args, "provider_explicit", False))
+    resolved = resolve_writer(
+        project_cwd,
+        provider=getattr(args, "provider", None),
+        model=getattr(args, "model", None),
+        reasoning_effort=getattr(args, "reasoning_effort", None),
+        provider_explicit=provider_explicit,
+    )
+    args.provider = resolved["provider"]
+    args.model = resolved["model"] or PRIMARY_MODELS.get(args.provider)
+    args.reasoning_effort = resolved["reasoning_effort"] or PRIMARY_EFFORTS.get(
+        args.provider, "medium"
+    )
+
+
 def start_controller(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir).expanduser().resolve()
     if not run_dir.is_dir():
         raise ControllerError(f"run directory does not exist: {run_dir}")
+    # Resolve writer from routing.profile.yaml before detaching the worker.
+    try:
+        project_cwd, _, _, _, _ = discover(run_dir, args.project_cwd)
+    except ControllerError:
+        project_cwd = (
+            Path(args.project_cwd).expanduser().resolve()
+            if args.project_cwd
+            else run_dir
+        )
+    apply_routing_defaults(args, project_cwd)
+    if args.provider not in PRIMARY_MODELS:
+        raise ControllerError(f"unsupported provider: {args.provider}")
     controller_dir = run_dir / "controller"
     receipt_path = run_dir / "controller.json"
     if receipt_path.is_file():
@@ -1482,13 +1514,18 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--poll-interval", type=float, default=1.0)
     run.add_argument("--heartbeat-interval", type=float, default=30.0)
     run.add_argument("--retry-backoff", type=float, default=30.0)
-    run.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="kimi")
-    run.add_argument("--model")
+    run.add_argument(
+        "--provider",
+        choices=tuple(PRIMARY_MODELS),
+        default=None,
+        help="writer provider (default: agents-doctor main_write, else kimi)",
+    )
+    run.add_argument("--model", help="override writer model (default: profile or provider default)")
     run.add_argument(
         "--reasoning-effort",
         choices=REASONING_EFFORTS,
         default=None,
-        help="writer reasoning effort (default: per-provider; codex → max)",
+        help="writer effort (default: profile or per-provider; codex → max)",
     )
     start = sub.add_parser("start", help="durably start the controller through lane-bg")
     start.add_argument("--run-dir", required=True)
@@ -1500,13 +1537,18 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--poll-interval", type=float, default=1.0)
     start.add_argument("--heartbeat-interval", type=float, default=30.0)
     start.add_argument("--retry-backoff", type=float, default=30.0)
-    start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="kimi")
-    start.add_argument("--model")
+    start.add_argument(
+        "--provider",
+        choices=tuple(PRIMARY_MODELS),
+        default=None,
+        help="writer provider (default: agents-doctor main_write, else kimi)",
+    )
+    start.add_argument("--model", help="override writer model (default: profile or provider default)")
     start.add_argument(
         "--reasoning-effort",
         choices=REASONING_EFFORTS,
         default=None,
-        help="writer reasoning effort (default: per-provider; codex → max)",
+        help="writer effort (default: profile or per-provider; codex → max)",
     )
     status = sub.add_parser("status", help="read the current controller receipt")
     status.add_argument("--run-dir", required=True)
@@ -1521,6 +1563,9 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    # Track explicit --provider so profile main_write can win when omitted.
+    if args.command in {"run", "start"}:
+        args.provider_explicit = "--provider" in sys.argv
     try:
         if args.command == "run":
             return run_controller(args)

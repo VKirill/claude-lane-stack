@@ -26,9 +26,13 @@ You are the **only** person who merges to `main`. Human never merges.
 | 9–10 | Full: rich SPEC + DAG + worktree |
 | 11+ | Split feature; ask user |
 
-Default daytime writer: **kimi** (or project `main_write` from `agents-doctor setup`).
-Selectable writers: kimi / qwen / grok / agy / **codex** (`gpt-5.6-luna` + effort `max`).
-Codex Sol remains recovery fallback + night review / onboard / docs.
+**Writer source of truth = `adoc` / `agents-doctor`** → `.agents/routing.profile.yaml`
+(`lanes.main_write`, `writer.model`, `writer.reasoning_effort`).
+
+- Every task YAML **must** set `lane: <main_write>` exactly (e.g. `lane: codex`).
+- Never hardcode `lane: kimi` unless adoc says so. `run-validate` rejects mismatch.
+- `run-controller` defaults `--provider` / model / effort from the same profile.
+- Selectable writers: kimi / qwen / grok / agy / **codex**. Codex Sol remains recovery + night review / onboard / docs.
 
 ---
 
