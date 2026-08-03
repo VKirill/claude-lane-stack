@@ -4,7 +4,14 @@
 Layout (single column, no fragile box-drawing):
   header · tabs · body · summary strip · footer
 
-Keyboard-first, beginner-friendly. Requires prompt_toolkit.
+Coder UX (form + drill-down, not multi-level ↑↓ cycling):
+  • Form: ↑↓ only moves between fields (Provider / Model / Effort)
+  • Enter opens a full option list for the focused field
+  • In the list: ↑↓ pick a value, Enter confirms, Esc goes back
+
+This matches classic TUI patterns (nmtui, dialog menus): one level of
+navigation per screen, never mix field-focus and value-cycling on the
+same arrows.
 """
 from __future__ import annotations
 
@@ -14,6 +21,14 @@ from typing import Any, Callable
 
 
 APP_TITLE = "Lane Stack · Project Setup"
+
+# Form field order on the Coder tab (stable indices for ↑↓).
+CODER_FIELDS = ("writer", "model", "effort")
+FIELD_LABEL = {
+    "writer": "Provider",
+    "model": "Model",
+    "effort": "Effort",
+}
 
 # Default catalogs (stack defaults + common options).
 WRITER_MODELS: dict[str, list[str]] = {
@@ -118,7 +133,11 @@ class SetupState:
         message: str = "",
         last_apply: str = "",
         cursor: int = 0,
-        focus: str = "writer",  # writer | model | effort | night_writer
+        focus: str = "writer",  # form field or night_writer
+        view: str = "form",  # form | pick  (coder drill-down)
+        pick_kind: str = "writer",  # writer | model | effort
+        pick_cursor: int = 0,
+        field_i: int = 0,  # 0..2 on coder form (CODER_FIELDS)
     ) -> None:
         self.repo = repo
         self.tools = tools
@@ -134,6 +153,10 @@ class SetupState:
         self.last_apply = last_apply
         self.cursor = cursor
         self.focus = focus
+        self.view = view
+        self.pick_kind = pick_kind
+        self.pick_cursor = pick_cursor
+        self.field_i = field_i
 
 
 def _load_existing(repo: Path) -> dict[str, Any]:
@@ -260,9 +283,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
         night_provider=night_w0,
         max_fix_tasks=int(existing.get("max_fix_tasks", 5)),
         auto_merge=bool(existing.get("auto_merge", False)),
-        message="↑↓ coder · m model · e effort · Enter apply · ? help",
+        message="↑↓ fields · Enter open list · Esc back · ? help",
         cursor=max(0, writers.index(writer0) if writer0 in writers else 0),
         focus="writer",
+        view="form",
+        pick_kind="writer",
+        pick_cursor=0,
+        field_i=0,
     )
 
     tab_ids = [t[0] for t in TAB_META]
@@ -313,83 +340,145 @@ def run_tui(repo: Path, doctor: Any) -> int:
             ("class:sum", "\n"),
         ]
 
-    def body_coder() -> list[tuple[str, str]]:
-        lines: list[tuple[str, str]] = [
-            ("class:h1", "  Daytime coder\n"),
-            (
-                "class:help",
-                "  Who implements task YAML. Claude remains PM/orchestrator.\n\n",
-            ),
-            ("class:h2", "  Provider  (↑↓)\n"),
-        ]
-        for i, w in enumerate(state.writers):
-            meta = WRITER_META.get(w, {"title": w, "badge": "?", "blurb": ""})
-            selected = w == state.writer
-            focused = state.focus == "writer" and i == state.cursor
-            if selected and focused:
-                st = "class:row-on-focus"
-            elif selected:
-                st = "class:row-on"
-            elif focused:
-                st = "class:row-focus"
-            else:
-                st = "class:row"
-            mark = _radio(selected)
-            active = "  ✓" if selected else ""
-            # Single line — no box drawing
-            title = f"{meta.get('title', w)}"
-            badge = meta.get("badge", "")
-            lines.append(
-                (st, f"  {mark}  {title:<10}  {badge:<8}{active}\n")
-            )
-            if selected:
-                lines.append(
-                    ("class:row-detail", f"      {meta.get('blurb', '')}\n")
-                )
+    def _options_for(kind: str) -> list[str]:
+        if kind == "writer":
+            return list(state.writers)
+        if kind == "model":
+            return _models_for(state.writer)
+        return _efforts_for(state.writer)
 
-        lines.append(("class:h2", "\n  Model for this coder  (m / M cycle · [ ])\n"))
+    def _current_value(kind: str) -> str:
+        if kind == "writer":
+            return state.writer
+        if kind == "model":
+            return state.model
+        return state.effort
+
+    def _display_value(kind: str, value: str) -> str:
+        if kind == "writer":
+            meta = WRITER_META.get(value, {})
+            title = meta.get("title", value)
+            badge = meta.get("badge", "")
+            return f"{title:<10}  {badge}" if badge else title
+        return value
+
+    def body_coder_form() -> list[tuple[str, str]]:
+        meta = WRITER_META.get(state.writer, {})
         models = _models_for(state.writer)
-        # show compact: current + neighbors
+        efforts = _efforts_for(state.writer)
         try:
             mi = models.index(state.model)
         except ValueError:
             mi = 0
-            state.model = models[0]
-        focus_m = state.focus == "model"
-        st_m = "class:row-on-focus" if focus_m else "class:row-on"
-        lines.append((st_m, f"  ▸  {state.model}\n"))
-        if len(models) > 1:
-            lines.append(
-                (
-                    "class:help",
-                    f"      {mi + 1}/{len(models)} available · "
-                    f"prev {models[(mi - 1) % len(models)][:28]}\n",
-                )
-            )
-
-        lines.append(("class:h2", "\n  Reasoning effort  (e / E cycle · { })\n"))
-        efforts = _efforts_for(state.writer)
         try:
             ei = efforts.index(state.effort)
         except ValueError:
             ei = 0
-            state.effort = efforts[0]
-        focus_e = state.focus == "effort"
-        st_e = "class:row-on-focus" if focus_e else "class:row-on"
-        bar = "·".join(
-            (f"[{x}]" if x == state.effort else x) for x in efforts
-        )
-        lines.append((st_e, f"  ▸  {state.effort}\n"))
-        lines.append(("class:help", f"      {bar}\n"))
+
+        lines: list[tuple[str, str]] = [
+            ("class:h1", "  Daytime coder\n"),
+            (
+                "class:help",
+                "  Who implements task YAML. Claude remains PM/orchestrator.\n"
+                "  One level at a time: ↑↓ fields → Enter list → Enter confirm.\n\n",
+            ),
+            ("class:h2", "  Settings\n"),
+        ]
+
+        # Compact form rows — one active field, values as summary (not nested lists).
+        rows = [
+            (
+                "writer",
+                "Provider",
+                f"{meta.get('title', state.writer)}  ·  {meta.get('badge', '')}".rstrip(" ·"),
+                meta.get("blurb", ""),
+            ),
+            (
+                "model",
+                "Model",
+                state.model,
+                f"{mi + 1}/{len(models)} options for {meta.get('title', state.writer)}",
+            ),
+            (
+                "effort",
+                "Effort",
+                state.effort,
+                " · ".join(
+                    (f"[{x}]" if x == state.effort else x) for x in efforts
+                ),
+            ),
+        ]
+        for i, (kind, label, value, hint) in enumerate(rows):
+            focused = state.field_i == i and state.view == "form"
+            st = "class:row-on-focus" if focused else "class:row-on"
+            caret = "▸" if focused else " "
+            open_hint = "  ⏎ list" if focused else ""
+            lines.append((st, f"  {caret} {label:<10}  {value}{open_hint}\n"))
+            if focused and hint:
+                lines.append(("class:row-detail", f"      {hint}\n"))
 
         lines.append(
             (
                 "class:help",
-                "\n  Focus: Tab field  ·  m model  ·  e effort  ·  "
-                "Enter → Apply tab\n",
+                "\n  Shortcuts: p provider · m model · e effort (open that list).\n"
+                "  When done: 4 or Tab → Apply → Enter to save.\n",
             )
         )
         return lines
+
+    def body_coder_pick() -> list[tuple[str, str]]:
+        kind = state.pick_kind
+        opts = _options_for(kind)
+        label = FIELD_LABEL.get(kind, kind)
+        parent = ""
+        if kind != "writer":
+            parent = f" · {WRITER_META.get(state.writer, {}).get('title', state.writer)}"
+
+        lines: list[tuple[str, str]] = [
+            ("class:h1", f"  Choose {label}{parent}\n"),
+            (
+                "class:help",
+                "  ↑↓ move · Enter confirm · Esc / ← back to form\n\n",
+            ),
+        ]
+        if not opts:
+            lines.append(("class:warn", "  (no options)\n"))
+            return lines
+
+        current = _current_value(kind)
+        for i, opt in enumerate(opts):
+            selected = opt == current
+            focused = i == state.pick_cursor
+            if selected and focused:
+                st = "class:row-on-focus"
+            elif focused:
+                st = "class:row-focus"
+            elif selected:
+                st = "class:row-on"
+            else:
+                st = "class:row"
+            mark = _radio(selected)
+            caret = "▸" if focused else " "
+            text = _display_value(kind, opt)
+            lines.append((st, f"  {caret} {mark}  {text}\n"))
+            if kind == "writer" and focused:
+                blurb = WRITER_META.get(opt, {}).get("blurb", "")
+                if blurb:
+                    lines.append(("class:row-detail", f"        {blurb}\n"))
+
+        lines.append(
+            (
+                "class:help",
+                f"\n  {state.pick_cursor + 1}/{len(opts)}"
+                f"  ·  current: {_current_value(kind)}\n",
+            )
+        )
+        return lines
+
+    def body_coder() -> list[tuple[str, str]]:
+        if state.view == "pick":
+            return body_coder_pick()
+        return body_coder_form()
 
     def body_night() -> list[tuple[str, str]]:
         lines: list[tuple[str, str]] = [
@@ -532,18 +621,22 @@ def run_tui(repo: Path, doctor: Any) -> int:
     }
 
     def footer() -> list[tuple[str, str]]:
-        keys = {
-            "coder": "↑↓ provider · m/e model/effort · Tab panels · Enter apply",
-            "night": "Space night · a merge · +/- budget · n writer · Enter apply",
-            "status": "r rescan · 1-4 tabs · q quit",
-            "apply": "ENTER save · q quit",
-        }
         tid = tab_ids[tab_i["i"]]
+        if tid == "coder" and state.view == "pick":
+            keys_txt = "↑↓ choose · Enter confirm · Esc back · q quit"
+        else:
+            keys = {
+                "coder": "↑↓ field · Enter list · Tab tabs · 4 Apply",
+                "night": "Space night · a merge · +/- budget · n writer",
+                "status": "r rescan · 1-4 tabs · q quit",
+                "apply": "ENTER save · q quit",
+            }
+            keys_txt = keys.get(tid, "")
         return [
             ("class:ftr", "  "),
-            ("class:ftr-msg", (state.message or "")[:48]),
+            ("class:ftr-msg", (state.message or "")[:44]),
             ("class:ftr", "  ·  "),
-            ("class:ftr-keys", keys.get(tid, "")),
+            ("class:ftr-keys", keys_txt),
         ]
 
     def main_view() -> list[tuple[str, str]]:
@@ -557,36 +650,58 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.effort = _ensure_effort(w, DEFAULT_EFFORT.get(w, state.effort))
         state.message = f"Coder → {WRITER_META.get(w, {}).get('title', w)}"
 
-    def move_writer(delta: int) -> None:
-        if not state.writers:
+    def open_pick(kind: str) -> None:
+        """Drill into a full list for one field (classic form→menu pattern)."""
+        opts = _options_for(kind)
+        if not opts:
+            state.message = f"No options for {FIELD_LABEL.get(kind, kind)}"
             return
-        state.focus = "writer"
-        state.cursor = (state.cursor + delta) % len(state.writers)
-        set_writer(state.writers[state.cursor])
+        state.view = "pick"
+        state.pick_kind = kind
+        state.focus = kind
+        current = _current_value(kind)
+        try:
+            state.pick_cursor = opts.index(current)
+        except ValueError:
+            state.pick_cursor = 0
+        state.message = f"Pick {FIELD_LABEL.get(kind, kind)} · ↑↓ · Enter"
 
-    def cycle_model(delta: int) -> None:
-        opts = _models_for(state.writer)
+    def close_pick(confirm: bool) -> None:
+        if state.view != "pick":
+            return
+        kind = state.pick_kind
+        opts = _options_for(kind)
+        if confirm and opts:
+            i = max(0, min(state.pick_cursor, len(opts) - 1))
+            chosen = opts[i]
+            if kind == "writer":
+                set_writer(chosen)
+                # After provider change, nudge user to model next.
+                state.field_i = 1
+            elif kind == "model":
+                state.model = chosen
+                state.message = f"Model → {chosen}"
+                state.field_i = 2
+            else:
+                state.effort = chosen
+                state.message = f"Effort → {chosen}"
+                state.field_i = 2
+        else:
+            state.message = "Cancelled"
+        state.view = "form"
+        state.focus = CODER_FIELDS[state.field_i]
+
+    def move_form_field(delta: int) -> None:
+        state.view = "form"
+        state.field_i = (state.field_i + delta) % len(CODER_FIELDS)
+        state.focus = CODER_FIELDS[state.field_i]
+        state.message = f"Field → {FIELD_LABEL[state.focus]}"
+
+    def move_pick(delta: int) -> None:
+        opts = _options_for(state.pick_kind)
         if not opts:
             return
-        state.focus = "model"
-        try:
-            i = opts.index(state.model)
-        except ValueError:
-            i = 0
-        state.model = opts[(i + delta) % len(opts)]
-        state.message = f"Model → {state.model}"
-
-    def cycle_effort(delta: int) -> None:
-        opts = _efforts_for(state.writer)
-        if not opts:
-            return
-        state.focus = "effort"
-        try:
-            i = opts.index(state.effort)
-        except ValueError:
-            i = 0
-        state.effort = opts[(i + delta) % len(opts)]
-        state.message = f"Effort → {state.effort}"
+        state.pick_cursor = (state.pick_cursor + delta) % len(opts)
 
     def move_night_writer(delta: int) -> None:
         opts = [w for w in state.writers if w != "auto"]
@@ -693,43 +808,55 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     kb = KeyBindings()
 
+    def leave_pick_if_any() -> None:
+        if state.view == "pick":
+            state.view = "form"
+            state.focus = CODER_FIELDS[state.field_i]
+
     @kb.add("q")
     @kb.add("c-c")
     def _(event) -> None:
+        # From a picker, q exits the whole app (same as before); Esc backs out.
         event.app.exit(result=0)
 
-    @kb.add("tab")
-    @kb.add("right")
+    @kb.add("escape")
+    @kb.add("backspace")
     def _(event) -> None:
         tid = tab_ids[tab_i["i"]]
-        if tid == "coder":
-            # cycle focus: writer → model → effort → next tab
-            order = ["writer", "model", "effort"]
-            try:
-                fi = order.index(state.focus)
-            except ValueError:
-                fi = 0
-            if fi < len(order) - 1:
-                state.focus = order[fi + 1]
-                state.message = f"Focus → {state.focus}"
-                return
+        if tid == "coder" and state.view == "pick":
+            close_pick(confirm=False)
+
+    @kb.add("tab")
+    def _(event) -> None:
+        # Tabs only — never reuse Tab for field focus (that mixed levels before).
+        leave_pick_if_any()
         tab_i["i"] = (tab_i["i"] + 1) % len(tab_ids)
         state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
 
     @kb.add("s-tab")
+    def _(event) -> None:
+        leave_pick_if_any()
+        tab_i["i"] = (tab_i["i"] - 1) % len(tab_ids)
+        state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
+
+    @kb.add("right")
+    def _(event) -> None:
+        tid = tab_ids[tab_i["i"]]
+        if tid == "coder":
+            if state.view == "form":
+                open_pick(CODER_FIELDS[state.field_i])
+            # in pick: right is inert (avoid accidental tab jumps)
+            return
+        tab_i["i"] = (tab_i["i"] + 1) % len(tab_ids)
+        state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
+
     @kb.add("left")
     def _(event) -> None:
         tid = tab_ids[tab_i["i"]]
         if tid == "coder":
-            order = ["writer", "model", "effort"]
-            try:
-                fi = order.index(state.focus)
-            except ValueError:
-                fi = 0
-            if fi > 0:
-                state.focus = order[fi - 1]
-                state.message = f"Focus → {state.focus}"
-                return
+            if state.view == "pick":
+                close_pick(confirm=False)
+            return
         tab_i["i"] = (tab_i["i"] - 1) % len(tab_ids)
         state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
 
@@ -737,8 +864,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
         @kb.add(str(n))
         def _(event, n=n) -> None:
+            leave_pick_if_any()
             tab_i["i"] = n - 1
             if tab_ids[tab_i["i"]] == "coder":
+                state.view = "form"
+                state.field_i = 0
                 state.focus = "writer"
             state.message = f"Tab · {TAB_META[tab_i['i']][1]}"
 
@@ -747,12 +877,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def _(event) -> None:
         tid = tab_ids[tab_i["i"]]
         if tid == "coder":
-            if state.focus == "model":
-                cycle_model(-1)
-            elif state.focus == "effort":
-                cycle_effort(-1)
+            if state.view == "pick":
+                move_pick(-1)
             else:
-                move_writer(-1)
+                move_form_field(-1)
         elif tid == "night" and state.night_review:
             move_night_writer(-1)
 
@@ -761,50 +889,40 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def _(event) -> None:
         tid = tab_ids[tab_i["i"]]
         if tid == "coder":
-            if state.focus == "model":
-                cycle_model(1)
-            elif state.focus == "effort":
-                cycle_effort(1)
+            if state.view == "pick":
+                move_pick(1)
             else:
-                move_writer(1)
+                move_form_field(1)
         elif tid == "night" and state.night_review:
             move_night_writer(1)
 
+    # Optional shortcuts: jump straight into a field's list (still no cycling).
     @kb.add("m")
-    @kb.add("]")
     def _(event) -> None:
         if tab_ids[tab_i["i"]] == "coder":
-            cycle_model(1)
-
-    @kb.add("M")
-    @kb.add("[")
-    def _(event) -> None:
-        if tab_ids[tab_i["i"]] == "coder":
-            cycle_model(-1)
+            state.field_i = 1
+            open_pick("model")
 
     @kb.add("e")
-    @kb.add("}")
     def _(event) -> None:
         if tab_ids[tab_i["i"]] == "coder":
-            cycle_effort(1)
+            state.field_i = 2
+            open_pick("effort")
 
-    @kb.add("E")
-    @kb.add("{")
+    @kb.add("p")
     def _(event) -> None:
         if tab_ids[tab_i["i"]] == "coder":
-            cycle_effort(-1)
+            state.field_i = 0
+            open_pick("writer")
 
     @kb.add(" ")
     def _(event) -> None:
         tid = tab_ids[tab_i["i"]]
         if tid == "coder":
-            if state.focus == "model":
-                cycle_model(1)
-            elif state.focus == "effort":
-                cycle_effort(1)
+            if state.view == "pick":
+                close_pick(confirm=True)
             else:
-                move_writer(0)  # re-affirm
-                set_writer(state.writers[state.cursor] if state.writers else state.writer)
+                open_pick(CODER_FIELDS[state.field_i])
         elif tid == "night":
             state.night_review = not state.night_review
             state.message = f"Night → {'ON' if state.night_review else 'off'}"
@@ -817,8 +935,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
         if tid == "apply":
             do_apply(event.app)
         elif tid == "coder":
-            tab_i["i"] = tab_ids.index("apply")
-            state.message = "Review & press Enter to save"
+            if state.view == "pick":
+                close_pick(confirm=True)
+            else:
+                open_pick(CODER_FIELDS[state.field_i])
         elif tid == "night":
             state.night_review = not state.night_review
             state.message = f"Night → {'ON' if state.night_review else 'off'}"
@@ -859,9 +979,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     @kb.add("?")
     def _(event) -> None:
-        state.message = (
-            "1 Coder 2 Night 3 Status 4 Apply · m model · e effort · Enter save · q quit"
-        )
+        if state.view == "pick":
+            state.message = "↑↓ choose · Enter ok · Esc back · q quit"
+        else:
+            state.message = (
+                "↑↓ fields · Enter list · p/m/e jump · 1-4 tabs · 4 Apply · q quit"
+            )
 
     # ── layout (single column — no side panel collision) ──────────────────
 

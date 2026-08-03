@@ -1,3 +1,13 @@
+## 1.12.4 — 2026-08-03
+
+### Fixed
+- **Codex as daytime primary writer actually trusts and accepts.** `lane-ctl` previously only trusted the Sol+high *fallback* shape, so `adoc` `main_write: codex` (luna+max) finished exit 0 with a complete report but was classified `provider_incomplete` / `runtime_identity_mismatch`, and retries failed with «recorded Codex fallback profile is invalid». Trust and retry now accept primary Codex with model/effort from control (adoc profile); Sol+high remains required only for real fallback attempts (`fallback_of_attempt`). Aligns `lane-ctl` with adoc / `routing_profile` / orchestrator-lanes skills.
+
+## 1.12.3 — 2026-08-03
+
+### Changed
+- **agents-doctor TUI Coder tab: form + drill-down lists.** ↑↓ only moves between fields (Provider / Model / Effort). Enter opens a full option list; ↑↓ there pick a value; Enter confirms; Esc/← back. No more multi-level value-cycling on the same arrows. Shortcuts: `p`/`m`/`e` open that field’s list.
+
 ## 1.12.2 — 2026-08-03
 
 ### Changed

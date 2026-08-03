@@ -76,6 +76,11 @@ PRIMARY_EFFORTS = {
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 CODEX_FALLBACK_REASONING = "high"
+# Codex writer runtime identity is the same for primary (adoc luna/max, etc.)
+# and one-shot Sol fallback — only model/effort distinguish the two.
+CODEX_PROVIDER_SANDBOX = "workspace-write"
+CODEX_PERMISSION_MODE = "never"
+CODEX_STOP_REASON = "TurnCompleted"
 TAIL_SOURCES = {
     "supervisor": "lane-bg.supervisor.log",
     "executor": "lane-exec.log",
@@ -599,6 +604,35 @@ def trusted_provider_report(
         and runtime.get("reasoning_effort")
         == expected_control.get("reasoning_effort", runtime.get("reasoning_effort"))
     )
+    # Codex primary (e.g. gpt-5.6-luna + max from adoc) and Codex Sol fallback
+    # share the same sandbox/permission/stop shape from lane-session. Trust by
+    # matching control model/effort — never hard-require only the fallback pair.
+    codex_runtime_shape_valid = (
+        provider == "codex"
+        and runtime.get("stop_reason") == CODEX_STOP_REASON
+        and runtime.get("provider_sandbox") == CODEX_PROVIDER_SANDBOX
+        and runtime.get("permission_mode") == CODEX_PERMISSION_MODE
+    )
+    codex_is_fallback = (
+        isinstance(expected_control, dict)
+        and expected_control.get("fallback_of_attempt") is not None
+    )
+    codex_policy_valid = codex_runtime_shape_valid and (
+        (
+            codex_is_fallback
+            and runtime.get("model") == CODEX_FALLBACK_MODEL
+            and runtime.get("reasoning_effort") == CODEX_FALLBACK_REASONING
+        )
+        or (
+            not codex_is_fallback
+            and runtime.get("model") == expected_control.get("model")
+            and runtime.get("reasoning_effort")
+            == expected_control.get("reasoning_effort")
+            and isinstance(runtime.get("model"), str)
+            and SAFE_MODEL.fullmatch(runtime.get("model") or "") is not None
+            and runtime.get("reasoning_effort") in set(REASONING_EFFORTS)
+        )
+    )
     provider_policy_valid = (
         provider == "agy"
         and runtime.get("stop_reason") == "TurnCompleted"
@@ -609,14 +643,7 @@ def trusted_provider_report(
         and runtime.get("stop_reason") == "EndTurn"
         and runtime.get("provider_sandbox") == "off"
         and runtime.get("permission_mode") == "bypassPermissions"
-    ) or (
-        provider == "codex"
-        and runtime.get("model") == CODEX_FALLBACK_MODEL
-        and runtime.get("reasoning_effort") == CODEX_FALLBACK_REASONING
-        and runtime.get("stop_reason") == "TurnCompleted"
-        and runtime.get("provider_sandbox") == "workspace-write"
-        and runtime.get("permission_mode") == "never"
-    ) or (
+    ) or codex_policy_valid or (
         provider == "qwen"
         and runtime.get("stop_reason") == "TurnCompleted"
         and runtime.get("provider_sandbox") == "off"
@@ -1668,11 +1695,14 @@ def validate_recorded_argv(
         raise ContractError("recorded model contains unsupported characters")
     if session_options.get("--reasoning-effort") not in set(REASONING_EFFORTS):
         raise ContractError("recorded reasoning effort is invalid")
-    if recorded_provider == "codex" and (
-        model != CODEX_FALLBACK_MODEL
-        or session_options.get("--reasoning-effort") != CODEX_FALLBACK_REASONING
-    ):
-        raise ContractError("recorded Codex fallback profile is invalid")
+    # Fallback attempts must stay on the fixed Sol+high profile. Primary codex
+    # (adoc luna/max etc.) may use any SAFE model + effort recorded in control.
+    if recorded_provider == "codex" and control.get("fallback_of_attempt") is not None:
+        if (
+            model != CODEX_FALLBACK_MODEL
+            or session_options.get("--reasoning-effort") != CODEX_FALLBACK_REASONING
+        ):
+            raise ContractError("recorded Codex fallback profile is invalid")
     if control.get("model", model) != model:
         raise ContractError("recorded model does not match control")
     if control.get("reasoning_effort", session_options.get("--reasoning-effort")) != session_options.get(
@@ -1858,7 +1888,22 @@ def cmd_fallback_v2(
     )
     primary_provider = old_control.get("provider", "grok")
     if primary_provider not in PRIMARY_MODELS:
-        raise ContractError("Codex fallback may only replace an AGY/Grok attempt")
+        raise ContractError(
+            "Codex fallback may only replace a primary writer attempt "
+            f"(one of: {', '.join(sorted(PRIMARY_MODELS))})"
+        )
+    if primary_provider == "codex":
+        # Primary is already Codex (e.g. luna daytime writer). Escalate via
+        # Sol+high fallback only when the prior attempts used a non-Sol shape;
+        # replaying Sol→Sol is meaningless and hides misconfigured budgets.
+        if (
+            old_control.get("model") == CODEX_FALLBACK_MODEL
+            and old_control.get("reasoning_effort") == CODEX_FALLBACK_REASONING
+        ):
+            raise ContractError(
+                "Codex fallback cannot replace a primary that already uses "
+                f"{CODEX_FALLBACK_MODEL}+{CODEX_FALLBACK_REASONING}"
+            )
     runtime = read_json(safe_child_file(old_dir, "runtime.json"))
     if (
         runtime.get("provider") != primary_provider

@@ -1128,6 +1128,122 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual(accepted["model"], "gpt-5.6-sol")
         self.assertEqual(accepted["attempt"], 3)
 
+    def test_v2_codex_primary_luna_max_is_trusted_like_other_writers(self) -> None:
+        """adoc main_write=codex (luna+max) must accept — not only Sol fallback."""
+        self.init_git_project()
+        task_file = self.write_v2_task(
+            verification=[{"command": "true", "cwd": ".", "timeout_sec": 5}],
+            verify="tests",
+        )
+        self.start(
+            task_file,
+            provider="codex",
+            model="gpt-5.6-luna",
+            reasoning_effort="max",
+            include_model=False,
+        )
+        # kwargs still need model if include_model False
+        ready = self.wait_status()
+        self.assertEqual(
+            ready["status"],
+            "awaiting_verification",
+            msg=f"primary codex luna must be trusted, got: {ready}",
+        )
+        self.assertEqual(ready["provider"]["name"], "codex")
+        self.assertEqual(ready["provider"]["model"], "gpt-5.6-luna")
+        self.assertTrue(ready["report"]["complete"])
+        self.assertTrue(ready["report"]["trusted"])
+
+        artifact = self.run_dir / "artifacts" / "001"
+        state = json.loads((artifact / "state.json").read_text(encoding="utf-8"))
+        control = json.loads(
+            (artifact / "attempts" / "01" / "control.json").read_text(encoding="utf-8")
+        )
+        self.assertIsNone(control.get("fallback_of_attempt"))
+        self.assertEqual(control.get("model"), "gpt-5.6-luna")
+        self.assertEqual(control.get("reasoning_effort"), "max")
+        (artifact / "owns-check.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "status": "passed",
+                    "exit_code": 0,
+                    "cwd": str(self.project_cwd),
+                    "task_sha256": state["task_sha256"],
+                    "scope": "task",
+                    "scope_task_ids": ["001"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.run_ctl(
+            "verify",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-file",
+            str(task_file),
+            "--project-cwd",
+            str(self.project_cwd),
+        )
+        accepted = json.loads(
+            self.run_ctl(
+                "accept",
+                "--run-dir",
+                str(self.run_dir),
+                "--task-file",
+                str(task_file),
+                "--project-cwd",
+                str(self.project_cwd),
+            ).stdout
+        )
+        self.assertTrue(accepted["accepted"])
+        self.assertEqual(accepted["provider"], "codex")
+        self.assertEqual(accepted["model"], "gpt-5.6-luna")
+        self.assertEqual(accepted["attempt"], 1)
+
+    def test_v2_codex_primary_retry_replays_luna_not_sol_only(self) -> None:
+        """Retry of primary codex must replay control model/effort (luna+max)."""
+        self.init_git_project()
+        task_file = self.write_v2_task(
+            verification=[{"command": "true", "cwd": ".", "timeout_sec": 5}],
+            verify="tests",
+        )
+        fail_env = {"FAKE_EXIT": "1", "FAKE_STDERR": "transient codex fail"}
+        self.start(
+            task_file,
+            provider="codex",
+            model="gpt-5.6-luna",
+            reasoning_effort="max",
+            include_model=False,
+            env=fail_env,
+        )
+        first = self.wait_status()
+        self.assertEqual(first["status"], "failed")
+        # Retry must not raise "recorded Codex fallback profile is invalid"
+        self.run_ctl(
+            "retry",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-id",
+            "001",
+        )
+        second = self.wait_status()
+        self.assertEqual(second["attempt"], 2)
+        control = json.loads(
+            (
+                self.run_dir
+                / "artifacts"
+                / "001"
+                / "attempts"
+                / "02"
+                / "control.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(control.get("provider"), "codex")
+        self.assertEqual(control.get("model"), "gpt-5.6-luna")
+        self.assertEqual(control.get("reasoning_effort"), "max")
+        self.assertIsNone(control.get("fallback_of_attempt"))
+
     def test_v2_status_rejects_stale_previous_attempt_verification(self) -> None:
         task_file = self.write_v2_task(
             verification=[{"command": "node --version", "cwd": ".", "timeout_sec": 5}]

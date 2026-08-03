@@ -4,7 +4,7 @@
 
 # 🏭 Claude Lane Stack
 
-### Маленький ИИ-завод для одного человека · **v1.12.2**
+### Маленький ИИ-завод для одного человека · **v1.12.4**
 
 **Мульти-агентная оркестрация для Claude Code** — вы говорите с одним ИИ-менеджером проекта,
 он ведёт долговечные задачи Kimi, Qwen, AGY или Grok до приёмки, **сам мержит готовый код в
@@ -12,7 +12,7 @@
 ручных merge.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.12.2)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.12.4)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://docs.anthropic.com/en/docs/claude-code)
 [![Beginner guide](https://img.shields.io/badge/Старт-Гайд%20для%20новичков-brightgreen)](docs/BEGINNER.ru.md)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
@@ -117,7 +117,7 @@ flowchart LR
 ```bash
 # 1️⃣  Установить завод — один раз на машину
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.12.2 # или main
+cd claude-lane-stack && git checkout v1.12.4 # или main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 
@@ -140,7 +140,7 @@ claude --agent dev-orchestrator
 > [!IMPORTANT]
 > `/resume-project` — это «с возвращением», **не** шаг установки.
 
-📖 Гайд: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)** · Релиз: **[v1.12.2](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.12.2)**
+📖 Гайд: **[docs/BEGINNER.ru.md](docs/BEGINNER.ru.md)** · Релиз: **[v1.12.4](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.12.4)**
 
 ---
 
@@ -456,7 +456,7 @@ service. См. [docs/LANE-EXEC.md](docs/LANE-EXEC.md). После апдейта
 | 📝 Идеи | [docs/TODOS.md](docs/TODOS.md) |
 | 🔌 MCP | [docs/MCP-LEAN.md](docs/MCP-LEAN.md) · [docs/MCP-HYBRID.md](docs/MCP-HYBRID.md) |
 | 📰 Changelog | [CHANGELOG.md](CHANGELOG.md) |
-| 🚀 Релиз v1.12.2 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.12.2) |
+| 🚀 Релиз v1.12.4 | [GitHub Releases](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.12.4) |
 
 ---
 
