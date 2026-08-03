@@ -1,3 +1,8 @@
+## 1.13.1 — 2026-08-03
+
+### Fixed
+- HANDOFF refines `verification_failed` from verify stderr → `verification_script_missing` / `fix_contract` when check.py missing.
+
 ## 1.13.0 — 2026-08-03
 
 ### Added
