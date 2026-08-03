@@ -58,6 +58,54 @@ class NightShiftAllTest(unittest.TestCase):
             self.assertIn("Processed 1 of 1", result.stdout)
             self.assertFalse((repo / ".agents" / "session-log").exists())
 
+    def test_enabled_false_skips_project_even_with_recent_commits(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            root = Path(raw_tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            (repo / "README.md").write_text("fixture\n")
+            subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-qm",
+                    "fixture",
+                ],
+                cwd=repo,
+                check=True,
+            )
+            (repo / ".agents" / "runs").mkdir(parents=True)
+            (repo / ".agents" / "night-shift.yaml").write_text(
+                "enabled: false\nauto_merge: false\n", encoding="utf-8"
+            )
+
+            result = subprocess.run(
+                [
+                    str(NIGHT_SHIFT_ALL),
+                    "--dry-run",
+                    "--root",
+                    str(root),
+                    "--day",
+                    "2026-07-18",
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=30,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("disabled via night-shift.yaml", result.stdout)
+            self.assertIn("Processed 0 of 1", result.stdout)
+            self.assertIn("1 disabled", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

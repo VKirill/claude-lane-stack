@@ -38,6 +38,81 @@ GROK_SANDBOX_PROFILE = "off"
 QWEN_SANDBOX_PROFILE = "off"
 KIMI_SANDBOX_PROFILE = "off"
 CODEX_SANDBOX_PROFILE = "workspace-write"
+# Minimal config embedded when profile file is missing (install copies
+# profiles/codex/lane-writer.config.toml → ~/.codex/ and ~/.agents/profiles/).
+DEFAULT_LANE_WRITER_CONFIG = """\
+# Bare Codex lane-writer profile (embedded fallback).
+model = "gpt-5.6-luna"
+model_reasoning_effort = "max"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+web_search = "disabled"
+personality = "pragmatic"
+suppress_unstable_features_warning = true
+project_doc_max_bytes = 32768
+project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md"]
+
+[sandbox_workspace_write]
+network_access = true
+
+[agents]
+max_threads = 1
+max_depth = 1
+
+[features]
+multi_agent = false
+multi_agent_v2 = false
+plugins = false
+plugin_sharing = false
+remote_plugin = false
+memories = false
+apps = false
+browser_use = false
+browser_use_external = false
+browser_use_full_cdp_access = false
+in_app_browser = false
+computer_use = false
+image_generation = false
+goals = false
+hooks = false
+skill_search = false
+skill_mcp_dependency_install = false
+tool_suggest = false
+tool_call_mcp_elicitation = false
+mentions_v2 = false
+shell_snapshot = false
+workspace_dependencies = false
+guardian_approval = false
+"""
+# Native `codex exec --disable <feature>` set for bare writer (stable flags only).
+# System skills (imagegen, skill-installer, …) are baked into Codex and cannot
+# be fully removed via public CLI; user skills/MCP/plugins are excluded by the
+# ephemeral CODEX_HOME + bwrap mask of host ~/.codex.
+CODEX_DISABLE_FEATURES = (
+    "multi_agent",
+    "multi_agent_v2",
+    "plugins",
+    "plugin_sharing",
+    "remote_plugin",
+    "memories",
+    "apps",
+    "browser_use",
+    "browser_use_external",
+    "browser_use_full_cdp_access",
+    "in_app_browser",
+    "computer_use",
+    "image_generation",
+    "goals",
+    "hooks",
+    "skill_search",
+    "skill_mcp_dependency_install",
+    "tool_suggest",
+    "tool_call_mcp_elicitation",
+    "mentions_v2",
+    "shell_snapshot",
+    "workspace_dependencies",
+    "guardian_approval",
+)
 RUNTIME_SANDBOX_PROFILE = "bubblewrap-workspace"
 PROTOCOL_FAILURE_EXIT = 65
 MAX_PROVIDER_LOG_BYTES = 1024 * 1024
@@ -444,27 +519,38 @@ def provider_command(
     if not binary:
         raise RuntimeError(f"{args.provider} binary not found")
     if args.provider == "codex":
-        return [
+        # Bare lane-writer (native Codex):
+        # - ephemeral CODEX_HOME = auth + bare config.toml + empty skills/plugins/rules
+        # - `-p lane-writer` layers the same bare profile by name (also installed
+        #   as ~/.codex/lane-writer.config.toml for human inspection)
+        # - do NOT pass --ignore-user-config (would skip our bare config.toml)
+        # - host ~/.codex is tmpfs-hidden by bwrap so MCP/plugins/user skills stay out
+        command = [
             binary,
             "exec",
             "--json",
             "--ephemeral",
-            "--ignore-user-config",
-            "--disable",
-            "multi_agent",
+            "--ignore-rules",
+            "--profile",
+            "lane-writer",
             "--model",
             args.model,
             "-c",
             f'model_reasoning_effort="{args.reasoning_effort}"',
             "-c",
             'approval_policy="never"',
+            "-c",
+            'web_search="disabled"',
             "--sandbox",
             CODEX_SANDBOX_PROFILE,
             "--cd",
             str(args.cwd),
             "--skip-git-repo-check",
-            "-",
         ]
+        for feature in CODEX_DISABLE_FEATURES:
+            command.extend(["--disable", feature])
+        command.append("-")
+        return command
     if args.provider == "grok":
         command = [
             binary,
@@ -666,7 +752,29 @@ def provider_environment(
     return environment
 
 
+def lane_writer_config_text() -> str:
+    """Return bare lane-writer config.toml contents (no MCP/plugins)."""
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[1] / "profiles" / "codex" / "lane-writer.config.toml",
+        Path.home() / ".agents" / "profiles" / "codex" / "lane-writer.config.toml",
+        Path.home() / ".codex" / "lane-writer.config.toml",
+    ]
+    for path in candidates:
+        try:
+            if path.is_file():
+                return path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return DEFAULT_LANE_WRITER_CONFIG
+
+
 def prepare_codex_home(provider: str) -> Path | None:
+    """Build an ephemeral CODEX_HOME with auth + bare lane-writer config only.
+
+    Host MCP servers, plugins, and user skills live under the real ~/.codex and
+    are never copied here. Bubblewrap also tmpfs-masks ~/.codex at runtime.
+    """
     if provider != "codex":
         return None
     configured = os.environ.get("CODEX_HOME")
@@ -683,6 +791,15 @@ def prepare_codex_home(provider: str) -> Path | None:
     auth_target = scratch / "auth.json"
     shutil.copyfile(auth_source, auth_target)
     auth_target.chmod(0o600)
+    config_text = lane_writer_config_text()
+    # Base config + named profile (native `-p lane-writer`).
+    (scratch / "config.toml").write_text(config_text, encoding="utf-8")
+    (scratch / "lane-writer.config.toml").write_text(config_text, encoding="utf-8")
+    # Empty discovery roots so Codex does not inherit host skill/plugin trees
+    # even if a code path resolves relative to CODEX_HOME.
+    (scratch / "skills").mkdir(exist_ok=True)
+    (scratch / "plugins").mkdir(exist_ok=True)
+    (scratch / "rules").mkdir(exist_ok=True)
     return scratch
 
 

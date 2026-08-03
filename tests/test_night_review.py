@@ -580,11 +580,13 @@ class NightReviewTest(unittest.TestCase):
             env={"FAKE_CODEX_FAIL_AT": "2"},
         )
 
-        self.assertEqual(result.returncode, 2)
+        # Exit 3 = partial batch: earlier chunks kept, checkpoint not advanced.
+        self.assertEqual(result.returncode, 3)
         self.assertEqual(self.codex_count.read_text(), "2")
         self.assertFalse(
             (self.repo / ".agents" / "night-review" / "checkpoint.json").exists()
         )
+        # First chunk had no findings (default fake mode).
         self.assertFalse((self.repo / ".agents" / "findings").exists())
 
     def test_max_sources_batches_at_commit_boundaries_and_resumes_without_repeats(
@@ -754,11 +756,14 @@ class NightReviewTest(unittest.TestCase):
         self.assertNotIn("carry_over_after", checkpoint)
 
     def test_oversized_commit_is_split_into_bounded_chunks(self) -> None:
-        self._write_commit("large.txt", "x" * 3000 + "\n", "large change")
+        # Enriched review instructions are ~2KB; use a cap above that but below
+        # a multi-KB body so the engine still splits into several chunks.
+        self._write_commit("large.txt", "x" * 12000 + "\n", "large change")
+        max_chunk_bytes = 3200
 
         result = self.run_review(
             "--max-chunk-bytes",
-            "900",
+            str(max_chunk_bytes),
             "--codex-bin",
             str(self.fake_codex),
         )
@@ -766,7 +771,9 @@ class NightReviewTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         invocations = [json.loads(line) for line in self.codex_log.read_text().splitlines()]
         self.assertGreater(len(invocations), 2)
-        self.assertTrue(all(item["prompt_bytes"] <= 900 for item in invocations))
+        self.assertTrue(
+            all(item["prompt_bytes"] <= max_chunk_bytes for item in invocations)
+        )
         self.assertTrue(
             (self.repo / ".agents" / "night-review" / "checkpoint.json").is_file()
         )
@@ -1102,6 +1109,219 @@ class NightReviewTest(unittest.TestCase):
         self.assertIn(str(self.repo), result.stdout)
         self.assertIn("Reviewed 1 of 1", result.stdout)
         self.assertFalse((self.repo / ".agents" / "session-log").exists())
+
+    def test_invalid_findings_are_quarantined_and_review_continues(self) -> None:
+        findings = self.repo / ".agents" / "findings"
+        findings.mkdir(parents=True)
+        bad = findings / "orchestrator-guard-midsession-tightening.json"
+        bad.write_text(
+            json.dumps(
+                {
+                    "fingerprint": "orchestrator-guard-midsession-tightening",
+                    "severity": "high",
+                    "summary": "not a canonical finding",
+                    "evidence": ["string evidence is invalid"],
+                    "status": "open",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_review("--dry-run")
+
+        self.assertEqual(result.returncode, 0, result.stderr + "\n" + result.stdout)
+        self.assertIn("quarantined invalid finding", result.stderr)
+        self.assertNotIn("night-review: invalid finding", result.stderr)
+        self.assertFalse(bad.exists())
+        quarantined = findings / "_invalid" / "orchestrator-guard-midsession-tightening.json"
+        self.assertTrue(quarantined.is_file())
+        self.assertTrue(
+            (findings / "_invalid" / "orchestrator-guard-midsession-tightening.quarantine.json").is_file()
+        )
+        self.assertIn("Night review dry-run:", result.stdout)
+        self.assertIn("sources=", result.stdout)
+        self.assertRegex(result.stdout, r"sources=[1-9]")
+        self.assertIn("Severity rubric", result.stdout)
+        self.assertIn("owns_paths MUST cover every evidence path", result.stdout)
+        self.assertIn("Verification rules", result.stdout)
+
+    def test_compile_fixes_writer_lane_kimi_has_rich_objective(self) -> None:
+        reviewed = self.run_review(
+            "--codex-bin",
+            str(self.fake_codex),
+            env={"FAKE_CODEX_MODE": "finding"},
+        )
+        self.assertEqual(reviewed.returncode, 0, reviewed.stderr)
+
+        worktree = self.root / "kimi-worktree"
+        subprocess.run(
+            [
+                "git",
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "agent/kimi-night-fixes",
+                str(worktree),
+                "HEAD",
+            ],
+            cwd=self.repo,
+            check=True,
+        )
+        run_dir = self.repo / ".agents" / "runs" / "kimi-night-fixes"
+        run_dir.mkdir(parents=True)
+        (run_dir / "worktree.json").write_text(
+            json.dumps(
+                {
+                    "slug": "kimi-night-fixes",
+                    "branch": "agent/kimi-night-fixes",
+                    "path": str(worktree),
+                    "base": self.head_sha,
+                    "repo": str(self.repo),
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        compiled = subprocess.run(
+            [
+                sys.executable,
+                str(NIGHT_ENGINE),
+                "compile-fixes",
+                str(self.repo),
+                "--day",
+                "2026-07-18",
+                "--run-slug",
+                "kimi-night-fixes",
+                "--writer-lane",
+                "kimi",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(compiled.returncode, 0, compiled.stderr)
+        self.assertIn("lane=kimi", compiled.stdout)
+        task_path = next((run_dir / "tasks").glob("*.yaml"))
+        task = __import__("yaml").safe_load(task_path.read_text())
+        self.assertEqual(task["lane"], "kimi")
+        self.assertIn("## Summary", task["objective"])
+        self.assertIn("## Evidence", task["objective"])
+        self.assertTrue(task["owns_paths"])
+        self.assertTrue(task["verification"])
+        self.assertGreaterEqual(len(task["acceptance"]), 3)
+        self.assertIn("source_finding_id:", "\n".join(task["interfaces"]))
+        spec = (run_dir / "SPEC.md").read_text()
+        self.assertIn("kimi", spec)
+
+    def test_max_sources_never_hard_fails_on_large_backlog(self) -> None:
+        for index in range(5):
+            self._write_commit(f"batch-{index}.txt", f"{index}\n", f"batch commit {index}")
+
+        result = self.run_review(
+            "--max-sources",
+            "2",
+            "--codex-bin",
+            str(self.fake_codex),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("exceeds --max-sources", result.stderr)
+        self.assertIn("remaining=", result.stdout)
+        report = (self.repo / ".agents" / "session-log" / "REVIEW-2026-07-18.md").read_text()
+        self.assertIn("Remaining sources:", report)
+
+    def test_max_fix_tasks_caps_compiled_writer_tasks(self) -> None:
+        # Persist more than 5 findings, then compile with cap=5.
+        reviewed = self.run_review(
+            "--codex-bin",
+            str(self.fake_codex),
+            env={"FAKE_CODEX_MODE": "finding"},
+        )
+        self.assertEqual(reviewed.returncode, 0, reviewed.stderr)
+        seed = json.loads(next((self.repo / ".agents" / "findings").glob("*.json")).read_text())
+        for index in range(7):
+            finding = json.loads(json.dumps(seed))  # deep copy
+            # Distinct leading bytes so task ids fix-<12hex> do not collide.
+            finding["fingerprint"] = f"{index:02x}" + ("ab" * 31)
+            finding["title"] = f"Issue {index}"
+            finding["summary"] = f"Synthetic finding {index} for cap test."
+            finding["status"] = "open"
+            finding["actionable"] = True
+            # Disjoint owns_paths so scope-overlap does not force needs_human.
+            path = f"file-{index}.txt"
+            finding["evidence"] = [
+                {"path": path, "line": 1, "detail": f"problem {index}"}
+            ]
+            finding["scope"] = {
+                "owns_paths": [path],
+                "never_touch": [".env*"],
+            }
+            (
+                self.repo / ".agents" / "findings" / f"{finding['fingerprint']}.json"
+            ).write_text(json.dumps(finding) + "\n", encoding="utf-8")
+
+        worktree = self.root / "cap-worktree"
+        subprocess.run(
+            [
+                "git",
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "agent/cap-night-fixes",
+                str(worktree),
+                "HEAD",
+            ],
+            cwd=self.repo,
+            check=True,
+        )
+        run_dir = self.repo / ".agents" / "runs" / "cap-night-fixes"
+        run_dir.mkdir(parents=True)
+        (run_dir / "worktree.json").write_text(
+            json.dumps(
+                {
+                    "slug": "cap-night-fixes",
+                    "branch": "agent/cap-night-fixes",
+                    "path": str(worktree),
+                    "base": self.head_sha,
+                    "repo": str(self.repo),
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        compiled = subprocess.run(
+            [
+                sys.executable,
+                str(NIGHT_ENGINE),
+                "compile-fixes",
+                str(self.repo),
+                "--day",
+                "2026-07-18",
+                "--run-slug",
+                "cap-night-fixes",
+                "--writer-lane",
+                "kimi",
+                "--max-fix-tasks",
+                "5",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+        self.assertEqual(compiled.returncode, 0, compiled.stderr)
+        tasks = list((run_dir / "tasks").glob("*.yaml"))
+        self.assertEqual(len(tasks), 5)
+        self.assertIn("max_fix_tasks=5", compiled.stderr)
+        self.assertIn("deferred", compiled.stderr)
 
 
 if __name__ == "__main__":

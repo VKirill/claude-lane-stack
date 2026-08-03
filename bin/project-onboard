@@ -290,9 +290,20 @@ fi
 # Board
 command -v run-board >/dev/null 2>&1 && run-board "$REPO" || true
 
-# Doctor profile
+# Doctor profile (writer + optional night review)
+# Prefer interactive setup on a TTY so new projects do not silently get kimi.
+# Non-interactive / CI: set WRITER_PROVIDER=qwen|kimi|agy|grok and optionally
+# NIGHT_REVIEW=on|off, then project-onboard applies without prompts.
 if command -v agents-doctor >/dev/null 2>&1; then
-  agents-doctor --apply "$REPO" || true
+  if [[ -t 0 && -t 1 && -z "${WRITER_PROVIDER:-}" && -z "${CI:-}" ]]; then
+    echo "==> agents-doctor TUI (writer + night review)"
+    agents-doctor tui "$REPO" || agents-doctor setup "$REPO" || true
+  else
+    WP="${WRITER_PROVIDER:-auto}"
+    NR="${NIGHT_REVIEW:-off}"
+    echo "==> agents-doctor --apply --writer-provider $WP --night-review $NR"
+    agents-doctor --apply --writer-provider "$WP" --night-review "$NR" "$REPO" || true
+  fi
 fi
 
 # Karpathy skill note
@@ -312,7 +323,7 @@ write_claude() {
 - **Execution state:** `.agents/runs/<slug>/` (PLAN, tasks/*.yaml, artifacts, MERGE).
 - **Ideas:** `.agents/todos/` — not a run until promoted.
 - **Durable strategy / SEO / product plans:** `docs/plans/<topic>/` (e.g. COCOON.md). Promote to `.agents/runs/` when implementing.
-- **Routing:** read `.agents/routing.profile.yaml` if present (`agents-doctor --apply`).
+- **Routing:** read `.agents/routing.profile.yaml` if present (`agents-doctor setup` / `--apply`).
 - **Ship:** orchestrator merges to `main` (`wt-merge-main`); human never merges.
 - **Discipline:** skill `karpathy-guidelines` on non-trivial code (think → minimum → surgical → verify).
 - **Cold start:** `resume-project .` or `/resume-project`.
@@ -726,7 +737,7 @@ echo ""
 echo "Done. scenario=$SCENARIO depth=$DEPTH score=$DETECTED_SCORE"
 echo "  1) Codex fills from evidence (depth=$DEPTH) — deep checklist in deep-scan.md"
 echo "  2) Read .agents/onboard.scenario.yaml + deep-scan.md"
-echo "  3) agents-doctor --apply ."
+echo "  3) agents-doctor setup .     # writer + night review (or --apply --writer-provider …)"
 echo "  4) claude --agent dev-orchestrator"
 echo "Override: project-onboard . --minimal|--full --fast|--deep"
 echo "Strategy docs → docs/plans/   |   Implementation → .agents/runs/"

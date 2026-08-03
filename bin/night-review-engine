@@ -11,6 +11,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -26,6 +28,9 @@ RUN_SCHEMA_PATH = SCHEMAS / "run-v2.schema.json"
 TASK_REVIEW_SCHEMA_PATH = SCHEMAS / "task-review-receipt-v2.schema.json"
 DEFAULT_MAX_CHUNK_BYTES = 120_000
 DEFAULT_MAX_SOURCES = 25
+DEFAULT_MAX_FIX_TASKS = 5
+DEFAULT_WRITER_LANE = "kimi"
+WRITER_LANES = frozenset({"agy", "grok", "qwen", "kimi"})
 UNRESOLVED = frozenset({"open", "needs_human", "in_progress"})
 RUNNABLE = frozenset({"open", "in_progress"})
 SEVERITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -35,6 +40,44 @@ SHA_RE = re.compile(r"\b[0-9a-fA-F]{7,64}\b")
 SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 GENERATED_OPEN_START = "<!-- night-review:open:start -->"
 GENERATED_OPEN_END = "<!-- night-review:open:end -->"
+FINDINGS_INVALID_DIR = "_invalid"
+
+# Injected into every Codex night-review chunk. Keep concise but operational.
+REVIEW_PROMPT_GUIDANCE = """\
+## Role
+You produce typed findings for an automated fix writer. You do not edit files
+and you do not author task YAML. The compiler turns each actionable finding into
+one sequential writer task (Kimi/Grok/…).
+
+## Severity rubric (required)
+- P0: security/auth bypass, data loss, payment/billing corruption, secret leak
+- P1: user-visible functional bug, race with wrong results, broken acceptance path
+- P2: maintainability / clear latent defect with bounded product scope
+- P3: nits, style, non-blocking polish (prefer actionable=false unless cheap)
+
+## Evidence rules
+- Every finding needs path + line (line may be null only when truly unknown) + detail
+- Cite concrete changed or dependent code; never invent paths
+- actionable=false when there is no safe automated fix scope
+
+## Ownership (owns_paths) rules
+- owns_paths MUST cover every evidence path (file or parent dir that contains it)
+- Prefer the narrowest real project-relative paths (single files when possible)
+- Forbidden: repo-root wildcards such as "*", "**", "**/*", or empty scope
+- never_touch must list sensitive paths the writer must not modify
+
+## Verification rules
+- Actionable findings need ≥1 focused project-local command
+- Prefer path-scoped unit tests / typecheck for the owned files
+- Forbidden: shell composition (&&, |, ;), expansion, globbing, package install,
+  network fetch, or paths outside the project
+
+## Security / regressions (check when relevant)
+auth, payments, secrets, injection, SSRF, status races, wrong-session overwrites
+
+## Output
+Return only JSON matching the supplied schema. chunk_id must match Chunk-ID.
+"""
 
 
 class ReviewError(RuntimeError):
@@ -358,14 +401,68 @@ def commits_to_review(
     return commits
 
 
-def load_findings(repo: Path, schema: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def findings_dir(repo: Path) -> Path:
+    return repo / ".agents" / "findings"
+
+
+def quarantine_invalid_finding(repo: Path, path: Path, reason: str) -> Path:
+    """Move a non-canonical finding out of the load path and record why."""
+    dest_dir = findings_dir(repo) / FINDINGS_INVALID_DIR
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / path.name
+    if dest.exists():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        dest = dest_dir / f"{path.stem}.{stamp}{path.suffix}"
+    try:
+        path.replace(dest)
+    except OSError as exc:
+        raise ReviewError(f"cannot quarantine invalid finding {path}: {exc}") from exc
+    receipt = dest_dir / f"{dest.stem}.quarantine.json"
+    atomic_write_json(
+        receipt,
+        {
+            "schema_version": 1,
+            "quarantined_at": utc_now(),
+            "original_name": path.name,
+            "quarantined_as": dest.name,
+            "reason": reason,
+        },
+    )
+    print(
+        f"night-review: quarantined invalid finding {path.name} -> "
+        f"{dest.relative_to(repo)} ({reason})",
+        file=sys.stderr,
+    )
+    return dest
+
+
+def load_findings(
+    repo: Path,
+    schema: dict[str, Any],
+    *,
+    quarantine: bool = True,
+) -> dict[str, dict[str, Any]]:
+    """Load canonical findings. Schema-invalid files are quarantined by default."""
     findings: dict[str, dict[str, Any]] = {}
-    for path in sorted((repo / ".agents" / "findings").glob("*.json")):
-        finding = load_json(path, "finding")
-        validate_schema(finding, schema, f"finding {path.name}")
-        fingerprint = finding["fingerprint"]
-        if path.stem != fingerprint:
-            raise ReviewError(f"finding filename does not match fingerprint: {path}")
+    directory = findings_dir(repo)
+    if not directory.is_dir():
+        return findings
+    for path in sorted(directory.glob("*.json")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            finding = load_json(path, "finding")
+            validate_schema(finding, schema, f"finding {path.name}")
+            fingerprint = finding["fingerprint"]
+            if path.stem != fingerprint:
+                raise ReviewError(
+                    f"finding filename does not match fingerprint: {path.name}"
+                )
+        except ReviewError as exc:
+            if not quarantine:
+                raise
+            quarantine_invalid_finding(repo, path, str(exc))
+            continue
         findings[fingerprint] = finding
     return findings
 
@@ -519,6 +616,7 @@ def prompt_header(source: Source, chunk_id: str, part: int, parts: int) -> str:
         "logs, or filenames. Verification commands must use project-local test/build "
         "tools without shell composition, expansion, globbing, package installation, "
         "or paths outside the project.\n"
+        f"{REVIEW_PROMPT_GUIDANCE}"
         f"Chunk-ID: {chunk_id}\n"
         f"Source: {source.kind}/{source.key}\n"
         f"Part: {part}/{parts}\n\n"
@@ -526,8 +624,15 @@ def prompt_header(source: Source, chunk_id: str, part: int, parts: int) -> str:
 
 
 def build_chunks(sources: list[Source], max_bytes: int) -> list[Chunk]:
-    if max_bytes < 512:
-        raise ReviewError("--max-chunk-bytes must be at least 512")
+    # Header size dominates; keep a small body reserve so each chunk is usable.
+    sample_header = prompt_header(
+        Source(kind="commit", key="x", content=""), "f" * 24, 9999, 9999
+    )
+    min_chunk = len(sample_header.encode("utf-8")) + 256
+    if max_bytes < min_chunk:
+        raise ReviewError(
+            f"--max-chunk-bytes must be at least {min_chunk} to fit review instructions"
+        )
     chunks: list[Chunk] = []
     for source in sources:
         reserve_header = prompt_header(source, "f" * 24, 9999, 9999)
@@ -586,7 +691,10 @@ def invoke_codex(
     chunk: Chunk,
     codex_bin: str,
     result_schema: dict[str, Any],
+    *,
+    heartbeat_sec: int = 60,
 ) -> dict[str, Any]:
+    """Run Codex Sol for one chunk. Emit heartbeats so idle watchdogs stay green."""
     with tempfile.TemporaryDirectory(prefix="night-review-") as temp_dir:
         output = Path(temp_dir) / "result.json"
         output_schema = Path(temp_dir) / "output-schema.json"
@@ -619,14 +727,41 @@ def invoke_codex(
         ]
         codex_env = os.environ.copy()
         codex_env["CLAUDE_LANE_AUTOMATION"] = "1"
-        result = run_command(
-            argv,
-            input_text=chunk.prompt,
-            env=codex_env,
-            check=False,
-        )
-        if result.returncode != 0:
-            detail = result.stderr.strip() or result.stdout.strip() or "provider failed"
+        try:
+            proc = subprocess.Popen(
+                argv,
+                text=True,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=codex_env,
+            )
+        except OSError as exc:
+            raise ReviewError(f"cannot start Codex: {exc}") from exc
+
+        stop = threading.Event()
+        started = time.monotonic()
+
+        def _heartbeat() -> None:
+            while not stop.wait(heartbeat_sec):
+                elapsed = int(time.monotonic() - started)
+                print(
+                    f"night-review: heartbeat chunk={chunk.chunk_id} "
+                    f"source={chunk.source.kind}/{chunk.source.key} "
+                    f"elapsed={elapsed}s still running Codex Sol",
+                    flush=True,
+                )
+
+        beat = threading.Thread(target=_heartbeat, name="codex-heartbeat", daemon=True)
+        beat.start()
+        try:
+            stdout, stderr = proc.communicate(input=chunk.prompt)
+        finally:
+            stop.set()
+            beat.join(timeout=1)
+
+        if proc.returncode != 0:
+            detail = (stderr or "").strip() or (stdout or "").strip() or "provider failed"
             raise ReviewError(f"chunk {chunk.chunk_id} Codex failed: {detail}")
         if not output.is_file():
             raise ReviewError(f"chunk {chunk.chunk_id} produced no structured output")
@@ -839,11 +974,27 @@ def resolve_project_cwd(repo: Path, run_dir: Path, override: str | None) -> Path
     return project_cwd
 
 
-def ensure_fix_run(repo: Path, run_dir: Path, project_cwd: Path, day: str) -> None:
+def normalize_writer_lane(value: str | None) -> str:
+    lane = (value or DEFAULT_WRITER_LANE).strip().lower()
+    if lane not in WRITER_LANES:
+        raise ReviewError(
+            f"writer lane must be one of {', '.join(sorted(WRITER_LANES))}: {value!r}"
+        )
+    return lane
+
+
+def ensure_fix_run(
+    repo: Path,
+    run_dir: Path,
+    project_cwd: Path,
+    day: str,
+    writer_lane: str,
+) -> None:
     try:
         import yaml
     except ImportError as exc:
         raise ReviewError("PyYAML is required to compile fix tasks") from exc
+    writer_lane = normalize_writer_lane(writer_lane)
     run_schema = load_schema(RUN_SCHEMA_PATH)
     run_path = run_dir / "run.yaml"
     if run_path.is_file():
@@ -873,8 +1024,26 @@ def ensure_fix_run(repo: Path, run_dir: Path, project_cwd: Path, day: str) -> No
     (run_dir / "tasks").mkdir(parents=True, exist_ok=True)
     (run_dir / "artifacts").mkdir(parents=True, exist_ok=True)
     defaults = {
-        "PLAN.md": f"# Night fixes — {day}\n\nGenerated from canonical night-review findings.\n",
-        "SPEC.md": "# Specification\n\nResolve only the source finding bound to each task.\n",
+        "PLAN.md": (
+            f"# Night fixes — {day}\n\n"
+            f"Generated from canonical night-review findings.\n"
+            f"Writer lane: `{writer_lane}` (sequential one-finding tasks).\n"
+        ),
+        "SPEC.md": (
+            f"# Specification — night fixes {day}\n\n"
+            f"## Goal\n"
+            f"Resolve each bound canonical night-review finding in isolation.\n\n"
+            f"## Writer\n"
+            f"Lane/provider: `{writer_lane}`. One finding per task; sequential dispatch.\n\n"
+            f"## Interfaces\n"
+            f"Each task binds `source_finding_id` and `source_finding_control_sha256`.\n\n"
+            f"## Invariants\n"
+            f"- Touch only `owns_paths` for the bound finding\n"
+            f"- Preserve unrelated user work\n"
+            f"- Project-local verification commands from the finding must pass\n\n"
+            f"## Definition of done\n"
+            f"Task acceptance list + Codex re-review pass + finding status `fixed`.\n"
+        ),
         "STATUS.md": "# Status\n\n- State: pending\n",
     }
     for name, content in defaults.items():
@@ -897,6 +1066,8 @@ def compile_fix_tasks(
     findings: dict[str, dict[str, Any]],
     project_cwd_override: str | None,
     finding_schema: dict[str, Any],
+    writer_lane: str = DEFAULT_WRITER_LANE,
+    max_fix_tasks: int = DEFAULT_MAX_FIX_TASKS,
 ) -> tuple[Path | None, int]:
     try:
         import yaml
@@ -904,6 +1075,9 @@ def compile_fix_tasks(
         raise ReviewError("PyYAML is required to compile fix tasks") from exc
     if not SLUG_RE.fullmatch(run_slug) or run_slug in {".", ".."}:
         raise ReviewError(f"invalid night fix run slug: {run_slug!r}")
+    writer_lane = normalize_writer_lane(writer_lane)
+    if max_fix_tasks < 1:
+        raise ReviewError("--max-fix-tasks must be at least 1")
     run_dir = repo / ".agents" / "runs" / run_slug
     project_cwd = resolve_project_cwd(repo, run_dir, project_cwd_override)
     if project_cwd is None:
@@ -934,9 +1108,16 @@ def compile_fix_tasks(
         ),
         key=lambda item: (SEVERITY_ORDER[item["severity"]], item["fingerprint"]),
     )
+    # Cap newly compiled tasks so a noisy review night stays reviewable by humans.
+    # Existing tasks already on the run still count toward the cap.
+    slots_remaining = max(0, max_fix_tasks - len(existing_tasks))
+    deferred = 0
     for finding in candidates:
         fingerprint = finding["fingerprint"]
         if fingerprint in existing_tasks:
+            continue
+        if slots_remaining <= 0:
+            deferred += 1
             continue
         try:
             validate_finding_ownership_scope(finding)
@@ -976,12 +1157,20 @@ def compile_fix_tasks(
             f"- {item['path']}:{item['line'] or '?'} — {item['detail']}"
             for item in finding["evidence"]
         )
+        objective = (
+            f"## Finding\n{finding['title']} ({finding['severity']})\n\n"
+            f"## Summary\n{finding['summary']}\n\n"
+            f"## Evidence\n{evidence_text}\n\n"
+            f"## Required outcome\n"
+            f"Resolve only this bound finding. Stay inside owns_paths. "
+            f"Do not expand into unrelated refactors.\n"
+        )
         task = {
             "schema_version": 2,
             "id": task_id,
             "title": finding["title"],
             "risk": RISK_FOR_SEVERITY[finding["severity"]],
-            "lane": "agy",
+            "lane": writer_lane,
             "project_cwd": str(project_cwd),
             "read_first": evidence_paths,
             "interfaces": [
@@ -991,17 +1180,19 @@ def compile_fix_tasks(
             "invariants": [
                 "Resolve only the bound canonical finding",
                 "Preserve unrelated user work",
+                "Do not modify paths outside owns_paths",
             ],
             "out_of_scope": finding["scope"]["never_touch"],
             "expected_outputs": [f"A product-code fix for finding {fingerprint}"],
             "owns_paths": finding["scope"]["owns_paths"],
             "never_touch": finding["scope"]["never_touch"],
             "depends_on": [],
-            "objective": f"{finding['summary']}\n\nEvidence:\n{evidence_text}",
+            "objective": objective,
             "acceptance": [
-                f"Finding {fingerprint} no longer reproduces",
+                f"Finding {fingerprint} no longer reproduces under the evidence conditions",
                 "All structured verification commands pass",
                 "Fresh Codex re-review passes",
+                "No unrelated product files changed outside owns_paths",
             ],
             "verify": "tests",
             "verification": [
@@ -1018,10 +1209,11 @@ def compile_fix_tasks(
         generated.append((task_path, task))
         owned.extend((fingerprint, scope) for scope in task["owns_paths"])
         protected.extend((fingerprint, scope) for scope in task["never_touch"])
+        slots_remaining -= 1
 
     if not generated and not existing_tasks:
         return None, 0
-    ensure_fix_run(repo, run_dir, project_cwd, day)
+    ensure_fix_run(repo, run_dir, project_cwd, day, writer_lane)
     for task_path, task in generated:
         atomic_write_text(task_path, yaml.safe_dump(task, sort_keys=False))
     validation = run_command(
@@ -1037,6 +1229,14 @@ def compile_fix_tasks(
     )
     if validation.returncode != 0:
         raise ReviewError(f"compiled night fix run is invalid: {validation.stderr.strip()}")
+    total = len(existing_tasks) + len(generated)
+    if deferred:
+        print(
+            f"night-review: max_fix_tasks={max_fix_tasks} — compiled "
+            f"{len(generated)} new task(s) ({total} total on run); "
+            f"deferred {deferred} runnable finding(s) to a later night",
+            file=sys.stderr,
+        )
     return run_dir, len(generated)
 
 
@@ -1282,16 +1482,69 @@ def review_repo(args: argparse.Namespace) -> int:
         return 0
 
     results: list[dict[str, Any]] = []
-    try:
-        for chunk in chunks:
-            results.append(invoke_codex(repo, chunk, args.codex_bin, result_schema))
-        now = utc_now()
-        incoming = collect_findings(chunks, results, now, finding_schema)
-    except ReviewError as exc:
-        write_failure(repo, args.day, [str(exc)])
-        raise
+    completed_chunks: list[Chunk] = []
+    partial_error: str | None = None
+    total = len(chunks)
+    for index, chunk in enumerate(chunks, start=1):
+        print(
+            f"night-review: chunk {index}/{total} id={chunk.chunk_id} "
+            f"source={chunk.source.kind}/{chunk.source.key} "
+            f"part={chunk.part}/{chunk.parts} "
+            f"bytes={len(chunk.prompt.encode('utf-8'))}",
+            flush=True,
+        )
+        try:
+            payload = invoke_codex(repo, chunk, args.codex_bin, result_schema)
+        except ReviewError as exc:
+            partial_error = str(exc)
+            write_failure(repo, args.day, [partial_error])
+            print(
+                f"night-review: chunk {index}/{total} FAILED: {partial_error}",
+                flush=True,
+            )
+            # Keep findings already persisted from earlier chunks.
+            break
+        print(
+            f"night-review: chunk {index}/{total} done verdict={payload.get('verdict')} "
+            f"findings={len(payload.get('findings') or [])}",
+            flush=True,
+        )
+        # Persist immediately so a later stall/kill does not erase progress.
+        try:
+            now = utc_now()
+            incoming = collect_findings([chunk], [payload], now, finding_schema)
+            persist_findings(repo, incoming, finding_schema)
+            print(
+                f"night-review: chunk {index}/{total} persisted "
+                f"{len(incoming)} finding(s)",
+                flush=True,
+            )
+        except ReviewError as exc:
+            # Model returned findings we cannot canonicalize (owns/evidence rules).
+            if payload.get("findings"):
+                partial_error = (
+                    f"chunk {chunk.chunk_id} findings rejected: {exc}"
+                )
+                write_failure(repo, args.day, [partial_error])
+                print(
+                    f"night-review: chunk {index}/{total} FAILED: {partial_error}",
+                    flush=True,
+                )
+                break
+            print(
+                f"night-review: chunk {index}/{total} persist warning: {exc}",
+                flush=True,
+            )
+        results.append(payload)
+        completed_chunks.append(chunk)
 
-    findings = persist_findings(repo, incoming, finding_schema)
+    if not completed_chunks:
+        if partial_error:
+            raise ReviewError(partial_error)
+        write_failure(repo, args.day, ["no chunks completed"])
+        raise ReviewError("no chunks completed")
+
+    findings = load_findings(repo, finding_schema)
     try:
         fix_run, _ = compile_fix_tasks(
             repo,
@@ -1300,52 +1553,78 @@ def review_repo(args: argparse.Namespace) -> int:
             findings,
             args.project_cwd,
             finding_schema,
+            writer_lane=getattr(args, "writer_lane", DEFAULT_WRITER_LANE),
+            max_fix_tasks=int(
+                getattr(args, "max_fix_tasks", DEFAULT_MAX_FIX_TASKS)
+                or DEFAULT_MAX_FIX_TASKS
+            ),
         )
         findings = load_findings(repo, finding_schema)
         report = render_report(
             repo,
             args.day,
-            chunks,
+            completed_chunks,
             results,
             findings,
             fix_run,
-            remaining_sources,
+            remaining_sources + (total - len(completed_chunks)),
         )
         render_open_projection(repo, findings)
         render_todos(repo, findings)
-        runs = dict(checkpoint.get("runs", {}))
-        runs.update(selected_runs)
-        atomic_write_json(
-            checkpoint_path(repo),
-            {
-                "schema_version": 1,
-                "head_sha": checkpoint_sha,
-                "reviewed_at": utc_now(),
-                "runs": runs,
-                "chunks": [chunk.chunk_id for chunk in chunks],
-                **(
-                    {"carry_over_after": carry_over_after}
-                    if carry_over_after
-                    else {}
-                ),
-            },
-        )
-        legacy_marker = repo / ".agents" / "session-log" / ".night-review-last"
-        try:
-            atomic_write_text(legacy_marker, checkpoint_sha + "\n")
-        except OSError as exc:
-            print(f"night-review: warning: legacy marker write failed: {exc}", file=sys.stderr)
-        (
-            repo / ".agents" / "session-log" / f"REVIEW-{args.day}.failures.json"
-        ).unlink(missing_ok=True)
+        # Only advance checkpoint when the whole selected batch finished.
+        if partial_error is None and len(completed_chunks) == total:
+            runs = dict(checkpoint.get("runs", {}))
+            runs.update(selected_runs)
+            atomic_write_json(
+                checkpoint_path(repo),
+                {
+                    "schema_version": 1,
+                    "head_sha": checkpoint_sha,
+                    "reviewed_at": utc_now(),
+                    "runs": runs,
+                    "chunks": [chunk.chunk_id for chunk in completed_chunks],
+                    **(
+                        {"carry_over_after": carry_over_after}
+                        if carry_over_after
+                        else {}
+                    ),
+                },
+            )
+            legacy_marker = repo / ".agents" / "session-log" / ".night-review-last"
+            try:
+                atomic_write_text(legacy_marker, checkpoint_sha + "\n")
+            except OSError as exc:
+                print(
+                    f"night-review: warning: legacy marker write failed: {exc}",
+                    file=sys.stderr,
+                )
+            (
+                repo / ".agents" / "session-log" / f"REVIEW-{args.day}.failures.json"
+            ).unlink(missing_ok=True)
+        else:
+            print(
+                f"night-review: partial batch "
+                f"{len(completed_chunks)}/{total} chunks; "
+                f"checkpoint not advanced; findings kept",
+                flush=True,
+            )
     except (OSError, ReviewError) as exc:
         write_failure(repo, args.day, [str(exc)])
         raise ReviewError(f"post-review persistence failed: {exc}") from exc
-    print(f"wrote {report} remaining={remaining_sources}")
+    print(
+        f"wrote {report} remaining={remaining_sources} "
+        f"completed_chunks={len(completed_chunks)}/{total}"
+        + (f" partial_error={partial_error}" if partial_error else ""),
+        flush=True,
+    )
     if fix_run:
-        print(f"compiled {fix_run}")
+        print(f"compiled {fix_run}", flush=True)
     else:
-        print("fix tasks pending: provide --project-cwd or worktree.json")
+        print("fix tasks pending: provide --project-cwd or worktree.json", flush=True)
+    # Partial success: findings were saved; still non-zero so ops notices, but
+    # night-shift can continue to compile-fixes from persisted findings.
+    if partial_error is not None:
+        return 3
     return 0
 
 
@@ -1462,6 +1741,12 @@ def compile_fixes(args: argparse.Namespace) -> int:
     finding_schema = load_schema(FINDING_SCHEMA_PATH)
     findings = load_findings(repo, finding_schema)
     run_slug = args.run_slug or f"night-fixes-{args.day}"
+    writer_lane = normalize_writer_lane(
+        getattr(args, "writer_lane", None) or DEFAULT_WRITER_LANE
+    )
+    max_fix_tasks = int(
+        getattr(args, "max_fix_tasks", None) or DEFAULT_MAX_FIX_TASKS
+    )
     fix_run, generated = compile_fix_tasks(
         repo,
         args.day,
@@ -1469,12 +1754,14 @@ def compile_fixes(args: argparse.Namespace) -> int:
         findings,
         args.project_cwd,
         finding_schema,
+        writer_lane=writer_lane,
+        max_fix_tasks=max_fix_tasks,
     )
     findings = load_findings(repo, finding_schema)
     render_open_projection(repo, findings)
     render_todos(repo, findings)
     if fix_run:
-        print(f"compiled {generated} task(s) in {fix_run}")
+        print(f"compiled {generated} task(s) in {fix_run} lane={writer_lane}")
     else:
         print("no runnable fix tasks")
     return 0
@@ -1590,6 +1877,18 @@ def parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--max-sources", type=positive_int, default=DEFAULT_MAX_SOURCES)
     review.add_argument(
+        "--writer-lane",
+        choices=sorted(WRITER_LANES),
+        default=DEFAULT_WRITER_LANE,
+        help="lane written into compiled fix tasks when project_cwd is available",
+    )
+    review.add_argument(
+        "--max-fix-tasks",
+        type=positive_int,
+        default=DEFAULT_MAX_FIX_TASKS,
+        help="cap newly compiled fix tasks per night-fix run (default: 5)",
+    )
+    review.add_argument(
         "--codex-bin", default=os.environ.get("NIGHT_REVIEW_CODEX", "codex")
     )
     review.set_defaults(handler=review_repo)
@@ -1607,6 +1906,18 @@ def parser() -> argparse.ArgumentParser:
     compile_parser.add_argument("--day", default=date.today().isoformat())
     compile_parser.add_argument("--project-cwd")
     compile_parser.add_argument("--run-slug")
+    compile_parser.add_argument(
+        "--writer-lane",
+        choices=sorted(WRITER_LANES),
+        default=DEFAULT_WRITER_LANE,
+        help="writer lane/provider for compiled fix tasks (default: kimi)",
+    )
+    compile_parser.add_argument(
+        "--max-fix-tasks",
+        type=positive_int,
+        default=DEFAULT_MAX_FIX_TASKS,
+        help="cap newly compiled fix tasks per night-fix run (default: 5)",
+    )
     compile_parser.set_defaults(handler=compile_fixes)
 
     task = commands.add_parser("review-task", help="post-fix typed task re-review")

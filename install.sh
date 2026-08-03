@@ -145,6 +145,11 @@ if [[ -f "$STACK_ROOT/profiles/codex/night-review.config.toml" ]]; then
     "$STACK_ROOT/profiles/codex/night-review.config.toml" \
     "$CODEX/night-review.config.toml"
 fi
+if [[ -f "$STACK_ROOT/profiles/codex/lane-writer.config.toml" ]]; then
+  install -m 0644 \
+    "$STACK_ROOT/profiles/codex/lane-writer.config.toml" \
+    "$CODEX/lane-writer.config.toml"
+fi
 
 # Machine-readable local deploy receipt consumed by merge.json.
 SOURCE_SHA="$(git -C "$STACK_ROOT" rev-parse HEAD 2>/dev/null || true)"

@@ -15,6 +15,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 NIGHT_SHIFT = ROOT / "bin" / "night-shift"
 UNRESOLVED = frozenset({"open", "needs_human", "in_progress"})
+DEFAULT_MAX_FIX_TASKS = 5
+
+
+def log_root() -> Path:
+    return Path.home() / ".agents" / "logs" / "night-shift"
+
+
+def project_log_file(project: Path, day: str) -> Path:
+    safe = project.name or "project"
+    return log_root() / day / f"{safe}.log"
 
 
 def discover(roots: list[Path]) -> list[Path]:
@@ -43,7 +53,29 @@ def discover(roots: list[Path]) -> list[Path]:
     return sorted(projects)
 
 
+def project_enabled(project: Path) -> bool:
+    """Respect `.agents/night-shift.yaml` opt-out (`enabled: false`)."""
+    path = project / ".agents" / "night-shift.yaml"
+    if not path.is_file():
+        return True
+    try:
+        import yaml
+    except ImportError:
+        return True
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, Exception):
+        return True
+    if not isinstance(raw, dict):
+        return True
+    if raw.get("enabled") is False or raw.get("night_review") is False:
+        return False
+    return True
+
+
 def active(project: Path) -> bool:
+    if not project_enabled(project):
+        return False
     recent = subprocess.run(
         ["git", "-C", str(project), "log", "--since=24 hours ago", "--oneline", "-1"],
         text=True,
@@ -63,12 +95,24 @@ def active(project: Path) -> bool:
     return False
 
 
-def run_project(project: Path, args: argparse.Namespace) -> tuple[Path, int, str, str]:
+def _emit(line: str, *, project_name: str, logf) -> None:
+    """Write one line to the per-project log and the shared console (prefixed)."""
+    logf.write(line)
+    logf.flush()
+    # Always end with newline for console if child omitted it mid-buffer
+    text = line if line.endswith("\n") else line + "\n"
+    print(f"[{project_name}] {text}", end="", flush=True)
+
+
+def run_project(project: Path, args: argparse.Namespace) -> tuple[Path, int, str]:
+    """Run one project night-shift, streaming logs live to a per-project file."""
     argv = [str(NIGHT_SHIFT), str(project), "--day", args.day]
     if args.dry_run:
         argv.append("--dry-run")
     if args.prepare_only:
         argv.append("--prepare-only")
+    if args.auto_merge:
+        argv.append("--auto-merge")
     if args.no_auto_merge:
         argv.append("--no-auto-merge")
     if args.codex_bin:
@@ -78,14 +122,50 @@ def run_project(project: Path, args: argparse.Namespace) -> tuple[Path, int, str
     argv.extend(["--provider", provider])
     if provider_bin:
         argv.extend(["--provider-bin", provider_bin])
-    result = subprocess.run(
-        argv,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
+    max_fix = getattr(args, "max_fix_tasks", None)
+    if max_fix is None:
+        max_fix = DEFAULT_MAX_FIX_TASKS
+    argv.extend(["--max-fix-tasks", str(max_fix)])
+
+    log_path = project_log_file(project, args.day)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["NIGHT_SHIFT_PROJECT_LOG"] = str(log_path)
+
+    header = (
+        f"===== night-shift start {project} day={args.day} "
+        f"provider={provider} max_fix_tasks={max_fix} =====\n"
+        f"log={log_path}\n"
+        f"cmd={' '.join(argv)}\n"
     )
-    return project, result.returncode, result.stdout, result.stderr
+    print(f"night-shift-all: streaming {project.name} -> {log_path}", flush=True)
+
+    with log_path.open("a", encoding="utf-8") as logf:
+        logf.write(header)
+        logf.flush()
+        print(header, end="", flush=True)
+        try:
+            proc = subprocess.Popen(
+                argv,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=1,
+                env=env,
+            )
+        except OSError as exc:
+            msg = f"night-shift-all: cannot start {project}: {exc}\n"
+            _emit(msg, project_name=project.name, logf=logf)
+            return project, 2, str(log_path)
+
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            _emit(line, project_name=project.name, logf=logf)
+        returncode = proc.wait()
+        footer = f"===== night-shift end {project} exit={returncode} =====\n"
+        _emit(footer, project_name=project.name, logf=logf)
+    return project, returncode, str(log_path)
 
 
 def bounded_jobs(value: str) -> int:
@@ -96,6 +176,13 @@ def bounded_jobs(value: str) -> int:
 
 
 def execute(args: argparse.Namespace) -> int:
+    # Line-buffer stdout/stderr when redirected to a log file.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+        sys.stderr.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
     if args.root:
         roots = [Path(value).expanduser().resolve() for value in args.root]
     else:
@@ -106,20 +193,61 @@ def execute(args: argparse.Namespace) -> int:
             else [Path.home() / name for name in ("apps", "sites", "tools")]
         )
     projects = discover(roots)
+    disabled = [project for project in projects if not project_enabled(project)]
     selected = [project for project in projects if active(project)]
+    day_logs = log_root() / args.day
+    day_logs.mkdir(parents=True, exist_ok=True)
+    index_path = day_logs / "INDEX.md"
+    index_path.write_text(
+        f"# Night shift logs — {args.day}\n\n"
+        f"Tail live:\n\n"
+        f"```bash\n"
+        f"tail -F {log_root()}/{args.day}/*.log\n"
+        f"# or one project:\n"
+        f"tail -F {log_root()}/{args.day}/selfystudio.log\n"
+        f"```\n\n"
+        f"Combined cron log: `~/.agents/logs/night-review.log`\n",
+        encoding="utf-8",
+    )
+
+    if disabled:
+        print(
+            "night-shift-all: disabled via night-shift.yaml: "
+            + ", ".join(str(path) for path in disabled),
+            flush=True,
+        )
+    if selected:
+        print(
+            "night-shift-all: selected "
+            + ", ".join(str(path) for path in selected),
+            flush=True,
+        )
+        print(f"night-shift-all: live logs under {day_logs}", flush=True)
+    else:
+        print("night-shift-all: no active projects", flush=True)
+
     failures = 0
+    log_paths: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
         futures = [executor.submit(run_project, project, args) for project in selected]
-        for future in futures:
-            project, returncode, stdout, stderr = future.result()
-            print(f"===== {project} =====")
-            if stdout:
-                print(stdout, end="")
-            if stderr:
-                print(stderr, end="", file=sys.stderr)
+        for future in concurrent.futures.as_completed(futures):
+            project, returncode, log_path = future.result()
+            log_paths.append(log_path)
+            print(
+                f"night-shift-all: finished {project} exit={returncode} log={log_path}",
+                flush=True,
+            )
             if returncode != 0:
                 failures += 1
-    print(f"Processed {len(selected)} of {len(projects)} lane-stack projects.")
+    print(
+        f"Processed {len(selected)} of {len(projects)} lane-stack projects "
+        f"({len(disabled)} disabled).",
+        flush=True,
+    )
+    if log_paths:
+        print("night-shift-all: project logs:", flush=True)
+        for path in sorted(log_paths):
+            print(f"  {path}", flush=True)
     return 0 if failures == 0 else 1
 
 
@@ -130,11 +258,31 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--jobs", type=bounded_jobs, default=1)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--prepare-only", action="store_true")
-    ap.add_argument("--no-auto-merge", action="store_true")
+    ap.add_argument(
+        "--auto-merge",
+        action="store_true",
+        help="request merge after accept (also needs project auto_merge: true)",
+    )
+    ap.add_argument(
+        "--no-auto-merge",
+        action="store_true",
+        help="keep fixes on agent/night-fixes-<day> for morning review (default)",
+    )
     ap.add_argument("--codex-bin")
-    ap.add_argument("--provider", choices=("agy", "grok", "qwen", "kimi"), default="grok")
+    ap.add_argument(
+        "--provider",
+        choices=("agy", "grok", "qwen", "kimi", "codex"),
+        default="kimi",
+        help="fix writer provider/lane (default: kimi; codex = luna+max)",
+    )
     ap.add_argument("--provider-bin")
     ap.add_argument("--grok-bin", help=argparse.SUPPRESS)
+    ap.add_argument(
+        "--max-fix-tasks",
+        type=int,
+        default=DEFAULT_MAX_FIX_TASKS,
+        help=f"cap fix tasks per project per night (default: {DEFAULT_MAX_FIX_TASKS})",
+    )
     return ap
 
 

@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 try:
     import yaml  # type: ignore
@@ -138,9 +138,16 @@ def main_ref(cwd: Path) -> str:
 def filter_noise(files: list[str]) -> list[str]:
     out = []
     for f in files:
-        if any(f.startswith(p) for p in IGNORE_PREFIXES):
+        rel = f.lstrip("./")
+        if any(rel.startswith(p) for p in IGNORE_PREFIXES):
             continue
-        if f.lstrip("./") in IGNORE_FILES:
+        if rel in IGNORE_FILES:
+            continue
+        # Python bytecode caches appear after unittest/pytest; never product owns.
+        parts = PurePosixPath(rel).parts
+        if "__pycache__" in parts or rel.endswith((".pyc", ".pyo")):
+            continue
+        if ".pytest_cache" in parts or ".mypy_cache" in parts or ".ruff_cache" in parts:
             continue
         out.append(f)
     return sorted(set(out))

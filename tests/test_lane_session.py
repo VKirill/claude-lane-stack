@@ -151,11 +151,28 @@ class LaneSessionTest(unittest.TestCase):
                 if args and args[0] == "exec":
                     if os.environ.get("FAKE_CODEX_HOME_LOG"):
                         codex_home = Path(os.environ["CODEX_HOME"])
+                        # Record bare-home shape for assertions (auth + config, no mcp).
                         Path(os.environ["FAKE_CODEX_HOME_LOG"]).write_text(
                             json.dumps(
                                 {
                                     "path": str(codex_home),
                                     "auth_exists": (codex_home / "auth.json").is_file(),
+                                    "config_exists": (
+                                        codex_home / "config.toml"
+                                    ).is_file(),
+                                    "skills_empty": not any(
+                                        (codex_home / "skills").glob("*")
+                                    )
+                                    if (codex_home / "skills").is_dir()
+                                    else False,
+                                    "has_mcp_servers_block": "[mcp_servers"
+                                    in (
+                                        (codex_home / "config.toml").read_text(
+                                            encoding="utf-8"
+                                        )
+                                        if (codex_home / "config.toml").is_file()
+                                        else ""
+                                    ),
                                 }
                             ),
                             encoding="utf-8",
@@ -1458,8 +1475,29 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(args[args.index("--model") + 1], "gpt-5.6-sol")
         self.assertIn('model_reasoning_effort="high"', args)
         self.assertIn("--ephemeral", args)
-        self.assertIn("--disable", args)
-        self.assertEqual(args[args.index("--disable") + 1], "multi_agent")
+        self.assertIn("--ignore-rules", args)
+        self.assertIn("--profile", args)
+        self.assertEqual(args[args.index("--profile") + 1], "lane-writer")
+        self.assertNotIn("--ignore-user-config", args)
+        # Bare lane-writer disables host noise (MCP apps / multi-agent / plugins…).
+        disables = [
+            args[i + 1]
+            for i, token in enumerate(args)
+            if token == "--disable" and i + 1 < len(args)
+        ]
+        for feature in (
+            "multi_agent",
+            "plugins",
+            "memories",
+            "apps",
+            "browser_use",
+            "goals",
+            "hooks",
+            "skill_search",
+            "image_generation",
+            "computer_use",
+        ):
+            self.assertIn(feature, disables)
         receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
         self.assertEqual(receipt["provider"], "codex")
         self.assertEqual(receipt["model"], "gpt-5.6-sol")
@@ -1469,6 +1507,9 @@ class LaneSessionTest(unittest.TestCase):
         self.assertTrue(receipt["protocol_valid"])
         codex_home = json.loads(codex_home_log.read_text(encoding="utf-8"))
         self.assertTrue(codex_home["auth_exists"])
+        self.assertTrue(codex_home["config_exists"])
+        self.assertTrue(codex_home["skills_empty"])
+        self.assertFalse(codex_home["has_mcp_servers_block"])
         self.assertNotEqual(Path(codex_home["path"]), self.fake_home / ".codex")
         self.assertFalse(Path(codex_home["path"]).exists())
 

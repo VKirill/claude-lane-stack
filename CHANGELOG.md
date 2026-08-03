@@ -1,3 +1,22 @@
+## 1.12.0 — 2026-08-03
+
+### Added
+- **`agents-doctor` full-screen TUI** (`agents-doctor` / `agents-doctor tui`) — tabs for Coder / Night / Status / Apply, live summary strip, keyboard-first UX (↑↓ provider, `m`/`e` model & effort, Enter apply). Linear `setup` wizard and `--apply` flags remain for scripts/CI.
+- **Codex as selectable daytime writer** (`--writer-provider codex` / TUI “Codex”). Defaults to **`gpt-5.6-luna` + reasoning effort `max`**; model/effort stored under `writer:` in `.agents/routing.profile.yaml`.
+- **Bare Codex lane-writer profile** (`profiles/codex/lane-writer.config.toml`): ephemeral `CODEX_HOME` with auth + minimal config only; host MCP/plugins/user skills excluded; `--profile lane-writer` + feature disables for headless task runs.
+- **Per-project writer model & effort** in routing profile (`writer.model`, `writer.reasoning_effort`); `run-supervisor` passes `--model` / `--reasoning-effort` to `run-controller`.
+- **`bin/night-shift-logs`** — quick tail of per-project + combined night-shift logs.
+
+### Changed
+- `lane-ctl` / `run-controller`: `codex` in `PRIMARY_MODELS` (default model luna); reasoning efforts include `xhigh`/`max`; per-provider default efforts (`codex` → `max`).
+- `night-shift` / `night-shift-all` / `night-fix-runner` accept `codex` as fix writer provider.
+- `project-onboard` opens agents-doctor TUI on a TTY (falls back to setup / non-interactive flags in CI).
+- `orchestrator-lanes`: selectable writers include codex; default remains project `main_write` or kimi.
+
+### Fixed
+- TUI layout: single-column layout (no broken box-drawing / side-panel collision on narrow terminals).
+- Codex writer home: bare profile applied via scratch `CODEX_HOME` + bwrap mask of host `~/.codex`.
+
 ### PM decomposition skill + pre-dispatch gates (2026-07-30)
 
 - Professional `orchestrator-lanes` + `lane-contract`: one-outcome tasks, unlock vs feature, owns completeness, owns-noise recovery (never cache-in-owns).

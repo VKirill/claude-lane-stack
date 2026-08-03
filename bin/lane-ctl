@@ -62,7 +62,18 @@ PRIMARY_MODELS = {
     "grok": "grok-4.5",
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
+    # Project-selectable Codex programmer (opt-in). Luna+max is the intentional
+    # cheap/fast coding preset; availability fallback still upgrades to Sol+high.
+    "codex": "gpt-5.6-luna",
 }
+PRIMARY_EFFORTS = {
+    "agy": "medium",
+    "grok": "medium",
+    "qwen": "medium",
+    "kimi": "medium",
+    "codex": "max",
+}
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 CODEX_FALLBACK_REASONING = "high"
 TAIL_SOURCES = {
@@ -1263,6 +1274,8 @@ def cmd_start_v2(
 def cmd_start(args: argparse.Namespace) -> int:
     if args.model is None:
         args.model = PRIMARY_MODELS[args.provider]
+    if getattr(args, "reasoning_effort", None) is None:
+        args.reasoning_effort = PRIMARY_EFFORTS.get(args.provider, "medium")
     context = validate_task_context(
         run_dir_value=args.run_dir,
         task_id=args.task_id,
@@ -1653,7 +1666,7 @@ def validate_recorded_argv(
     model = session_options.get("--model", "")
     if not SAFE_MODEL.fullmatch(model):
         raise ContractError("recorded model contains unsupported characters")
-    if session_options.get("--reasoning-effort") not in {"low", "medium", "high"}:
+    if session_options.get("--reasoning-effort") not in set(REASONING_EFFORTS):
         raise ContractError("recorded reasoning effort is invalid")
     if recorded_provider == "codex" and (
         model != CODEX_FALLBACK_MODEL
@@ -2959,7 +2972,10 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--binary", help="provider binary override for tests")
     start.add_argument("--model", type=validate_model)
     start.add_argument(
-        "--reasoning-effort", choices=("low", "medium", "high"), default="medium"
+        "--reasoning-effort",
+        choices=REASONING_EFFORTS,
+        default=None,
+        help="reasoning effort (default: per-provider; codex → max)",
     )
     start.add_argument(
         "--idle",

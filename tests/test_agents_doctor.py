@@ -216,6 +216,112 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertIn("main_write: grok  # agent: run-supervisor", profile)
             self.assertNotIn("agent: grok-implementer", profile)
 
+    def test_apply_codex_writer_is_luna_max_lane(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            for name in ("claude", "codex", "bwrap"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            result = subprocess.run(
+                [
+                    str(DOCTOR),
+                    "--apply",
+                    "--writer-provider",
+                    "codex",
+                    "--night-review",
+                    "off",
+                    str(repo),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            profile = (repo / ".agents" / "routing.profile.yaml").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("main_write: codex", profile)
+            self.assertIn("provider: codex", profile)
+            self.assertIn("model: gpt-5.6-luna", profile)
+            self.assertIn("reasoning_effort: max", profile)
+
+    def test_setup_writes_routing_and_night_shift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            for name in ("claude", "qwen", "kimi", "codex", "bwrap"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            off = subprocess.run(
+                [
+                    str(DOCTOR),
+                    "setup",
+                    str(repo),
+                    "--yes",
+                    "--writer-provider",
+                    "qwen",
+                    "--night-review",
+                    "off",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(off.returncode, 0, off.stderr + off.stdout)
+            profile = (repo / ".agents" / "routing.profile.yaml").read_text(
+                encoding="utf-8"
+            )
+            night = (repo / ".agents" / "night-shift.yaml").read_text(encoding="utf-8")
+            self.assertIn("main_write: qwen", profile)
+            self.assertIn("enabled: false", night)
+
+            on = subprocess.run(
+                [
+                    str(DOCTOR),
+                    "setup",
+                    str(repo),
+                    "--yes",
+                    "--writer-provider",
+                    "qwen",
+                    "--night-review",
+                    "on",
+                    "--max-fix-tasks",
+                    "7",
+                    "--no-auto-merge",
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(on.returncode, 0, on.stderr + on.stdout)
+            night = (repo / ".agents" / "night-shift.yaml").read_text(encoding="utf-8")
+            self.assertIn("enabled: true", night)
+            self.assertIn("provider: qwen", night)
+            self.assertIn("max_fix_tasks: 7", night)
+            self.assertIn("auto_merge: false", night)
+
     def test_installed_grok_without_bubblewrap_is_not_routed_as_writer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

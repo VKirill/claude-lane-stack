@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Tail live night-shift logs (per-project + combined).
+set -euo pipefail
+DAY="${1:-$(date +%F)}"
+ROOT="${HOME}/.agents/logs/night-shift/${DAY}"
+COMBINED="${HOME}/.agents/logs/night-review.log"
+echo "Day: $DAY"
+echo "Per-project dir: $ROOT"
+echo "Combined: $COMBINED"
+echo
+if [[ -d "$ROOT" ]]; then
+  ls -la "$ROOT" || true
+  echo
+  echo "=== tail -F ${ROOT}/*.log (Ctrl-C to stop) ==="
+  # shellcheck disable=SC2086
+  exec tail -n 50 -F ${ROOT}/*.log "$COMBINED" 2>/dev/null
+else
+  echo "No per-project logs yet for $DAY — showing combined only."
+  exec tail -n 80 -F "$COMBINED"
+fi

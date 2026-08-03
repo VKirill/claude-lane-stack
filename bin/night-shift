@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Run typed Codex review, prepare isolated Grok fixes, then resume receipts."""
+"""Run typed Codex review, prepare isolated writer fixes, then resume receipts."""
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,43 +18,169 @@ ENGINE = ROOT / "bin" / "night-review-engine"
 WT_CREATE = ROOT / "bin" / "wt-create"
 RUNNER = ROOT / "bin" / "night-fix-runner"
 RUNNABLE = frozenset({"open", "in_progress"})
+WRITER_LANES = frozenset({"agy", "grok", "qwen", "kimi", "codex"})
+DEFAULT_PROVIDER = "kimi"
+DEFAULT_MAX_FIX_TASKS = 5
+# Kill only when the child goes silent (no stdout). Working Sol/Kimi may run for hours.
+DEFAULT_IDLE_TIMEOUT_SEC = 90 * 60  # 90 min without a single log line
+CONFIG_NAME = "night-shift.yaml"
 
 
 class ShiftError(RuntimeError):
     pass
 
 
-def run(argv: list[str], *, timeout: int = 7200) -> subprocess.CompletedProcess[str]:
+def run(
+    argv: list[str],
+    *,
+    timeout: int | None = None,
+    idle_timeout: int | None = DEFAULT_IDLE_TIMEOUT_SEC,
+    accept_exit: frozenset[int] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a child command, streaming stdout/stderr line-by-line.
+
+    Graduated timeouts (do NOT kill healthy long work):
+    - ``timeout``: optional hard wall-clock cap (None = unlimited). Prefer None for review.
+    - ``idle_timeout``: kill only if no stdout activity for this many seconds (stall).
+      None = never kill for silence. Default 90 min.
+      Heartbeats from night-review-engine keep idle timer reset while Codex works.
+    """
+    import select
+
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             argv,
             text=True,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            timeout=timeout,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            env=env,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except OSError as exc:
         raise ShiftError(f"cannot complete {argv[0]}: {exc}") from exc
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+    assert proc.stdout is not None
+    chunks: list[str] = []
+    buf = ""
+    started = time.monotonic()
+    last_activity = started
+    fd = proc.stdout.fileno()
+    try:
+        while True:
+            now = time.monotonic()
+            if timeout is not None and now - started > timeout:
+                proc.kill()
+                raise ShiftError(
+                    f"cannot complete {argv[0]}: wall-clock timeout after {timeout}s"
+                )
+            if idle_timeout is not None and now - last_activity > idle_timeout:
+                proc.kill()
+                raise ShiftError(
+                    f"cannot complete {argv[0]}: idle timeout after "
+                    f"{idle_timeout}s with no output (process appears stuck)"
+                )
+            ready, _, _ = select.select([fd], [], [], 0.5)
+            if ready:
+                piece = proc.stdout.read(4096)
+                if piece:
+                    last_activity = time.monotonic()
+                    buf += piece
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line + "\n"
+                        chunks.append(line)
+                        print(line, end="", flush=True)
+                    continue
+                # EOF on pipe
+                if buf:
+                    chunks.append(buf)
+                    print(buf, end="", flush=True)
+                    buf = ""
+                if proc.poll() is not None:
+                    break
+            elif proc.poll() is not None:
+                # drain remaining
+                rest = proc.stdout.read()
+                if rest:
+                    buf += rest
+                if buf:
+                    chunks.append(buf)
+                    print(buf, end="", flush=True)
+                break
+    except ShiftError:
+        raise
+    except Exception as exc:
+        proc.kill()
+        raise ShiftError(f"cannot complete {argv[0]}: {exc}") from exc
+    # Reap
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        proc.kill()
+    output = "".join(chunks)
+    code = proc.returncode if proc.returncode is not None else 0
+    result = subprocess.CompletedProcess(argv, code, output, "")
+    allowed = accept_exit or frozenset()
+    if code != 0 and code not in allowed:
+        detail = output.strip() or f"exit {code}"
         raise ShiftError(f"{' '.join(argv[:4])}: {detail}")
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
     return result
+
+
+def load_project_config(repo: Path) -> dict[str, Any]:
+    path = repo / ".agents" / CONFIG_NAME
+    if not path.is_file():
+        return {}
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ShiftError("PyYAML is required to read .agents/night-shift.yaml") from exc
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ShiftError(f"cannot read {path}: {exc}") from exc
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ShiftError(f"{path} must be a mapping")
+    return raw
+
+
+def resolve_provider(args: argparse.Namespace, config: dict[str, Any]) -> str:
+    if args.grok_bin:
+        return "grok"
+    # Explicit CLI beats project config; argparse default is kimi.
+    if "--provider" in sys.argv:
+        return args.provider
+    configured = config.get("provider")
+    if isinstance(configured, str) and configured.strip().lower() in WRITER_LANES:
+        return configured.strip().lower()
+    return args.provider
 
 
 def runnable_findings(repo: Path) -> list[str]:
     result: list[str] = []
-    for path in sorted((repo / ".agents" / "findings").glob("*.json")):
+    findings_root = repo / ".agents" / "findings"
+    if not findings_root.is_dir():
+        return result
+    for path in sorted(findings_root.glob("*.json")):
+        if not path.is_file() or path.is_symlink():
+            continue
         try:
             finding = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise ShiftError(f"cannot read canonical finding {path}: {exc}") from exc
+            print(
+                f"night-shift: skipping unreadable finding {path.name}: {exc}",
+                file=sys.stderr,
+            )
+            continue
         if not isinstance(finding, dict):
-            raise ShiftError(f"canonical finding is not an object: {path}")
+            print(
+                f"night-shift: skipping non-object finding {path.name}",
+                file=sys.stderr,
+            )
+            continue
         if finding.get("actionable") is True and finding.get("status") in RUNNABLE:
             result.append(path.stem)
     return result
@@ -68,26 +197,79 @@ def execute(args: argparse.Namespace) -> int:
     )
     if probe.returncode != 0 or Path(probe.stdout.strip()).resolve() != repo:
         raise ShiftError(f"repo must be a git checkout root: {repo}")
+    config = load_project_config(repo)
+    provider = resolve_provider(args, config)
+    provider_bin = args.provider_bin or args.grok_bin
+    max_sources = args.max_sources
+    if max_sources is None and isinstance(config.get("max_sources"), int):
+        max_sources = config["max_sources"]
+    max_chunk_bytes = args.max_chunk_bytes
+    if max_chunk_bytes is None and isinstance(config.get("max_chunk_bytes"), int):
+        max_chunk_bytes = config["max_chunk_bytes"]
+    max_fix_tasks = args.max_fix_tasks
+    if max_fix_tasks is None and isinstance(config.get("max_fix_tasks"), int):
+        max_fix_tasks = config["max_fix_tasks"]
+    if max_fix_tasks is None:
+        max_fix_tasks = DEFAULT_MAX_FIX_TASKS
+
+    # Branch + worktree: agent/night-fixes-<day> (wt-create). Never merge to main
+    # unless both --auto-merge and project auto_merge: true.
+    want_auto_merge = bool(args.auto_merge) and not args.no_auto_merge
+    if config.get("auto_merge") is False:
+        want_auto_merge = False
+
     slug = args.run_slug or f"night-fixes-{args.day}"
-    review = [str(ENGINE), "review", str(repo), "--day", args.day, "--run-slug", slug]
+    branch = f"agent/{slug}"
+    review = [
+        str(ENGINE),
+        "review",
+        str(repo),
+        "--day",
+        args.day,
+        "--run-slug",
+        slug,
+        "--writer-lane",
+        provider,
+        "--max-fix-tasks",
+        str(max_fix_tasks),
+    ]
     if args.since:
         review.extend(["--since", args.since])
     if args.codex_bin:
         review.extend(["--codex-bin", args.codex_bin])
-    if args.max_chunk_bytes:
-        review.extend(["--max-chunk-bytes", str(args.max_chunk_bytes)])
+    if max_chunk_bytes is not None:
+        review.extend(["--max-chunk-bytes", str(max_chunk_bytes)])
+    if max_sources is not None:
+        review.extend(["--max-sources", str(max_sources)])
+    idle_timeout = args.idle_timeout
+    if idle_timeout is None and isinstance(config.get("idle_timeout_sec"), int):
+        idle_timeout = config["idle_timeout_sec"]
+    if idle_timeout is None:
+        idle_timeout = DEFAULT_IDLE_TIMEOUT_SEC
+
     if args.dry_run:
         review.append("--dry-run")
-        run(review)
+        run(review, timeout=None, idle_timeout=idle_timeout)
         return 0
 
-    run(review)
+    # Review: NO wall-clock kill. Only idle stall (no log lines / heartbeats).
+    # Exit 3 = partial batch with persisted findings — continue to compile/fix.
+    try:
+        run(
+            review,
+            timeout=None,
+            idle_timeout=idle_timeout,
+            accept_exit=frozenset({3}),
+        )
+    except ShiftError as exc:
+        print(f"night-shift: review ended with error: {exc}", flush=True)
+        # Still try compile from any findings already persisted per-chunk.
     pending = runnable_findings(repo)
     if not pending:
         print("night-shift: no runnable findings; no worktree created")
         return 0
 
-    run([str(WT_CREATE), str(repo), slug], timeout=300)
+    run([str(WT_CREATE), str(repo), slug], timeout=300, idle_timeout=120)
     run(
         [
             str(ENGINE),
@@ -97,25 +279,43 @@ def execute(args: argparse.Namespace) -> int:
             args.day,
             "--run-slug",
             slug,
+            "--writer-lane",
+            provider,
+            "--max-fix-tasks",
+            str(max_fix_tasks),
         ],
-        timeout=300,
+        timeout=600,
+        idle_timeout=120,
     )
     run_dir = repo / ".agents" / "runs" / slug
     task_files = sorted((run_dir / "tasks").glob("*.yaml"))
     if not task_files:
         print("night-shift: findings require human scope resolution; no writer task dispatched")
         return 0
+    write_morning_handoff(
+        repo,
+        day=args.day,
+        slug=slug,
+        branch=branch,
+        run_dir=run_dir,
+        task_count=len(task_files),
+        provider=provider,
+        max_fix_tasks=max_fix_tasks,
+        auto_merge=want_auto_merge,
+        status="prepared" if args.prepare_only else "dispatching",
+    )
     if args.prepare_only:
-        print(f"night-shift: prepared {len(task_files)} task(s) in {run_dir}")
+        print(
+            f"night-shift: prepared {len(task_files)} task(s) in {run_dir} "
+            f"provider={provider} branch={branch} max_fix_tasks={max_fix_tasks}"
+        )
         return 0
 
     runner = [str(RUNNER), str(repo), "--run-dir", str(run_dir)]
-    if not args.no_auto_merge:
+    if want_auto_merge:
         runner.append("--auto-merge")
     if args.codex_bin:
         runner.extend(["--codex-bin", args.codex_bin])
-    provider = "grok" if args.grok_bin else args.provider
-    provider_bin = args.provider_bin or args.grok_bin
     runner.extend(["--provider", provider])
     if provider_bin:
         runner.extend(["--provider-bin", provider_bin])
@@ -123,8 +323,83 @@ def execute(args: argparse.Namespace) -> int:
         runner.extend(["--poll-interval", str(args.poll_interval)])
     if args.provider_timeout is not None:
         runner.extend(["--provider-timeout", str(args.provider_timeout)])
-    run(runner, timeout=max(7200, (args.provider_timeout or 7200) * len(task_files) * 2))
+    # Writer: no wall-clock kill; idle stall scaled by per-task provider timeout.
+    writer_idle = max(
+        idle_timeout,
+        (args.provider_timeout or 7200) + 600,
+    )
+    run(runner, timeout=None, idle_timeout=writer_idle)
+    write_morning_handoff(
+        repo,
+        day=args.day,
+        slug=slug,
+        branch=branch,
+        run_dir=run_dir,
+        task_count=len(task_files),
+        provider=provider,
+        max_fix_tasks=max_fix_tasks,
+        auto_merge=want_auto_merge,
+        status="writer-finished",
+    )
+    print(
+        f"night-shift: done branch={branch} tasks={len(task_files)} "
+        f"auto_merge={'on' if want_auto_merge else 'off — morning review then merge'}"
+    )
     return 0
+
+
+def write_morning_handoff(
+    repo: Path,
+    *,
+    day: str,
+    slug: str,
+    branch: str,
+    run_dir: Path,
+    task_count: int,
+    provider: str,
+    max_fix_tasks: int,
+    auto_merge: bool,
+    status: str,
+) -> None:
+    """Leave a human-readable morning receipt pointing at the night-fix branch."""
+    session_log = repo / ".agents" / "session-log"
+    session_log.mkdir(parents=True, exist_ok=True)
+    worktree_meta: dict[str, Any] = {}
+    meta_path = run_dir / "worktree.json"
+    if meta_path.is_file():
+        try:
+            worktree_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            worktree_meta = {}
+    worktree = worktree_meta.get("path") or str(repo / ".worktrees" / slug)
+    tasks = sorted((run_dir / "tasks").glob("*.yaml"))
+    task_lines = "\n".join(f"- `{path.name}`" for path in tasks) or "- _(none)_"
+    merge_cmd = f"wt-merge-main {repo} {slug}"
+    body = (
+        f"# Night fixes handoff — {day}\n\n"
+        f"Status: **{status}**\n\n"
+        f"| Field | Value |\n"
+        f"|-------|-------|\n"
+        f"| Branch | `{branch}` |\n"
+        f"| Worktree | `{worktree}` |\n"
+        f"| Run | `.agents/runs/{slug}` |\n"
+        f"| Writer | `{provider}` |\n"
+        f"| Tasks on run | {task_count} (cap max_fix_tasks={max_fix_tasks}) |\n"
+        f"| Auto-merge | {'enabled' if auto_merge else '**disabled** (default — review first)'} |\n\n"
+        f"## Tasks\n\n{task_lines}\n\n"
+        f"## Morning checklist\n\n"
+        f"1. Inspect the branch / worktree:\n"
+        f"   `git -C {worktree} log --oneline main..HEAD`\n"
+        f"   `git -C {worktree} diff main...HEAD`\n"
+        f"2. Read `REVIEW-{day}.md` and findings under `.agents/findings/`.\n"
+        f"3. If OK, merge to main (PM only):\n"
+        f"   `{merge_cmd}`\n"
+        f"4. If not OK, leave the branch or discard the worktree — **main is untouched** "
+        f"while auto-merge is off.\n"
+    )
+    path = session_log / f"NIGHT-FIXES-{day}.md"
+    path.write_text(body, encoding="utf-8")
+    print(f"night-shift: wrote morning handoff {path}")
 
 
 def positive_int(value: str) -> int:
@@ -149,14 +424,46 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--run-slug")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--prepare-only", action="store_true")
-    ap.add_argument("--no-auto-merge", action="store_true")
+    ap.add_argument(
+        "--auto-merge",
+        action="store_true",
+        help="request merge to main after accept (still requires project auto_merge: true)",
+    )
+    ap.add_argument(
+        "--no-auto-merge",
+        action="store_true",
+        help="force leave fixes on agent/night-fixes-<day> branch (default behavior)",
+    )
     ap.add_argument("--codex-bin")
-    ap.add_argument("--provider", choices=("agy", "grok", "qwen", "kimi"), default="grok")
+    ap.add_argument(
+        "--provider",
+        choices=sorted(WRITER_LANES),
+        default=DEFAULT_PROVIDER,
+        help="fix writer provider/lane (default: kimi)",
+    )
     ap.add_argument("--provider-bin")
     ap.add_argument("--grok-bin", help=argparse.SUPPRESS)
     ap.add_argument("--max-chunk-bytes", type=positive_int)
+    ap.add_argument(
+        "--max-sources",
+        type=positive_int,
+        help="override night-review --max-sources (or set max_sources in .agents/night-shift.yaml)",
+    )
+    ap.add_argument(
+        "--max-fix-tasks",
+        type=positive_int,
+        help=f"cap fix tasks compiled for the writer (default: {DEFAULT_MAX_FIX_TASKS})",
+    )
     ap.add_argument("--poll-interval", type=nonnegative_float)
     ap.add_argument("--provider-timeout", type=positive_int)
+    ap.add_argument(
+        "--idle-timeout",
+        type=positive_int,
+        help=(
+            "seconds without any child log output before treating the process as stuck "
+            f"(default: {DEFAULT_IDLE_TIMEOUT_SEC}; working long jobs are never killed by wall clock)"
+        ),
+    )
     return ap
 
 

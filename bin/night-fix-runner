@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -114,14 +114,33 @@ def auto_merge_enabled(policy: dict[str, Any], *, requested: bool) -> bool:
     return requested and policy.get("auto_merge") is True
 
 
+# Keys consumed by night-shift orchestration (ignored here except auto_merge /
+# verification_executables). Keep allowlist in sync with bin/night-shift.
+NIGHT_SHIFT_CONFIG_KEYS = frozenset(
+    {
+        "auto_merge",
+        "verification_executables",
+        "provider",
+        "max_sources",
+        "max_chunk_bytes",
+        "max_fix_tasks",
+        "enabled",
+        "night_review",
+        "idle_timeout_sec",
+    }
+)
+
+
 def read_policy(repo: Path) -> tuple[dict[str, Any], set[str]]:
     path = repo / ".agents" / "night-shift.yaml"
     if not path.is_file():
         return {}, set()
     policy = load_yaml(path, "night-shift policy")
-    if set(policy) - {"auto_merge", "verification_executables"}:
-        unknown = ", ".join(sorted(set(policy) - {"auto_merge", "verification_executables"}))
-        raise RunnerError(f"unsupported night-shift policy keys: {unknown}")
+    unknown = set(policy) - NIGHT_SHIFT_CONFIG_KEYS
+    if unknown:
+        raise RunnerError(
+            "unsupported night-shift policy keys: " + ", ".join(sorted(unknown))
+        )
     if "auto_merge" in policy and not isinstance(policy["auto_merge"], bool):
         raise RunnerError("night-shift auto_merge must be boolean")
     extra = policy.get("verification_executables", [])
@@ -604,6 +623,17 @@ def git_head(worktree: Path) -> str:
     return run_command(["git", "rev-parse", "HEAD"], cwd=worktree, timeout=60).stdout.strip()
 
 
+def _is_noise_path(relative: str) -> bool:
+    """Ignore bytecode/caches in snapshots so verify does not thrash the tree."""
+    rel = relative.lstrip("./")
+    parts = PurePosixPath(rel).parts
+    if "__pycache__" in parts or rel.endswith((".pyc", ".pyo")):
+        return True
+    if any(part in {".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules"} for part in parts):
+        return True
+    return False
+
+
 def worktree_snapshot(worktree: Path) -> str:
     digest = hashlib.sha256()
     digest.update(git_head(worktree).encode())
@@ -620,6 +650,8 @@ def worktree_snapshot(worktree: Path) -> str:
         timeout=60,
     ).stdout
     for relative in sorted(path for path in untracked.split("\0") if path):
+        if _is_noise_path(relative):
+            continue
         blob = run_command(
             ["git", "hash-object", "--", relative], cwd=worktree, timeout=60
         ).stdout.strip()
@@ -938,7 +970,8 @@ def process_task(
             if (
                 attempt == 2
                 and isinstance(provider_receipt, dict)
-                and provider_receipt.get("name") in {"agy", "grok", "qwen", "kimi"}
+                and provider_receipt.get("name") in {"agy", "grok", "qwen", "kimi", "codex"}
+                and provider_receipt.get("name") != "codex"
                 and provider_receipt.get("fallback_eligible") is True
             ):
                 fallback_argv = [
@@ -1243,7 +1276,11 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--auto-merge", action="store_true")
     ap.add_argument("--poll-interval", type=nonnegative_float, default=5.0)
     ap.add_argument("--provider-timeout", type=positive_int, default=7200)
-    ap.add_argument("--provider", choices=("agy", "grok", "qwen", "kimi"), default="grok")
+    ap.add_argument(
+        "--provider",
+        choices=("agy", "grok", "qwen", "kimi", "codex"),
+        default="grok",
+    )
     ap.add_argument("--provider-bin")
     ap.add_argument("--codex-bin")
     ap.add_argument("--grok-bin", help=argparse.SUPPRESS)

@@ -1,0 +1,54 @@
+# Bare Codex profile for Claude Lane Stack durable writers (provider=codex).
+#
+# Native Codex config only — loaded from an ephemeral CODEX_HOME that contains:
+#   auth.json + config.toml (this file) + empty skills/ plugins/ rules/
+# Host ~/.codex (MCP, plugins, user skills) is never copied and is tmpfs-masked
+# by bubblewrap at runtime.
+#
+# Model/effort are still overridden by lane-session CLI flags when needed
+# (stack default programmer preset: gpt-5.6-luna + max).
+
+model = "gpt-5.6-luna"
+model_reasoning_effort = "max"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+web_search = "disabled"
+personality = "pragmatic"
+suppress_unstable_features_warning = true
+# Project AGENTS.md / CLAUDE.md only (bounded). No host docs.
+project_doc_max_bytes = 32768
+project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md"]
+
+[sandbox_workspace_write]
+network_access = true
+
+[agents]
+max_threads = 1
+max_depth = 1
+
+# Feature flags (native [features] table + matching --disable on CLI).
+# Keep shell/exec tooling; strip multi-agent, plugins, MCP apps, browser, etc.
+[features]
+multi_agent = false
+multi_agent_v2 = false
+plugins = false
+plugin_sharing = false
+remote_plugin = false
+memories = false
+apps = false
+browser_use = false
+browser_use_external = false
+browser_use_full_cdp_access = false
+in_app_browser = false
+computer_use = false
+image_generation = false
+goals = false
+hooks = false
+skill_search = false
+skill_mcp_dependency_install = false
+tool_suggest = false
+tool_call_mcp_elicitation = false
+mentions_v2 = false
+shell_snapshot = false
+workspace_dependencies = false
+guardian_approval = false

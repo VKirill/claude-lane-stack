@@ -26,7 +26,9 @@ You are the **only** person who merges to `main`. Human never merges.
 | 9–10 | Full: rich SPEC + DAG + worktree |
 | 11+ | Split feature; ask user |
 
-Default daytime writer: **kimi** (or project `main_write`). Codex = recovery / night review / onboard / docs only.
+Default daytime writer: **kimi** (or project `main_write` from `agents-doctor setup`).
+Selectable writers: kimi / qwen / grok / agy / **codex** (`gpt-5.6-luna` + effort `max`).
+Codex Sol remains recovery fallback + night review / onboard / docs.
 
 ---
 

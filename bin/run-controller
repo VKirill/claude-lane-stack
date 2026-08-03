@@ -40,7 +40,16 @@ PRIMARY_MODELS = {
     "grok": "grok-4.5",
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
+    "codex": "gpt-5.6-luna",
 }
+PRIMARY_EFFORTS = {
+    "agy": "medium",
+    "grok": "medium",
+    "qwen": "medium",
+    "kimi": "medium",
+    "codex": "max",
+}
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 TERMINAL_OUTCOME_EVENTS = frozenset({"task_accepted", "task_blocked"})
 TERMINAL_TASK_STAGES = frozenset({"accepted", "blocked"})
 RUN_TERMINAL_STAGES = frozenset({"accepted", "blocked", "failed"})
@@ -678,7 +687,14 @@ def run_controller(args: argparse.Namespace) -> int:
         raise ControllerError(f"run directory does not exist: {run_dir}")
     if not 0 <= args.retry_backoff <= 300:
         raise ControllerError("retry backoff must be between 0 and 300 seconds")
+    if args.provider not in PRIMARY_MODELS:
+        raise ControllerError(f"unsupported provider: {args.provider}")
     writer_model = args.model or PRIMARY_MODELS[args.provider]
+    writer_effort = (
+        args.reasoning_effort
+        if getattr(args, "reasoning_effort", None)
+        else PRIMARY_EFFORTS.get(args.provider, "medium")
+    )
     project_cwd, provider_slots, verification_slots, gate, tasks = discover(
         run_dir, args.project_cwd
     )
@@ -1178,6 +1194,8 @@ def run_controller(args: argparse.Namespace) -> int:
                         args.provider,
                         "--model",
                         writer_model,
+                        "--reasoning-effort",
+                        writer_effort,
                     ],
                     label=f"start {task['id']}",
                 )
@@ -1237,6 +1255,8 @@ def worker_argv(args: argparse.Namespace) -> list[str]:
     ]
     if args.model:
         argv.extend(["--model", args.model])
+    if getattr(args, "reasoning_effort", None):
+        argv.extend(["--reasoning-effort", args.reasoning_effort])
     if args.project_cwd:
         argv.extend(["--project-cwd", str(Path(args.project_cwd).expanduser().resolve())])
     return argv
@@ -1464,6 +1484,12 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--retry-backoff", type=float, default=30.0)
     run.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="kimi")
     run.add_argument("--model")
+    run.add_argument(
+        "--reasoning-effort",
+        choices=REASONING_EFFORTS,
+        default=None,
+        help="writer reasoning effort (default: per-provider; codex → max)",
+    )
     start = sub.add_parser("start", help="durably start the controller through lane-bg")
     start.add_argument("--run-dir", required=True)
     start.add_argument("--project-cwd")
@@ -1476,6 +1502,12 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--retry-backoff", type=float, default=30.0)
     start.add_argument("--provider", choices=tuple(PRIMARY_MODELS), default="kimi")
     start.add_argument("--model")
+    start.add_argument(
+        "--reasoning-effort",
+        choices=REASONING_EFFORTS,
+        default=None,
+        help="writer reasoning effort (default: per-provider; codex → max)",
+    )
     status = sub.add_parser("status", help="read the current controller receipt")
     status.add_argument("--run-dir", required=True)
     status.add_argument("--json", action="store_true", required=True)

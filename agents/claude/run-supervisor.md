@@ -18,23 +18,33 @@ so the operator can see that the run is still supervised.
 
 ## Inputs
 
-`RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`kimi`, `qwen`, `agy`, or
-`grok`), optional `PM_NAME` (the dispatcher's teammate name to stream progress
-to; default `dev-orchestrator`), and optional provider/verification pool sizes.
-If `WRITER_PROVIDER` is absent, use `main_write` from `.agents/routing.profile.yaml`,
-falling back to `kimi`.
+`RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`kimi`, `qwen`, `agy`,
+`grok`, or `codex`), optional `WRITER_MODEL`, optional `WRITER_EFFORT`, optional
+`PM_NAME` (default `dev-orchestrator`), and optional provider/verification pool
+sizes.
+
+If `WRITER_PROVIDER` is absent, read `.agents/routing.profile.yaml` in the
+project (parent of `RUN_DIR` or `PROJECT_CWD`):
+
+- `lanes.main_write` → provider (fallback `kimi`)
+- `writer.model` → pass `--model` when set
+- `writer.reasoning_effort` → pass `--reasoning-effort` when set
+
+`codex` is the durable bare lane-writer (default model `gpt-5.6-luna`, effort
+`max` unless profile overrides). Not the Sol night-review path.
 
 ## Required loop
 
 1. Read `RUN_DIR/run.yaml` only to confirm the run identity.
-2. Run one direct `run-controller start ... --provider WRITER_PROVIDER` command.
-   It is idempotent and
+2. Resolve provider/model/effort from inputs or `routing.profile.yaml`.
+3. Run one direct `run-controller start --run-dir … --provider …` command,
+   adding `--model` / `--reasoning-effort` when resolved. It is idempotent and
    returns the durable controller PID and evidence paths. A previous
    never-dispatched pre-dispatch validation failure is retried only after the
    corrected contract passes the current validator; other terminal failures
    remain fail-closed.
-3. Keep a "reported stages" map (task_id → stage), initially empty.
-4. Watch loop — repeat until the controller is terminal:
+4. Keep a "reported stages" map (task_id → stage), initially empty.
+5. Watch loop — repeat until the controller is terminal:
    a. Run one direct `run-controller watch --run-dir RUN_DIR --timeout 30`.
    b. Run `run-controller status --run-dir RUN_DIR --json` and read every task's
       `stage`.
