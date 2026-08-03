@@ -114,3 +114,58 @@ def verification_argv(command: str, extra_executables: Iterable[str] = ()) -> li
     if error is not None:
         raise ValueError(error)
     return shlex.split(command, posix=True)
+
+
+# Path-like args that look like scripts files to open (not package names / flags).
+_SCRIPT_SUFFIXES = (
+    ".py",
+    ".sh",
+    ".bash",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".rb",
+    ".php",
+)
+
+
+def verification_script_args(command: str) -> list[str]:
+    """Return relative script path arguments from a verification command.
+
+    Used by run-validate to ensure pre-authored checkers exist under
+    verification cwd before dispatch (common worktree footgun: path points at
+    main-repo .agents while cwd is the worktree).
+    """
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return []
+    if len(tokens) < 2:
+        return []
+    scripts: list[str] = []
+    skip_next = False
+    for index, token in enumerate(tokens):
+        if index == 0:
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        if token in {"-m", "-W", "-X", "-C", "--require", "-r"}:
+            skip_next = True
+            continue
+        if token.startswith("-"):
+            continue
+        normalized = token.replace("\\", "/")
+        path = PurePosixPath(normalized)
+        if path.is_absolute() or normalized.startswith("~") or ".." in path.parts:
+            continue  # already rejected by verification_error when invalid
+        looks_like_script = (
+            "/" in normalized
+            or normalized.startswith(".")
+            or normalized.endswith(_SCRIPT_SUFFIXES)
+        )
+        if looks_like_script:
+            scripts.append(token)
+    return scripts

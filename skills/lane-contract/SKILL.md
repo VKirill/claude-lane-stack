@@ -47,6 +47,9 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 - [ ] Commands are path-scoped unit/typecheck for **this** task  
 - [ ] No bare monorepo `npm run build` / root `npm test` on multi-task runs (that is L2)  
 - [ ] Timeouts realistic (unit 60–300s; avoid 1800s full suites per task)  
+- [ ] **Every script path in `verification[].command` exists on disk under `verification[].cwd` before pre-dispatch**  
+- [ ] If `project_cwd` is a **worktree**: do **not** assume main-repo `.agents/runs/...` is visible — copy pre-authored `check.py` into the worktree path **or** put tests under product `tests/` in owns; absolute paths to main are rejected  
+- [ ] Prefer product tests (`tests/test_*.py`) over `.agents/**/check.py` when possible  
 
 ### Acceptance
 
@@ -86,6 +89,21 @@ No mutable `status` / free-form verify strings on new runs.
 | **L0** | Writer | Focused tests while coding |
 | **L1** | `lane-ctl verify` | Task `verification[]` only |
 | **L2** | PM / CI | One full or affected suite per run |
+
+### Worktree + pre-authored checkers
+
+`verification.cwd` must equal the task worktree/`project_cwd`. Relative scripts
+resolve **inside that tree**. Main checkout `.agents/runs/<slug>/artifacts/001/check.py`
+is **not** the same file as  
+`worktree/.agents/runs/<slug>/artifacts/001/check.py`.
+
+Before `run-validate --phase pre-dispatch` / controller start:
+
+1. Pre-author the checker (recovery/PM — not the writer).  
+2. Place it **under the worktree** at the path the command uses.  
+3. Or use **in_place** workspace so one `.agents` tree is enough.
+
+`run-validate` fails closed if the script file is missing.
 
 ### `verify` levels
 

@@ -173,7 +173,8 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 1. **You merge to `main`.** When a run is green → `wt-merge-main` or commit on main. **Never** ask the user to merge. If the repo has a remote (origin), push main immediately after merge/commit — merge without push is an unfinished ship. No remote -> local main is the end state.
 2. Workers never push/merge main.
 3. Parallel only with **disjoint `owns_paths`**.
-4. score≥4 or ≥2 writes → **worktree** (`wt-create`).
+4. Workspace from **`adoc`** (`workspace.mode`): in_place | worktree | auto — not a hard “always worktree”.  
+4b. **Worktree L1 footgun:** if `project_cwd` is a worktree, every path in `verification[].command` must exist **inside that worktree** before dispatch (copy pre-authored `check.py` there, or use product `tests/`). Main-only `.agents/runs/...` paths → `verification_failed` / continuation run. `run-validate --phase pre-dispatch` rejects missing scripts.  
 5. The controller performs `check-owns-paths`, independent verify, then
    `lane-ctl accept` progressively; only `acceptance.json` means done.
 6. Heartbeats + `lane-stall-check` if silence.

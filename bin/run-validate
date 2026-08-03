@@ -19,7 +19,7 @@ try:
 except Exception:  # pragma: no cover - observability must never break the gate
     def record_gate_event(*args, **kwargs):  # type: ignore
         pass
-from verification_safety import verification_error
+from verification_safety import verification_error, verification_script_args
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -460,15 +460,42 @@ def validate_run(run_dir: Path, phase: str) -> int:
                 errors.append(
                     f"task {task_id}: verification[{index}].cwd does not exist: {cwd}"
                 )
+                continue
             elif not is_within(cwd, project_cwd):
                 errors.append(
                     f"task {task_id}: verification[{index}].cwd escapes project_cwd"
                 )
+                continue
             timeout = verification["timeout_sec"]
             if not 1 <= timeout <= MAX_VERIFICATION_TIMEOUT:
                 errors.append(
                     f"task {task_id}: verification[{index}].timeout_sec must be 1-{MAX_VERIFICATION_TIMEOUT}"
                 )
+            # Pre-dispatch: every path-like script arg must exist under cwd.
+            # Prevents temples-admin style blocks: worktree cwd + main-only check.py.
+            if phase == "pre-dispatch" and not safety_error:
+                command_text = str(verification.get("command") or "")
+                for script in verification_script_args(command_text):
+                    target = (cwd / script).resolve(strict=False)
+                    if not is_within(target, cwd) and target != cwd:
+                        # should not happen for relative paths without ..
+                        errors.append(
+                            f"task {task_id}: verification[{index}]: script path "
+                            f"escapes verification cwd: {script}"
+                        )
+                        continue
+                    if not target.is_file():
+                        errors.append(
+                            f"task {task_id}: verification[{index}]: script not found "
+                            f"under cwd ({cwd}): {script}. "
+                            f"For worktree runs, copy pre-authored checkers into the "
+                            f"worktree (e.g. "
+                            f".agents/runs/<slug>/artifacts/{task_id}/check.py) "
+                            f"BEFORE dispatch; relative paths resolve from project_cwd, "
+                            f"not the main checkout. Prefer product tests under owns "
+                            f"(tests/...) or in_place workspace when checks live only "
+                            f"on main."
+                        )
             # L1 heaviness is evaluated after all tasks are known (see below).
 
     # Multi-task L1 must stay focused. Use final task count (not mid-loop size).

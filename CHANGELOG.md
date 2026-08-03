@@ -1,3 +1,8 @@
+## 1.12.8 — 2026-08-03
+
+### Fixed
+- **Worktree verification path footgun (temples-admin class).** `run-validate --phase pre-dispatch` now rejects verification commands whose script args (e.g. `.agents/runs/.../check.py`) are **missing under `verification.cwd`**. Skills (`orchestrator-lanes`, `lane-contract`) + `dev-orchestrator` document: copy pre-authored checks into the worktree before dispatch, or use product `tests/`, or `adoc` in_place — never assume main `.agents` is visible from the worktree.
+
 ## 1.12.7 — 2026-08-03
 
 ### Fixed

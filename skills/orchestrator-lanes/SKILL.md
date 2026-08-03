@@ -168,6 +168,29 @@ task blocked → siblings continue; dependents of blocked upstream cascade-block
 - Multi-task + full-package build in L1 → `run-validate` warns or rejects (score≥7).  
 - Acceptance = **behavior**, not “entire monorepo green”.
 
+### L1 paths under worktree (MUST — temples-admin class bugs)
+
+`verification[].cwd` is almost always **`project_cwd`** (the worktree). Relative
+script args resolve **there**, not in the main checkout.
+
+| Wrong | Right |
+|-------|--------|
+| `cwd: worktree` + `python3 .agents/runs/X/artifacts/001/check.py` when check exists only on **main** | **Before** `run-controller start`: copy check into worktree at that relative path (recovery lane / PM shell allowed paths), **or** |
+| Absolute path to main `.agents/...` | Forbidden (escapes worktree) |
+| “Writer will create check.py under `.agents`” | Forbidden — writers must not author `.agents`; pre-author checks |
+
+**Canonical patterns:**
+
+1. **Product test under owns** (best): `tests/test_foo.py` +  
+   `python3 -m unittest discover -s tests -p test_foo.py` with `cwd: project_cwd`.  
+2. **Worktree-local pre-authored check**:  
+   `worktree/.agents/runs/<slug>/artifacts/<id>/check.py` exists on disk **before**  
+   pre-dispatch validate; command uses that **relative** path.  
+3. **in_place** (`adoc` Work → In-place): one tree — main `.agents/runs/...` paths work.
+
+`run-validate --phase pre-dispatch` **rejects** missing script files under
+verification cwd. Fix paths **before** first lane start (YAML is sha-pinned).
+
 ### L2
 
 After all accepted: `run-validate --phase pre-merge`, then **one** build/test pass, then merge.
