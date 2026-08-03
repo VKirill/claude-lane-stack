@@ -1,3 +1,8 @@
+## 1.12.7 — 2026-08-03
+
+### Fixed
+- **adoc TUI crash on Russian Apply tab:** `tr()` first arg was named `lang`, so `apply_lang` format kwarg `lang=` raised `got multiple values for argument 'lang'`. Renamed to `ui_lang`.
+
 ## 1.12.6 — 2026-08-03
 
 ### Added

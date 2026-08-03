@@ -328,9 +328,13 @@ def normalize_lang(value: object) -> str:
     return "en"
 
 
-def tr(lang: str, key: str, **kwargs: Any) -> str:
-    """Translate key; fall back to English then key name."""
-    code = normalize_lang(lang)
+def tr(ui_lang: str, key: str, **kwargs: Any) -> str:
+    """Translate key; fall back to English then key name.
+
+    First arg is the UI language code — named ui_lang so format kwargs can
+    freely use {lang} / {key} without colliding with parameters.
+    """
+    code = normalize_lang(ui_lang)
     table = STRINGS.get(code) or STRINGS["en"]
     text = table.get(key) or STRINGS["en"].get(key) or key
     if kwargs:
@@ -341,5 +345,5 @@ def tr(lang: str, key: str, **kwargs: Any) -> str:
     return text
 
 
-def writer_blurb(lang: str, writer: str) -> str:
-    return tr(lang, f"wr_{writer}_blurb")
+def writer_blurb(ui_lang: str, writer: str) -> str:
+    return tr(ui_lang, f"wr_{writer}_blurb")
