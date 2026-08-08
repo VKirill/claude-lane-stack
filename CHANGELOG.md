@@ -1,3 +1,13 @@
+## 1.14.16 — 2026-08-09
+
+### Changed
+- **Cyberpunk / Matrix art direction** for README showcase: factory ruins,
+  unfinished towers, neon rain, code-rain sky — EN and RU sets.
+- **Language-split images:** `docs/images/*` = English labels; `docs/images/ru/*`
+  = Cyrillic labels. `README.ru.md` points only at the RU set.
+- Shared lang-neutral art (banner, CLI constellation brand orbs) stays identical
+  in both folders.
+
 ## 1.14.15 — 2026-08-08
 
 ### Changed

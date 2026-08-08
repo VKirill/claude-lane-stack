@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/00-banner.jpg" alt="Claude Lane Stack" width="100%" />
+<img src="docs/images/ru/00-banner.jpg" alt="Claude Lane Stack" width="100%" />
 
 <br/>
 
@@ -14,7 +14,7 @@
 Без пяти чатов. Без ручного merge. Всё — **файлы + git**.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.15"><img src="https://img.shields.io/badge/version-v1.14.15-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.16"><img src="https://img.shields.io/badge/version-v1.14.16-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -38,7 +38,7 @@
 <br/>
 
 <div align="center">
-<img src="docs/images/06-feature-cards.jpg" alt="Завод · owns · ночное ревью · merge в main" width="100%" />
+<img src="docs/images/ru/06-feature-cards.jpg" alt="Завод · owns · ночное ревью · merge в main" width="100%" />
 </div>
 
 <br/>
@@ -73,7 +73,7 @@
 ## 🔌 С какими CLI-агентами мы работаем
 
 <div align="center">
-<img src="docs/images/05-cli-constellation.jpg" alt="Claude Code control plane и writers Codex Qwen Grok Kimi AGY" width="100%" />
+<img src="docs/images/ru/05-cli-constellation.jpg" alt="Claude Code control plane и writers Codex Qwen Grok Kimi AGY" width="100%" />
 </div>
 
 <br/>
@@ -125,7 +125,7 @@
 ## 🧠 Как устроено (60 секунд)
 
 <div align="center">
-<img src="docs/images/02-how-it-works.jpg" alt="Поток: Вы → PM → supervisor → writer → main" width="100%" />
+<img src="docs/images/ru/02-how-it-works.jpg" alt="Поток: Вы → PM → supervisor → writer → main" width="100%" />
 </div>
 
 <br/>
@@ -157,7 +157,7 @@
 ## ☀️ День vs 🌙 ночь
 
 <div align="center">
-<img src="docs/images/03-day-night.jpg" alt="Дневной конвейер и ночное ревью" width="100%" />
+<img src="docs/images/ru/03-day-night.jpg" alt="Дневной конвейер и ночное ревью" width="100%" />
 </div>
 
 <br/>
@@ -195,7 +195,7 @@
 ## 📋 Карточка = контракт
 
 <div align="center">
-<img src="docs/images/04-task-contract.jpg" alt="YAML owns_paths verification" width="100%" />
+<img src="docs/images/ru/04-task-contract.jpg" alt="YAML owns_paths verification" width="100%" />
 </div>
 
 <br/>
@@ -220,7 +220,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.14.15   # или: main
+cd claude-lane-stack && git checkout v1.14.16   # или: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
@@ -343,7 +343,7 @@ claude --agent dev-orchestrator --name lane-pm-myproject
 <br/>
 
 <a href="https://github.com/VKirill/claude-lane-stack">
-  <img src="docs/images/01-hero-conveyor.jpg" alt="Claude Lane Stack conveyor" width="85%" />
+  <img src="docs/images/ru/01-hero-conveyor.jpg" alt="Claude Lane Stack conveyor" width="85%" />
 </a>
 
 <br/><br/>
