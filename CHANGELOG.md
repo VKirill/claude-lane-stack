@@ -1,3 +1,11 @@
+## 1.14.12 — 2026-08-08
+
+### Changed
+- **dev-orchestrator Agent allowlist** includes native built-ins Claude Code
+  expects: `Explore`, `Plan`, **`general-purpose`**, plus conveyor role agents.
+  Product code still must go through `run-supervisor` (not GP as daytime writer).
+  Docs-aligned with https://code.claude.com/docs/en/sub-agents#general-purpose
+
 ## 1.14.11 — 2026-08-08
 
 ### Fixed
