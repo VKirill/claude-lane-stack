@@ -15,12 +15,56 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.13)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://code.claude.com/docs)
+[![Codex](https://img.shields.io/badge/Writer%2FReview-OpenAI%20Codex-412991)](https://github.com/openai/codex)
+[![Qwen](https://img.shields.io/badge/Writer-Qwen%20Code-FC5C3B)](https://github.com/QwenLM/qwen-code)
+[![Grok](https://img.shields.io/badge/Writer-Grok%20CLI-000)](https://x.ai)
+[![Kimi](https://img.shields.io/badge/Writer-Kimi%20CLI-1A73E8)](#)
+[![AGY](https://img.shields.io/badge/Writer-AGY%20%2F%20Gemini-4285F4)](#)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
 
 **Языки:** [English](README.md) · [Русский](README.ru.md)  
 **Гайд с нуля:** [RU](docs/BEGINNER.ru.md) · [EN](docs/BEGINNER.md)
 
 </div>
+
+---
+
+## С какими CLI-агентами мы работаем (это и есть суть)
+
+Это **не** «одна модель на всё». Стек — **control plane**, который гоняет
+**настоящие CLI coding-агенты** как долговечные процессы под одним PM.
+
+| CLI-агент | Обязателен? | Роль на заводе |
+|-----------|-------------|----------------|
+| **[Claude Code](https://code.claude.com/docs)** | **Да** | PM (`dev-orchestrator`), watch/диагностика, чат с вами |
+| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Опционально | Дневной writer (luna), ночной **Sol**-ревью, onboard, docs, emergency, plan-critique |
+| **Qwen Code** (Qwen CLI) | Опционально | Дневной **writer**-процесс |
+| **Grok** (xAI CLI / Grok Build) | Опционально | Дневной **writer**-процесс |
+| **Kimi** CLI | Опционально | Дневной **writer** (часто default в full-профиле) |
+| **AGY** (Gemini-oriented writer) | Опционально | Дневной **writer**-процесс |
+
+```text
+                    ┌──────────────────────────────────────┐
+  Вы  ──чат──►      │  Claude Code  ·  dev-orchestrator    │  ← всегда
+                    └──────────────────┬───────────────────┘
+                                       │ run-supervisor + run-controller
+           ┌───────────────┬───────────┼───────────┬───────────────┐
+           ▼               ▼           ▼           ▼               ▼
+       Codex CLI       Qwen CLI    Grok CLI    Kimi CLI         AGY
+      write / review     write       write       write          write
+           │               │           │           │               │
+           └───────────────┴───────────┴───────────┴───────────────┘
+                                       │
+                                       ▼
+                         проверки + acceptance → main
+```
+
+- **Собираете микс.** Ставите только то, что есть. `agents-doctor` / `adoc` видит CLI и собирает профиль (`claude-only`, `claude-codex`, `claude-qwen`, `claude-grok`, `full`, …).
+- **Один конвейер на всех писателей.** Owns, L1 verify, `acceptance.json`, progressive accept — один протокол, разные бэкенды.
+- **Смена writer без переписывания стека.** В adoc / `.agents/routing.profile.yaml` меняете `main_write` (например `codex` → `qwen`).
+- **Codex отдельно для ночи:** независимый Sol-ревью — quality rail, когда Codex есть; остальные CLI в основном дневные (или repair) writers.
+
+Подробности: [docs/ROUTING.md](docs/ROUTING.md) · [docs/PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md)
 
 ---
 
@@ -211,7 +255,7 @@ PM: план → (plan-critique) → карточки → **один** `run-supe
 ## FAQ для тапочков
 
 **Нужны ли сразу Codex + Qwen + Grok?**  
-Нет. Хватит Claude Code (`claude-only`). Писателей добавляете по желанию — `agents-doctor` подстроится.
+Нет. **Достаточно Claude Code** (`claude-only`). Каждый следующий CLI — **подключаемый writer** (или rail ревью у Codex). Ставите то, за что платите; `agents-doctor` собирает профиль.
 
 **Почему Claude сам не правит код?**  
 Мелочи — может. Нормальные фичи идут через **owns, тесты и квитанции**, чтобы параллель не убила `main`.

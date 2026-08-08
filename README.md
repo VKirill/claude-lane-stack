@@ -15,12 +15,56 @@ No five chat windows. No hand-merging branches. Everything lives as **files + gi
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.13)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://code.claude.com/docs)
+[![Codex](https://img.shields.io/badge/Writer%2FReview-OpenAI%20Codex-412991)](https://github.com/openai/codex)
+[![Qwen](https://img.shields.io/badge/Writer-Qwen%20Code-FC5C3B)](https://github.com/QwenLM/qwen-code)
+[![Grok](https://img.shields.io/badge/Writer-Grok%20CLI-000)](https://x.ai)
+[![Kimi](https://img.shields.io/badge/Writer-Kimi%20CLI-1A73E8)](#)
+[![AGY](https://img.shields.io/badge/Writer-AGY%20%2F%20Gemini-4285F4)](#)
 [![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
 
 **Languages:** [English](README.md) · [Русский](README.ru.md)  
 **Beginner walkthrough:** [EN](docs/BEGINNER.md) · [RU](docs/BEGINNER.ru.md)
 
 </div>
+
+---
+
+## CLI agents we plug into (the whole point)
+
+This is **not** “one model does everything.” The stack is a **control plane** that
+runs **real CLI coding agents** as durable processes under one PM.
+
+| CLI agent | Required? | Role in the factory |
+|-----------|-----------|---------------------|
+| **[Claude Code](https://code.claude.com/docs)** | **Yes** | Project manager (`dev-orchestrator`), watchers, diagnostics; chat with you |
+| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Optional | Daytime writer (luna), night **Sol** review, onboard, docs, emergency write, plan-critique |
+| **Qwen Code** (Qwen CLI) | Optional | Daytime durable **writer** process |
+| **Grok** (xAI CLI / Grok Build) | Optional | Daytime durable **writer** process |
+| **Kimi** CLI | Optional | Daytime durable **writer** (often the default in full profile) |
+| **AGY** (Gemini-oriented writer) | Optional | Daytime durable **writer** process |
+
+```text
+                    ┌──────────────────────────────────────┐
+  You  ──chat──►    │  Claude Code  ·  dev-orchestrator    │  ← always
+                    └──────────────────┬───────────────────┘
+                                       │ run-supervisor + run-controller
+           ┌───────────────┬───────────┼───────────┬───────────────┐
+           ▼               ▼           ▼           ▼               ▼
+       Codex CLI       Qwen CLI    Grok CLI    Kimi CLI         AGY
+      write / review     write       write       write          write
+           │               │           │           │               │
+           └───────────────┴───────────┴───────────┴───────────────┘
+                                       │
+                                       ▼
+                              checks + acceptance → main
+```
+
+- **Mix and match.** Install only what you have. `agents-doctor` / `adoc` detects CLIs and builds a profile (`claude-only`, `claude-codex`, `claude-qwen`, `claude-grok`, `full`, …).
+- **Same conveyor for every writer.** Owns paths, L1 verify, `acceptance.json`, progressive accept — one protocol, many backends.
+- **Switch writer without rewriting the stack.** Change `main_write` in adoc / `.agents/routing.profile.yaml` (e.g. `codex` → `qwen`).
+- **Codex is special for night:** independent Sol review is the default quality rail when Codex is present; other CLIs are primarily daytime (or repair) writers.
+
+Details: [docs/ROUTING.md](docs/ROUTING.md) · [docs/PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md)
 
 ---
 
@@ -208,7 +252,7 @@ Deep dives: [LANE-EXEC](docs/LANE-EXEC.md) · [ROUTING](docs/ROUTING.md) · [SOL
 ## FAQ (slippers edition)
 
 **Do I need all of Codex + Qwen + Grok?**  
-No. Claude Code alone works (`claude-only` profile). Add writers as you like; `agents-doctor` adapts.
+No. **Claude Code alone** is enough (`claude-only`). Each extra CLI is a **pluggable writer** (or Codex review rail). Install what you pay for; `agents-doctor` builds the profile.
 
 **Why not let Claude just edit the code?**  
 You can for tiny notes. For real features the stack keeps **ownership, tests, and receipts** so parallel work doesn’t trash `main`.

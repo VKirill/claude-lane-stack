@@ -1,3 +1,9 @@
+## 1.14.14 — 2026-08-08
+
+### Changed
+- **README EN/RU:** upfront section **CLI agents we plug into** — Claude Code
+  (required PM) + optional Codex / Qwen / Grok / Kimi / AGY writers, one conveyor.
+
 ## 1.14.13 — 2026-08-08
 
 ### Changed
