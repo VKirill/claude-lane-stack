@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Beginner guide
+    url: https://github.com/VKirill/claude-lane-stack/blob/main/docs/BEGINNER.md
+    about: Start here if you are new to the factory mental model
+  - name: Telegram channel
+    url: https://t.me/pomogay_marketing
+    about: Author channel (RU) — product updates and multi-agent craft

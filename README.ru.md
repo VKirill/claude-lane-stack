@@ -1,293 +1,355 @@
 <div align="center">
 
-<img src="docs/images/01-hero-conveyor.jpg" alt="Claude Lane Stack — один человек, один ИИ-PM, долговечные писатели, авто-merge в main" width="100%" />
+<img src="docs/images/00-banner.jpg" alt="Claude Lane Stack" width="100%" />
+
+<br/>
 
 # Claude Lane Stack
 
-### Маленький ИИ-завод для одного человека · **v1.14.14**
+### Маленький ИИ-завод для одного человека
 
-Вы говорите с **одним** ИИ-менеджером проекта. Он планирует работу, запускает
-долговечных писателей (Codex / Qwen / Grok / Kimi / AGY — что установлено),
-проверяет результат, **сам мержит в `main`**, а независимое ревью делает ночью.
+**Один человек. Один ИИ-PM. Настоящие CLI coding-агенты на долговечном конвейере.**  
+Говорите с Claude Code — он гоняет Codex / Qwen / Grok / Kimi / AGY, проверяет работу, **мержит в `main`**, ночью делает независимое ревью.
 
 Без пяти чатов. Без ручного merge. Всё — **файлы + git**.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.14)
-[![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://code.claude.com/docs)
-[![Codex](https://img.shields.io/badge/Writer%2FReview-OpenAI%20Codex-412991)](https://github.com/openai/codex)
-[![Qwen](https://img.shields.io/badge/Writer-Qwen%20Code-FC5C3B)](https://github.com/QwenLM/qwen-code)
-[![Grok](https://img.shields.io/badge/Writer-Grok%20CLI-000)](https://x.ai)
-[![Kimi](https://img.shields.io/badge/Writer-Kimi%20CLI-1A73E8)](#)
-[![AGY](https://img.shields.io/badge/Writer-AGY%20%2F%20Gemini-4285F4)](#)
-[![Telegram](https://img.shields.io/badge/Telegram-Помогающий%20маркетолог-2CA5E0?logo=telegram)](https://t.me/pomogay_marketing)
+<p>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.15"><img src="https://img.shields.io/badge/version-v1.14.15-orange?style=for-the-badge" alt="version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
+  <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
+  <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
+  <a href="https://t.me/pomogay_marketing"><img src="https://img.shields.io/badge/Telegram-канал-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram" /></a>
+</p>
 
-**Языки:** [English](README.md) · [Русский](README.ru.md)  
-**Гайд с нуля:** [RU](docs/BEGINNER.ru.md) · [EN](docs/BEGINNER.md)
+<p>
+  <a href="README.md"><strong>🇬🇧 English</strong></a>
+  &nbsp;·&nbsp;
+  <a href="docs/BEGINNER.ru.md"><strong>🐣 Гайд для новичков</strong></a>
+  &nbsp;·&nbsp;
+  <a href="CHANGELOG.md"><strong>Changelog</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/VKirill/claude-lane-stack/stargazers"><strong>★ Star</strong></a>
+</p>
 
 </div>
 
 ---
 
-## С какими CLI-агентами мы работаем (это и есть суть)
-
-Это **не** «одна модель на всё». Стек — **control plane**, который гоняет
-**настоящие CLI coding-агенты** как долговечные процессы под одним PM.
-
-| CLI-агент | Обязателен? | Роль на заводе |
-|-----------|-------------|----------------|
-| **[Claude Code](https://code.claude.com/docs)** | **Да** | PM (`dev-orchestrator`), watch/диагностика, чат с вами |
-| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Опционально | Дневной writer (luna), ночной **Sol**-ревью, onboard, docs, emergency, plan-critique |
-| **Qwen Code** (Qwen CLI) | Опционально | Дневной **writer**-процесс |
-| **Grok** (xAI CLI / Grok Build) | Опционально | Дневной **writer**-процесс |
-| **Kimi** CLI | Опционально | Дневной **writer** (часто default в full-профиле) |
-| **AGY** (Gemini-oriented writer) | Опционально | Дневной **writer**-процесс |
-
-```text
-                    ┌──────────────────────────────────────┐
-  Вы  ──чат──►      │  Claude Code  ·  dev-orchestrator    │  ← всегда
-                    └──────────────────┬───────────────────┘
-                                       │ run-supervisor + run-controller
-           ┌───────────────┬───────────┼───────────┬───────────────┐
-           ▼               ▼           ▼           ▼               ▼
-       Codex CLI       Qwen CLI    Grok CLI    Kimi CLI         AGY
-      write / review     write       write       write          write
-           │               │           │           │               │
-           └───────────────┴───────────┴───────────┴───────────────┘
-                                       │
-                                       ▼
-                         проверки + acceptance → main
-```
-
-- **Собираете микс.** Ставите только то, что есть. `agents-doctor` / `adoc` видит CLI и собирает профиль (`claude-only`, `claude-codex`, `claude-qwen`, `claude-grok`, `full`, …).
-- **Один конвейер на всех писателей.** Owns, L1 verify, `acceptance.json`, progressive accept — один протокол, разные бэкенды.
-- **Смена writer без переписывания стека.** В adoc / `.agents/routing.profile.yaml` меняете `main_write` (например `codex` → `qwen`).
-- **Codex отдельно для ночи:** независимый Sol-ревью — quality rail, когда Codex есть; остальные CLI в основном дневные (или repair) writers.
-
-Подробности: [docs/ROUTING.md](docs/ROUTING.md) · [docs/PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md)
-
----
-
-## Зачем это
-
-| Обычно с ИИ-кодом | Claude Lane Stack |
-|-------------------|-------------------|
-| Пять чатов, каждый раз заново объясняете | **Один PM** держит план |
-| Модели затирают чужие файлы | У задачи список **своих путей** |
-| Никто не ревьюит ИИ | **Ночная смена** (Codex → fix → re-review) |
-| Merge веток в полночь руками | **PM мержит `main`** после проверок |
-| Утром: «а что мы делали?» | **`resume-project`** → Сейчас / Блок / Дальше |
-| Длинная работа умирает через ~2 мин Bash | **Отцепленные процессы** (чат можно закрыть) |
-
----
-
-## Модель за 60 секунд
+<br/>
 
 <div align="center">
-<img src="docs/images/02-how-it-works.jpg" alt="Вы → PM → run-supervisor → процесс-писатель → main" width="100%" />
+<img src="docs/images/06-feature-cards.jpg" alt="Завод · owns · ночное ревью · merge в main" width="100%" />
 </div>
+
+<br/>
+
+| | | | |
+|:--:|:--:|:--:|:--:|
+| **🏭 Завод, не пять чатов** | **🛡️ Свои пути** | **🌙 Ночное ревью** | **📦 Авто-merge в main** |
+| Один PM держит контекст | Writers не лезут чужое | Независимый Codex Sol | Merge руками не вы |
+
+---
+
+## ✨ Зачем это
+
+Обычно ИИ-код = пять окон, копипаст, merge в полночь, ревью «ну как-нибудь».
+
+**Claude Lane Stack — конвейер:** обычные **файлы + git**, без обязательной облачной БД.
+
+| 😩 Типичный ИИ-кодинг | ✨ Lane Stack |
+|------------------------|----------------|
+| Каждый раз заново объясняете | **Один PM** держит план |
+| Модели затирают файлы | **`owns_paths`** на каждой задаче |
+| Никто не ревьюит ИИ | **Ночная смена** (review → fix → re-review) |
+| Merge веток руками | **PM мержит `main`** после проверок |
+| «А что мы делали?» | **`resume-project`** → Сейчас / Блок / Дальше |
+| Job умирает через ~2 мин Bash | **Отцепленные процессы** (чат можно закрыть) |
+
+> [!TIP]
+> Слово «оркестрация» пугает? Начните с **[гайда для новичков](docs/BEGINNER.ru.md)** — про завод, без жаргона.
+
+---
+
+## 🔌 С какими CLI-агентами мы работаем
+
+<div align="center">
+<img src="docs/images/05-cli-constellation.jpg" alt="Claude Code control plane и writers Codex Qwen Grok Kimi AGY" width="100%" />
+</div>
+
+<br/>
+
+Это **не** «одна модель на всё».  
+Стек — **control plane**, который гоняет **настоящие CLI coding-агенты** как долговечные процессы.
+
+| CLI | Обязателен? | Роль |
+|-----|-------------|------|
+| **[Claude Code](https://code.claude.com/docs)** | **Да** | PM (`dev-orchestrator`), watch, чат с вами |
+| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Опц. | Дневной writer · **ночной Sol-ревью** · onboard · docs · emergency |
+| **Qwen Code** | Опц. | Дневной **writer** |
+| **Grok** (xAI CLI) | Опц. | Дневной **writer** |
+| **Kimi** CLI | Опц. | Дневной **writer** (часто default в full) |
+| **AGY** (Gemini-oriented) | Опц. | Дневной **writer** |
+
+```text
+  Вы ──чат──►  Claude Code · dev-orchestrator          ← всегда
+                        │
+              run-supervisor + run-controller
+          ┌─────┬─────┬─────┬─────┐
+          ▼     ▼     ▼     ▼     ▼
+       Codex  Qwen  Grok  Kimi   AGY
+          │     │     │     │     │
+          └─────┴─────┴─────┴─────┘
+                        │
+              owns → L1 verify → acceptance → main
+```
+
+- **Собираете микс** — только то, за что платите; `agents-doctor` / `adoc` соберёт профиль  
+- **Один протокол** — owns, verify, `acceptance.json`, progressive accept  
+- **Смена writer** — `main_write` в adoc (например `codex` → `qwen`)  
+- **Codex для ночного quality** когда есть  
+
+<details>
+<summary><strong>Профили (примеры)</strong></summary>
+
+| Профиль | Writers | Review |
+|---------|---------|--------|
+| `claude-only` | только Claude | лёгкий |
+| `claude-codex` | процесс Codex | ночь Codex Sol |
+| `claude-qwen` / `grok` / `kimi` / `agy` | этот CLI | по конфигу |
+| `full` | multi-writer ready | ночь Codex |
+
+</details>
+
+---
+
+## 🧠 Как устроено (60 секунд)
+
+<div align="center">
+<img src="docs/images/02-how-it-works.jpg" alt="Поток: Вы → PM → supervisor → writer → main" width="100%" />
+</div>
+
+<br/>
 
 ```text
 Вы (чат)  →  PM (dev-orchestrator)
-                  │
-                  ├─ plan-critique (опционально: LLM смотрит план)
-                  ├─ карточки YAML в .agents/runs/<slug>/
-                  │
-                  ▼
-            run-supervisor  (смотрит один run)
-                  │
-                  ▼
-            run-controller  (долговечный процесс)
-                  │
-                  ▼
-       процесс-писатель (codex / qwen / grok / …)
-                  │
-                  ▼
+                │  plan-critique · YAML в .agents/runs/
+                ▼
+          run-supervisor   ← Claude смотрит один run
+                │
+                ▼
+          run-controller   ← долговечный процесс ОС
+                │
+                ▼
+       процесс-писатель    ← codex / qwen / grok / …
+                │
+                ▼
        owns → L1-тесты → acceptance.json
-                  │
-                  ▼
-            PM merge → main  →  (ночь) ревью Codex
+                │
+                ▼
+          PM merge → main → (ночь) ревью Codex
 ```
 
-**Вы не запускаете «Qwen-кодера» руками в обычной работе.**  
-Вы говорите с PM. PM включает **конвейер**. Писатель — **фоновый процесс**,  
-а не случайный Claude-субагент с именем бренда модели.
+**В обычной работе вы не запускаете «Qwen-кодера» руками.**  
+Говорите с PM. PM включает **конвейер**. Писатель — **фоновый процесс**, не субагент с именем бренда.
 
 ---
 
-## День и ночь
+## ☀️ День vs 🌙 ночь
 
 <div align="center">
-<img src="docs/images/03-day-night.jpg" alt="Дневной конвейер и ночное ревью Codex" width="100%" />
+<img src="docs/images/03-day-night.jpg" alt="Дневной конвейер и ночное ревью" width="100%" />
 </div>
+
+<br/>
 
 | | **День** | **Ночь** |
 |--|----------|----------|
-| Цель | Быстро катить фичи | Независимое качество |
-| Кто пишет продукт | Процесс из профиля **adoc** | Writer после findings |
-| Кто «смотрит» | **`run-supervisor`** | `night-shift` / `night-shift-all` |
-| LLM-ревью каждого коммита? | **Нет** (так задумано) | **Да** — Codex Sol, typed findings |
-| «Готово» = | `acceptance.json` + merge в `main` | Finding fixed + re-review |
+| Цель | Быстро катить | Независимое качество |
+| Код продукта | Writer из **adoc** | Repair после findings |
+| Watch | **`run-supervisor`** | `night-shift` |
+| LLM-ревью каждого коммита? | **Нет** | **Да** — Codex Sol |
+| Готово | `acceptance.json` + **main** | Finding fixed + re-review |
 
 ---
 
-## Кто есть кто (роли, не бренды)
+## 🎭 Кто есть кто
 
-| Роль | Что это | Что делает |
-|------|---------|------------|
+| Роль | Тип | Делает |
+|------|-----|--------|
 | **Вы** | Человек | Говорите *что* нужно |
-| **`dev-orchestrator`** | Агент Claude Code (PM) | План, диспатч, merge, общение с вами |
-| **`run-supervisor`** | Claude (только watch) | Старт/watch `run-controller` до accepted/blocked |
-| **`run-controller`** | Процесс ОС | DAG, retry, owns/verify/accept |
-| **Процесс-писатель** | CLI Codex/Qwen/Grok/Kimi/AGY | Делает карточку задачи |
-| **`lane-supervisor`** | Claude (одно действие) | Ручной `lane-ctl` status/retry/verify/… |
+| **`dev-orchestrator`** | Claude (PM) | План · диспатч · merge · чат |
+| **`run-supervisor`** | Claude (watch) | Один run до accepted/blocked |
+| **`run-controller`** | Процесс ОС | DAG · retry · owns/verify/accept |
+| **Процесс-писатель** | CLI (Codex/Qwen/…) | Делает карточку |
+| **`lane-supervisor`** | Claude (1 action) | Typed `lane-ctl` |
 | **`emergency-writer`** | Claude → Codex | Только после **terminal** block |
-| **`night-reviewer` / night-shift** | Codex Sol | Ночное ревью + findings |
-| **`project-onboarder`** | Codex | Паспорт проекта с нуля |
+| **`night-reviewer` / night-shift** | Codex Sol | Ночное ревью |
+| **`project-onboarder`** | Codex | Паспорт проекта |
 | **`docs-maintainer`** | Codex | Обновление доков |
 
-Встроенные помощники Claude, которыми PM тоже может пользоваться: **Explore**, **Plan**, **general-purpose** (research / side-task — **не** замена дневному конвейеру продукта).
-
-Старые имена (ещё работают): `codex-implementer` → `emergency-writer`, `codex-reviewer` → `night-reviewer` и т.д. См. [`agents/claude/README.md`](agents/claude/README.md).
+Встроенные Claude: **Explore**, **Plan**, **general-purpose** (research / side-task — **не** daytime product writer).  
+Алиасы: `codex-implementer` → `emergency-writer` и т.д. → [`agents/claude/README.md`](agents/claude/README.md)
 
 ---
 
-## Карточка задачи = контракт
+## 📋 Карточка = контракт
 
 <div align="center">
-<img src="docs/images/04-task-contract.jpg" alt="YAML-карточка owns_paths и verification" width="100%" />
+<img src="docs/images/04-task-contract.jpg" alt="YAML owns_paths verification" width="100%" />
 </div>
 
-Единица работы — YAML в `.agents/runs/<slug>/tasks/`:
+<br/>
 
-- **`owns_paths`** — какие файлы можно трогать
-- **`verification[]`** — узкие L1-проверки контроллера
-- **`lane:`** — как в adoc `main_write` (например `codex`, `qwen`)
-- **Квитанции** — report → owns → verify → **`acceptance.json`**
+Единица работы — `.agents/runs/<slug>/tasks/*.yaml`:
 
-Нет acceptance → не готово. «В чате зелёное» ≠ «зашипили».
+| Поле | Смысл |
+|------|--------|
+| `owns_paths` | Какие файлы можно трогать |
+| `verification[]` | Узкие L1-проверки |
+| `lane:` | Как `main_write` в adoc |
+| Квитанции | report → owns → verify → **`acceptance.json`** |
+
+> [!IMPORTANT]
+> Нет `acceptance.json` → **не готово**. «В чате зелёное» ≠ «зашипили».
 
 ---
 
-## Быстрый старт
+## 🚀 Быстрый старт
 
-### 1) Один раз на машину
+### ① Один раз на машину
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack
-git checkout v1.14.14   # или: main
+cd claude-lane-stack && git checkout v1.14.15   # или: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
 
-Нужно: **Claude Code**, Git, Python 3 (+ PyYAML/jsonschema), Node, rsync, `flock`.  
-Опционально писатели: Codex, Qwen, Grok, Kimi, AGY. На Linux для writers — **bubblewrap**.
+**Нужно:** Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`  
+**Опционально:** Codex · Qwen · Grok · Kimi · AGY · Linux: `bubblewrap`
 
-### 2) Один раз в *вашем* проекте
-
-```bash
-cd /path/to/your-project
-agents-doctor --apply .    # или: adoc
-```
-
-Появится `.agents/routing.profile.yaml` (кто пишет, модель, workspace, plan critique…).
-
-### 3) Запуск PM
-
-**Как у вас обычно** (если есть лаунчер `cc`):
+### ② Один раз в проекте
 
 ```bash
 cd /path/to/your-project
-cc          # меню → 1 = dev-orchestrator
+agents-doctor --apply .     # или: adoc
 ```
 
-`cc` сам добавит `--name lane-pm-<папка-проекта>` (для ListAgents / Remote Control).
-
-Или напрямую:
+### ③ Запуск PM
 
 ```bash
+# как у вас обычно:
+cc                          # меню → 1 = dev-orchestrator
+
+# или raw:
 claude --agent dev-orchestrator --name lane-pm-myproject
 ```
 
-В чате:
-
-| Вы | Когда |
-|----|--------|
-| `/project-onboard` или «онбордни репо» | Первый раз |
-| `/resume-project` или «где остановились?» | После перерыва |
-| «Добавь тёмную тему в настройки» | Обычная фича |
-
-PM: план → (plan-critique) → карточки → **один** `run-supervisor` → terminal digest → merge `main` если зелёно.
+| В чате | Когда |
+|--------|--------|
+| `/project-onboard` | Первый раз |
+| `/resume-project` | После перерыва |
+| «Добавь тёмную тему» | Обычная фича |
 
 ---
 
-## Что крутите в `adoc` (простыми словами)
+## ⚙️ adoc (просто)
 
-| Настройка | Смысл |
-|-----------|--------|
-| **Writer** (`main_write`) | `codex` / `qwen` / `grok` / `kimi` / `agy` — **процесс**, который кодит |
+| Ручка | Смысл |
+|-------|--------|
+| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` |
 | **Model / effort** | например Codex luna + max |
-| **Fast mode** | только Codex — `service_tier: fast` |
-| **Workspace** | `in_place` / `worktree` / `auto` |
-| **Plan critique** | выкл / structural / или LLM перед диспатчем |
-
-Смена adoc mid-session обновляет YAML; длинный PM может не перечитать профиль сам — иногда нужен рестарт `cc` → 1.
+| **Fast mode** | Codex `service_tier: fast` |
+| **Workspace** | `in_place` · `worktree` · `auto` |
+| **Plan critique** | выкл · structural · LLM перед диспатчем |
 
 ---
 
-## Команды, которые реально нужны
+## 🧰 Шпаргалка команд
 
 | Команда | Зачем |
 |---------|--------|
-| `agents-doctor` / `adoc` | Выбрать писателей и профиль |
+| `agents-doctor` / `adoc` | CLI → профиль |
 | `resume-project .` | Сейчас / Блок / Дальше |
-| `run-init` / `run-validate` / `run-board` | Раны (обычно делает PM) |
-| `run-controller start\|watch\|status` | Жизненный цикл (PM — через `run-supervisor`) |
-| `lane-ctl …` | Типизированный control plane |
-| `night-shift` / `night-shift-all` | Ночное ревью/repair |
+| `run-init` · `run-validate` · `run-board` | Раны (обычно PM) |
+| `run-controller start\|watch\|status` | Жизненный цикл |
+| `lane-ctl …` | Control plane |
+| `night-shift` · `night-shift-all` | Ночь |
 | `plan-critique --run-dir …` | Качество плана |
 
-Подробно: [LANE-EXEC](docs/LANE-EXEC.md) · [ROUTING](docs/ROUTING.md) · [SOLO-ORCHESTRATION](docs/SOLO-ORCHESTRATION.md) · [PLATFORM-CAPABILITIES](docs/PLATFORM-CAPABILITIES.md) · [FILE-CONTRACT](docs/FILE-CONTRACT.md)
+---
+
+## ❓ FAQ для тапочков
+
+<details>
+<summary><strong>Нужны ли все CLI сразу?</strong></summary>
+
+Нет. **Достаточно Claude Code** (`claude-only`). Каждый следующий CLI — подключаемый writer (или rail ревью у Codex).
+</details>
+
+<details>
+<summary><strong>Что такое <code>general-purpose</code>?</strong></summary>
+
+**Встроенный** субагент Claude Code для multi-step side-task ([дока](https://code.claude.com/docs/en/sub-agents#general-purpose)). PM может звать для research. Фичи продукта — через конвейер.
+</details>
+
+<details>
+<summary><strong>Почему Bash умирает через ~2 минуты?</strong></summary>
+
+Лимит Claude Code. Writers крутятся **отцепленно**.
+</details>
+
+<details>
+<summary><strong>Кто мержит?</strong></summary>
+
+**PM**. Вы — никогда.
+</details>
+
+<details>
+<summary><strong>Язык?</strong></summary>
+
+Чат: русский ок. Файлы агентов: **английский** ([LANGUAGE.md](docs/LANGUAGE.md)).
+</details>
 
 ---
 
-## FAQ для тапочков
-
-**Нужны ли сразу Codex + Qwen + Grok?**  
-Нет. **Достаточно Claude Code** (`claude-only`). Каждый следующий CLI — **подключаемый writer** (или rail ревью у Codex). Ставите то, за что платите; `agents-doctor` собирает профиль.
-
-**Почему Claude сам не правит код?**  
-Мелочи — может. Нормальные фичи идут через **owns, тесты и квитанции**, чтобы параллель не убила `main`.
-
-**Что такое `general-purpose`?**  
-**Встроенный** субагент Claude Code для multi-step side-task ([дока](https://code.claude.com/docs/en/sub-agents#general-purpose)). PM может звать его для research. Фичи продукта — всё равно через конвейер.
-
-**Почему Bash умирает через ~2 минуты?**  
-Лимит Claude Code. Писатели крутятся **отцепленно**. Не держите длинные job’ы в foreground PM.
-
-**Кто мержит?**  
-PM. Вы — никогда. Если просит вас смержить — PM врёт, чиним скилл.
-
-**Язык?**  
-Чат: русский ок. Файлы агентов: **английский**.
-
----
-
-## Карта доков
+## 📚 Документация
 
 | Док | Для чего |
 |-----|----------|
-| [BEGINNER.ru.md](docs/BEGINNER.ru.md) | С нуля, без жаргона |
-| [SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) | День/ночь |
+| [BEGINNER.ru.md](docs/BEGINNER.ru.md) | С нуля |
+| [SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) | День / ночь |
 | [ROUTING.md](docs/ROUTING.md) | Модели и профили |
-| [LANE-EXEC.md](docs/LANE-EXEC.md) | Выживание процессов |
-| [PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md) | Что берём из Claude Code / Codex |
+| [LANE-EXEC.md](docs/LANE-EXEC.md) | Процессы |
+| [PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md) | Claude Code + Codex |
+| [FILE-CONTRACT.md](docs/FILE-CONTRACT.md) | Раскладка |
 | [agents/claude/README.md](agents/claude/README.md) | Имена role-агентов |
-| [CHANGELOG.md](CHANGELOG.md) | Что менялось |
+| [CHANGELOG.md](CHANGELOG.md) | Релизы |
 
 ---
 
-## Лицензия
+## 🤝 Участие
 
-[MIT](LICENSE) · Автор: [VKirill](https://github.com/VKirill) · Канал: [Помогающий маркетолог](https://t.me/pomogay_marketing)
+- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
+- Issues по шаблонам · PR с тестами и доками
+- Канал: [Помогающий маркетолог](https://t.me/pomogay_marketing)
+
+---
+
+<div align="center">
+
+**MIT** © [VKirill](https://github.com/VKirill) и контрибьюторы
+
+<br/>
+
+<a href="https://github.com/VKirill/claude-lane-stack">
+  <img src="docs/images/01-hero-conveyor.jpg" alt="Claude Lane Stack conveyor" width="85%" />
+</a>
+
+<br/><br/>
+
+### Если завод помогает — поставьте ★
+
+Так другие найдут спокойный multi-agent workflow.
+
+</div>

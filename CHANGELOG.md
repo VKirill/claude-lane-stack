@@ -1,3 +1,12 @@
+## 1.14.15 — 2026-08-08
+
+### Changed
+- **GitHub presentation polish:** showcase EN/RU README (banner, feature strip,
+  CLI constellation, for-the-badge shields, FAQ details, star CTA).
+- New art: `docs/images/00-banner.jpg`, `05-cli-constellation.jpg`, `06-feature-cards.jpg`.
+- Community health: CONTRIBUTING / SECURITY / CODE_OF_CONDUCT rewrite; PR + issue
+  templates; issue config links.
+
 ## 1.14.14 — 2026-08-08
 
 ### Changed

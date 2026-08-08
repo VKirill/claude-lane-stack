@@ -1,10 +1,25 @@
 ---
 name: Feature request
-about: Improve lanes, profiles, hooks, or docs
+about: Idea to improve the factory
+title: "[feat] "
 labels: enhancement
 ---
 
-**Problem:**
-**Proposal:**
-**Alternatives considered:**
-**Would you use this as solo PM on Claude Code?** yes/no
+## Problem
+
+<!-- what is painful today -->
+
+## Proposal
+
+<!-- how it should feel -->
+
+## Scope
+
+- [ ] Docs / DX only  
+- [ ] New CLI integration  
+- [ ] Control plane change  
+- [ ] Breaking change  
+
+## Alternatives considered
+
+<!-- optional -->
