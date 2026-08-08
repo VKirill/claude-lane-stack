@@ -1,3 +1,12 @@
+## 1.14.13 — 2026-08-08
+
+### Changed
+- **README (EN + RU only)** rewritten for beginners: full conveyor mental model,
+  day/night, role agents, adoc, FAQ; matches v1.14.x system (`cc` → 1, run-supervisor,
+  general-purpose allowlist, etc.).
+- **New docs/images/** hero + how-it-works + day-night + task-contract artwork.
+- Removed extra-language README.* (de/es/fr/ja/ko/pt-BR/zh-CN).
+
 ## 1.14.12 — 2026-08-08
 
 ### Changed
