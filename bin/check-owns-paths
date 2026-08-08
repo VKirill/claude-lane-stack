@@ -89,7 +89,7 @@ def load_task(path: Path) -> dict:
 
 
 def match_any(path: str, patterns: list) -> bool:
-    path = path.lstrip("./")
+    path = path.removeprefix("./")
     for pat in patterns:
         pat = str(pat).strip().strip('"').strip("'")
         if not pat:
@@ -138,7 +138,7 @@ def main_ref(cwd: Path) -> str:
 def filter_noise(files: list[str]) -> list[str]:
     out = []
     for f in files:
-        rel = f.lstrip("./")
+        rel = f.removeprefix("./")
         if any(rel.startswith(p) for p in IGNORE_PREFIXES):
             continue
         if rel in IGNORE_FILES:
@@ -191,7 +191,7 @@ def load_dirt_baseline(path: Path | None) -> set[str] | None:
         files = payload
     if not isinstance(files, list):
         return None
-    return {str(item).lstrip("./") for item in files if str(item).strip()}
+    return {str(item).removeprefix("./") for item in files if str(item).strip()}
 
 
 def write_dirt_baseline(cwd: Path, path: Path) -> list[str]:
@@ -231,7 +231,7 @@ def evaluate_details(
     foreign_ignored: list[str] = []
     evaluated: list[str] = []
     for f in changed:
-        rel = f.lstrip("./")
+        rel = f.removeprefix("./")
         in_baseline = baseline is not None and rel in baseline
         if match_any(rel, never):
             if in_baseline:
