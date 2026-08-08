@@ -4,7 +4,7 @@
 
 # Claude Lane Stack
 
-### Маленький ИИ-завод для одного человека · **v1.14.13**
+### Маленький ИИ-завод для одного человека · **v1.14.14**
 
 Вы говорите с **одним** ИИ-менеджером проекта. Он планирует работу, запускает
 долговечных писателей (Codex / Qwen / Grok / Kimi / AGY — что установлено),
@@ -13,7 +13,7 @@
 Без пяти чатов. Без ручного merge. Всё — **файлы + git**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.13)
+[![Release](https://img.shields.io/github/v/release/VKirill/claude-lane-stack?color=orange&label=Release)](https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.14)
 [![Claude Code](https://img.shields.io/badge/PM-Claude%20Code-black)](https://code.claude.com/docs)
 [![Codex](https://img.shields.io/badge/Writer%2FReview-OpenAI%20Codex-412991)](https://github.com/openai/codex)
 [![Qwen](https://img.shields.io/badge/Writer-Qwen%20Code-FC5C3B)](https://github.com/QwenLM/qwen-code)
@@ -176,7 +176,7 @@
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
 cd claude-lane-stack
-git checkout v1.14.13   # или: main
+git checkout v1.14.14   # или: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
