@@ -65,6 +65,8 @@ PROFILES = {
     },
 }
 
+# Claude Agent role names (function), not brand of the durable process.
+# Daytime write process provider → always watched by run-supervisor.
 AGENT_MAP = {
     "agy": "run-supervisor",
     "grok": "run-supervisor",
@@ -73,7 +75,7 @@ AGENT_MAP = {
     # Durable daytime writer when main_write=codex (luna+max via lane-ctl).
     "codex": "run-supervisor",
     "claude-worker": "general-purpose",
-    "claude-reviewer": "codex-reviewer",
+    "claude-reviewer": "night-reviewer",
 }
 
 
@@ -410,10 +412,12 @@ def write_outputs(
     *,
     writer_model: str | None = None,
     writer_effort: str | None = None,
+    writer_service_tier: str | None = None,
     workspace_mode: str | None = None,
     worktree_min_score: int = 4,
     worktree_on_multi_write: bool = True,
     ui_language: str | None = None,
+    stages: dict | None = None,
     quiet: bool = False,
 ) -> None:
     agents = repo / ".agents"
@@ -454,6 +458,18 @@ def write_outputs(
             "provider": main_write,
             "model": writer_model,
             "reasoning_effort": writer_effort,
+            **(
+                {
+                    "service_tier": (
+                        "fast"
+                        if str(writer_service_tier or "").strip().lower()
+                        in {"fast", "1", "true", "yes", "on"}
+                        else "standard"
+                    )
+                }
+                if main_write == "codex"
+                else {}
+            ),
         },
         "workspace": {
             "mode": ws_mode,
@@ -480,11 +496,11 @@ def write_outputs(
     for k, v in lanes.items():
         agent = AGENT_MAP.get(v, v)
         if k == "review" and v == "codex":
-            agent = "codex-reviewer"
+            agent = "night-reviewer"
         if k == "emergency_write" and v == "codex":
-            agent = "codex-implementer"
+            agent = "emergency-writer"
         if k in ("fast_write", "main_write") and v == "codex":
-            agent = "run-supervisor"
+            agent = "run-supervisor"  # process writer, not emergency-writer
         lines.append(f"  {k}: {v}  # agent: {agent}")
     # Explicit writer model/effort for run-supervisor / run-controller.
     if main_write and main_write not in ("claude-worker",):
@@ -494,6 +510,16 @@ def write_outputs(
             lines.append(f"  model: {writer_model}")
         if writer_effort:
             lines.append(f"  reasoning_effort: {writer_effort}")
+        if main_write == "codex":
+            tier_raw = str(writer_service_tier or "standard").strip().lower()
+            tier = (
+                "fast"
+                if tier_raw in {"fast", "1", "true", "yes", "on"}
+                else "standard"
+            )
+            lines.append(
+                f"  service_tier: {tier}  # standard | fast (Codex ChatGPT credit speed)"
+            )
     # Workspace: where writers edit (main checkout vs isolated worktree).
     lines.append("workspace:")
     lines.append(
@@ -510,6 +536,51 @@ def write_outputs(
     ui_lang = caps["ui"]["language"]
     lines.append("ui:")
     lines.append(f"  language: {ui_lang}  # en | ru  (agents-doctor TUI only)")
+    # Pipeline stages (plan critique / write / night / specialist) — per-agent.
+    try:
+        from pipeline_stages import default_stages, normalize_stages, stages_to_yaml_lines
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from pipeline_stages import default_stages, normalize_stages, stages_to_yaml_lines
+    night_enabled = False
+    night_path = agents / "night-shift.yaml"
+    if night_path.is_file():
+        try:
+            for raw in night_path.read_text(encoding="utf-8").splitlines():
+                s = raw.strip()
+                if s.startswith("enabled:"):
+                    night_enabled = "true" in s.lower()
+        except OSError:
+            pass
+    stage_seed = stages if isinstance(stages, dict) else None
+    if stage_seed is None:
+        stage_seed = default_stages(
+            write_provider=str(main_write or "kimi"),
+            write_model=writer_model,
+            write_effort=writer_effort,
+            night_enabled=night_enabled,
+        )
+    else:
+        # Keep write stage aligned with main_write / model / effort.
+        stage_seed = dict(stage_seed)
+        stage_seed["write"] = {
+            **(stage_seed.get("write") if isinstance(stage_seed.get("write"), dict) else {}),
+            "provider": main_write,
+            "model": writer_model,
+            "reasoning_effort": writer_effort,
+        }
+        if "night_review" in stage_seed and isinstance(stage_seed["night_review"], dict):
+            stage_seed["night_review"] = {
+                **stage_seed["night_review"],
+                "enabled": night_enabled
+                if "enabled" not in stage_seed["night_review"]
+                else stage_seed["night_review"].get("enabled", night_enabled),
+            }
+    normalized_stages = normalize_stages(
+        stage_seed, write_provider=str(main_write or "kimi")
+    )
+    caps["stages"] = normalized_stages
+    lines.extend(stages_to_yaml_lines(normalized_stages))
     lines.append("notes:")
     if notes:
         for n in notes:
@@ -517,6 +588,10 @@ def write_outputs(
     else:
         lines.append("  - []")
     lines.append("")
+    # Re-write capabilities with stages included.
+    (agents / "capabilities.json").write_text(
+        json.dumps(caps, indent=2) + "\n", encoding="utf-8"
+    )
     (agents / "routing.profile.yaml").write_text("\n".join(lines), encoding="utf-8")
     if not quiet:
         print(f"Wrote {agents / 'capabilities.json'}")
@@ -900,6 +975,48 @@ def main(argv: list[str] | None = None) -> int:
         default=True,
         help="with --apply: auto mode uses worktree for ≥2 write tasks (default true)",
     )
+    ap.add_argument(
+        "--plan-critique",
+        choices=("on", "off"),
+        default=None,
+        help="with --apply: enable plan_critique stage (default on)",
+    )
+    ap.add_argument(
+        "--plan-critique-mode",
+        choices=("advisory", "gate"),
+        default=None,
+        help="with --apply: advisory (soft) or gate (block pre-dispatch)",
+    )
+    ap.add_argument(
+        "--plan-critique-provider",
+        choices=("structural", "kimi", "qwen", "agy", "grok", "codex"),
+        default=None,
+        help="with --apply: structural engine + optional cheap model for LLM pass",
+    )
+    ap.add_argument(
+        "--writer-model",
+        default=None,
+        help="with --apply: writer model id (e.g. gpt-5.6-luna)",
+    )
+    ap.add_argument(
+        "--writer-effort",
+        "--reasoning-effort",
+        dest="writer_effort",
+        default=None,
+        help="with --apply: writer reasoning effort (codex: low|medium|high|xhigh|max)",
+    )
+    ap.add_argument(
+        "--service-tier",
+        choices=("standard", "fast"),
+        default=None,
+        help="with --apply: codex ChatGPT speed tier (default standard; fast ≈ 2.5× credits)",
+    )
+    ap.add_argument(
+        "--fast-mode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="with --apply: codex fast mode on/off (alias for --service-tier fast|standard)",
+    )
     args = ap.parse_args(argv)
 
     # Default interactive entry: full-screen project configurator.
@@ -952,16 +1069,31 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.apply:
         repo = Path(args.repo).expanduser().resolve()
-        write_outputs(
-            repo,
-            tools,
-            profile,
-            lanes,
-            notes,
-            workspace_mode=args.workspace_mode or "auto",
-            worktree_min_score=max(0, min(10, int(args.worktree_min_score))),
-            worktree_on_multi_write=bool(args.worktree_on_multi_write),
-        )
+        stages_arg = None
+        if (
+            args.plan_critique is not None
+            or args.plan_critique_mode is not None
+            or args.plan_critique_provider is not None
+            or args.night_review is not None
+        ):
+            try:
+                from pipeline_stages import default_stages
+            except ImportError:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+                from pipeline_stages import default_stages
+            stages_arg = default_stages(
+                write_provider=str(lanes.get("main_write") or "kimi"),
+                night_enabled=(args.night_review == "on")
+                if args.night_review is not None
+                else False,
+            )
+            pc = stages_arg["plan_critique"]
+            if args.plan_critique is not None:
+                pc["enabled"] = args.plan_critique == "on"
+            if args.plan_critique_mode is not None:
+                pc["mode"] = args.plan_critique_mode
+            if args.plan_critique_provider is not None:
+                pc["provider"] = args.plan_critique_provider
         if args.night_review is not None:
             writer = lanes.get("main_write")
             provider = (
@@ -978,6 +1110,24 @@ def main(argv: list[str] | None = None) -> int:
                 max_fix_tasks=max(1, min(10, args.max_fix_tasks)),
                 auto_merge=bool(args.auto_merge),
             )
+        # Codex speed tier: --service-tier wins; else --fast-mode / --no-fast-mode.
+        service_tier = args.service_tier
+        if service_tier is None and args.fast_mode is not None:
+            service_tier = "fast" if args.fast_mode else "standard"
+        write_outputs(
+            repo,
+            tools,
+            profile,
+            lanes,
+            notes,
+            writer_model=args.writer_model,
+            writer_effort=args.writer_effort,
+            writer_service_tier=service_tier,
+            workspace_mode=args.workspace_mode or "auto",
+            worktree_min_score=max(0, min(10, int(args.worktree_min_score))),
+            worktree_on_multi_write=bool(args.worktree_on_multi_write),
+            stages=stages_arg,
+        )
 
     return 0
 

@@ -164,8 +164,8 @@ owns_paths: # 🔒 die EINZIGEN Dateien, die dieser Worker anfassen darf
 verify:
   - npm test
   - npm run lint
-lane: grok-implementer # wer ausführt
-review: codex-reviewer # wer den Merge kontrolliert
+lane: kimi # wer ausführt
+review: night-reviewer  # role agent (Codex Sol night); not daytime writer
 ```
 
 - 🔒 `owns_paths` — parallele Worker **können nicht kollidieren**: `check-owns-paths` lässt die Aufgabe scheitern, wenn ein Worker ausschert

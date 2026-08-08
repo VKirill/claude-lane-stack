@@ -690,10 +690,24 @@ def trusted_provider_report(
     if actual_sha256 != recorded_sha256:
         return {"trusted": False, "reason": "report_digest_mismatch"}
     task_matches = re.findall(r"(?m)^TASK_ID:\s*(\S+)\s*$", report_text)
+    # Exact 64-hex first; also accept lines that embed the expected digest
+    # (models sometimes append a stray nibble — lane-session normalizes on write).
     prompt_matches = re.findall(
         r"(?m)^PROMPT_SHA256:\s*([0-9a-f]{64})\s*$", report_text
     )
-    if task_matches != [task_id] or prompt_matches != [prompt_sha256]:
+    expected_sha = str(prompt_sha256 or "").lower()
+    if not prompt_matches:
+        for line in report_text.splitlines():
+            if not line.upper().startswith("PROMPT_SHA256"):
+                continue
+            raw = re.sub(r"^PROMPT_SHA256:\s*", "", line, flags=re.I).strip().lower()
+            if expected_sha and expected_sha in raw:
+                prompt_matches = [expected_sha]
+                break
+            if len(raw) >= 64 and re.fullmatch(r"[0-9a-f]{64}", raw[:64]):
+                prompt_matches = [raw[:64]]
+                break
+    if task_matches != [task_id] or prompt_matches != [expected_sha]:
         return {"trusted": False, "reason": "report_identity_mismatch"}
     report_status = markdown_field(report_path, ("STATUS",))
     return {
@@ -1089,6 +1103,16 @@ def build_launch_argv(
         "--max-tasks",
         str(args.max_tasks),
     ]
+    # Codex Fast mode (service_tier) — only meaningful for provider=codex.
+    # Pass only --service-tier KEY=value so recorded argv stays option/value pairs
+    # (retry parser rejects unpaired flags like --fast-mode).
+    service_tier = str(getattr(args, "service_tier", None) or "standard").strip().lower()
+    if getattr(args, "fast_mode", False):
+        service_tier = "fast"
+    if args.provider == "codex":
+        if service_tier not in {"standard", "fast"}:
+            service_tier = "standard"
+        session_argv.extend(["--service-tier", service_tier])
     binary = resolve_binary(args.binary)
     if binary:
         session_argv.extend(["--binary", binary])
@@ -1252,6 +1276,17 @@ def cmd_start_v2(
         "provider": args.provider,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "service_tier": (
+            "fast"
+            if (
+                args.provider == "codex"
+                and (
+                    getattr(args, "fast_mode", False)
+                    or str(getattr(args, "service_tier", "") or "").lower() == "fast"
+                )
+            )
+            else "standard"
+        ),
         "argv": argv,
         "argv_sha256": command_hash(argv),
         "verification_commands": verification_snapshot,
@@ -1303,6 +1338,11 @@ def cmd_start(args: argparse.Namespace) -> int:
         args.model = PRIMARY_MODELS[args.provider]
     if getattr(args, "reasoning_effort", None) is None:
         args.reasoning_effort = PRIMARY_EFFORTS.get(args.provider, "medium")
+    # Default service_tier for codex when not set by controller/CLI
+    if not getattr(args, "service_tier", None) and not getattr(args, "fast_mode", False):
+        args.service_tier = "standard"
+    elif getattr(args, "fast_mode", False):
+        args.service_tier = "fast"
     context = validate_task_context(
         run_dir_value=args.run_dir,
         task_id=args.task_id,
@@ -1665,6 +1705,7 @@ def validate_recorded_argv(
         "--pool-size",
         "--max-tasks",
         "--binary",
+        "--service-tier",  # codex only: standard|fast
     }
     session_options = parse_recorded_options(
         argv[session + 2 :], allowed=session_allowed, label="lane-session"
@@ -1688,8 +1729,19 @@ def validate_recorded_argv(
         "--pool-size",
         "--max-tasks",
     }
-    if set(session_options) not in (required_keys, required_keys | {"--binary"}):
+    optional_key_sets = (
+        required_keys,
+        required_keys | {"--binary"},
+        required_keys | {"--service-tier"},
+        required_keys | {"--binary", "--service-tier"},
+    )
+    if set(session_options) not in optional_key_sets:
         raise ContractError("recorded lane-session argv is incomplete")
+    if "--service-tier" in session_options:
+        if recorded_provider != "codex":
+            raise ContractError("recorded service-tier is only valid for codex")
+        if session_options["--service-tier"] not in {"standard", "fast"}:
+            raise ContractError("recorded service-tier must be standard or fast")
     model = session_options.get("--model", "")
     if not SAFE_MODEL.fullmatch(model):
         raise ContractError("recorded model contains unsupported characters")
@@ -2198,17 +2250,24 @@ def verification_entries(
         if isinstance(item, str):
             raise ContractError(
                 "string verification commands are legacy-only; schema_version 2 "
-                "requires {command, cwd, timeout_sec} entries"
+                "requires {command, cwd} entries (timeout_sec optional)"
             )
         if not isinstance(item, dict):
             raise ContractError(f"verification[{index}] must be a mapping")
-        if set(item) != {"command", "cwd", "timeout_sec"}:
+        allowed_keys = {"command", "cwd", "timeout_sec"}
+        keys = set(item)
+        if not {"command", "cwd"}.issubset(keys):
             raise ContractError(
-                f"verification[{index}] must contain exactly command, cwd, timeout_sec"
+                f"verification[{index}] must contain command and cwd "
+                f"(timeout_sec optional; default 900)"
+            )
+        extra = keys - allowed_keys
+        if extra:
+            raise ContractError(
+                f"verification[{index}] has unknown keys: {sorted(extra)}"
             )
         command = item.get("command")
         cwd = item.get("cwd")
-        timeout_sec = item.get("timeout_sec")
         if not isinstance(command, str) or not command.strip() or "\0" in command:
             raise ContractError(f"verification[{index}].command is invalid")
         safety_error = verification_error(command, extra_executables or set())
@@ -2223,12 +2282,16 @@ def verification_entries(
             raise ContractError(
                 f"verification[{index}].cwd must be an absolute path"
             )
-        if (
-            not isinstance(timeout_sec, int)
-            or isinstance(timeout_sec, bool)
-            or timeout_sec < 1
-            or timeout_sec > HARD_V2_VERIFY_TIMEOUT
-        ):
+        # timeout_sec is control-plane default — authors should omit it.
+        try:
+            from verification_safety import resolve_verification_timeout
+        except ImportError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from verification_safety import resolve_verification_timeout
+        timeout_sec = resolve_verification_timeout(
+            item.get("timeout_sec"), command=command
+        )
+        if timeout_sec > HARD_V2_VERIFY_TIMEOUT:
             raise ContractError(
                 f"verification[{index}].timeout_sec must be between 1 and "
                 f"{HARD_V2_VERIFY_TIMEOUT}"
@@ -3021,6 +3084,17 @@ def build_parser() -> argparse.ArgumentParser:
         choices=REASONING_EFFORTS,
         default=None,
         help="reasoning effort (default: per-provider; codex → max)",
+    )
+    start.add_argument(
+        "--service-tier",
+        choices=("standard", "fast"),
+        default=None,
+        help="codex only: ChatGPT credit speed tier (default: profile or standard)",
+    )
+    start.add_argument(
+        "--fast-mode",
+        action="store_true",
+        help="codex only: alias for --service-tier fast",
     )
     start.add_argument(
         "--idle",

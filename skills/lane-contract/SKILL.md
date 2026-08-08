@@ -46,7 +46,7 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 
 - [ ] Commands are path-scoped unit/typecheck for **this** task  
 - [ ] No bare monorepo `npm run build` / root `npm test` on multi-task runs (that is L2)  
-- [ ] Timeouts realistic (unit 60–300s; avoid 1800s full suites per task)  
+- [ ] **`timeout_sec` — omit.** Runtime defaults to 900s. Do not invent or bike-shed timeouts in plans  
 - [ ] **Every script path in `verification[].command` exists on disk under `verification[].cwd` before pre-dispatch**  
 - [ ] If `project_cwd` is a **worktree**: do **not** assume main-repo `.agents/runs/...` is visible — write/copy `check.py` into the worktree path **or** put tests under product `tests/` in owns; absolute paths to main are rejected  
 - [ ] Prefer product tests (`tests/test_*.py`) over `.agents/**/check.py` when possible  
@@ -78,7 +78,7 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 `schema_version`, `id`, `title`, `risk`, `lane`, `project_cwd`, `read_first`,
 `interfaces`, `invariants`, `out_of_scope`, `expected_outputs`, `owns_paths`,
 `never_touch`, `depends_on`, `objective`, `acceptance`, `verify`, structured
-`verification` (`command`, absolute `cwd`, `timeout_sec`).
+`verification` (`command`, absolute `cwd`; **`timeout_sec` optional** — default 900).
 
 No mutable `status` / free-form verify strings on new runs.
 

@@ -1,6 +1,6 @@
 ---
-name: codex-reviewer
-description: "DEPRECATED alias for `night-reviewer`. Use `night-reviewer` in new dispatches. Same tools and behavior."
+name: night-reviewer
+description: "Night/branch review gate (shell-out to Codex Sol). Read-only. Not the daytime adoc writer."
 model: sonnet
 background: true
 maxTurns: 25
@@ -10,15 +10,9 @@ skills:
   - review-craft
 ---
 
-# codex-reviewer → `night-reviewer` (compat alias)
-
-> **Deprecated name.** Prefer **`night-reviewer`**. This agent is identical for one release cycle.
-
-
 # night-reviewer (canonical conveyor role)
 
 > **Function name**, not the adoc daytime writer. Implementation shell-out may be Codex CLI.
-> Compatibility alias still installed: `codex-reviewer`.
 
 ## Model + effort (token-aware)
 

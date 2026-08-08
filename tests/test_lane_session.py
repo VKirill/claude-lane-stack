@@ -1009,19 +1009,88 @@ class LaneSessionTest(unittest.TestCase):
             "lane report envelope must appear exactly once",
         )
 
+        # Model-written PROMPT_SHA256 is ignored — control plane stamps identity.
         wrong_prompt = self._run(
             "grok",
             "wrong-prompt-report",
             extra_env={"FAKE_REPORT_PROMPT_SHA256": "0" * 64},
             check=False,
         )
-        self.assertEqual(wrong_prompt.returncode, 65, wrong_prompt.stderr)
+        self.assertEqual(wrong_prompt.returncode, 0, wrong_prompt.stderr)
         prompt_receipt = json.loads(
             (self.root / "runtime.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(
-            prompt_receipt["protocol_error"], "lane report prompt_sha256 mismatch"
+        self.assertTrue(prompt_receipt.get("protocol_valid"))
+        self.assertIsNone(prompt_receipt.get("protocol_error"))
+        # Stamped report uses the real prompt digest, not the model's fake line
+        report_path = (
+            self.run_dir / "artifacts" / "wrong-prompt-report" / "report.md"
         )
+        report_text = report_path.read_text(encoding="utf-8")
+        self.assertNotIn("PROMPT_SHA256: " + ("0" * 64), report_text)
+        self.assertIn(
+            f"PROMPT_SHA256: {prompt_receipt['prompt_sha256']}", report_text
+        )
+
+    def test_identity_fields_stamped_even_if_model_omits_or_typos_sha(self) -> None:
+        """PROMPT_SHA256 is control-plane stamped; STATUS is required from model."""
+        from importlib.machinery import SourceFileLoader
+        import importlib.util
+
+        path = str(Path(__file__).resolve().parents[1] / "bin" / "lane-session")
+        loader = SourceFileLoader("lane_session_stamp", path)
+        spec = importlib.util.spec_from_loader("lane_session_stamp", loader)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["lane_session_stamp"] = mod
+        loader.exec_module(mod)
+
+        expected = "a" * 64
+        # Typo in SHA
+        typo = (
+            f"{mod.REPORT_BEGIN}\n"
+            f"TASK_ID: 001\n"
+            f"PROMPT_SHA256: {expected}4\n"
+            f"STATUS: complete\n"
+            f"summary here\n"
+            f"{mod.REPORT_END}\n"
+        )
+        report = mod.extract_lane_report(
+            typo, task_id="001", prompt_sha256=expected, begin_count=1, end_count=1
+        )
+        self.assertEqual(
+            report.splitlines()[:3],
+            [f"TASK_ID: 001", f"PROMPT_SHA256: {expected}", "STATUS: complete"],
+        )
+        self.assertNotIn(expected + "4", report)
+
+        # Model omits PROMPT_SHA256 entirely
+        bare = (
+            f"{mod.REPORT_BEGIN}\n"
+            f"STATUS: complete\n"
+            f"done\n"
+            f"{mod.REPORT_END}\n"
+        )
+        report2 = mod.extract_lane_report(
+            bare, task_id="001", prompt_sha256=expected, begin_count=1, end_count=1
+        )
+        self.assertIn(f"PROMPT_SHA256: {expected}", report2)
+        self.assertIn("STATUS: complete", report2)
+
+        # Wrong TASK_ID still fails (real identity confusion)
+        with self.assertRaises(ValueError) as ctx:
+            mod.extract_lane_report(
+                (
+                    f"{mod.REPORT_BEGIN}\n"
+                    f"TASK_ID: other\n"
+                    f"STATUS: complete\n"
+                    f"{mod.REPORT_END}\n"
+                ),
+                task_id="001",
+                prompt_sha256=expected,
+                begin_count=1,
+                end_count=1,
+            )
+        self.assertIn("task_id mismatch", str(ctx.exception))
 
     def test_cancelled_provider_does_not_materialize_complete_report(self) -> None:
         result = self._run(

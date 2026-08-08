@@ -40,6 +40,15 @@ Without a project profile the orchestrator defaults to **kimi**. Always run `ado
 `run-validate` rejects mismatch; `run-controller` defaults provider/model/effort
 from the same profile when CLI flags are omitted.
 
+**Stages tab (conveyor):** customize `plan_critique` / `write` / `night_review` /
+`specialist` per agent. Pipeline strip shows PM › critique › write › L1 › night.
+
+```bash
+agents-doctor --apply --writer-provider kimi \
+  --plan-critique on --plan-critique-mode advisory \
+  --plan-critique-provider structural .
+```
+
 See `docs/ROUTING.md`.
 **Codex programmer (`main_write: codex`):** bare profile
 `profiles/codex/lane-writer.config.toml` — no host MCP, no plugins, no user

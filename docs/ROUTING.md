@@ -7,14 +7,42 @@
 | Role | Who | Default model |
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
+| Plan critique | **Structural** + optional one-shot LLM (Qwen/Codex/Kimi/Grok/AGY) → PM `decision` | `stages.plan_critique` in adoc |
 | Write (all risks) | **Kimi K3-256k** (default), Qwen 3.8, Grok 4.5, or AGY 3.6 | selected programmer lane |
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
+| Specialist (optional) | Codex Sol / other | `stages.specialist` when high_risk |
 | Fallback write | Codex | see claude-codex table |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
 | Onboard **deep** (default on full) | Codex **Sol** | `gpt-5.6-sol` + `high` |
 | Run visibility wrapper | Claude **Haiku** `run-supervisor` | typed start/watch/status only |
 | Diagnostic/reviewer wrappers | Claude **Sonnet** | shell-out only |
+
+## Pipeline stages (`adoc` → Stages tab)
+
+Configured under `stages:` in `.agents/routing.profile.yaml`:
+
+| Stage | Default | Purpose |
+|-------|---------|---------|
+| `plan_critique` | on · `advisory` · `structural` | Pre-dispatch PLAN/SPEC/task quality; when provider ≠ structural, **invokes** that model and writes PM `decision` |
+| `write` | mirrors `main_write` | Daytime implementer |
+| `night_review` | from night-shift | Codex review + fix budget |
+| `specialist` | off · `high_risk` | Optional read-only domain pass (auth/pay/schema) |
+
+```bash
+plan-critique --run-dir .agents/runs/<slug>
+# Read decision before dispatch:
+#   ship | revise | revise_required  (+ pm_action)
+# gate mode after fail:
+plan-critique --run-dir ... --ack --note "micro path, thin plan OK"
+# structural only (skip LLM):
+plan-critique --run-dir ... --structural-only
+```
+
+Artifacts: `artifacts/critique.json` (includes `decision`, `pm_action`, `llm_pass`),
+`critique.md`. PM **must** honor `revise_required` by editing contracts and
+re-running critique before `run-controller` / writers.
+`run-validate --phase pre-dispatch` auto-runs critique when the artifact is missing.
 
 ## GPT-5.6 Sol / Terra / Luna (Codex)
 
@@ -24,8 +52,29 @@
 | **Terra** `gpt-5.6-terra` | Default **scoped write**, medium features, onboard, docs refresh | Dropping effort to `low` on agent loops |
 | **Luna** `gpt-5.6-luna` | Trivia: changelog line, PR one-liner, triage | Multi-step agent write/review (falls apart) |
 
-**Effort:** agentic write → `high` or `xhigh`. Escalate Terra stall → Sol xhigh.
-All review uses Sol xhigh through the read-only `night-review` profile.
+**Effort** (`writer.reasoning_effort` / adoc Effort): `low` · `medium` · `high` · `xhigh` · `max`.
+Independent of model tier. Default for daytime codex writer: **max**.
+
+**Fast mode** (`writer.service_tier` / adoc **Fast mode**): Codex ChatGPT credit
+speed boost — **not** the same as Luna and **not** reasoning effort.
+
+| `service_tier` | Effect | Cost (GPT-5.6 ChatGPT credits) |
+|----------------|--------|--------------------------------|
+| `standard` (default for lanes) | normal latency | 1× |
+| `fast` | ~1.5× speed (`features.fast_mode`) | ~2.5× |
+
+```yaml
+writer:
+  provider: codex
+  model: gpt-5.6-luna
+  reasoning_effort: max
+  service_tier: fast   # or standard
+```
+
+CLI: `adoc --apply --writer-provider codex --service-tier fast` ·
+`run-controller start … --service-tier fast` · `lane-ctl start … --fast-mode`.
+Interactive Codex (`/fast on`) and host `~/.codex/config.toml` do **not** leak
+into lane writers (ephemeral bare profile).
 
 ## Code routing (full stack)
 
@@ -35,7 +84,7 @@ All review uses Sol xhigh through the read-only `night-review` profile.
 | `risk: medium` | selected writer → Codex night shift | same receipt chain + gpt-5.6-sol xhigh nightly |
 | `risk: high` auth/pay/schema | selected writer solo → Codex night shift | no silent daytime reviewer |
 | Selected model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |
-| Empty-diff / task/protocol failure | retry once, then block; manual **codex-implementer** only by operator | — |
+| Empty-diff / task/protocol failure | retry once, then block; manual **emergency-writer** only by operator | — |
 
 ## Review tiers
 
@@ -50,22 +99,21 @@ starting Codex. Normal review, repair, and fresh re-review run at night.
 
 ## Profile `claude-codex` (only Claude + Codex)
 
-| Stage | Claude wrapper | Codex model | Effort |
-|-------|----------------|-------------|--------|
-| fast_write | codex-implementer | **terra** | high |
-| main_write (medium) | codex-implementer | **terra** | xhigh |
-| main_write (high / high_risk_paths) | codex-implementer | **sol** | xhigh |
-| review (medium) | codex-reviewer | **sol** | xhigh |
-| review / ship | codex-reviewer | **sol** | xhigh |
-| onboard (fast) | codex-onboarder | **terra** | high |
-| onboard (deep / full default) | codex-onboarder | **sol** | high |
-| docs-maintain | codex-docs-maintainer | **terra** | high |
-| emergency_write | codex-implementer | **sol** | xhigh |
-| luna | — | optional trivia only | low/medium |
+Daytime write is still the **conveyor**: `run-supervisor` → process `codex exec`
+(lane-writer). Role agents below are for review / onboard / emergency only.
 
-PM remains **Claude Fable/Opus**. Wrappers stay **Sonnet**.
+| Stage | Claude role agent | Codex process model | Effort |
+|-------|-------------------|---------------------|--------|
+| fast_write / main_write | `run-supervisor` (provider=codex) | **luna** (daytime default) | **max** |
+| review / ship | `night-reviewer` | **sol** | high (xhigh escalate) |
+| onboard (fast) | `project-onboarder` | **terra** | high |
+| onboard (deep) | `project-onboarder` | **sol** | high |
+| docs-maintain | `docs-maintainer` | **terra** | high |
+| emergency_write | `emergency-writer` | **sol** | high (xhigh escalate) |
 
-See `profiles/claude-codex.yaml`.
+PM remains **Claude Fable/Opus**. Role wrappers stay **Sonnet/Haiku**.
+
+See `profiles/claude-codex.yaml`, `agents/claude/README.md`.
 
 ## Profile `claude-only` (no Codex)
 

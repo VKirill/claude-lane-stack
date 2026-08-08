@@ -164,8 +164,8 @@ owns_paths: # 🔒 这个工人唯一可以改动的文件
 verify:
   - npm test
   - npm run lint
-lane: grok-implementer # 谁来执行
-review: codex-reviewer # 谁来把关合并
+lane: kimi # 谁来执行
+review: night-reviewer  # role agent (Codex Sol night); not daytime writer
 ```
 
 - 🔒 `owns_paths` —— 并行的工人**不会撞车**：一旦某个工人越界，`check-owns-paths` 就让任务失败

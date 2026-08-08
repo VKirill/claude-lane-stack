@@ -5,7 +5,33 @@ from __future__ import annotations
 import re
 import shlex
 from pathlib import PurePosixPath
-from typing import Iterable
+from typing import Any, Iterable
+
+# L1 verification timeout is control-plane policy, not a PM/writer concern.
+# Authors omit timeout_sec; runtime fills DEFAULT. Explicit values still honored.
+DEFAULT_VERIFY_TIMEOUT_SEC = 900
+HARD_VERIFY_TIMEOUT_SEC = 7200
+
+
+def default_verification_timeout(command: str = "") -> int:
+    """Deterministic L1 timeout. LLM plans should not invent this field."""
+    del command  # reserved for future command-class heuristics
+    return DEFAULT_VERIFY_TIMEOUT_SEC
+
+
+def resolve_verification_timeout(raw: Any, *, command: str = "") -> int:
+    """Return a bounded timeout_sec; missing/invalid → default."""
+    if raw is None or raw is False or raw == "":
+        return default_verification_timeout(command)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default_verification_timeout(command)
+    if value < 1:
+        return default_verification_timeout(command)
+    if value > HARD_VERIFY_TIMEOUT_SEC:
+        return HARD_VERIFY_TIMEOUT_SEC
+    return value
 
 
 DEFAULT_EXECUTABLES = frozenset(
@@ -152,20 +178,46 @@ def verification_script_args(command: str) -> list[str]:
         if skip_next:
             skip_next = False
             continue
-        if token in {"-m", "-W", "-X", "-C", "--require", "-r"}:
+        # Flag + value pairs that are not script paths (npm workspaces, -m modules, …)
+        if token in {
+            "-m",
+            "-W",
+            "-X",
+            "-C",
+            "--require",
+            "-r",
+            "-w",
+            "--workspace",
+            "--prefix",
+            "--filter",
+        }:
             skip_next = True
             continue
         if token.startswith("-"):
+            continue
+        # npm/pnpm/yarn script names and package names are not files on disk
+        if tokens[0] in {"npm", "pnpm", "yarn"} and token in {
+            "run",
+            "test",
+            "exec",
+            "typecheck",
+            "lint",
+            "build",
+        }:
             continue
         normalized = token.replace("\\", "/")
         path = PurePosixPath(normalized)
         if path.is_absolute() or normalized.startswith("~") or ".." in path.parts:
             continue  # already rejected by verification_error when invalid
         looks_like_script = (
-            "/" in normalized
-            or normalized.startswith(".")
-            or normalized.endswith(_SCRIPT_SUFFIXES)
+            normalized.endswith(_SCRIPT_SUFFIXES)
+            or normalized.startswith("./")
+            or normalized.startswith("../")
+            or normalized.startswith(".agents/")
+            or "/artifacts/" in normalized
+            or normalized.endswith("/check.py")
         )
+        # Paths like apps/api after npm -w are workspaces, not checkers
         if looks_like_script:
             scripts.append(token)
     return scripts

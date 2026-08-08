@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-lane-stack.local/schemas/critique-v1.schema.json",
+  "title": "Plan critique artifact v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "engine",
+    "status",
+    "generated_at",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "engine": {"type": "string", "minLength": 1},
+    "status": {"enum": ["pass", "fail", "ack"]},
+    "decision": {
+      "type": "string",
+      "enum": ["ship", "revise", "revise_required"],
+      "description": "PM action: ship / optional revise / must revise before dispatch"
+    },
+    "pm_action": {
+      "type": "string",
+      "description": "Human-readable instruction for the orchestrator"
+    },
+    "generated_at": {"type": "string"},
+    "run_dir": {"type": "string"},
+    "score": {"type": "integer", "minimum": 0},
+    "task_count": {"type": "integer", "minimum": 0},
+    "summary": {
+      "type": "object",
+      "required": ["errors", "warnings"],
+      "properties": {
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "infos": {"type": "integer", "minimum": 0}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "code", "title", "detail"],
+        "properties": {
+          "severity": {"enum": ["error", "warn", "info"]},
+          "code": {"type": "string", "minLength": 1},
+          "title": {"type": "string", "minLength": 1},
+          "detail": {"type": "string", "minLength": 1},
+          "path": {"type": ["string", "null"]},
+          "task_id": {"type": ["string", "null"]},
+          "action": {"type": "string"},
+          "source": {"type": "string"}
+        }
+      }
+    },
+    "llm_pass": {
+      "type": "object",
+      "properties": {
+        "status": {"enum": ["ok", "skipped", "error"]},
+        "provider": {"type": "string"},
+        "model": {"type": "string"},
+        "verdict": {"type": ["string", "null"]},
+        "summary": {"type": "string"},
+        "error": {"type": "string"}
+      }
+    },
+    "acked_by": {"type": ["string", "null"]},
+    "ack_note": {"type": ["string", "null"]},
+    "acked_at": {"type": ["string", "null"]}
+  }
+}

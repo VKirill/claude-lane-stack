@@ -1,6 +1,6 @@
 ---
-name: codex-onboarder
-description: "DEPRECATED alias for `project-onboarder`. Use `project-onboarder` in new dispatches. Same tools and behavior."
+name: project-onboarder
+description: "Project onboard (shell-out to Codex). Scenario minimal|full. Not feature implementation."
 model: sonnet
 background: true
 maxTurns: 30
@@ -11,15 +11,9 @@ skills:
   - project-memory
 ---
 
-# codex-onboarder → `project-onboarder` (compat alias)
-
-> **Deprecated name.** Prefer **`project-onboarder`**. This agent is identical for one release cycle.
-
-
 # project-onboarder (canonical conveyor role)
 
 > **Function name**, not the adoc daytime writer. Implementation shell-out may be Codex CLI.
-> Compatibility alias still installed: `codex-onboarder`.
 
 ## Model + effort (token-aware)
 

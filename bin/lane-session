@@ -137,6 +137,33 @@ AGY_ALLOWED_TOOLS = frozenset(
 )
 REPORT_BEGIN = "<<<LANE_REPORT:BEGIN>>>"
 REPORT_END = "<<<LANE_REPORT:END>>>"
+
+
+def lane_report_boundary(
+    *,
+    task_id: str,
+    cwd: Path,
+    prompt_file: Path,
+    prompt_sha256: str,
+    leading_newline: bool = True,
+) -> str:
+    """Shared writer boundary. Identity fields are stamped by control plane."""
+    prefix = "\n\n" if leading_newline else ""
+    return (
+        f"{prefix}Lane runtime task boundary (non-negotiable): "
+        f"task_id={task_id}; workspace={cwd.resolve()}; "
+        f"prompt_file={prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
+        "Treat the raw task YAML as authoritative. Write only paths matched by "
+        "owns_paths, honor never_touch, do not spawn subagents, and do not commit, "
+        "merge, or push. The .agents control plane is read-only to you. "
+        f"Return the canonical report as the final response between {REPORT_BEGIN} "
+        f"and {REPORT_END}. The report **must** include a STATUS line that is exactly "
+        "one of: complete, partial, timeout, unavailable. "
+        f"You may include `TASK_ID: {task_id}` for readability. "
+        "**Do not invent PROMPT_SHA256** — the control plane stamps TASK_ID and "
+        "PROMPT_SHA256 deterministically after you finish (wrong digits will not "
+        "fail the lane)."
+    )
 PROVIDER_ENV_KEYS = frozenset(
     {
         "ALL_PROXY",
@@ -547,6 +574,24 @@ def provider_command(
             str(args.cwd),
             "--skip-git-repo-check",
         ]
+        # Codex Fast mode (ChatGPT credit speed tier) — independent of effort.
+        # Docs: service_tier="fast" + features.fast_mode=true (~1.5× speed, ~2.5× credits).
+        tier = str(getattr(args, "service_tier", None) or "standard").strip().lower()
+        if getattr(args, "fast_mode", False) or tier in {"1", "true", "yes", "on"}:
+            tier = "fast"
+        if tier == "fast":
+            command.extend(
+                [
+                    "-c",
+                    'service_tier="fast"',
+                    "--enable",
+                    "fast_mode",
+                ]
+            )
+        else:
+            # Explicit off so host defaults (interactive ~/.codex may use fast)
+            # cannot leak into the ephemeral lane-writer CODEX_HOME.
+            command.extend(["--disable", "fast_mode"])
         for feature in CODEX_DISABLE_FEATURES:
             command.extend(["--disable", feature])
         command.append("-")
@@ -567,18 +612,12 @@ def provider_command(
             "--sandbox",
             GROK_SANDBOX_PROFILE,
             "--rules",
-            (
-                "Lane runtime task boundary (non-negotiable): "
-                f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
-                f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
-                "Treat the prompt's raw task YAML as authoritative. Write only paths "
-                "matched by owns_paths, honor never_touch, do not spawn subagents, "
-                "and do not commit, merge, or push. The .agents control plane is "
-                "read-only to you. Return the canonical report in your final response "
-                f"between {REPORT_BEGIN} and {REPORT_END}; it must contain exact "
-                f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a "
-                "STATUS line whose value is exactly one of complete, partial, "
-                "timeout, or unavailable."
+            lane_report_boundary(
+                task_id=args.task_id,
+                cwd=args.cwd,
+                prompt_file=args.prompt_file,
+                prompt_sha256=prompt_sha256,
+                leading_newline=False,
             ),
             "--output-format",
             "streaming-json",
@@ -594,17 +633,11 @@ def provider_command(
         return command
     if args.provider == "qwen":
         prompt = args.prompt_file.read_text(encoding="utf-8")
-        boundary = (
-            "\n\nLane runtime task boundary (non-negotiable): "
-            f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
-            f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
-            "Treat the raw task YAML above as authoritative. Write only paths matched "
-            "by owns_paths, honor never_touch, do not spawn subagents, and do not "
-            "commit, merge, or push. The .agents control plane is read-only to you. "
-            "Return the canonical report as the final response between "
-            f"{REPORT_BEGIN} and {REPORT_END}; it must contain exact "
-            f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a STATUS "
-            "line whose value is exactly one of complete, partial, timeout, or unavailable."
+        boundary = lane_report_boundary(
+            task_id=args.task_id,
+            cwd=args.cwd,
+            prompt_file=args.prompt_file,
+            prompt_sha256=prompt_sha256,
         )
         command = [
             binary,
@@ -621,17 +654,11 @@ def provider_command(
         return command
     if args.provider == "kimi":
         prompt = args.prompt_file.read_text(encoding="utf-8")
-        boundary = (
-            "\n\nLane runtime task boundary (non-negotiable): "
-            f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
-            f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
-            "Treat the raw task YAML above as authoritative. Write only paths matched "
-            "by owns_paths, honor never_touch, do not spawn subagents, and do not "
-            "commit, merge, or push. The .agents control plane is read-only to you. "
-            "Return the canonical report as the final response between "
-            f"{REPORT_BEGIN} and {REPORT_END}; it must contain exact "
-            f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a STATUS "
-            "line whose value is exactly one of complete, partial, timeout, or unavailable."
+        boundary = lane_report_boundary(
+            task_id=args.task_id,
+            cwd=args.cwd,
+            prompt_file=args.prompt_file,
+            prompt_sha256=prompt_sha256,
         )
         # kimi-code rejects --yolo/--auto together with -p; prompt mode already
         # auto-approves tool calls without asking.
@@ -651,17 +678,11 @@ def provider_command(
         raise RuntimeError(f"unsupported provider {args.provider!r}")
     validate_agy_agent_definition()
     prompt = args.prompt_file.read_text(encoding="utf-8")
-    boundary = (
-        "\n\nLane runtime task boundary (non-negotiable): "
-        f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
-        f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
-        "Treat the raw task YAML above as authoritative. Write only paths matched "
-        "by owns_paths, honor never_touch, do not spawn subagents, and do not "
-        "commit, merge, or push. The .agents control plane is read-only to you. "
-        "Return the canonical report as the final response between "
-        f"{REPORT_BEGIN} and {REPORT_END}; it must contain exact "
-        f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a STATUS "
-        "line whose value is exactly one of complete, partial, timeout, or unavailable."
+    boundary = lane_report_boundary(
+        task_id=args.task_id,
+        cwd=args.cwd,
+        prompt_file=args.prompt_file,
+        prompt_sha256=prompt_sha256,
     )
     command = [
         binary,
@@ -693,17 +714,11 @@ def provider_input(
     if args.provider != "codex":
         return None
     prompt = args.prompt_file.read_text(encoding="utf-8")
-    boundary = (
-        "\n\nLane runtime task boundary (non-negotiable): "
-        f"task_id={args.task_id}; workspace={args.cwd.resolve()}; "
-        f"prompt_file={args.prompt_file.resolve()}; prompt_sha256={prompt_sha256}. "
-        "Treat the raw task YAML above as authoritative. Write only paths matched "
-        "by owns_paths, honor never_touch, do not spawn subagents, and do not "
-        "commit, merge, or push. The .agents control plane is read-only to you. "
-        "Return the canonical report as the final response between "
-        f"{REPORT_BEGIN} and {REPORT_END}; it must contain exact "
-        f"TASK_ID: {args.task_id}, PROMPT_SHA256: {prompt_sha256}, and a STATUS "
-        "line whose value is exactly one of complete, partial, timeout, or unavailable."
+    boundary = lane_report_boundary(
+        task_id=args.task_id,
+        cwd=args.cwd,
+        prompt_file=args.prompt_file,
+        prompt_sha256=prompt_sha256,
     )
     return (prompt + boundary + "\n").encode("utf-8")
 
@@ -984,6 +999,55 @@ def runtime_attempt(output: Path) -> int | None:
     return attempt if attempt >= 1 else None
 
 
+def stamp_lane_report_identity(
+    report: str, *, task_id: str, prompt_sha256: str
+) -> str:
+    """Control-plane identity stamp — TASK_ID + PROMPT_SHA256 are never trusted from the LLM.
+
+    The model only needs to provide STATUS (+ narrative body). Identity fields are
+    known at launch (task_id, hash of prompt.md) and written deterministically so
+    providers cannot fail the lane by mistyping a 64-char hex.
+    """
+    expected = prompt_sha256.lower().strip()
+    status: str | None = None
+    body: list[str] = []
+    for line in report.splitlines():
+        if re.match(r"^TASK_ID:\s*", line, re.I):
+            # Optional soft check: wrong task_id from model is a real identity error
+            m = re.match(r"^TASK_ID:\s*(\S+)\s*$", line, re.I)
+            if m and m.group(1) != task_id:
+                raise ValueError("lane report task_id mismatch")
+            continue
+        if re.match(r"^PROMPT_SHA256:\s*", line, re.I):
+            # Discard whatever the model wrote — control plane stamps truth
+            continue
+        sm = re.match(
+            r"^STATUS:\s*(complete|partial|timeout|unavailable)\s*$",
+            line,
+            re.I,
+        )
+        if sm:
+            if status is None:
+                status = sm.group(1).lower()
+            continue
+        body.append(line)
+    if status is None:
+        raise ValueError("lane report status is missing or invalid")
+    # Drop leading empty lines in body for stable digests
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and not body[-1].strip():
+        body.pop()
+    header = [
+        f"TASK_ID: {task_id}",
+        f"PROMPT_SHA256: {expected}",
+        f"STATUS: {status}",
+    ]
+    if body:
+        return "\n".join(header) + "\n\n" + "\n".join(body) + "\n"
+    return "\n".join(header) + "\n"
+
+
 def extract_lane_report(
     response: str,
     *,
@@ -1006,24 +1070,10 @@ def extract_lane_report(
     report = response[content_start:end].strip() + "\n"
     if "\x00" in report or len(report.encode("utf-8")) > MAX_REPORT_BYTES:
         raise ValueError("lane report is invalid or too large")
-    task_matches = re.findall(r"(?m)^TASK_ID:\s*(\S+)\s*$", report)
-    if not task_matches:
-        raise ValueError("lane report task_id is missing")
-    if len(task_matches) != 1 or task_matches[0] != task_id:
-        raise ValueError("lane report task_id mismatch")
-    prompt_matches = re.findall(
-        r"(?m)^PROMPT_SHA256:\s*([0-9a-f]{64})\s*$", report
+    # Stamp identity from control plane; model only supplies STATUS + body
+    return stamp_lane_report_identity(
+        report, task_id=task_id, prompt_sha256=prompt_sha256
     )
-    if not prompt_matches:
-        raise ValueError("lane report prompt_sha256 is missing")
-    if len(prompt_matches) != 1 or prompt_matches[0] != prompt_sha256:
-        raise ValueError("lane report prompt_sha256 mismatch")
-    status_matches = re.findall(
-        r"(?m)^STATUS:\s*(complete|partial|timeout|unavailable)\s*$", report
-    )
-    if len(status_matches) != 1:
-        raise ValueError("lane report status is missing or invalid")
-    return report
 
 
 def validate_report_path(path: Path, *, root: Path) -> None:
@@ -2980,6 +3030,17 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--binary", help="provider binary override (primarily for tests)")
     run.add_argument("--model", required=True)
     run.add_argument("--reasoning-effort", default="high")
+    run.add_argument(
+        "--service-tier",
+        choices=("standard", "fast"),
+        default="standard",
+        help="codex only: ChatGPT credit speed tier (fast ≈ 1.5× speed, 2.5× credits)",
+    )
+    run.add_argument(
+        "--fast-mode",
+        action="store_true",
+        help="codex only: alias for --service-tier fast",
+    )
     run.add_argument("--print-timeout", default="90m")
     run.add_argument(
         "--pool-size",

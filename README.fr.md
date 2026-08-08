@@ -164,8 +164,8 @@ owns_paths: # 🔒 les SEULS fichiers que ce worker peut toucher
 verify:
   - npm test
   - npm run lint
-lane: grok-implementer # qui exécute
-review: codex-reviewer # qui contrôle la fusion
+lane: kimi # qui exécute
+review: night-reviewer  # role agent (Codex Sol night); not daytime writer
 ```
 
 - 🔒 `owns_paths` — les workers en parallèle **ne peuvent pas se marcher dessus** : `check-owns-paths` fait échouer la tâche si un worker déborde

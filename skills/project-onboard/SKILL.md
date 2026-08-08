@@ -9,13 +9,13 @@ description: Primary project onboarding for Claude Lane Stack. Dual scenario (mi
 
 | Role | Agent |
 |------|--------|
-| **Default writer** | **Codex** via `codex-onboarder` |
+| **Default writer** | **Codex** via `project-onboarder` |
 | **minimal** | `gpt-5.6-terra` + medium |
 | **deep** (default on full) | `gpt-5.6-sol` + high |
 | PM / slash | `/project-onboard` or natural language |
 | Fallback | shell `project-onboard` only (seeds; no deep fill) |
 
-Do **not** use Grok. Do **not** have Fable hand-write the full CLAUDE — dispatch `codex-onboarder`.
+Do **not** use Grok. Do **not** have Fable hand-write the full CLAUDE — dispatch `project-onboarder`.
 
 ## Dual axes
 
@@ -51,7 +51,7 @@ and `.agents/runs/_onboard/artifacts/001/deep-scan.md` (tree, entrypoints, large
 1. Spawn:
 
 ```text
-Agent → codex-onboarder
+Agent → project-onboarder
 PROJECT_CWD: /abs/repo
 ARTIFACT_DIR: /abs/repo/.agents/runs/_onboard/artifacts/001
 ONBOARD_DEPTH: deep # omit to use auto from scenario.yaml

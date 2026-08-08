@@ -65,11 +65,16 @@
     "verificationCommand": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command", "cwd", "timeout_sec"],
+      "required": ["command", "cwd"],
       "properties": {
         "command": {"type": "string", "minLength": 1},
         "cwd": {"type": "string", "pattern": "^/"},
-        "timeout_sec": {"type": "integer", "minimum": 1, "maximum": 7200}
+        "timeout_sec": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7200,
+          "description": "Optional. Omit — control plane defaults to 900s. Not for LLM authoring."
+        }
       }
     }
   },

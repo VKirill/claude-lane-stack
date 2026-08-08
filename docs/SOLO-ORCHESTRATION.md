@@ -2,7 +2,7 @@
 
 You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 
-**Related:** [LANE-EXEC.md](LANE-EXEC.md) · [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md) · [LANGUAGE.md](LANGUAGE.md) · [ROUTING.md](ROUTING.md)
+**Related:** [LANE-EXEC.md](LANE-EXEC.md) · [ONBOARD-SCENARIOS.md](ONBOARD-SCENARIOS.md) · [LANGUAGE.md](LANGUAGE.md) · [ROUTING.md](ROUTING.md) · [PLATFORM-CAPABILITIES.md](PLATFORM-CAPABILITIES.md)
 
 ## Non-negotiables
 
@@ -50,8 +50,31 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 ### Roles (do not invent variants)
 
 PM (dev-orchestrator) → one run-supervisor → durable run-controller → process
-writers. Recovery: controller retry → typed Codex fallback → lane-supervisor
-one-shot → codex-implementer. No PM nohup/async ad-hoc monitors.
+writers (provider from adoc). Recovery: controller retry → typed Codex process
+fallback → lane-supervisor one-shot → **emergency-writer**. No PM nohup/async ad-hoc monitors.
+
+Claude agents are **roles** (`run-supervisor`, `lane-supervisor`,
+`emergency-writer`, `night-reviewer`, …), not brand names of the daytime writer.
+See `agents/claude/README.md`.
+
+### Claude Agent lifecycle (close cleanly)
+
+Claude Code background agents must finish as **done**, not park **idle**:
+
+- Every stack Agent ends with `DONE`/`FAILED` + evidence path, then stops the
+  Agent tool run (see agent `maxTurns` + completion sections).
+- Re-dispatch = new `Agent(...)`; do not `SendMessage`-resume a finished one-shot.
+- `TaskStop` only for stuck non-terminal Agents.
+- User interrupt stops remaining working/idle agents → the system line
+  «N background agents were stopped by the user».
+
+### `SendMessage` / `ListAgents` (optional stability)
+
+- **In-session:** `run-supervisor` progresses PM via `SendMessage`.
+- **Cross-machine (2.1.225+):** PM may start a short status message to a Remote
+  Control session by name (`ListAgents` shows `name [ref]`) on terminal block or
+  ship — never as a substitute for the file conveyor.
+- Writers remain durable processes (`lane-ctl` / `lane-session`), not Claude peers.
 
 Daytime: micro/medium ship fast with exact checks and **no daytime LLM review**.
 Night: `night-shift` performs typed Codex Sol

@@ -7,7 +7,7 @@ description: Keep ARCHITECTURE/README/PROGRESS (and full-scenario GOTCHAS/TESTIN
 
 ## Who
 
-**Codex** `gpt-5.6-terra` + `high` via `codex-docs-maintainer` or bin:
+**Codex** `gpt-5.6-terra` + `high` via `docs-maintainer` or bin:
 
 ```bash
 docs-maintain-project /path/to/repo "24 hours ago"

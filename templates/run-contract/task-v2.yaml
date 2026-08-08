@@ -26,6 +26,6 @@ verify: tests
 # typecheck). Do NOT put full monorepo/package suites here — that is L2 once
 # at pre-merge / CI for the whole run.
 verification:
+  # timeout_sec: omit — control plane defaults to 900s (do not invent in plans)
   - command: "REPLACE_ME focused test or typecheck for this task only"
     cwd: {{project_cwd_yaml}}
-    timeout_sec: 300

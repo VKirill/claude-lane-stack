@@ -43,7 +43,7 @@ Codex **must** read this when depth=deep.
 | Step | Who |
 |------|-----|
 | Detect + seed + deep-scan | `project-onboard` (bash) |
-| Fill from evidence | Codex `codex-onboarder` (sol for deep, terra for fast) |
+| Fill from evidence | Codex `project-onboarder` (sol for deep, terra for fast) |
 | Nightly honesty | `docs-maintain` (respects scenario; does not invent full-pack on minimal) |
 
 ## Models

@@ -15,7 +15,7 @@ idle-prone.
 - Partial block: one task blocked does not freeze runnable siblings; dependents
   of blocked upstream are cascaded blocked.
 - Recovery: typed ladder only (retry → Codex fallback → lane-supervisor →
-  codex-implementer). No PM nohup/async ad-hoc monitors.
+  emergency-writer). No PM nohup/async ad-hoc monitors.
 - Silence: receipts (`controller.json`, `events.jsonl`) over chat idle.
 
 ## Consequences

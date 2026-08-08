@@ -1,32 +1,34 @@
 # Claude + Codex only (no Grok). GPT-5.6 family only — no 5.5.
+# Agent names are **roles**. Daytime write still goes through run-supervisor +
+# durable codex process (lane-writer), not emergency-writer.
 pm: claude # Fable/Opus in dev-orchestrator frontmatter
 profile: claude-codex
 lanes:
   fast_write:
-    agent: codex-implementer
-    model: gpt-5.6-terra
-    reasoning: high
+    agent: run-supervisor   # process provider=codex
+    model: gpt-5.6-luna
+    reasoning: max
   main_write:
-    agent: codex-implementer
-    model: gpt-5.6-terra # override to gpt-5.6-sol + xhigh when risk:high
-    reasoning: xhigh
+    agent: run-supervisor   # process provider=codex
+    model: gpt-5.6-luna
+    reasoning: max
   review:
-    agent: codex-reviewer
+    agent: night-reviewer
     model: gpt-5.6-sol
-    reasoning: xhigh
+    reasoning: high
   onboard:
-    agent: codex-onboarder
+    agent: project-onboarder
     model: gpt-5.6-terra
     reasoning: high
   docs_maintain:
-    agent: codex-docs-maintainer
+    agent: docs-maintainer
     model: gpt-5.6-terra
     reasoning: high
   emergency_write:
-    agent: codex-implementer
+    agent: emergency-writer
     model: gpt-5.6-sol
-    reasoning: xhigh
-# luna: not used in default lanes (trivia only)
+    reasoning: high
 notes:
-  - "Escalate terra write → sol xhigh after 2 failed verify cycles"
-  - "Ship gate always sol xhigh"
+  - "Daytime coder = durable codex process via run-controller, not a Claude subagent brand"
+  - "Escalate emergency-writer effort to xhigh only after high fails"
+  - "Prefer role agent names; see agents/claude/README.md for deprecated aliases"

@@ -1,6 +1,6 @@
 ---
-name: codex-implementer
-description: "DEPRECATED alias for `emergency-writer`. Use `emergency-writer` in new dispatches. Same tools and behavior."
+name: emergency-writer
+description: "Emergency write lane after terminal block (shell-out to Codex Terra/Sol). Not the daytime adoc writer — that is run-supervisor + lane process."
 model: sonnet
 background: true
 maxTurns: 40
@@ -12,15 +12,9 @@ skills:
   - testing-craft
 ---
 
-# codex-implementer → `emergency-writer` (compat alias)
-
-> **Deprecated name.** Prefer **`emergency-writer`**. This agent is identical for one release cycle.
-
-
 # emergency-writer (canonical conveyor role)
 
 > **Function name**, not the adoc daytime writer. Implementation shell-out may be Codex CLI.
-> Compatibility alias still installed: `codex-implementer`.
 
 Shell-out only. Do not implement product code yourself.
 

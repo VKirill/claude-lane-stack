@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Plan critique stage — structural + optional one-shot LLM + PM decision.
+
+Usage:
+  plan-critique --run-dir .agents/runs/<slug>
+  plan-critique --run-dir ... --structural-only
+  plan-critique --run-dir ... --ack --note "accept thin plan for micro"
+  plan-critique --run-dir ... --json
+
+Reads stages.plan_critique from agents-doctor routing.profile.yaml.
+Writes artifacts/critique.json + critique.md with decision:
+  ship | revise | revise_required
+
+When provider ≠ structural, invokes that provider (qwen/codex/kimi/grok/agy)
+for a second pass and merges findings. Orchestrator MUST read decision and
+fix the plan when revise_required.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+BIN = Path(__file__).resolve().parent
+if str(BIN) not in sys.path:
+    sys.path.insert(0, str(BIN))
+
+from pipeline_stages import (  # noqa: E402
+    ack_critique,
+    resolve_plan_critique,
+    run_full_critique,
+    write_critique_artifacts,
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Plan critique for a lane run (pre-dispatch stage + PM decision)"
+    )
+    ap.add_argument(
+        "--run-dir",
+        required=True,
+        type=Path,
+        help="path to .agents/runs/<slug>",
+    )
+    ap.add_argument(
+        "--json",
+        action="store_true",
+        help="print critique.json to stdout",
+    )
+    ap.add_argument(
+        "--ack",
+        action="store_true",
+        help="acknowledge remaining findings (gate mode)",
+    )
+    ap.add_argument(
+        "--note",
+        default="",
+        help="required with --ack: why shipping despite findings",
+    )
+    ap.add_argument(
+        "--by",
+        default="pm",
+        help="acked_by field (default: pm)",
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="re-run even if critique.json exists",
+    )
+    ap.add_argument(
+        "--structural-only",
+        action="store_true",
+        help="skip LLM pass even when profile provider is set",
+    )
+    ap.add_argument(
+        "--timeout",
+        type=int,
+        default=180,
+        help="LLM pass timeout seconds (default 180)",
+    )
+    args = ap.parse_args(argv)
+
+    run_dir = args.run_dir.expanduser().resolve()
+    if not run_dir.is_dir():
+        print(f"plan-critique: run_dir not found: {run_dir}", file=sys.stderr)
+        return 2
+
+    settings = resolve_plan_critique(run_dir)
+    if not settings.get("enabled") and not args.ack and not args.force:
+        print(
+            "plan-critique: stages.plan_critique.enabled=false "
+            f"(profile={settings.get('profile_path') or 'default'}) — nothing to do"
+        )
+        return 0
+
+    if args.ack:
+        note = (args.note or "").strip()
+        if not note:
+            print(
+                "plan-critique: --ack requires --note 'reason'",
+                file=sys.stderr,
+            )
+            return 2
+        result = ack_critique(run_dir, note=note, by=args.by)
+        write_critique_artifacts(
+            run_dir,
+            result,
+            recommended_provider=str(settings.get("provider") or "structural"),
+            recommended_model=str(settings.get("model") or ""),
+        )
+    else:
+        # Always recompute: PLAN/SPEC/tasks may change between runs.
+        result = run_full_critique(
+            run_dir,
+            settings=settings,
+            structural_only=bool(args.structural_only),
+            timeout=max(30, int(args.timeout or 180)),
+            invoke_llm=not args.structural_only,
+        )
+        write_critique_artifacts(
+            run_dir,
+            result,
+            recommended_provider=str(settings.get("provider") or "structural"),
+            recommended_model=str(settings.get("model") or ""),
+        )
+
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        summary = result.get("summary") or {}
+        llm = result.get("llm_pass") or {}
+        print(
+            f"plan-critique: status={result.get('status')} "
+            f"decision={result.get('decision')} "
+            f"errors={summary.get('errors', 0)} "
+            f"warnings={summary.get('warnings', 0)} "
+            f"mode={settings.get('mode')} "
+            f"provider={settings.get('provider')} "
+            f"llm={llm.get('status', 'n/a')}"
+        )
+        print(f"  pm_action: {result.get('pm_action')}")
+        print(f"  wrote {run_dir / 'artifacts' / 'critique.json'}")
+        print(f"  wrote {run_dir / 'artifacts' / 'critique.md'}")
+        prompt = run_dir / "artifacts" / "critique-prompt.md"
+        if prompt.is_file():
+            print(f"  wrote {prompt}  (debug prompt; LLM pass incomplete)")
+        for f in (result.get("findings") or [])[:8]:
+            print(
+                f"  [{f.get('severity')}] {f.get('title')} "
+                f"({f.get('path') or f.get('task_id') or '—'})"
+            )
+        total = len(result.get("findings") or [])
+        if total > 8:
+            print(f"  … +{total - 8} more (see critique.md)")
+
+    status = str(result.get("status") or "")
+    decision = str(result.get("decision") or "")
+    mode = str(settings.get("mode") or "advisory")
+    if mode == "gate" and status == "fail":
+        return 1
+    if mode == "gate" and decision == "revise_required" and status != "ack":
+        return 1
+    # advisory: non-zero only when revise_required so automation can detect
+    if mode == "advisory" and decision == "revise_required":
+        return 3  # soft signal — not a hard crash for scripts using || true
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

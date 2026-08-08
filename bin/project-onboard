@@ -657,7 +657,7 @@ write_deep_scan() {
   local out="$REPO/.agents/runs/_onboard/artifacts/001/deep-scan.md"
   mkdir -p "$(dirname "$out")"
   {
-    echo "# Deep scan evidence (auto) — for codex-onboarder"
+    echo "# Deep scan evidence (auto) — for project-onboarder"
     echo ""
     echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "Scenario: \`$SCENARIO\` · Depth: \`$DEPTH\` · Score: $DETECTED_SCORE"

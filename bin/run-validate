@@ -19,7 +19,11 @@ try:
 except Exception:  # pragma: no cover - observability must never break the gate
     def record_gate_event(*args, **kwargs):  # type: ignore
         pass
-from verification_safety import verification_error, verification_script_args
+from verification_safety import (
+    resolve_verification_timeout,
+    verification_error,
+    verification_script_args,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -466,11 +470,18 @@ def validate_run(run_dir: Path, phase: str) -> int:
                     f"task {task_id}: verification[{index}].cwd escapes project_cwd"
                 )
                 continue
-            timeout = verification["timeout_sec"]
-            if not 1 <= timeout <= MAX_VERIFICATION_TIMEOUT:
-                errors.append(
-                    f"task {task_id}: verification[{index}].timeout_sec must be 1-{MAX_VERIFICATION_TIMEOUT}"
-                )
+            # timeout_sec optional — control plane defaults to 900 when omitted
+            if "timeout_sec" in verification and verification["timeout_sec"] is not None:
+                timeout = verification["timeout_sec"]
+                try:
+                    timeout_n = int(timeout)
+                except (TypeError, ValueError):
+                    timeout_n = -1
+                if not 1 <= timeout_n <= MAX_VERIFICATION_TIMEOUT:
+                    errors.append(
+                        f"task {task_id}: verification[{index}].timeout_sec must be "
+                        f"1-{MAX_VERIFICATION_TIMEOUT} or omitted (default 900)"
+                    )
             # Pre-dispatch: every path-like script arg must exist under cwd.
             # Prevents temples-admin style blocks: worktree cwd + main-only check.py.
             if phase == "pre-dispatch" and not safety_error:
@@ -508,7 +519,9 @@ def validate_run(run_dir: Path, phase: str) -> int:
         for task_id, task in task_entries:
             for index, verification in enumerate(task["verification"]):
                 command_text = str(verification.get("command") or "")
-                timeout = verification["timeout_sec"]
+                timeout = resolve_verification_timeout(
+                    verification.get("timeout_sec"), command=command_text
+                )
                 heavy = timeout > 900 or verification_is_heavy_full_package(
                     command_text
                 )
@@ -554,6 +567,109 @@ def validate_run(run_dir: Path, phase: str) -> int:
     errors.extend(dependency_errors(tasks))
     if phase == "pre-dispatch":
         errors.extend(spec_document_errors(run_dir, run, len(tasks)))
+        # Plan critique stage (agents-doctor stages.plan_critique).
+        try:
+            from pipeline_stages import (  # type: ignore
+                critique_gate_errors,
+                resolve_plan_critique,
+            )
+        except ImportError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from pipeline_stages import (  # type: ignore
+                critique_gate_errors,
+                resolve_plan_critique,
+            )
+        try:
+            critique_settings = resolve_plan_critique(project_cwd)
+        except Exception:  # pragma: no cover — never break validate on soft load
+            critique_settings = {"enabled": False}
+        # Auto-run plan critique when enabled and artifact missing so the PM
+        # cannot accidentally skip the stage (structural + optional LLM).
+        if (
+            critique_settings.get("enabled")
+            and not (run_dir / "artifacts" / "critique.json").is_file()
+        ):
+            try:
+                from pipeline_stages import (  # type: ignore
+                    run_full_critique,
+                    write_critique_artifacts,
+                )
+            except ImportError:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+                from pipeline_stages import (  # type: ignore
+                    run_full_critique,
+                    write_critique_artifacts,
+                )
+            try:
+                print(
+                    "run-validate: plan_critique enabled — running plan-critique "
+                    f"for {run_dir} …",
+                    file=sys.stderr,
+                )
+                crit = run_full_critique(
+                    run_dir,
+                    settings=critique_settings,
+                    timeout=int(
+                        __import__("os").environ.get("PLAN_CRITIQUE_TIMEOUT", "180")
+                    ),
+                )
+                write_critique_artifacts(
+                    run_dir,
+                    crit,
+                    recommended_provider=str(
+                        critique_settings.get("provider") or "structural"
+                    ),
+                    recommended_model=str(critique_settings.get("model") or ""),
+                )
+                print(
+                    "run-validate: plan_critique "
+                    f"decision={crit.get('decision')} status={crit.get('status')} "
+                    f"llm={(crit.get('llm_pass') or {}).get('status')}",
+                    file=sys.stderr,
+                )
+            except Exception as crit_exc:  # noqa: BLE001
+                print(
+                    f"run-validate: WARN plan_critique auto-run failed: {crit_exc}",
+                    file=sys.stderr,
+                )
+        gate_errs = critique_gate_errors(run_dir, critique_settings)
+        errors.extend(gate_errs)
+        # Surface decision for the orchestrator even on advisory soft path
+        try:
+            from pipeline_stages import load_critique  # type: ignore
+
+            crit_loaded = load_critique(run_dir)
+            if crit_loaded:
+                decision = crit_loaded.get("decision")
+                if decision and decision != "ship":
+                    print(
+                        f"run-validate: plan_critique decision={decision} — "
+                        f"{crit_loaded.get('pm_action')}",
+                        file=sys.stderr,
+                    )
+                if (
+                    str(critique_settings.get("mode") or "advisory") == "advisory"
+                    and decision == "revise_required"
+                ):
+                    print(
+                        "run-validate: WARN decision=revise_required under advisory "
+                        "mode — PM must fix plan or consciously override before "
+                        "dispatch",
+                        file=sys.stderr,
+                    )
+        except Exception:  # pragma: no cover
+            pass
+        if (
+            critique_settings.get("enabled")
+            and str(critique_settings.get("mode") or "advisory") == "advisory"
+            and not (run_dir / "artifacts" / "critique.json").is_file()
+        ):
+            print(
+                "run-validate: WARN plan_critique enabled (advisory) but "
+                "artifacts/critique.json still missing after auto-run — fix "
+                f"`plan-critique --run-dir {run_dir}` before dispatch",
+                file=sys.stderr,
+            )
     if phase == "pre-merge":
         errors.extend(
             validate_acceptances(

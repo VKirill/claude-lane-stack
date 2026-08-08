@@ -173,7 +173,7 @@ depends_on: []
 verification:
   - command: "npm -w apps/cabinet run test -- subscription-panel"
     cwd: "/absolute/path/to/repo-or-worktree"
-    timeout_sec: 600
+    # timeout_sec optional — omit; control plane defaults to 900
 ```
 
 The raw task bytes are hashed at first start. `lane-ctl` rejects retry, verify,

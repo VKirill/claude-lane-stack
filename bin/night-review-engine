@@ -714,6 +714,13 @@ def invoke_codex(
             "gpt-5.6-sol",
             "-c",
             "model_reasoning_effort=high",
+            "-c",
+            'approval_policy="never"',
+            # Keep nested multi-agent off — stack owns DAG fan-out (Codex 0.147 features).
+            "--disable",
+            "multi_agent",
+            "--disable",
+            "multi_agent_v2",
             "--sandbox",
             "read-only",
             "--skip-git-repo-check",

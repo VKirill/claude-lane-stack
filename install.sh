@@ -75,7 +75,9 @@ rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/schemas/" "$DEST/schemas/"
 find "$DEST/hooks" "$DEST/board" -type f -name '*.py[co]' -delete
 find "$DEST/hooks" "$DEST/board" -depth -type d -name __pycache__ -empty -delete
 python3 "$DEST/hooks/merge_claude_settings.py" \
-  "$CLAUDE/settings.json" "$DEST/hooks/guard_shell.py"
+  "$CLAUDE/settings.json" "$DEST/hooks/guard_shell.py" \
+  --statusline "$DEST/bin/lane-statusline" \
+  --session-mark "$DEST/hooks/lane_statusline_session.py"
 
 # skills
 for d in "$STACK_ROOT"/skills/*/; do

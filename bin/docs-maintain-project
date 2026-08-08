@@ -43,7 +43,7 @@ echo "Recent:"
 git log --since="$SINCE" --oneline -10 || true
 
 if [[ "$DRY" == "--dry-run" ]]; then
-  echo "DRY-RUN: would dispatch codex-docs-maintainer"
+  echo "DRY-RUN: would dispatch docs-maintainer"
   exit 0
 fi
 

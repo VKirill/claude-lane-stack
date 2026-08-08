@@ -1,6 +1,6 @@
 ---
 name: codex
-description: "OpenAI Codex CLI — OpenAI's official Rust-based agentic terminal coding tool (NOT the deprecated 2021 Codex completion model). Use when: openai codex, codex CLI, @openai/codex npm, codex exec, codex app-server, AGENTS.md, .codex/config.toml, sandbox_mode read-only/workspace-write/danger-full-access, approval_policy untrusted/on-request/on-failure/never, /permissions, /mcp, codex --full-auto, gpt-5-codex, codex profiles, ChatGPT subscription auth. SKIP: Claude Code CLI (→claude-code), OpenCode CLI (→opencode), OpenAI SDK programmatic (→openai-sdk), GitHub Copilot CLI (different tool), deprecated code-davinci-002 model (discontinued)."
+description: "OpenAI Codex CLI — OpenAI's official Rust-based agentic terminal coding tool (NOT the deprecated 2021 Codex completion model). Use when: openai codex, codex CLI, @openai/codex npm, codex exec, codex exec review, codex app-server, AGENTS.md, .codex/config.toml, sandbox_mode read-only/workspace-write/danger-full-access, approval_policy never, service_tier fast, gpt-5.6-luna/terra/sol, lane-writer profile. SKIP: Claude Code CLI (→claude-code), OpenCode CLI (→opencode), OpenAI SDK programmatic (→openai-sdk), GitHub Copilot CLI (different tool), deprecated code-davinci-002 model (discontinued)."
 stacks:
   - codex
   - cli-agents
@@ -24,13 +24,13 @@ risk: medium-stakes
 
 <!-- versions:start -->
 
-## 🎯 Version Requirements (June 2026)
+## 🎯 Version Requirements (August 2026)
 
 **Primary pins:**
-- OpenAI Codex CLI: `0.130.x (`@openai/codex`, Rust-based sandbox)`
-- Node.js: `24.x (Active LTS)`
+- OpenAI Codex CLI: **`0.146+` / `0.147+`** (`@openai/codex`, Rust-based sandbox)
+- Lane stack tested on host: **0.146.1** (stable), **0.147.0** (latest features)
 
-> Source of truth: [STACK_VERSIONS.md](../../STACK_VERSIONS.md) — verified 2026-06-11
+> Stack capability matrix: `docs/PLATFORM-CAPABILITIES.md` in claude-lane-stack.
 
 <!-- versions:end -->
 
@@ -81,7 +81,18 @@ Three install paths: `npm i -g @openai/codex` (wraps the platform binary), `brew
 ### CLI flags
 
 Interactive: `codex`. Headless: `codex exec "<prompt>"`. Key flags:
-`-m, --model`, `-s, --sandbox {read-only|workspace-write|danger-full-access}`, `-a, --ask-for-approval {untrusted|on-request|on-failure|never}`, `--full-auto` (= `-a on-request -s workspace-write`), `--dangerously-bypass-approvals-and-sandbox` (DFA mode), `-p, --profile <name>`, `-C, --cd <path>`, `-c, --config key=value` (one-off override), `--add-dir`, `-i, --image`, `--search`, `--json`. Subcommands: `login`, `logout`, `mcp add|list|remove`, `update`, `exec`, `app-server`.
+`-m, --model`, `-s, --sandbox {read-only|workspace-write|danger-full-access}`,
+`-a, --ask-for-approval {untrusted|on-request|on-failure|never}`,
+`--dangerously-bypass-approvals-and-sandbox` (DFA mode), `-p, --profile <name>`,
+`-C, --cd <path>`, `-c, --config key=value`, `--add-dir`, `-i, --image`,
+`--search`, `--json`, `--output-schema`, `--output-last-message`, `--ephemeral`.
+
+**Unattended write (lane stack):** `-c approval_policy="never" --sandbox workspace-write`
+(or profile). **Do not use** `codex exec --full-auto` — **removed in 0.147.0**.
+
+**Native review:** `codex review --base main` / `codex exec review --base <ref>`
+(`--commit`, `--uncommitted`). Subcommands: `login`, `logout`, `mcp`, `plugin`,
+`features`, `doctor`, `exec`, `review`, `app-server`, `update`.
 
 > Full reference: [references/cli-flags.md](references/cli-flags.md)
 
@@ -104,8 +115,12 @@ Four approval policies:
 - `on-failure`: prompt only on command-failure / sandboxed error retry
 - `never`: no prompts (CI mode)
 
-`--full-auto` = `-a on-request -s workspace-write` (the recommended productive default).
+**Productive unattended (CI / lane):** `approval_policy=never` +
+`sandbox_mode=workspace-write`. Interactive productive: `-a on-request -s workspace-write`.
 `/permissions` switches live in interactive mode.
+
+**Fast mode (ChatGPT credits):** `service_tier="fast"` + `features.fast_mode=true`
+(~1.5× speed, ~2.5× credits on GPT-5.6). Lane stack: adoc Fast mode → `lane-session`.
 
 > Full reference: [references/permissions.md](references/permissions.md)
 
@@ -157,12 +172,12 @@ env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
 ## Behavioral Traits
 
 - Starts in `read-only` + `untrusted` for unfamiliar repos; loosens once trust is established
-- Uses `--full-auto` for productive sessions in a trusted workspace
+- Unattended: `approval never` + `workspace-write` (never legacy `--full-auto`)
 - NEVER uses `--dangerously-bypass-approvals-and-sandbox` outside Docker/VM
-- Prefers profiles (`-p review`, `-p build`) over inline flags for repeated workflows
-- Picks `gpt-5.5` (1000 tok/s) for chat-like interactive UI, `gpt-5-codex` for serious agentic work
-- Adds `model_reasoning_effort = "high"` for hard refactors, `"low"` for quick edits
-- Wraps `codex exec` in shell scripts to replicate Claude Code hooks (Codex has no native hooks)
+- Prefers profiles (`-p lane-writer`, `-p night-review`) over inline flags for lanes
+- Lane models: **luna+max** daytime write, **terra** onboard/docs, **sol+high** review/recovery
+- Uses `codex exec review` for branch review when available
+- Wraps long `codex exec` in `lane-bg`/`lane-exec` (Claude Bash FG ~2m)
 - Disambiguates the modern Codex CLI from the deprecated 2021 model whenever a user says "Codex" ambiguously
 - Verifies which surface (CLI vs VS Code extension vs macOS app) the user is on — they share config but expose settings differently
 - Stores secrets as `${ENV_VAR}` interpolation in `config.toml`, never inline
@@ -245,20 +260,20 @@ env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
 | GitHub Actions: headless PR review with sandbox=read-only | [examples/github-actions-pr-review.md](examples/github-actions-pr-review.md) |
 
 <!-- changelog-watch:start -->
-### Свежее из чейнджлога (проверено: 2026-06-11)
-- rust-v0.139.0: Code mode умеет вызывать standalone web search напрямую, включая вложенные JavaScript tool calls, и получает plaintext-результаты.
-- rust-v0.139.0: схемы tool/connector input сохраняют `oneOf` и `allOf`, а большие схемы компактируются с большей shallow-структурой; можно надежнее использовать богатые MCP-инструменты.
-- rust-v0.139.0: `codex doctor` добавляет в локальный отчет editor/pager environment details, но в JSON-output raw values редактируются.
-- rust-v0.139.0: `codex plugin marketplace list --json` теперь включает marketplace source, а plugin lists могут отдать cached remote catalog до фонового refresh.
-- rust-v0.139.0: `codex resume --last "..."` и `codex fork --last "..."` трактуют хвостовой аргумент как initial prompt, а не как session ID.
-- rust-v0.139.0: `/new`, `/clear` и `/fork` больше не сбрасывают cloud-managed requirements и feature flags при TUI config reload.
-- rust-v0.139.0: sandbox execution стабильнее сохраняет approved escalation decisions и строже соблюдает configured proxy-only networking.
-- rust-v0.138.0: `/app` передает текущий CLI thread в Codex Desktop на macOS и native Windows; Windows workspace launch может сразу открываться в Desktop.
-- rust-v0.138.0: local image attachments и standalone image generations показывают model saved file paths; follow-up edits и file references стали надежнее.
-- rust-v0.138.0: reasoning effort selection поддерживает fallback shortcuts для терминалов без `Alt`, а model-defined effort levels идут в порядке, объявленном моделью.
-- rust-v0.138.0: app-server integrations могут читать account token usage; auth поддерживает v2 personal access tokens в CLI и app-server flows.
-- rust-v0.138.0: plugin automation получила structured output: add/remove и marketplace commands поддерживают `--json`; plugin detail показывает default prompts, remote MCP servers и unavailable app templates.
+### Свежее из чейнджлога (проверено: 2026-08-08)
+- **0.147.0:** portable Agent Plugins + catalogs; thread sections; `--approve-for-me`;
+  Cursor/Claude session import; MCP 2026-07-28; cached web search + Bedrock remote
+  compaction. **Removed `codex exec --full-auto`** → use `--sandbox workspace-write`
+  (+ `approval_policy=never` for unattended).
+- **0.147.0:** native `codex review` / `codex exec review` (`--base`, `--commit`,
+  `--uncommitted`) — use in `night-reviewer` MODE=branch.
+- **0.146.1:** safer auto-review defaults for cyber-capable models.
+- Host features of interest (interactive only, **not** bare lane-writer):
+  `fast_mode` (stable), `goals`, `plugins`, `multi_agent`, `browser_use`,
+  `app-server` / remote-control (experimental). Lane stack **disables** multi_agent
+  / plugins / browser / goals / memories on ephemeral lane-writer CODEX_HOME.
+- Models (ChatGPT): prefer **gpt-5.6-luna / terra / sol**; GPT-5.4 family sunsets
+  for ChatGPT auth 2026-08-31 (API key path still has 5.4).
 
-⚠️ Устарело в теле скилла:
-- В Version Requirements указан pin `0.130.x`, но свежий стабильный changelog уже описывает `rust-v0.139.0`; alpha-линейка `rust-v0.140.0-alpha.*` тоже опубликована.
+⚠️ Lane stack mapping: see `docs/PLATFORM-CAPABILITIES.md`.
 <!-- changelog-watch:end -->

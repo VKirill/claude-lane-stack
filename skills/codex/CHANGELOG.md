@@ -1,5 +1,14 @@
 # codex skill — CHANGELOG
 
+## [2.2.0] — 2026-08-08
+
+### Changed
+- Pins / docs for Codex **0.146–0.147**: removed legacy `--full-auto` guidance;
+  unattended = `approval_policy=never` + `sandbox workspace-write`.
+- Documented native `codex exec review --base|--commit|--uncommitted`.
+- Documented `service_tier` / `fast_mode` and lane-stack bare-writer isolation.
+- Changelog-watch block refreshed from GitHub releases 0.146.1 / 0.147.0.
+
 ## [2.1.0] — 2026-05-16
 
 ### Added

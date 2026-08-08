@@ -164,8 +164,8 @@ owns_paths: # 🔒 このワーカーが触れてよい唯一のファイル
 verify:
   - npm test
   - npm run lint
-lane: grok-implementer # 誰が実行するか
-review: codex-reviewer # 誰がマージを検問するか
+lane: kimi # 誰が実行するか
+review: night-reviewer  # role agent (Codex Sol night); not daytime writer
 ```
 
 - 🔒 `owns_paths` — 並列ワーカーは**衝突できません**：ワーカーが逸脱すると `check-owns-paths` がタスクを失敗させます

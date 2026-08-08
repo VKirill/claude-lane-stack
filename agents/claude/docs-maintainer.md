@@ -1,6 +1,6 @@
 ---
-name: codex-docs-maintainer
-description: "DEPRECATED alias for `docs-maintainer`. Use `docs-maintainer` in new dispatches. Same tools and behavior."
+name: docs-maintainer
+description: "Nightly/daily docs refresh (shell-out to Codex terra). No feature code."
 model: sonnet
 background: true
 maxTurns: 25
@@ -10,15 +10,9 @@ skills:
   - project-memory
 ---
 
-# codex-docs-maintainer → `docs-maintainer` (compat alias)
-
-> **Deprecated name.** Prefer **`docs-maintainer`**. This agent is identical for one release cycle.
-
-
 # docs-maintainer (canonical conveyor role)
 
 > **Function name**, not the adoc daytime writer. Implementation shell-out may be Codex CLI.
-> Compatibility alias still installed: `codex-docs-maintainer`.
 
 ## Model
 

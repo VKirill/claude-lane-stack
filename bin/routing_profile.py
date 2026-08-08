@@ -32,6 +32,26 @@ DEFAULT_EFFORTS = {
     "agy": "medium",
     "codex": "max",
 }
+# Codex ChatGPT credit speed tier (independent of reasoning effort).
+# fast ≈ 1.5× speed, ~2.5× credits on GPT-5.6. Only meaningful for provider=codex.
+SERVICE_TIERS = frozenset({"standard", "fast"})
+DEFAULT_SERVICE_TIER = "standard"
+
+
+def normalize_service_tier(value: Any, *, default: str = DEFAULT_SERVICE_TIER) -> str:
+    """Map truthy/legacy strings → standard|fast."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return "fast" if value else "standard"
+    raw = str(value).strip().lower()
+    if raw in SERVICE_TIERS:
+        return raw
+    if raw in {"1", "true", "yes", "on"}:
+        return "fast"
+    if raw in {"0", "false", "no", "off", "default", "normal"}:
+        return "standard"
+    return default
 
 
 def find_routing_profile(start: Path) -> Path | None:
@@ -50,14 +70,19 @@ def find_routing_profile(start: Path) -> Path | None:
 
 
 def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
-    """Minimal YAML subset parser for routing.profile.yaml (no full PyYAML dependency)."""
+    """Minimal YAML subset parser for routing.profile.yaml (no full PyYAML dependency).
+
+    Supports top-level maps and one nested map level under stages.* (stage blocks).
+    """
     result: dict[str, Any] = {
         "lanes": {},
         "writer": {},
         "workspace": {},
+        "stages": {},
         "notes": [],
     }
     section: str | None = None
+    stage_name: str | None = None
     for raw in text.splitlines():
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
@@ -66,9 +91,21 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
         if indent == 0 and line.endswith(":") and " " not in line.split(":", 1)[0]:
             key = line[:-1].strip()
             section = (
-                key if key in {"lanes", "writer", "workspace", "notes"} else None
+                key
+                if key in {"lanes", "writer", "workspace", "stages", "notes", "ui"}
+                else None
             )
+            stage_name = None
+            if section == "stages":
+                result["stages"] = result.get("stages") or {}
             continue
+        # Nested stage block under stages:
+        if section == "stages" and indent == 2 and line.endswith(":") and ":" == line[-1]:
+            maybe = line[:-1].strip()
+            if maybe and " " not in maybe:
+                stage_name = maybe
+                result["stages"].setdefault(stage_name, {})
+                continue
         if ":" not in line:
             continue
         key, _, value = line.partition(":")
@@ -84,6 +121,11 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
             result["writer"][key] = value
         elif section == "workspace" and indent >= 2:
             result["workspace"][key] = value
+        elif section == "ui" and indent >= 2:
+            result.setdefault("ui", {})
+            result["ui"][key] = value
+        elif section == "stages" and stage_name and indent >= 4:
+            result["stages"][stage_name][key] = value
         elif section is None and indent == 0:
             result[key] = value
     return result
@@ -93,11 +135,23 @@ def load_routing_profile(start: Path) -> dict[str, Any]:
     """Return parsed profile dict (may be empty if missing)."""
     path = find_routing_profile(start)
     if path is None:
-        return {"_path": None, "lanes": {}, "writer": {}, "workspace": {}}
+        return {
+            "_path": None,
+            "lanes": {},
+            "writer": {},
+            "workspace": {},
+            "stages": {},
+        }
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
-        return {"_path": str(path), "lanes": {}, "writer": {}, "workspace": {}}
+        return {
+            "_path": str(path),
+            "lanes": {},
+            "writer": {},
+            "workspace": {},
+            "stages": {},
+        }
     data = _parse_simple_yaml_map(text)
     data["_path"] = str(path)
     return data
@@ -109,11 +163,13 @@ def resolve_writer(
     provider: str | None = None,
     model: str | None = None,
     reasoning_effort: str | None = None,
+    service_tier: str | None = None,
     provider_explicit: bool = False,
 ) -> dict[str, Any]:
-    """Resolve provider/model/effort from CLI overrides + agents-doctor profile.
+    """Resolve provider/model/effort/service_tier from CLI + agents-doctor profile.
 
     When provider_explicit is False and provider is None/empty, use main_write.
+    ``service_tier`` is only applied for codex (standard|fast); others ignore it.
     """
     profile = load_routing_profile(start)
     lanes = profile.get("lanes") if isinstance(profile.get("lanes"), dict) else {}
@@ -139,10 +195,22 @@ def resolve_writer(
         or writer.get("effort")
         or DEFAULT_EFFORTS.get(resolved_provider, "medium")
     )
+    # Prefer explicit CLI; else writer.service_tier / writer.fast_mode
+    profile_tier = writer.get("service_tier")
+    if profile_tier is None and "fast_mode" in writer:
+        profile_tier = writer.get("fast_mode")
+    resolved_tier = normalize_service_tier(
+        service_tier if service_tier is not None else profile_tier,
+        default=DEFAULT_SERVICE_TIER,
+    )
+    if resolved_provider != "codex":
+        resolved_tier = DEFAULT_SERVICE_TIER
     return {
         "provider": resolved_provider,
         "model": resolved_model,
         "reasoning_effort": resolved_effort,
+        "service_tier": resolved_tier,
+        "fast_mode": resolved_tier == "fast",
         "main_write": main_write if main_write in KNOWN_WRITERS else None,
         "profile_path": profile.get("_path"),
         "profile": profile,

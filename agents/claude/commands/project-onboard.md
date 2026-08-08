@@ -2,7 +2,7 @@
 description: Onboard project — dual scenario + deep forensic by default on mature repos (Codex)
 ---
 
-Онбординг репозитория делает **codex-onboarder** (не Grok). Fable не пишет CLAUDE.md руками.
+Онбординг репозитория делает **project-onboarder** (не Grok). Fable не пишет CLAUDE.md руками.
 
 ## Args
 
@@ -18,7 +18,7 @@ Examples: `/project-onboard` · `/project-onboard deep` · `/project-onboard /pa
 
 1. `PROJECT_CWD` = path from args or cwd (absolute). 
 2. Parse depth/scenario from `$ARGUMENTS` → `ONBOARD_DEPTH`, `ONBOARD_SCENARIO` if present. 
-3. Spawn **Agent → codex-onboarder**:
+3. Spawn **Agent → project-onboarder**:
 
 ```text
 PROJECT_CWD: <abs>

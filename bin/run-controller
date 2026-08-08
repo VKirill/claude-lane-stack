@@ -1247,6 +1247,21 @@ def run_controller(args: argparse.Namespace) -> int:
                         writer_model,
                         "--reasoning-effort",
                         writer_effort,
+                        *(
+                            ["--service-tier", str(getattr(args, "service_tier", "standard") or "standard")]
+                            if args.provider == "codex"
+                            else []
+                        ),
+                        *(
+                            ["--fast-mode"]
+                            if args.provider == "codex"
+                            and (
+                                getattr(args, "fast_mode", False)
+                                or str(getattr(args, "service_tier", "") or "").lower()
+                                == "fast"
+                            )
+                            else []
+                        ),
                     ],
                     label=f"start {task['id']}",
                 )
@@ -1308,13 +1323,20 @@ def worker_argv(args: argparse.Namespace) -> list[str]:
         argv.extend(["--model", args.model])
     if getattr(args, "reasoning_effort", None):
         argv.extend(["--reasoning-effort", args.reasoning_effort])
+    if args.provider == "codex":
+        tier = str(getattr(args, "service_tier", None) or "standard")
+        if getattr(args, "fast_mode", False):
+            tier = "fast"
+        argv.extend(["--service-tier", tier])
+        if tier == "fast":
+            argv.append("--fast-mode")
     if args.project_cwd:
         argv.extend(["--project-cwd", str(Path(args.project_cwd).expanduser().resolve())])
     return argv
 
 
 def apply_routing_defaults(args: argparse.Namespace, project_cwd: Path) -> None:
-    """Fill provider/model/effort from agents-doctor profile when CLI omitted them."""
+    """Fill provider/model/effort/service_tier from agents-doctor profile when CLI omitted them."""
     try:
         from routing_profile import resolve_writer  # type: ignore
     except ImportError:
@@ -1322,11 +1344,16 @@ def apply_routing_defaults(args: argparse.Namespace, project_cwd: Path) -> None:
         from routing_profile import resolve_writer  # type: ignore
 
     provider_explicit = bool(getattr(args, "provider_explicit", False))
+    # Only pass service_tier override when CLI explicitly set it
+    cli_tier = getattr(args, "service_tier", None)
+    if getattr(args, "fast_mode", False) and not cli_tier:
+        cli_tier = "fast"
     resolved = resolve_writer(
         project_cwd,
         provider=getattr(args, "provider", None),
         model=getattr(args, "model", None),
         reasoning_effort=getattr(args, "reasoning_effort", None),
+        service_tier=cli_tier,
         provider_explicit=provider_explicit,
     )
     args.provider = resolved["provider"]
@@ -1334,6 +1361,8 @@ def apply_routing_defaults(args: argparse.Namespace, project_cwd: Path) -> None:
     args.reasoning_effort = resolved["reasoning_effort"] or PRIMARY_EFFORTS.get(
         args.provider, "medium"
     )
+    args.service_tier = resolved.get("service_tier") or "standard"
+    args.fast_mode = bool(resolved.get("fast_mode"))
 
 
 def start_controller(args: argparse.Namespace) -> int:
@@ -1581,6 +1610,17 @@ def parser() -> argparse.ArgumentParser:
         default=None,
         help="writer effort (default: profile or per-provider; codex → max)",
     )
+    run.add_argument(
+        "--service-tier",
+        choices=("standard", "fast"),
+        default=None,
+        help="codex only: ChatGPT credit speed tier (default: profile or standard)",
+    )
+    run.add_argument(
+        "--fast-mode",
+        action="store_true",
+        help="codex only: alias for --service-tier fast",
+    )
     start = sub.add_parser("start", help="durably start the controller through lane-bg")
     start.add_argument("--run-dir", required=True)
     start.add_argument("--project-cwd")
@@ -1603,6 +1643,17 @@ def parser() -> argparse.ArgumentParser:
         choices=REASONING_EFFORTS,
         default=None,
         help="writer effort (default: profile or per-provider; codex → max)",
+    )
+    start.add_argument(
+        "--service-tier",
+        choices=("standard", "fast"),
+        default=None,
+        help="codex only: ChatGPT credit speed tier (default: profile or standard)",
+    )
+    start.add_argument(
+        "--fast-mode",
+        action="store_true",
+        help="codex only: alias for --service-tier fast",
     )
     status = sub.add_parser("status", help="read the current controller receipt")
     status.add_argument("--run-dir", required=True)

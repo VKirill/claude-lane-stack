@@ -1,3 +1,165 @@
+## 1.14.11 — 2026-08-08
+
+### Fixed
+- **dev-orchestrator boot**: no fake `claude session rename` (does not exist).
+  Document launch `--name lane-pm-<folder>`; one compact `resume-project` only.
+
+## 1.14.10 — 2026-08-08
+
+### Fixed
+- **PreToolUse `guard_shell.py: not found`**: settings had a *relative*
+  `hooks/guard_shell.py` path. Claude runs hooks with project cwd, so boot
+  Bash (`pwd`, `resume-project`) failed the hook from `~/apps/...`.
+  `merge_claude_settings.merge_guard` now always stores an **absolute** path.
+
+## 1.14.9 — 2026-08-08
+
+### Changed
+- **Standardized Claude agents by conveyor role** (not model brand):
+  - `emergency-writer` (was `codex-implementer`)
+  - `night-reviewer` (was `codex-reviewer`)
+  - `project-onboarder` (was `codex-onboarder`)
+  - `docs-maintainer` (was `codex-docs-maintainer`)
+  - `lane-supervisor` remains canonical; `grok-implementer` is a **deprecated alias**
+  - Old `codex-*` names remain as thin compat aliases for one transition period
+- Daytime write never maps to `*-implementer`: always `run-supervisor` + process
+  from adoc (`qwen`/`grok`/`codex`/…). Documented in `agents/claude/README.md`,
+  ROUTING, SOLO, PLATFORM-CAPABILITIES, agents-doctor, profiles.
+
+## 1.14.8 — 2026-08-08
+
+### Added
+- **`docs/PLATFORM-CAPABILITIES.md`** — Claude Code 2.1.22x + Codex 0.146/0.147
+  feature matrix mapped to the lane conveyor (what we use / deliberately skip).
+- **Claude settings capability pack** (`merge_stack_capabilities`): env defaults
+  (agent teams flag, tool search, MCP timeouts), permission allow for
+  `SendMessage` / `ListAgents` / `TaskStop` / `Monitor` / `Artifact`; optional
+  `LANE_CROSS_SESSION_INBOUND` / `LANE_CROSS_SESSION_DIALOG_EXPIRY`.
+- **Native `codex exec review`** path in `codex-reviewer` (MODE=branch).
+- PM boot: session name `lane-pm*` for ListAgents / Remote Control addressing.
+
+### Fixed
+- **Codex ≥0.147 removed `codex exec --full-auto`.** Implementer / docs-maintainer
+  now use `approval_policy=never` + `--sandbox workspace-write`.
+- Night review forces `--disable multi_agent` / `multi_agent_v2` (stack owns DAG).
+
+### Changed
+- `skills/codex` pins + changelog-watch for 0.146.1 / 0.147.0 (review, plugins,
+  full-auto removal, fast_mode docs).
+
+## 1.14.7 — 2026-08-08
+
+### Fixed
+- **Claude Agent correct close** (Claude Code 2.1.22x): agents complete as
+  **done**, not parked **idle**. Idle + Esc produced «N background agents were
+  stopped by the user». Stack agents now have explicit completion sections,
+  `background: true`, and `maxTurns` caps.
+- **`run-supervisor` tool name:** `send_message` → **`SendMessage`** (official
+  tool; progress lines to PM).
+
+### Added
+- **`TaskStop` / `SendMessage` / `ListAgents`** on `dev-orchestrator` for stuck
+  cleanup and optional operator Remote Control alerts (`name [ref]`, CC 2.1.225).
+- Docs: agent lifecycle + where peer messaging fits (not the write conveyor) in
+  `orchestrator-lanes`, `SOLO-ORCHESTRATION`, agent prompts.
+
+## 1.14.6 — 2026-08-08
+
+### Changed
+- **Claude Agent idle noise:** `dev-orchestrator` + `orchestrator-lanes` prefer
+  one-shot teammates (`DONE|FAILED` + evidence path), deploy via Bash+log not
+  long-lived Agents; idle UI is not a liveness signal. `run-supervisor` ends with
+  a single `DONE … controller.json` line then stops (no parked idle wait).
+
+## 1.14.5 — 2026-08-08
+
+### Changed
+- **Lane report identity is control-plane stamped.** `TASK_ID` + `PROMPT_SHA256`
+  are written by `lane-session` from the launch context (hash of `prompt.md` +
+  task id). The model **must** provide only `STATUS` (+ body). Wrong/missing/
+  typo’d SHA from the LLM no longer fails the lane. Wrong `TASK_ID` still fails
+  (real confusion). Boundary prompt updated: “Do not invent PROMPT_SHA256”.
+
+## 1.14.4 — 2026-08-08
+
+### Fixed
+- **Codex lane report `PROMPT_SHA256` typos** (interim recovery before 1.14.5 stamp).
+- **`lane-ctl` trust** accepts embedded expected digest.
+
+### Changed
+- **No conveyor bypass** documented in `orchestrator-lanes` + `dev-orchestrator`:
+  while controller is live, PM must not hand-run L1, forge receipts, or use
+  `codex-implementer` except after terminal block — typed recovery only.
+
+## 1.14.3 — 2026-08-08
+
+### Changed
+- **`verification[].timeout_sec` is optional.** Control plane defaults to **900s**
+  (`verification_safety.resolve_verification_timeout`). PM/writers should **omit**
+  the field — stop inventing `timeout_sec: 900` in every task YAML. Schema,
+  `lane-ctl`, `run-validate`, templates, and `lane-contract` skill updated.
+
+## 1.14.2 — 2026-08-08
+
+### Added
+- **Codex Fast mode in adoc / lanes** (`writer.service_tier: standard|fast`).
+  Independent of model (luna/terra/sol) and reasoning effort. When `fast`,
+  `lane-session` passes `service_tier="fast"` + `--enable fast_mode` to
+  `codex exec` (~1.5× speed, ~2.5× ChatGPT credits on GPT-5.6). Default for
+  durable writers remains **standard** (host interactive `/fast` does not leak
+  into the ephemeral lane-writer profile).
+- adoc Coder tab: **Fast mode** toggle when provider is Codex; CLI
+  `--service-tier` / `--fast-mode` / `--no-fast-mode`; profile field
+  `writer.service_tier`.
+
+## 1.14.1 — 2026-08-08
+
+### Changed
+- **Plan critique actually runs the LLM** when `stages.plan_critique.provider` is
+  `qwen` / `codex` / `kimi` / `grok` / `agy` (not only a prompt file). Structural
+  + LLM findings merge into `artifacts/critique.json` with a PM **`decision`**:
+  `ship` | `revise` | `revise_required` and `pm_action` text.
+- **Orchestrator must honor decision:** skill + `dev-orchestrator` require reading
+  critique after `plan-critique` / pre-dispatch; `revise_required` blocks writer
+  dispatch until contracts are fixed and critique re-run (or gate `--ack`).
+- **`run-validate --phase pre-dispatch` auto-runs** `plan-critique` when the
+  artifact is missing and the stage is enabled.
+- New module: `bin/plan_critique_llm.py` (safe-mode one-shots, JSON parse).
+
+## 1.14.0 — 2026-08-07
+
+### Added
+- **Plan critique stage** (`plan-critique` CLI + `stages.plan_critique` in routing profile): structural pre-dispatch review of PLAN/SPEC/tasks; writes `artifacts/critique.json` + `critique.md`; optional cheap-model prompt when provider ≠ `structural`. Modes: `advisory` (warn) | `gate` (block `run-validate --phase pre-dispatch` until pass/ack).
+- **Pipeline stages** in `.agents/routing.profile.yaml`: `plan_critique`, `write`, `night_review`, `specialist` — each with its own provider/model/effort. Configure in **adoc TUI → Stages** or CLI `--plan-critique*`.
+- **adoc TUI conveyor:** new **Stages** tab, live pipeline strip (PM › crit › write › L1 › night), modern stage cards, per-agent customization, EN/RU strings. Tabs renumbered 1–7 (Apply = 7).
+
+### Changed
+- `run-validate` pre-dispatch honors plan_critique gate; advisory missing critique is a WARN.
+- `agents-doctor --apply` writes `stages:` block; night-shift written before routing so stages stay consistent.
+
+## 1.13.6 — 2026-08-03
+
+### Changed
+- **statusLine dual-mode:** normal Claude Code sessions → **stock claude-pulse** (full user config). **dev-orchestrator** / frontend-orchestrator / run-supervisor / lane-supervisor → native lane HUD (bars + peak + HANDOFF). Router: `LANE_STATUSLINE_ENGINE=auto|lane|pulse`.
+
+## 1.13.5 — 2026-08-03
+
+### Fixed
+- **Peak / off-peak burn indicator restored** on native statusLine (`⚡Peak 2h` / `⚡in 45m` / `Off`) — was dropped when claude-pulse was replaced. Weekdays 13:00–19:00 local (Anthropic policy); weekends Off. Toggle: `LANE_STATUSLINE_PEAK=0`.
+
+## 1.13.4 — 2026-08-03
+
+### Added
+- **Native statusLine bars (no claude-pulse).** `lane-statusline` + `lane_statusline_lib.py` render S/W/C + cost from Claude Code stdin (`rate_limits`, context, cost) and append the HANDOFF chip. Users without claude-pulse get working bars after `./install.sh` (wires `~/.claude/settings.json` statusLine). Last-known usage cache: `~/.agents/statusline/`. Modes: `LANE_STATUSLINE_MODE=compact|bars|chip|full`.
+
+### Changed
+- `install.sh` / `merge_claude_settings.py` now set `statusLine` → `~/.agents/bin/lane-statusline` (stack-owned HUD).
+
+## 1.13.3 — 2026-08-03
+
+### Changed
+- **`lane-statusline` 2-in-1 (default compact):** short claude-pulse wrapper **plus** HANDOFF chip (superseded by native bars in 1.13.4).
+
 ## 1.13.2 — 2026-08-03
 
 ### Added

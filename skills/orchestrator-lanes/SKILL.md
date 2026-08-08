@@ -8,6 +8,7 @@ description: Solo file-based multi-lane orchestration. Durable switchable Kimi/Q
 Load: **karpathy-guidelines**, **lane-contract**, **project-memory**, **resume-project**.
 
 Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md`,
+`PLATFORM-CAPABILITIES.md` (Claude Code + Codex features we use),
 `docs/decisions/ADR-codex-effort.md` under the lane-stack / `~/.agents/docs/`.
 
 You are the **only** person who merges to `main`. Human never merges.
@@ -87,9 +88,37 @@ Bad multi-task runs almost always start here. Apply **before** `run-init` / befo
 ```bash
 run-init "$(pwd)" <slug> --score <score>
 # Fill PLAN.md, SPEC.md (required content when score≥7 or ≥2 tasks), tasks/*.yaml
+plan-critique --run-dir "$(pwd)/.agents/runs/<slug>"   # stages.plan_critique (adoc)
+# MUST read artifacts/critique.json → decision + pm_action (see below)
 run-validate --run-dir "$(pwd)/.agents/runs/<slug>" --phase pre-dispatch
 run-board "$(pwd)"
 ```
+
+**Plan critique** (configure in `adoc` → **Stages**):
+
+1. **Structural** checks always run when `enabled`.
+2. When `provider` is `qwen` / `codex` / `kimi` / `grok` / `agy` (not `structural`),
+   `plan-critique` **invokes that model** one-shot and merges findings.
+3. Writes `artifacts/critique.json` + `critique.md` with a PM **`decision`**:
+
+| `decision` | PM must |
+|------------|---------|
+| `ship` | Proceed to pre-dispatch → controller |
+| `revise` | Prefer fix PLAN/SPEC/tasks, re-run `plan-critique`; residual risk only with explicit reason (advisory) or `--ack --note` (gate) |
+| `revise_required` | **Stop.** Edit contracts under `.agents/runs/<slug>/`, re-run `plan-critique` until `ship` (or gate-ack). **Do not** start writers |
+
+**MUST after every `plan-critique` / pre-dispatch validate:**
+
+```bash
+# Read decision (do not skip)
+python3 -c "import json; d=json.load(open('.agents/runs/<slug>/artifacts/critique.json')); print(d['decision'], d.get('pm_action','')); print(d.get('summary')); [print(f['severity'], f['title'], f.get('detail','')[:120]) for f in d.get('findings') or []]"
+```
+
+- If `decision=revise_required`: apply findings (fix_plan / fix_spec / fix_task / split_task), re-run `plan-critique`, re-read decision. Loop ≤3 times then escalate to human with critique.md.
+- If `decision=revise`: fix cheap wins, re-critique, or state residual risk in chat before dispatch.
+- If `decision=ship`: continue.
+- `run-validate --phase pre-dispatch` **auto-runs** plan-critique when the artifact is missing.
+- `mode: advisory` warns; `mode: gate` blocks until `status: pass|ack` and not `revise_required`.
 
 ### PLAN.md
 
@@ -146,10 +175,13 @@ task blocked → siblings continue; dependents of blocked upstream cascade-block
 
 | Lane | Who |
 |------|-----|
-| kimi / qwen / agy / grok | process writer via controller |
-| codex fallback | one Sol **high** after two eligible writer failures |
-| codex-implementer | manual emergency after terminal block |
-| codex-reviewer | nightly (sol **high**; xhigh only escalate) |
+| kimi / qwen / agy / grok / codex | process writer via controller (`adoc` `main_write`) |
+| codex Sol fallback | one Sol **high** after two eligible writer availability failures |
+| `emergency-writer` | manual emergency after terminal block |
+| `night-reviewer` | nightly (sol **high**; xhigh only escalate) |
+
+**Claude agent names are roles, not brands.** Daytime coder = process from adoc.
+Roster: `agents/claude/README.md`.
 
 ---
 
@@ -237,14 +269,66 @@ After ~6 tasks or heavy transcripts: handoff to PROGRESS; fresh orchestrator ses
 
 ## Recovery ladder (typed only)
 
-1. Same-provider retry (controller)  
+1. Same-provider retry (controller / `lane-ctl retry` via **lane-supervisor**)  
 2. Codex Sol **high** fallback if `fallback_eligible`  
-3. `lane-supervisor` one-shot  
-4. `codex-implementer` after terminal block (effort by ADR-codex-effort)  
+3. `lane-supervisor` one-shot (status / retry / accept / verify — **one** typed action)  
+4. `emergency-writer` after **terminal** block only (ADR-codex-effort)  
 5. Replacement task if YAML wrong after start  
 6. Human only for business / irreversible  
 
 Silence protocol: idle ≠ done — read `controller.json` / `events.jsonl`; re-dispatch one `run-supervisor` if `running`/`degraded`.
+
+### Claude Agent close (done ≠ idle) — Claude Code 2.1.22x
+
+| State | Meaning |
+|-------|---------|
+| **done** | Agent tool finished — correct close |
+| **idle** | Parked for resume — UI noise; Esc bulk-stops these as «N background agents were stopped» |
+| **working** | Still running |
+
+Do not build idle-kill daemons. Agents must **complete**:
+
+1. **One-shot** — one job → last line `DONE <evidence>` or `FAILED <reason>` → **end
+   the Agent run**. No “wait for more instructions”.
+2. **Next action** = new `Agent(...)` spawn, never `SendMessage` resume of a
+   finished one-shot (resume re-opens idle/working).
+3. **Deploy / long jobs** — Bash + log (or `lane-bg`), not a long-lived teammate.
+4. **Disk is truth** — `acceptance.json` / controller stage; ignore idle chips.
+5. **`TaskStop`** — only stuck non-terminal Agents (disk already terminal or hung);
+   not the happy path.
+6. **Lane work** — only `run-supervisor` / `lane-supervisor`.
+
+### `SendMessage` / `ListAgents` (stability, not conveyor)
+
+Claude Code ≥ **2.1.224** (Remote Control **start-by-name** in **2.1.225**).
+
+| Where | What |
+|-------|------|
+| `run-supervisor` → PM | Mid-run stage lines via **`SendMessage`** (tool name exact) |
+| PM → operator Remote Control (optional) | On terminal `blocked`/`failed` or ship: `ListAgents` → `SendMessage` to `name [ref]` |
+| Not for | Writer start/accept/verify, replacing `controller.json`, secrets in peer text |
+
+Control plane stays file-based. Peer messages are short status + paths only.
+
+### Forbidden bypasses (control-plane integrity)
+
+While a run has `controller.json` stage in `running` / `degraded` / `dispatching`
+**or** a live `run-controller` process:
+
+| Forbidden for PM | Do instead |
+|------------------|------------|
+| Run task `verification[]` yourself in Bash and call it accept | Let controller L1 run; or `lane-supervisor` typed `verify`/`accept` |
+| Hand-write `acceptance.json` / `report.md` / forge receipts | `lane-ctl accept` only after owns+verify evidence |
+| `emergency-writer` to “just finish” a still-runnable lane | Only after terminal `blocked`/`failed` with no retry left |
+| Parallel Claude coder subagents for the same task | One durable writer via controller |
+| Restart controller mid-flight without reading `runtime.json` | Diagnose protocol/owns first; fix stack or retry typed |
+
+**Done** for a task = `artifacts/<id>/acceptance.json` from the control plane — not
+“tests green in chat”. Product may be correct and still not shipped until accept.
+
+Protocol failures (`protocol_error` in `runtime.json`, e.g. report envelope): treat
+as **provider protocol**, not “rewrite product”. Prefer retry after stack fix;
+do not re-implement the feature as Claude.
 
 ---
 
@@ -260,3 +344,5 @@ Silence protocol: idle ≠ done — read `controller.json` / `events.jsonl`; re-
 8. Progressive accept; partial block; L0/L1/L2.  
 9. **Decompose** before dispatch; **SPEC** real when score≥7 or ≥2 tasks.  
 10. Never Claude-subagent-per-writer; never PM nohup; never cache-in-owns.  
+11. **Never bypass the controller** for L1 verify/accept while the run is live — see Recovery.  
+
