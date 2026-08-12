@@ -8,9 +8,18 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_HERE = Path(__file__).resolve().parent
+for _cand in (_HERE.parent / "hooks", Path.home() / ".agents" / "hooks"):
+    if (_cand / "living_memory.py").is_file():
+        if str(_cand) not in sys.path:
+            sys.path.insert(0, str(_cand))
+        break
+from living_memory import progress_path  # noqa: E402
 
 HANDOFF_SCHEMA = 1
 CONTRACT_NO_RETRY_CLASSES = frozenset(
@@ -109,7 +118,7 @@ def _parse_profile(repo: Path) -> dict[str, Any]:
 
 
 def _progress_now(repo: Path) -> str:
-    path = repo / "PROGRESS.md"
+    path = progress_path(repo)
     if not path.is_file():
         return ""
     try:

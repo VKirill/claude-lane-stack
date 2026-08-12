@@ -51,6 +51,12 @@ PROFILES = {
         "review": "claude-reviewer",
         "emergency_write": "grok",
     },
+    "claude-cursor": {
+        "fast_write": "cursor",
+        "main_write": "cursor",
+        "review": "claude-reviewer",
+        "emergency_write": "cursor",
+    },
     "claude-grok-codex": {
         "fast_write": "grok",
         "main_write": "grok",
@@ -74,6 +80,7 @@ AGENT_MAP = {
     "kimi": "run-supervisor",
     # Durable daytime writer when main_write=codex (luna+max via lane-ctl).
     "codex": "run-supervisor",
+    "cursor": "run-supervisor",
     "claude-worker": "general-purpose",
     "claude-reviewer": "night-reviewer",
 }
@@ -315,6 +322,24 @@ def detect() -> dict:
         "version": run_version(["codex", "--version"]) if p else None,
         "required": False,
     }
+    # Prefer real binary; wrapper `agent` may open an interactive project picker.
+    p = which("cursor-agent") or which("agent")
+    tools["cursor"] = {
+        "present": bool(p and bwrap_ready and resolver_ready),
+        "binary_present": bool(p),
+        "path": p,
+        "version": run_version([p, "--version"]) if p else None,
+        "required": False,
+        "unavailable_reason": (
+            "bubblewrap missing"
+            if p and not bwrap
+            else "bubblewrap probe failed"
+            if p and not bwrap_ready
+            else "bubblewrap resolver unavailable"
+            if p and not resolver_ready
+            else None
+        ),
+    }
     return tools
 
 
@@ -324,11 +349,11 @@ def pick_profile(
     notes: list[str] = []
     has = {
         k: tools[k]["present"]
-        for k in ("claude", "agy", "grok", "codex", "qwen", "kimi")
+        for k in ("claude", "agy", "grok", "codex", "qwen", "kimi", "cursor")
     }
     writer = (
         writer_provider
-        if writer_provider != "auto" and has[writer_provider]
+        if writer_provider != "auto" and has.get(writer_provider)
         else "kimi"
         if has["kimi"]
         else "qwen"
@@ -337,9 +362,11 @@ def pick_profile(
         if has["grok"]
         else "agy"
         if has["agy"]
+        else "cursor"
+        if has["cursor"]
         else None
     )
-    if writer_provider != "auto" and not has[writer_provider]:
+    if writer_provider != "auto" and not has.get(writer_provider):
         notes.append(f"Requested writer {writer_provider} unavailable; using {writer or 'fallback'}")
     if tools["agy"].get("binary_present") and not has["agy"]:
         reason = tools["agy"].get("unavailable_reason") or "unavailable"
@@ -360,6 +387,12 @@ def pick_profile(
         reason = tools["kimi"].get("unavailable_reason") or "bubblewrap unavailable"
         notes.append(
             "Kimi disabled — bubblewrap is required for safe writer lanes "
+            f"({reason})"
+        )
+    if tools["cursor"].get("binary_present") and not has["cursor"]:
+        reason = tools["cursor"].get("unavailable_reason") or "bubblewrap unavailable"
+        notes.append(
+            "Cursor disabled — bubblewrap is required for safe writer lanes "
             f"({reason})"
         )
     if not has["claude"]:
@@ -387,11 +420,11 @@ def pick_profile(
     return name, lanes, notes
 
 
-WRITER_CHOICES = ("auto", "kimi", "qwen", "agy", "grok", "codex")
+WRITER_CHOICES = ("auto", "kimi", "qwen", "agy", "grok", "codex", "cursor")
 # Interactive setup default preference (first available wins).
 # Differs from --apply --writer-provider auto (Kimi first) — setup asks you.
 # codex = gpt-5.6-luna + reasoning effort max (see lane-ctl PRIMARY_*).
-SETUP_WRITER_PREF = ("qwen", "kimi", "grok", "agy", "codex")
+SETUP_WRITER_PREF = ("qwen", "kimi", "grok", "agy", "codex", "cursor")
 
 
 def available_writers(tools: dict) -> list[str]:
@@ -416,6 +449,7 @@ def write_outputs(
     workspace_mode: str | None = None,
     worktree_min_score: int = 4,
     worktree_on_multi_write: bool = True,
+    session_max_tasks: int = 10,
     ui_language: str | None = None,
     stages: dict | None = None,
     quiet: bool = False,
@@ -430,6 +464,7 @@ def write_outputs(
         "grok": "grok-4.5",
         "agy": "gemini-3.6-flash-high",
         "codex": "gpt-5.6-luna",
+        "cursor": "composer-2.5",
     }
     default_efforts = {
         "qwen": "medium",
@@ -437,6 +472,7 @@ def write_outputs(
         "grok": "medium",
         "agy": "medium",
         "codex": "max",
+        "cursor": "medium",
     }
     if main_write in default_models:
         if not writer_model:
@@ -447,6 +483,7 @@ def write_outputs(
     if ws_mode not in {"in_place", "worktree", "auto"}:
         ws_mode = "auto"
     ws_min = max(0, min(10, int(worktree_min_score)))
+    session_max = max(1, min(10, int(session_max_tasks)))
     caps = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tools": tools,
@@ -467,7 +504,7 @@ def write_outputs(
                         else "standard"
                     )
                 }
-                if main_write == "codex"
+                if main_write in {"codex", "cursor"}
                 else {}
             ),
         },
@@ -475,6 +512,7 @@ def write_outputs(
             "mode": ws_mode,
             "worktree_min_score": ws_min,
             "worktree_on_multi_write": bool(worktree_on_multi_write),
+            "session_max_tasks": session_max,
         },
         "ui": {
             "language": (ui_language or "en").strip().lower()
@@ -510,16 +548,19 @@ def write_outputs(
             lines.append(f"  model: {writer_model}")
         if writer_effort:
             lines.append(f"  reasoning_effort: {writer_effort}")
-        if main_write == "codex":
+        if main_write in {"codex", "cursor"}:
             tier_raw = str(writer_service_tier or "standard").strip().lower()
             tier = (
                 "fast"
                 if tier_raw in {"fast", "1", "true", "yes", "on"}
                 else "standard"
             )
-            lines.append(
-                f"  service_tier: {tier}  # standard | fast (Codex ChatGPT credit speed)"
+            hint = (
+                "Codex ChatGPT credit speed"
+                if main_write == "codex"
+                else "Cursor -fast model sibling"
             )
+            lines.append(f"  service_tier: {tier}  # standard | fast ({hint})")
     # Workspace: where writers edit (main checkout vs isolated worktree).
     lines.append("workspace:")
     lines.append(
@@ -533,10 +574,14 @@ def write_outputs(
         f"{'true' if worktree_on_multi_write else 'false'}  "
         "# auto: worktree when ≥2 write tasks"
     )
+    lines.append(
+        f"  session_max_tasks: {session_max}  "
+        "# 1–10 warm tasks per writer session; 1 = new session every task"
+    )
     ui_lang = caps["ui"]["language"]
     lines.append("ui:")
     lines.append(f"  language: {ui_lang}  # en | ru  (agents-doctor TUI only)")
-    # Pipeline stages (plan critique / write / night / specialist) — per-agent.
+    # Pipeline stages (plan critique / write / night / specialist / onboard).
     try:
         from pipeline_stages import default_stages, normalize_stages, stages_to_yaml_lines
     except ImportError:
@@ -973,7 +1018,13 @@ def main(argv: list[str] | None = None) -> int:
         "--worktree-on-multi-write",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="with --apply: auto mode uses worktree for ≥2 write tasks (default true)",
+        help="with --apply: auto mode uses worktree when ≥2 write tasks (default true)",
+    )
+    ap.add_argument(
+        "--session-max-tasks",
+        type=int,
+        default=10,
+        help="with --apply: warm writer tasks per session (1–10; 1 = new session every task)",
     )
     ap.add_argument(
         "--plan-critique",
@@ -989,7 +1040,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--plan-critique-provider",
-        choices=("structural", "kimi", "qwen", "agy", "grok", "codex"),
+        choices=("structural", "kimi", "qwen", "agy", "grok", "codex", "cursor"),
         default=None,
         help="with --apply: structural engine + optional cheap model for LLM pass",
     )
@@ -1098,7 +1149,7 @@ def main(argv: list[str] | None = None) -> int:
             writer = lanes.get("main_write")
             provider = (
                 writer
-                if writer in {"kimi", "qwen", "agy", "grok", "codex"}
+                if writer in {"kimi", "qwen", "agy", "grok", "codex", "cursor"}
                 else default_setup_writer(tools)
             )
             if provider == "auto":
@@ -1126,6 +1177,7 @@ def main(argv: list[str] | None = None) -> int:
             workspace_mode=args.workspace_mode or "auto",
             worktree_min_score=max(0, min(10, int(args.worktree_min_score))),
             worktree_on_multi_write=bool(args.worktree_on_multi_write),
+            session_max_tasks=max(1, min(10, int(args.session_max_tasks))),
             stages=stages_arg,
         )
 

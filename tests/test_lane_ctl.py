@@ -589,6 +589,36 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual(sessions["defaults"]["pool_size"], 5)
         self.assertEqual(len(sessions["sessions"]), 5)
 
+    def test_start_max_tasks_from_profile_or_cli(self) -> None:
+        task_file = self.write_task()
+        self.start(task_file)
+        argv = json.loads(
+            (self.run_dir / "artifacts" / "001" / "control.json").read_text(
+                encoding="utf-8"
+            )
+        )["argv"]
+        self.assertEqual(argv[argv.index("--max-tasks") + 1], "10")
+
+        (self.root / ".agents" / "routing.profile.yaml").write_text(
+            "workspace:\n  session_max_tasks: 1\n",
+            encoding="utf-8",
+        )
+        self.start(self.write_task("002"), task_id="002")
+        argv = json.loads(
+            (self.run_dir / "artifacts" / "002" / "control.json").read_text(
+                encoding="utf-8"
+            )
+        )["argv"]
+        self.assertEqual(argv[argv.index("--max-tasks") + 1], "1")
+
+        self.start(self.write_task("003"), task_id="003", max_tasks="3")
+        argv = json.loads(
+            (self.run_dir / "artifacts" / "003" / "control.json").read_text(
+                encoding="utf-8"
+            )
+        )["argv"]
+        self.assertEqual(argv[argv.index("--max-tasks") + 1], "3")
+
     def test_nonzero_provider_exit_is_preserved_through_lane_exec(self) -> None:
         task_file = self.write_task()
         self.start(task_file, env={"FAKE_EXIT": "7"})

@@ -278,35 +278,45 @@ After ~6 tasks or heavy transcripts: handoff to PROGRESS; fresh orchestrator ses
 
 Silence protocol: idle ≠ done — read `controller.json` / `events.jsonl`; re-dispatch one `run-supervisor` if `running`/`degraded`.
 
-### Claude Agent close (done ≠ idle) — Claude Code 2.1.22x
+### Mode XOR — TEAM vs WRITE
+
+| Mode | For | Not for |
+|------|-----|---------|
+| **TEAM** | Research/audit teammates | Same-goal product write via `run-supervisor` |
+| **WRITE** | `run-supervisor` + durable writer | Same-goal research team spawn |
+
+Close TEAM before WRITE (and vice versa) on one human goal. Announce «режим: TEAM|WRITE».
+
+### Claude Agent / teams close — Claude Code 2.1.22x
 
 | State | Meaning |
 |-------|---------|
-| **done** | Agent tool finished — correct close |
-| **idle** | Parked for resume — UI noise; Esc bulk-stops these as «N background agents were stopped» |
-| **working** | Still running |
+| **working** | Still running a turn |
+| **done** | One-shot Agent finished with a final result |
+| **idle** | Parked for resume — **normal after** `DONE`/`FAILED`/`WAIT`; not a failure |
 
-Do not build idle-kill daemons. Agents must **complete**:
+| Mode | Rule |
+|------|------|
+| **Agent team teammate** | Each turn ends with `DONE <path>` / `FAILED <reason>` / `WAIT <why>` (TeammateIdle hook). Report under `.agents/team/…`. Idle = read last message + file. Next ask = `SendMessage`. No nag «you went idle» |
+| **Stack one-shot** (`run-supervisor`, …) | One job → `DONE`/`FAILED` + evidence → end as **done**. Next action = new `Agent(...)`, not SendMessage-resume after DONE |
 
-1. **One-shot** — one job → last line `DONE <evidence>` or `FAILED <reason>` → **end
-   the Agent run**. No “wait for more instructions”.
-2. **Next action** = new `Agent(...)` spawn, never `SendMessage` resume of a
-   finished one-shot (resume re-opens idle/working).
-3. **Deploy / long jobs** — Bash + log (or `lane-bg`), not a long-lived teammate.
-4. **Disk is truth** — `acceptance.json` / controller stage; ignore idle chips.
-5. **`TaskStop`** — only stuck non-terminal Agents (disk already terminal or hung);
-   not the happy path.
-6. **Lane work** — only `run-supervisor` / `lane-supervisor`.
+Also:
 
-### `SendMessage` / `ListAgents` (stability, not conveyor)
+1. **Deploy / long jobs** — Bash + log (or `lane-bg`), not a teammate that only tails deploy.
+2. **Disk is truth** for conveyor — `acceptance.json` / controller stage; idle chips are not stage.
+3. **`TaskStop`** — hung **working** Agents or intentional abort; not the happy path after `DONE`.
+4. **Lane product work** — only `run-supervisor` / `lane-supervisor` (teams ≠ writers).
+
+### `SendMessage` / `ListAgents`
 
 Claude Code ≥ **2.1.224** (Remote Control **start-by-name** in **2.1.225**).
 
 | Where | What |
 |-------|------|
+| Lead ↔ teammate | Normal team dialogue (questions, clarifications, final ask) |
 | `run-supervisor` → PM | Mid-run stage lines via **`SendMessage`** (tool name exact) |
 | PM → operator Remote Control (optional) | On terminal `blocked`/`failed` or ship: `ListAgents` → `SendMessage` to `name [ref]` |
-| Not for | Writer start/accept/verify, replacing `controller.json`, secrets in peer text |
+| Not for | Writer start/accept/verify, replacing `controller.json`, secrets in peer text, accusing idle teammates of failure |
 
 Control plane stays file-based. Peer messages are short status + paths only.
 

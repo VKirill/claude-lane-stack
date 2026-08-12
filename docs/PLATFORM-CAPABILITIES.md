@@ -8,20 +8,22 @@ What we **use on purpose** from the host CLIs. Verified against Claude Code
 | Feature | Version | Stack use |
 |---------|---------|-----------|
 | Agent tool + `background` / `maxTurns` frontmatter | 2.1.198+ bg default | All `agents/claude/*` one-shots close as **done** |
-| Correct close: done ≠ idle | agent-view / sub-agents docs | Completion sections; no parked idle |
-| `SendMessage` / `ListAgents` (local peers) | **2.1.224+** | `run-supervisor` → PM stage lines |
+| Correct close: teams vs one-shots | agent-view / teams | Teammate turns end `DONE\|FAILED\|WAIT`; stack one-shots DONE→done |
+| `TeammateIdle` sentinel hook | settings | `teammate_idle_sentinel.py` — exit 2 if no close line |
+| TEAM vs WRITE XOR | PM prompts | Do not mix research team and product write on one goal |
+| `SendMessage` / `ListAgents` (local peers) | **2.1.224+** | Teammate dialogue + `run-supervisor` → PM stage lines |
 | `SendMessage` **start** Remote Control by `name [ref]` | **2.1.225+** | Optional operator alert on terminal block/ship |
-| `TaskStop` | built-in | PM stops stuck Agents only |
+| `TaskStop` | built-in | Hung working Agents / abort — not idle-after-report |
 | `Monitor` | built-in | Optional log watches; deploys prefer Bash+log / `lane-bg` |
 | Concurrent subagent cap (default 20) | 2.1.217+ | One `run-supervisor` per run — stay well under |
 | Nested spawn depth | 2.1.219+ default 3 | Stack supervisors do **not** nest fleets |
 | `crossSessionInbound` / `dialogExpiry` | 2.1.224+ | Opt-in via `LANE_CROSS_SESSION_INBOUND` at install |
-| Agent teams experimental | env flag | Off by default for conveyor; human opt-in only |
+| Agent teams experimental | env flag on (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) | Research/audit peers; **not** product writers |
 | Status line command | settings | `lane-statusline` |
 | PreToolUse guard | settings | `guard_shell.py` via install merge |
 
-**Not used as conveyor:** Claude Agent teams as writers, background sessions per
-task, `/fork` fleets, ultraplan, cloud review as daytime accept.
+**Teams OK for research/audit.** **Not used as conveyor:** teammates as product
+writers, `/fork` fleets, ultraplan, cloud review as daytime accept.
 
 ### Install env knobs
 
@@ -39,7 +41,7 @@ Default: unset → Claude Code mode-based hold/accept rules.
 
 | Feature | Version | Stack use |
 |---------|---------|-----------|
-| `codex exec` + `--json` + ephemeral CODEX_HOME | stable | `lane-session` bare lane-writer |
+| `codex exec` + `--json` + isolated per-slot CODEX_HOME | stable | `lane-session` bare lane-writer; `exec resume` across tasks |
 | `service_tier=fast` + `features.fast_mode` | stable | adoc Fast mode → lane-session |
 | `--output-schema` | stable | night-review-engine typed JSON |
 | **`codex exec review --base/--commit/--uncommitted`** | **0.147-era** | `night-reviewer` MODE=branch |
@@ -58,7 +60,7 @@ Codex agents inside a lane double cost and blur `owns_paths`. Keep
 
 ### Host interactive Codex vs bare lane
 
-| | Host `~/.codex` | Ephemeral lane-writer |
+| | Host `~/.codex` | Isolated lane-writer |
 |--|-----------------|------------------------|
 | MCP / plugins / skills | yes (user) | no (tmpfs-hidden) |
 | fast_mode | user choice | only if adoc `service_tier: fast` |

@@ -8,11 +8,14 @@ Inspired by modern ops TUIs (k9s / lazygit style focus + badges):
   clear stages, radio cards, live conveyor strip, EN/RU.
 
 Coder UX: form + drill-down lists (↑↓ fields, Enter open list).
-Stages UX: customize plan_critique / write / night / specialist per agent.
+Stages UX: customize plan_critique / write / night / specialist / onboard per agent.
 UI language: en | ru (project ui.language + global ~/.agents/doctor.ui.yaml).
 """
 from __future__ import annotations
 
+import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -40,14 +43,39 @@ from pipeline_stages import (  # type: ignore  # noqa: E402
 CODER_FIELDS = ("writer", "model", "effort", "fast")  # fast only when writer=codex
 
 # Stage cards on the Stages tab (pipeline roles, not Claude subagents).
-STAGE_IDS = ("plan_critique", "write", "night_review", "specialist")
+STAGE_IDS = ("plan_critique", "write", "night_review", "specialist", "onboard")
 # Full agent catalog for stages (not limited to currently detected CLIs).
-ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex")
+ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex", "cursor")
 CRITIQUE_PROVIDERS = ("structural",) + ALL_AGENTS
 STAGE_FIELD_CRITIQUE = ("enabled", "mode", "provider", "model", "effort")
 STAGE_FIELD_WRITE = ("provider", "model", "effort")  # enabled always on
 STAGE_FIELD_NIGHT = ("enabled", "provider", "model", "effort")
 STAGE_FIELD_SPEC = ("enabled", "when", "provider", "model", "effort")
+STAGE_FIELD_ONBOARD = ("provider", "model", "effort", "fast")  # fast: codex/cursor
+
+# Fallback Cursor catalog when `cursor-agent --list-models` is unavailable.
+CURSOR_MODEL_FALLBACK = [
+    "auto",
+    "composer-2.5",
+    "composer-2.5-fast",
+    "cursor-grok-4.6-low",
+    "cursor-grok-4.6-low-fast",
+    "cursor-grok-4.6-medium",
+    "cursor-grok-4.6-medium-fast",
+    "cursor-grok-4.6-high",
+    "cursor-grok-4.6-high-fast",
+    "cursor-grok-4.6-xhigh",
+    "cursor-grok-4.6-xhigh-fast",
+    "cursor-grok-4.5-high",
+    "cursor-grok-4.5-high-fast",
+    "cursor-grok-4.5-medium",
+    "cursor-grok-4.5-medium-fast",
+    "claude-sonnet-5-thinking-high",
+    "claude-opus-5-thinking-high",
+    "gpt-5.6-sol-high",
+    "gpt-5.5-high",
+    "kimi-k3-high",
+]
 
 # Default catalogs (stack defaults + common options).
 WRITER_MODELS: dict[str, list[str]] = {
@@ -70,6 +98,7 @@ WRITER_MODELS: dict[str, list[str]] = {
         "moonshot-v1-8k",
     ],
     "grok": [
+        "grok-4.6",
         "grok-4.5",
         "grok-4",
         "grok-3",
@@ -88,6 +117,7 @@ WRITER_MODELS: dict[str, list[str]] = {
         "gpt-5.4",
         "o4-mini",
     ],
+    "cursor": list(CURSOR_MODEL_FALLBACK),
     "structural": [],
     "auto": ["(stack default)"],
 }
@@ -98,6 +128,7 @@ WRITER_EFFORTS: dict[str, list[str]] = {
     "grok": ["low", "medium", "high"],
     "agy": ["low", "medium", "high"],
     "codex": ["low", "medium", "high", "xhigh", "max"],
+    "cursor": ["low", "medium", "high"],
     "structural": ["low", "medium", "high"],
     "auto": ["medium"],
 }
@@ -108,6 +139,7 @@ WRITER_META: dict[str, dict[str, str]] = {
     "grok": {"title": "Grok", "badge": "XAI"},
     "agy": {"title": "AGY", "badge": "GEMINI"},
     "codex": {"title": "Codex", "badge": "OPENAI"},
+    "cursor": {"title": "Cursor", "badge": "AGENT"},
     "auto": {"title": "Auto", "badge": "STACK"},
 }
 
@@ -117,6 +149,7 @@ DEFAULT_MODEL = {
     "grok": "grok-4.5",
     "agy": "gemini-3.6-flash-high",
     "codex": "gpt-5.6-luna",
+    "cursor": "composer-2.5",
     "auto": "(stack default)",
 }
 
@@ -126,6 +159,7 @@ DEFAULT_EFFORT = {
     "grok": "medium",
     "agy": "medium",
     "codex": "max",
+    "cursor": "medium",
     "auto": "medium",
 }
 
@@ -152,6 +186,7 @@ class SetupState:
         workspace_mode: str = "auto",
         worktree_min_score: int = 4,
         worktree_on_multi_write: bool = True,
+        session_max_tasks: int = 10,
         lang: str = "en",
         message: str = "",
         last_apply: str = "",
@@ -179,6 +214,7 @@ class SetupState:
         self.workspace_mode = workspace_mode
         self.worktree_min_score = worktree_min_score
         self.worktree_on_multi_write = worktree_on_multi_write
+        self.session_max_tasks = session_max_tasks
         self.lang = normalize_lang(lang)
         self.message = message
         self.last_apply = last_apply
@@ -278,6 +314,13 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                             pass
                     elif s.startswith("worktree_on_multi_write:"):
                         out["worktree_on_multi_write"] = "true" in s.lower()
+                    elif s.startswith("session_max_tasks:"):
+                        try:
+                            out["session_max_tasks"] = int(
+                                s.split(":", 1)[1].strip().split()[0]
+                            )
+                        except ValueError:
+                            pass
                 if section == "ui":
                     if raw and not raw.startswith(" ") and not raw.startswith("\t"):
                         section = None
@@ -336,7 +379,50 @@ def _radio(selected: bool) -> str:
     return "●" if selected else "○"
 
 
+_CURSOR_MODELS_CACHE: list[str] | None = None
+
+
+def _supports_fast(writer: str) -> bool:
+    return writer in {"codex", "cursor"}
+
+
+def _probe_cursor_models() -> list[str]:
+    """Live catalog from cursor-agent --list-models (cached per process)."""
+    global _CURSOR_MODELS_CACHE
+    if _CURSOR_MODELS_CACHE is not None:
+        return list(_CURSOR_MODELS_CACHE)
+    binary = shutil.which("cursor-agent") or shutil.which("agent")
+    models: list[str] = []
+    if binary:
+        try:
+            out = subprocess.check_output(
+                [binary, "--list-models"],
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=12,
+            )
+            for line in out.splitlines():
+                token = line.strip().split()[0] if line.strip() else ""
+                if not token or token.lower() in {"available", "models", "model"}:
+                    continue
+                # lines like: "composer-2.5 - Composer 2.5"
+                if token.endswith("-") or token.startswith("-"):
+                    continue
+                if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}", token):
+                    models.append(token)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            models = []
+    if not models:
+        models = list(CURSOR_MODEL_FALLBACK)
+    # Prefer non-fast siblings first for picker clarity; keep -fast entries too.
+    _CURSOR_MODELS_CACHE = list(dict.fromkeys(models))
+    WRITER_MODELS["cursor"] = list(_CURSOR_MODELS_CACHE)
+    return list(_CURSOR_MODELS_CACHE)
+
+
 def _models_for(writer: str) -> list[str]:
+    if writer == "cursor":
+        return _probe_cursor_models()
     return list(WRITER_MODELS.get(writer, ["(default)"]))
 
 
@@ -401,6 +487,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
     writers = list(doctor.available_writers(tools))
     if tools.get("codex", {}).get("present") and "codex" not in writers:
         writers.append("codex")
+    if tools.get("cursor", {}).get("present") and "cursor" not in writers:
+        writers.append("cursor")
     if not writers:
         writers = ["auto"]
 
@@ -442,7 +530,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         writer=writer0,
         model=model0,
         effort=effort0,
-        fast_mode=bool(existing.get("fast_mode", False)) and writer0 == "codex",
+        fast_mode=bool(existing.get("fast_mode", False)) and _supports_fast(writer0),
         night_review=bool(existing.get("night_review", False)),
         night_provider=night_w0,
         max_fix_tasks=int(existing.get("max_fix_tasks", 5)),
@@ -450,6 +538,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
         workspace_mode=ws0,
         worktree_min_score=ws_score0,
         worktree_on_multi_write=bool(existing.get("worktree_on_multi_write", True)),
+        session_max_tasks=max(
+            1, min(10, int(existing.get("session_max_tasks", 10)))
+        ),
         lang=lang0,
         message=tr(lang0, "msg_boot"),
         cursor=max(0, writers.index(writer0) if writer0 in writers else 0),
@@ -614,7 +705,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         return line1 + _pipeline_parts()
 
     def _coder_fields() -> tuple[str, ...]:
-        if state.writer == "codex":
+        if _supports_fast(state.writer):
             return ("writer", "model", "effort", "fast")
         return ("writer", "model", "effort")
 
@@ -770,6 +861,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return STAGE_FIELD_WRITE
         if stage_id == "night_review":
             return STAGE_FIELD_NIGHT
+        if stage_id == "onboard":
+            prov = str((state.stages.get("onboard") or {}).get("provider") or "codex")
+            if _supports_fast(prov):
+                return STAGE_FIELD_ONBOARD
+            return ("provider", "model", "effort")
         return STAGE_FIELD_SPEC
 
     def _loc_on(enabled: bool) -> str:
@@ -819,6 +915,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return _loc_provider(str(block.get("provider") or "—"))
         if field == "effort":
             return str(block.get("reasoning_effort") or block.get("effort") or "—")
+        if field == "fast":
+            tier = str(block.get("service_tier") or "standard").strip().lower()
+            return _t(state, "on") if tier == "fast" else _t(state, "off")
         if field == "model":
             prov = str(block.get("provider") or "")
             if prov == "structural":
@@ -931,6 +1030,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 i = 0
             new_p = opts[(i + delta) % len(opts)]
             _set_provider(block, new_p)
+            # Onboard defaults: terra+high (not daytime luna+max).
+            if sid == "onboard" and new_p == "codex":
+                if block.get("model") == DEFAULT_MODEL.get("codex"):
+                    block["model"] = "gpt-5.6-terra"
+                if block.get("reasoning_effort") == DEFAULT_EFFORT.get("codex"):
+                    block["reasoning_effort"] = "high"
+            if sid == "onboard" and not _supports_fast(new_p):
+                block["service_tier"] = "standard"
             state.message = _t(
                 state, "msg_stage_provider", provider=_loc_provider(new_p)
             )
@@ -970,6 +1077,21 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.message = _t(
                 state, "msg_stage_effort", effort=block["reasoning_effort"]
             )
+        elif field == "fast":
+            prov = str(block.get("provider") or "")
+            if not _supports_fast(prov):
+                block["service_tier"] = "standard"
+                state.message = _t(state, "msg_stage_fast_na")
+            else:
+                cur = str(block.get("service_tier") or "standard").strip().lower()
+                block["service_tier"] = "standard" if cur == "fast" else "fast"
+                state.message = _t(
+                    state,
+                    "msg_stage_fast",
+                    value=_t(state, "on")
+                    if block["service_tier"] == "fast"
+                    else _t(state, "off"),
+                )
         # Keep coder/night tabs in sync when write/night stages change.
         if sid in {"write", "night_review"}:
             _sync_coder_night_from_stages()
@@ -1023,6 +1145,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 detail = (
                     f"{_loc_on(enabled)} · {_loc_provider(prov)} · {model} · {effort}"
                 )
+            elif sid == "onboard":
+                tier = str(block.get("service_tier") or "standard")
+                fast_bit = (
+                    f" · fast"
+                    if _supports_fast(prov) and tier == "fast"
+                    else ""
+                )
+                detail = f"{_loc_provider(prov)} · {model} · {effort}{fast_bit}"
             else:
                 detail = (
                     f"{_loc_on(enabled)} · "
@@ -1056,7 +1186,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 prov = str((state.stages.get(sid) or {}).get("provider") or "")
                 n = len(_models_for_provider(prov))
                 hint = f"  ←→ {n}" if n else f"  ({_t(state, 'model_na')})"
-            elif focused and field in {"mode", "when", "effort", "enabled"}:
+            elif focused and field in {"mode", "when", "effort", "enabled", "fast"}:
                 hint = "  ←→"
             lines.append((st, f"  {caret} {label:<14}  {val}{hint}\n"))
         lines.append(("class:help", _t(state, "stages_tip")))
@@ -1105,6 +1235,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
         )
         if not active:
             lines.append(("class:dim", _t(state, "work_thr_ignored")))
+        bar = "●" * state.session_max_tasks + "○" * (10 - state.session_max_tasks)
+        lines.append(("class:h2", _t(state, "work_session_h2")))
+        lines.append(
+            (
+                "class:row-on",
+                _t(state, "work_session_line", n=state.session_max_tasks),
+            )
+        )
+        lines.append(("class:dim", f"  {bar}\n"))
+        lines.append(("class:help", _t(state, "work_session_hint")))
         lines.append(("class:help", _t(state, "work_footer")))
         return lines
 
@@ -1180,7 +1320,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             ("class:h1", _t(state, "status_h1")),
             ("class:help", _t(state, "status_help")),
         ]
-        order = ["claude", "qwen", "kimi", "grok", "agy", "codex", "bubblewrap"]
+        order = ["claude", "qwen", "kimi", "grok", "agy", "codex", "cursor", "bubblewrap"]
         seen: set[str] = set()
         for name in order + list(state.tools):
             if name in seen or name not in state.tools:
@@ -1203,7 +1343,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             lines.append(("class:dim", f"    {k:<16} {v}\n"))
         lines.append(("class:dim", f"    model            {state.model}\n"))
         lines.append(("class:dim", f"    reasoning_effort {state.effort}\n"))
-        if state.writer == "codex":
+        if _supports_fast(state.writer):
             lines.append(
                 (
                     "class:dim",
@@ -1211,6 +1351,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 )
             )
         lines.append(("class:dim", f"    workspace        {state.workspace_mode}\n"))
+        lines.append(
+            ("class:dim", f"    session_max      {state.session_max_tasks}\n")
+        )
         lines.append(("class:dim", f"    language         {state.lang}\n"))
         if notes:
             for n in notes:
@@ -1257,12 +1400,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
                         ),
                     )
                 ]
-                if state.writer == "codex"
+                if _supports_fast(state.writer)
                 else []
             ),
             (
                 "class:row-on",
                 _t(state, "apply_workspace", ws=_ws_title(state, state.workspace_mode)),
+            ),
+            (
+                "class:row-on",
+                _t(state, "apply_session", n=state.session_max_tasks),
             ),
             (
                 "class:row-on",
@@ -1327,7 +1474,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.writer = w
         state.model = _ensure_model(w, DEFAULT_MODEL.get(w, state.model))
         state.effort = _ensure_effort(w, DEFAULT_EFFORT.get(w, state.effort))
-        if w != "codex":
+        if not _supports_fast(w):
             state.fast_mode = False
         _sync_stages_from_coder_night()
         state.message = _t(
@@ -1491,7 +1638,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                     )
                 service_tier = (
                     ("fast" if state.fast_mode else "standard")
-                    if state.writer == "codex"
+                    if _supports_fast(state.writer)
                     else None
                 )
                 try:
@@ -1507,6 +1654,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                         workspace_mode=state.workspace_mode,
                         worktree_min_score=state.worktree_min_score,
                         worktree_on_multi_write=state.worktree_on_multi_write,
+                        session_max_tasks=state.session_max_tasks,
                         ui_language=state.lang,
                         stages=state.stages,
                         quiet=True,
@@ -1556,11 +1704,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             "effort": state.effort,
             "service_tier": (
                 ("fast" if state.fast_mode else "standard")
-                if state.writer == "codex"
+                if _supports_fast(state.writer)
                 else None
             ),
-            "fast_mode": bool(state.fast_mode) if state.writer == "codex" else False,
+            "fast_mode": bool(state.fast_mode) if _supports_fast(state.writer) else False,
             "workspace_mode": state.workspace_mode,
+            "session_max_tasks": state.session_max_tasks,
             "lang": state.lang,
             "night": state.night_review,
             "night_provider": state.night_provider if state.night_review else None,
@@ -1586,6 +1735,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
         writers = list(doctor.available_writers(state.tools))
         if state.tools.get("codex", {}).get("present") and "codex" not in writers:
             writers.append("codex")
+        if state.tools.get("cursor", {}).get("present") and "cursor" not in writers:
+            writers.append("cursor")
         state.writers = writers or ["auto"]
         if state.writer not in state.writers:
             set_writer(state.writers[0])
@@ -1682,7 +1833,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         @kb.add(str(n))
         def _(event, n=n) -> None:
             leave_pick_if_any()
-            # On Stages tab, 1–4 pick a pipeline stage (not a top tab).
+            # On Stages tab, 1–N pick a pipeline stage (not a top tab).
             if TAB_IDS[tab_i["i"]] == "stages" and 1 <= n <= len(STAGE_IDS):
                 _select_stage(n - 1)
                 return
@@ -1751,15 +1902,33 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 state.cursor = opts.index(state.night_provider)
             state.message = _t(state, "msg_night_writer")
 
+    def _nudge_session(delta: int) -> None:
+        if TAB_IDS[tab_i["i"]] != "work":
+            return
+        state.session_max_tasks = max(1, min(10, state.session_max_tasks + delta))
+        state.message = _t(state, "msg_session_max", n=state.session_max_tasks)
+
     @kb.add("[")
     def _(event) -> None:
         if TAB_IDS[tab_i["i"]] == "stages":
             _move_stage(-1)
+        else:
+            _nudge_session(-1)
 
     @kb.add("]")
     def _(event) -> None:
         if TAB_IDS[tab_i["i"]] == "stages":
             _move_stage(1)
+        else:
+            _nudge_session(1)
+
+    @kb.add(",")
+    def _(event) -> None:
+        _nudge_session(-1)
+
+    @kb.add(".")
+    def _(event) -> None:
+        _nudge_session(1)
 
     @kb.add("L")
     @kb.add("l")
@@ -1989,12 +2158,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
 
 def _print_apply_receipt(result: dict[str, Any]) -> None:
-    """Pretty post-Apply summary: includes Fast mode for Codex."""
+    """Pretty post-Apply summary: includes Fast mode for Codex/Cursor."""
     agents = Path(result["repo"]) / ".agents"
     lang = normalize_lang(result.get("lang") or "en")
     writer = str(result.get("writer") or "—")
     tier = str(result.get("service_tier") or "").strip().lower()
-    is_codex = writer == "codex"
+    show_fast = writer in {"codex", "cursor"}
 
     if result.get("night"):
         night_v = tr(
@@ -2012,7 +2181,7 @@ def _print_apply_receipt(result: dict[str, Any]) -> None:
         (tr(lang, "done_lbl_model"), str(result.get("model") or "—")),
         (tr(lang, "done_lbl_effort"), str(result.get("effort") or "—")),
     ]
-    if is_codex:
+    if show_fast:
         fast_on = tier == "fast" or result.get("fast_mode") is True
         rows.append(
             (
@@ -2023,6 +2192,10 @@ def _print_apply_receipt(result: dict[str, Any]) -> None:
     rows.extend(
         [
             (tr(lang, "done_lbl_ws"), str(result.get("workspace_mode") or "auto")),
+            (
+                tr(lang, "done_lbl_session"),
+                str(result.get("session_max_tasks") or "10"),
+            ),
             (tr(lang, "done_lbl_lang"), lang),
             (tr(lang, "done_lbl_night"), night_v),
             (tr(lang, "done_lbl_critique"), str(result.get("critique") or "—")),

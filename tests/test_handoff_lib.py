@@ -45,7 +45,7 @@ class HandoffLibTest(unittest.TestCase):
                 "lanes:\n  main_write: kimi\nwriter:\n  model: m\nworkspace:\n  mode: in_place\n",
                 encoding="utf-8",
             )
-            (repo / "PROGRESS.md").write_text(
+            (repo / ".agents" / "PROGRESS.md").write_text(
                 "# P\n\n## Now\n- shipping feature X\n\n## Next\n- y\n",
                 encoding="utf-8",
             )

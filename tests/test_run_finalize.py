@@ -24,9 +24,10 @@ class RunFinalizeTest(unittest.TestCase):
         self.repo = Path(self.temp.name) / "repo"
         self.run_dir = self.repo / ".agents" / "runs" / "demo"
         self.open_path = self.repo / ".agents" / "agent-notes" / "OPEN.md"
-        self.progress = self.repo / "PROGRESS.md"
+        self.progress = self.repo / ".agents" / "PROGRESS.md"
         self.run_dir.mkdir(parents=True)
         self.open_path.parent.mkdir(parents=True)
+        self.progress.parent.mkdir(parents=True, exist_ok=True)
         self.progress.write_text(
             "# PROGRESS\n\n"
             "## Now\n- Old focus\n\n"
@@ -67,7 +68,7 @@ class RunFinalizeTest(unittest.TestCase):
         fake_board.write_text(
             "#!/usr/bin/env bash\n"
             "printf '%s\\n' \"$1\" >> \"${RUN_BOARD_LOG:?}\"\n"
-            "grep -A1 '^## Now$' \"$1/PROGRESS.md\" | tail -n1 >> \"${RUN_BOARD_PROGRESS_LOG:?}\"\n",
+            "grep -A1 '^## Now$' \"$1/.agents/PROGRESS.md\" | tail -n1 >> \"${RUN_BOARD_PROGRESS_LOG:?}\"\n",
             encoding="utf-8",
         )
         fake_board.chmod(0o755)

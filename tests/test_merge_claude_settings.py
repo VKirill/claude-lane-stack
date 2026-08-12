@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "hooks"))
 
 from merge_claude_settings import (  # noqa: E402
     merge_stack_capabilities,
+    merge_teammate_idle,
     load_settings,
     write_settings,
 )
@@ -64,6 +65,19 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
             write_settings(path, settings)
             loaded = load_settings(path)
             self.assertIn("SendMessage", loaded["permissions"]["allow"])
+
+    def test_merge_teammate_idle_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            hook = Path(tmp) / "teammate_idle_sentinel.py"
+            hook.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            settings: dict = {"hooks": {}}
+            out = merge_teammate_idle(settings, hook)
+            entries = out["hooks"]["TeammateIdle"]
+            self.assertEqual(len(entries), 1)
+            cmd = entries[0]["hooks"][0]["command"]
+            self.assertIn("teammate_idle_sentinel.py", cmd)
+            out2 = merge_teammate_idle(out, hook)
+            self.assertEqual(len(out2["hooks"]["TeammateIdle"]), 1)
 
 
 if __name__ == "__main__":

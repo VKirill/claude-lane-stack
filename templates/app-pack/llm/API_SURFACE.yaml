@@ -1,0 +1,7 @@
+# Surfaces owned by this app (not the whole monorepo).
+# Project rows from root docs/llm/API_SURFACE.yaml where path starts with apps/<name>/.
+# Split webhooks per provider. Expand HTTP into real families — no single HTTP /v1/* catch-all.
+version: 1
+project: REPLACE_ME
+surfaces: []
+sources: []

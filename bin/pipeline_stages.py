@@ -7,6 +7,7 @@ Claude subagents:
 
   plan (PM, fixed) → plan_critique → write → verify (L1, fixed) → night_review
                                       ↘ optional specialist (read-only)
+  side role: onboard (project passport; adoc agent/model/effort/service_tier)
 
 Structural critique always runs when plan_critique is enabled. When
 provider ≠ structural, ``plan-critique`` also runs a one-shot LLM pass and
@@ -22,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 KNOWN_STAGE_PROVIDERS = frozenset(
-    {"structural", "kimi", "qwen", "agy", "grok", "codex"}
+    {"structural", "kimi", "qwen", "agy", "grok", "codex", "cursor"}
 )
 CRITIQUE_MODES = frozenset({"advisory", "gate"})
 CRITIQUE_DECISIONS = frozenset({"ship", "revise", "revise_required"})
@@ -51,6 +52,7 @@ DEFAULT_MODELS = {
     "grok": "grok-4.5",
     "agy": "gemini-3.6-flash-high",
     "codex": "gpt-5.6-luna",
+    "cursor": "composer-2.5",
     "structural": "",
 }
 # Write-lane defaults (daytime implementer).
@@ -60,6 +62,7 @@ DEFAULT_WRITE_EFFORTS = {
     "grok": "medium",
     "agy": "medium",
     "codex": "max",
+    "cursor": "medium",
 }
 # Cheap plan-critique pass defaults.
 DEFAULT_CRITIQUE_EFFORTS = {
@@ -67,10 +70,23 @@ DEFAULT_CRITIQUE_EFFORTS = {
     "kimi": "low",
     "grok": "low",
     "agy": "low",
+    "cursor": "low",
     "codex": "high",
     "structural": "low",
 }
 DEFAULT_EFFORTS = DEFAULT_CRITIQUE_EFFORTS  # alias for critique
+# project-onboard / project-onboarder defaults (adoc Stages → onboard).
+DEFAULT_ONBOARD_MODEL = "gpt-5.6-terra"
+DEFAULT_ONBOARD_EFFORT = "high"
+DEFAULT_ONBOARD_EFFORTS = {
+    "codex": "high",
+    "cursor": "high",
+    "qwen": "medium",
+    "kimi": "medium",
+    "grok": "medium",
+    "agy": "medium",
+}
+SERVICE_TIER_STAGE_PROVIDERS = frozenset({"codex", "cursor"})
 
 _SPEC_STUB_MARKERS = (
     "record interfaces, invariants, constraints, and the definition of done here",
@@ -141,6 +157,12 @@ def default_stages(
             "model": "gpt-5.6-sol",
             "reasoning_effort": "high",
         },
+        "onboard": {
+            "provider": "codex",
+            "model": DEFAULT_ONBOARD_MODEL,
+            "reasoning_effort": DEFAULT_ONBOARD_EFFORT,
+            "service_tier": "standard",
+        },
     }
 
 
@@ -162,6 +184,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
     write = raw.get("write") if isinstance(raw.get("write"), dict) else {}
     night = raw.get("night_review") if isinstance(raw.get("night_review"), dict) else {}
     spec = raw.get("specialist") if isinstance(raw.get("specialist"), dict) else {}
+    onboard = raw.get("onboard") if isinstance(raw.get("onboard"), dict) else {}
 
     # plan_critique
     pc_provider = str(pc.get("provider") or base["plan_critique"]["provider"]).strip()
@@ -237,6 +260,34 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
             or DEFAULT_EFFORTS.get(s_provider, "high")
         ).strip(),
     }
+
+    # onboard (project passport — not part of daytime conveyor)
+    o_provider = str(onboard.get("provider") or "codex").strip()
+    if o_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+        o_provider = "codex"
+    o_default_model = (
+        DEFAULT_ONBOARD_MODEL
+        if o_provider == "codex"
+        else DEFAULT_MODELS.get(o_provider, DEFAULT_ONBOARD_MODEL)
+    )
+    o_tier_raw = onboard.get("service_tier")
+    if o_tier_raw is None and "fast_mode" in onboard:
+        o_tier_raw = "fast" if _as_bool(onboard.get("fast_mode"), False) else "standard"
+    o_tier = str(o_tier_raw or "standard").strip().lower()
+    if o_tier not in {"standard", "fast"}:
+        o_tier = "standard"
+    if o_provider not in SERVICE_TIER_STAGE_PROVIDERS:
+        o_tier = "standard"
+    base["onboard"] = {
+        "provider": o_provider,
+        "model": str(onboard.get("model") or o_default_model).strip(),
+        "reasoning_effort": str(
+            onboard.get("reasoning_effort")
+            or onboard.get("effort")
+            or DEFAULT_ONBOARD_EFFORTS.get(o_provider, DEFAULT_ONBOARD_EFFORT)
+        ).strip(),
+        "service_tier": o_tier,
+    }
     return base
 
 
@@ -244,7 +295,7 @@ def stages_to_yaml_lines(stages: dict[str, Any]) -> list[str]:
     """Emit YAML lines for the stages: block (no leading stages: key)."""
     stages = normalize_stages(stages)
     lines: list[str] = ["stages:"]
-    for name in ("plan_critique", "write", "night_review", "specialist"):
+    for name in ("plan_critique", "write", "night_review", "specialist", "onboard"):
         block = stages[name]
         lines.append(f"  {name}:")
         for key, value in block.items():
@@ -253,6 +304,13 @@ def stages_to_yaml_lines(stages: dict[str, Any]) -> list[str]:
             else:
                 rendered = str(value)
             if key == "model" and not rendered:
+                continue
+            # service_tier only meaningful for codex/cursor onboard
+            if (
+                name == "onboard"
+                and key == "service_tier"
+                and str(block.get("provider") or "") not in SERVICE_TIER_STAGE_PROVIDERS
+            ):
                 continue
             lines.append(f"    {key}: {rendered}")
     return lines
@@ -292,6 +350,37 @@ def resolve_plan_critique(start: Path) -> dict[str, Any]:
     stages = load_stages_from_profile(profile)
     return {
         **stages["plan_critique"],
+        "stages": stages,
+        "profile_path": profile.get("_path"),
+    }
+
+
+def resolve_onboard(start: Path) -> dict[str, Any]:
+    """Load onboard stage (provider/model/effort/service_tier) for a project path."""
+    from routing_profile import load_routing_profile  # local import — same bin/
+
+    profile = load_routing_profile(start)
+    stages = load_stages_from_profile(profile)
+    block = stages.get("onboard") or {}
+    provider = str(block.get("provider") or "codex")
+    model = str(block.get("model") or DEFAULT_ONBOARD_MODEL)
+    # Cursor fast sibling when service_tier=fast
+    if provider == "cursor":
+        try:
+            from routing_profile import resolve_cursor_model
+
+            model = resolve_cursor_model(
+                model, service_tier=str(block.get("service_tier") or "standard")
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    return {
+        "provider": provider,
+        "model": model,
+        "reasoning_effort": str(
+            block.get("reasoning_effort") or DEFAULT_ONBOARD_EFFORT
+        ),
+        "service_tier": str(block.get("service_tier") or "standard"),
         "stages": stages,
         "profile_path": profile.get("_path"),
     }

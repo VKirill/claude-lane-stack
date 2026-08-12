@@ -257,6 +257,7 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertIn("reasoning_effort: max", profile)
             self.assertIn("workspace:", profile)
             self.assertIn("mode: auto", profile)
+            self.assertIn("session_max_tasks: 10", profile)
             self.assertIn("ui:", profile)
             self.assertIn("language: en", profile)
 
@@ -268,6 +269,8 @@ class AgentsDoctorTest(unittest.TestCase):
                     "codex",
                     "--workspace-mode",
                     "in_place",
+                    "--session-max-tasks",
+                    "1",
                     "--night-review",
                     "off",
                     str(repo),
@@ -282,6 +285,7 @@ class AgentsDoctorTest(unittest.TestCase):
                 encoding="utf-8"
             )
             self.assertIn("mode: in_place", profile2)
+            self.assertIn("session_max_tasks: 1", profile2)
 
     def test_setup_writes_routing_and_night_shift(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -419,6 +423,25 @@ class AgentsDoctorTest(unittest.TestCase):
                 payload["tools"]["grok"]["unavailable_reason"],
                 "bubblewrap probe failed",
             )
+
+
+class DoctorTuiCatalogTest(unittest.TestCase):
+    def test_grok_46_is_selectable(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import agents_doctor_tui as tui  # noqa: E402
+
+        self.assertIn("grok-4.6", tui.WRITER_MODELS["grok"])
+        for slug in (
+            "cursor-grok-4.6-low",
+            "cursor-grok-4.6-low-fast",
+            "cursor-grok-4.6-medium",
+            "cursor-grok-4.6-medium-fast",
+            "cursor-grok-4.6-high",
+            "cursor-grok-4.6-high-fast",
+            "cursor-grok-4.6-xhigh",
+            "cursor-grok-4.6-xhigh-fast",
+        ):
+            self.assertIn(slug, tui.CURSOR_MODEL_FALLBACK)
 
 
 if __name__ == "__main__":

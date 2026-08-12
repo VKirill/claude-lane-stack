@@ -1,0 +1,25 @@
+# REPLACE_ME
+
+> LLM-oriented project map for coding agents. Repo checkout convention (see https://llmstxt.org/). Prefer structured indexes under docs/llm/ over crawling the whole tree.
+
+## Always load
+
+- [CLAUDE.md](CLAUDE.md): Claude Code session ops
+- [AGENTS.md](AGENTS.md): cross-tool agent guidance (https://agents.md/)
+- [docs/llm/INDEX.md](docs/llm/INDEX.md): curated docs map
+
+## Structured knowledge (Diátaxis reference)
+
+- [docs/llm/TAXONOMY.yaml](docs/llm/TAXONOMY.yaml): classifier (diataxis × load)
+- [docs/llm/MODULE_MAP.yaml](docs/llm/MODULE_MAP.yaml): modules and public contracts
+- [docs/llm/API_SURFACE.yaml](docs/llm/API_SURFACE.yaml): all public APIs / CLIs / exports
+- [docs/llm/TEST_INDEX.yaml](docs/llm/TEST_INDEX.yaml): command → what it proves
+- [docs/llm/FLOWS.md](docs/llm/FLOWS.md): critical runtime flows
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): boundaries and invariants
+
+## Ops (Diátaxis how-to)
+
+- [docs/llm/TEST_INDEX.yaml](docs/llm/TEST_INDEX.yaml) · [docs/TESTING.md](docs/TESTING.md)
+- [docs/RUNBOOK.md](docs/RUNBOOK.md): start / smoke / rollback (if present)
+- [docs/deployment.md](docs/deployment.md): ship path
+- [.agents/PROGRESS.md](.agents/PROGRESS.md): now / blocked / next

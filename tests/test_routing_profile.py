@@ -12,6 +12,8 @@ sys.path.insert(0, str(ROOT / "bin"))
 from routing_profile import (  # noqa: E402
     lane_matches_profile,
     load_routing_profile,
+    resolve_cursor_model,
+    resolve_session_max_tasks,
     resolve_workspace,
     resolve_writer,
 )
@@ -117,6 +119,68 @@ class RoutingProfileTest(unittest.TestCase):
                 resolve_workspace(root, score=1, write_task_count=2)["effective"],
                 "worktree",
             )
+
+    def test_resolve_session_max_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(resolve_session_max_tasks(root), 10)
+            (root / ".agents").mkdir()
+            profile = root / ".agents" / "routing.profile.yaml"
+            profile.write_text(
+                "workspace:\n  session_max_tasks: 1\n", encoding="utf-8"
+            )
+            self.assertEqual(resolve_session_max_tasks(root), 1)
+            profile.write_text(
+                "workspace:\n  session_max_tasks: 99\n", encoding="utf-8"
+            )
+            self.assertEqual(resolve_session_max_tasks(root), 10)
+            ws = resolve_workspace(root, score=0, write_task_count=1)
+            self.assertEqual(ws["session_max_tasks"], 10)
+
+    def test_resolve_cursor_model_fast_toggle(self) -> None:
+        self.assertEqual(
+            resolve_cursor_model("cursor-grok-4.5-high", service_tier="fast"),
+            "cursor-grok-4.5-high-fast",
+        )
+        self.assertEqual(
+            resolve_cursor_model("cursor-grok-4.5-high-fast", service_tier="standard"),
+            "cursor-grok-4.5-high",
+        )
+        self.assertEqual(
+            resolve_cursor_model("cursor-grok-4.6-high", service_tier="fast"),
+            "cursor-grok-4.6-high-fast",
+        )
+        self.assertEqual(
+            resolve_cursor_model("cursor-grok-4.6-xhigh-fast", service_tier="standard"),
+            "cursor-grok-4.6-xhigh",
+        )
+        self.assertEqual(
+            resolve_cursor_model("composer-2.5-fast", service_tier="fast"),
+            "composer-2.5-fast",
+        )
+
+    def test_resolve_writer_applies_cursor_service_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".agents").mkdir()
+            (root / ".agents" / "routing.profile.yaml").write_text(
+                textwrap.dedent(
+                    """\
+                    lanes:
+                      main_write: cursor
+                    writer:
+                      provider: cursor
+                      model: cursor-grok-4.5-high
+                      reasoning_effort: medium
+                      service_tier: fast
+                    """
+                ),
+                encoding="utf-8",
+            )
+            resolved = resolve_writer(root, provider_explicit=False)
+            self.assertEqual(resolved["provider"], "cursor")
+            self.assertEqual(resolved["service_tier"], "fast")
+            self.assertEqual(resolved["model"], "cursor-grok-4.5-high-fast")
 
 
 if __name__ == "__main__":

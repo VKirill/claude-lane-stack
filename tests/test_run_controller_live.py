@@ -45,6 +45,10 @@ class LiveRunControllerTest(unittest.TestCase):
             (repo / ".agents" / "night-shift.yaml").write_text(
                 'verification_executables: ["true"]\n', encoding="utf-8"
             )
+            (repo / ".agents" / "routing.profile.yaml").write_text(
+                "stages:\n  plan_critique:\n    enabled: false\n",
+                encoding="utf-8",
+            )
 
             initialized = subprocess.run(
                 [
@@ -64,6 +68,34 @@ class LiveRunControllerTest(unittest.TestCase):
                 check=True,
             )
             run_dir = Path(initialized.stdout.strip())
+            (run_dir / "SPEC.md").write_text(
+                textwrap.dedent(
+                    """\
+                    # Live controller smoke
+
+                    Project working directory: repo
+
+                    ## Goal
+                    Exercise the detached run-controller lifecycle on a disposable
+                    git repo without changing product source.
+
+                    ## Interfaces
+                    lane-ctl start/status/verify/accept against artifacts under
+                    .agents/runs/live-controller.
+
+                    ## Invariants
+                    baseline.txt and second.txt stay committed as initialized.
+                    Verification is the no-op command true.
+
+                    ## Out of scope
+                    Real model calls, worktree merge, night review.
+
+                    ## Definition of done
+                    controller.json records task 001 accepted after verify.
+                    """
+                ),
+                encoding="utf-8",
+            )
             task_file = run_dir / "tasks" / "001.yaml"
             task_file.write_text(
                 textwrap.dedent(

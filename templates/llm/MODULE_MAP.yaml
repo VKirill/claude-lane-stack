@@ -1,0 +1,16 @@
+# LLM-oriented module index — contracts & boundaries, NOT per-function docs.
+# Filled by project-onboarder (deep Phase 2). Keep entries high-signal and short.
+version: 1
+project: REPLACE_ME
+generated_by: project-onboarder
+modules: []
+# Example entry (delete when real modules exist):
+# - id: api
+#   path: src/api
+#   responsibility: HTTP edge + auth middleware
+#   entrypoints: [src/api/server.ts:1]
+#   public_contracts: [createApp, requireSession]
+#   may_import: [domain, db]
+#   must_not_import: [ui]
+#   risks: ["writes session cookie — src/api/auth.ts"]
+#   verify: ["npm test -- api"]

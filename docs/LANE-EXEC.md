@@ -15,7 +15,7 @@ The lane stack therefore separates six responsibilities:
 | `lane-supervisor` | Manual one-action lane diagnostic/recovery agent |
 | `lane-ctl` | Validates v2 contracts, builds the prompt, registers immutable state, exposes status/retry/cancel/verify/accept |
 | `lane-bg` + `lane-exec` | User-systemd process lifetime, activity timeouts, exact exit code, lifecycle events |
-| `lane-session` | Warm AGY/Grok plus one-shot Codex fallback, provider isolation, validated report transport, and bounded concurrency |
+| `lane-session` | Warm writer sessions (AGY/Grok/Qwen/Kimi/Cursor/Codex), provider isolation, validated report transport, and bounded concurrency |
 
 Grok 4.5 is the default code writer and AGY 3.6 remains selectable. A classified second availability failure may
 use one Codex Sol high writer attempt; that is recovery, not daytime review.
@@ -181,7 +181,7 @@ changes would create false `owns_paths` violations during a clean task.
 - Accept a verified task immediately and refill the next ready DAG task; never
   join-wait for the slowest sibling.
 
-`lane-session` rotates a warm slot after seven successful tasks by default,
+`lane-session` rotates a warm slot after ten successful tasks by default,
 after a provider failure, or when cwd/model changes. Sessions are scoped to the
 exact run directory, role, worktree, and model; review never reuses them.
 If `XDG_RUNTIME_DIR` is unavailable or read-only, session locks fall back to a

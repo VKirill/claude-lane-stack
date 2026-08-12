@@ -95,7 +95,8 @@ none | <specific blocker or unverified condition>
 <<<LANE_REPORT:END>>>
 ```
 
-The envelope must appear exactly once and be the final response block. Do not
+The envelope must appear exactly once (prefer as the final block; avoid text
+after END — the control plane ignores a trailing summary if the envelope is valid). Do not
 wrap it in a Markdown code fence. Do not run `mkdir`, `touch`, or a redirect for
 the report; the trusted runtime materializes it after a successful provider
 completion (`EndTurn` for Grok or `TurnCompleted` for Qwen/AGY/Codex).

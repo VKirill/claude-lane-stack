@@ -1,9 +1,10 @@
 ---
 name: project-memory
 description: >
-  Living project memory files: PROGRESS.md, LESSONS.md, docs/decisions.md,
-  session-log, agent-notes. Use when finishing a task/session, writing handoff,
-  night audit, onboarding a cold project, or user says progress/lessons/ADR/handoff.
+  Living project memory files: .agents/PROGRESS.md, .agents/LESSONS.md,
+  docs/decisions.md, session-log, agent-notes. Use when finishing a task/session,
+  writing handoff, night audit, onboarding a cold project, or user says
+  progress/lessons/ADR/handoff.
 ---
 
 # Project memory
@@ -12,21 +13,24 @@ description: >
 **Templates:** `~/.agents/templates/`  
 **Init:** `~/.agents/bin/project-memory-init <repo>`
 
-## Files (project root unless noted)
+## Files
 
 | File | Max size | Update when |
 |------|----------|-------------|
-| `PROGRESS.md` | ~40 lines | End of meaningful work / session |
-| `LESSONS.md` | grow slowly | After user correction or failed approach |
+| `.agents/PROGRESS.md` | ~40 lines | End of meaningful work / session |
+| `.agents/LESSONS.md` | grow slowly | After user correction or failed approach |
 | `docs/decisions.md` | rare | Expensive irreversible choice |
 | `.agents/session-log/*` | auto | Hooks (do not hand-author bulk) |
 | `.agents/agent-notes/OPEN.md` | grow | Debt / simplify later |
 
+Canonical location is **under `.agents/`** so root cleanups do not wipe living state.
+If only root `PROGRESS.md` / `LESSONS.md` exist, `project-memory-init` and session-ledger migrate them into `.agents/`.
+
 ## Session start (all agents)
 
 1. Read `AGENTS.md` / `CLAUDE.md` (project).  
-2. Read `PROGRESS.md` if present (one pass).  
-3. Skim last 5 lines of `LESSONS.md` titles if present.  
+2. Read `.agents/PROGRESS.md` if present (one pass; fallback: root `PROGRESS.md`).  
+3. Skim last 5 lines of `.agents/LESSONS.md` titles if present.  
 4. Optional: `.agents/todos/INDEX.md` counts only.  
 5. Do **not** dump full session-log into context — open INDEX only if resuming unknown work.
 
@@ -34,8 +38,8 @@ description: >
 
 When `report.md` is green / complete:
 
-1. **PROGRESS.md** — rewrite Now / Next / Last verify (keep Auto section intact).  
-2. If user corrected you or you hit a landmine → **LESSONS.md** one entry.  
+1. **`.agents/PROGRESS.md`** — rewrite Now / Next / Last verify (keep Auto section intact).  
+2. If user corrected you or you hit a landmine → **`.agents/LESSONS.md`** one entry.  
 3. If architectural fork locked → **docs/decisions.md** ADR-light entry.  
 4. Promote durable OPEN notes or close checkboxes in `agent-notes/OPEN.md`.  
 5. Do **not** invent ADRs for typo fixes.
@@ -103,3 +107,4 @@ Run `~/.agents/bin/night-audit .` or read `AUDIT-*.md`. Close OPEN items or spaw
 - ❌ ADR for every session  
 - ❌ Secrets in any of these files  
 - ❌ Editing production code "to update docs" without a run when you are PM  
+- ❌ Writing living memory at repo root (use `.agents/`)  

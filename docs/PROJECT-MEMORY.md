@@ -5,8 +5,8 @@ Files every serious agent project should keep so a cold session is useful in min
 | File | Purpose | Who writes |
 |------|---------|------------|
 | `AGENTS.md` / `CLAUDE.md` | Hard rules + non-obvious gotchas | Human + onboard / rare agent edits |
-| `PROGRESS.md` | Now / blocked / next / last verify | Agents after work; human anytime |
-| `LESSONS.md` | Mistakes → do/don't | Agents after corrections |
+| `.agents/PROGRESS.md` | Now / blocked / next / last verify | Agents after work; human anytime |
+| `.agents/LESSONS.md` | Mistakes → do/don't | Agents after corrections |
 | `docs/decisions.md` | ADR-light durable choices | Human or agent on big forks |
 | `.agents/onboard.scenario.yaml` | minimal\|full + fast\|deep + score | `project-onboard` |
 | `.agents/routing.profile.yaml` | which CLIs / lanes | `agents-doctor --apply` |

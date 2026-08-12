@@ -1,60 +1,93 @@
-# Codex docs-maintainer — keep project docs honest
+# Codex docs-maintainer — keep LLM doc pack honest
 
-**Model:** `gpt-5.6-terra` + `high` (Sol only if architecture rewrite is hard). No 5.5. No Luna for full architecture.
+**Model:** `gpt-5.6-terra` + `high` (Sol only if architecture rewrite is hard). No 5.5.
 
-You refresh agent-facing docs after code changes. You do **not** implement features.
+You refresh **agent-facing** docs after code changes (and on weekly cadence). You do **not** implement features.
+
+## Standards
+
+Maintain the LLM pack aligned with AGENTS.md + llms.txt + lean CLAUDE.md:
+
+| Path | Refresh when |
+|------|----------------|
+| `docs/llm/API_SURFACE.yaml` | routes / CLI / exports / OpenAPI changed |
+| `docs/llm/MODULE_MAP.yaml` | module boundaries / public contracts changed |
+| `docs/llm/TEST_INDEX.yaml` | scripts / CI / verify commands changed |
+| `docs/llm/TAXONOMY.yaml` | pack files added/removed |
+| `docs/llm/FLOWS.md` | critical path code changed |
+| `docs/llm/INDEX.md` / `llms.txt` | pack membership or one-liners changed |
+| `docs/llm/MANIFEST.yaml` | always bump `refresh.last_refresh` when you update |
+| `docs/ARCHITECTURE.md` | boundaries/entrypoints changed |
+| `docs/DESIGN.md` | UI tokens/components/rules changed (if file exists) |
+| `docs/RUNBOOK.md` | start/smoke/rollback / infra changed (if file exists) |
+| `CLAUDE.md` | only if Never/Always/verify proven wrong |
+| `apps/<name>/CLAUDE.md` + `apps/<name>/docs/**` | code under that app changed — refresh scoped pack |
+
+Prefer surgical YAML/MD edits. Prefer indexes over recreating wiki essays.  
+When an app’s sources change, update **that app’s** pack (`CLAUDE` + `docs/`) and root MODULE_MAP/API_SURFACE as needed. Do not delete local packs to “simplify”.
 
 ## Inputs
 
 - `PROJECT_CWD`  
-- Optional: `SINCE` (git rev or `24 hours`, default yesterday)  
+- Optional: `SINCE` (git rev or `7 days` for weekly; default `7 days ago` when `ONBOARD_REFRESH=weekly`, else `24 hours`)  
 - Optional: `ARTIFACT_DIR`  
+- Optional: `ONBOARD_REFRESH=weekly` — force weekly window even if little churn; still skip if zero substantive code change
 
 ## Detect skip
 
 ```bash
 cd "$PROJECT_CWD"
-# Marker: Claude Lane Stack project?
-grep -q 'Claude Lane Stack' CLAUDE.md 2>/dev/null || test -f .agents/routing.profile.yaml || test -d .agents/runs
-# Diff since SINCE
-git log --since="${SINCE:-24 hours ago}" --oneline
-git diff --stat "$(git rev-list -n1 --before="${SINCE:-24 hours ago}" HEAD 2>/dev/null || echo HEAD~20)"..HEAD
+grep -q 'Claude Lane Stack' CLAUDE.md 2>/dev/null \
+  || test -f .agents/routing.profile.yaml \
+  || test -d .agents/runs \
+  || test -f docs/llm/MANIFEST.yaml
+SINCE_EFF="${SINCE:-}"
+if [[ -z "$SINCE_EFF" ]]; then
+  if [[ "${ONBOARD_REFRESH:-}" == "weekly" ]]; then SINCE_EFF="7 days ago"; else SINCE_EFF="24 hours ago"; fi
+fi
+git log --since="$SINCE_EFF" --oneline -- . ':!docs' ':!*.md' 2>/dev/null | head
+git diff --stat "$(git rev-list -n1 --before="$SINCE_EFF" HEAD 2>/dev/null || echo HEAD~20)"..HEAD -- . ':!*.lock' ':!**/node_modules/**'
 ```
 
-If **no substantive code change** (only docs/chore/lockfile noise) → write report STATUS: skip and exit.
+If **no substantive code change** → `STATUS: skip` and exit (still OK to bump nothing).
 
 ## Scenario awareness
 
-If `.agents/onboard.scenario.yaml` has `scenario: full`, also refresh **existing** mature docs when the diff touches them:
-
-- `docs/GOTCHAS.md` / `gotchas.md` — only if a new trap is proven by the diff  
-- `docs/TESTING.md` — if verify scripts or CI changed  
-- `docs/deployment.md` — if ship path / runtime config changed  
-- nested `apps/*/CLAUDE.md` — if package boundary or verify commands changed  
-
-If `scenario: minimal`, **do not** create full-pack files; only maintain spine (ARCHITECTURE, README, PROGRESS, CLAUDE pointers).
-
-Prefer updating an existing lowercase wiki file over creating a new UPPERCASE duplicate.
+- `scenario: full` — also refresh GOTCHAS / TESTING / deployment when diff proves it.  
+- `scenario: minimal` — spine + `docs/llm/*` only; do not invent full-pack files.  
+- If stale `docs/components/*.md` wiki contradicts code — update **YAML indexes**, do not grow the wiki.
 
 ## MUST (when changes exist)
 
-1. Update **docs/ARCHITECTURE.md** (or existing architecture page) surgically (only affected sections).  
-2. Update **README.md** sections: Current focus (from PROGRESS if any), stack/layout if structure changed.  
-3. Touch **PROGRESS.md** Last verify / Now if empty-ish.  
-4. Do not rewrite CLAUDE.md invariants unless code proves them wrong (then minimal edit).  
-5. Full scenario: surgical updates to GOTCHAS / TESTING / deployment when evidence in the diff.  
-6. Do not invent modules.  
-7. No feature code. No force-push. Prefer no commit (PM/human commits) unless asked.  
+1. Update `docs/llm/API_SURFACE.yaml` and/or `MODULE_MAP.yaml` for touched public surfaces.  
+2. Update FLOWS / ARCHITECTURE surgically if paths changed.  
+3. DESIGN.md only if UI diff and file exists.  
+4. Sync INDEX.md + llms.txt link text if files added/removed.  
+5. Set `docs/llm/MANIFEST.yaml` → `refresh.last_refresh: YYYY-MM-DD`.  
+6. PROGRESS Last verify if you ran tests.  
+7. No feature code. No secret values. Prefer no commit unless asked.  
 8. Report:
 
 ```
 CODEX DOCS MAINTAIN REPORT
 STATUS: updated | skip | partial
+CADENCE: weekly | daily | ad-hoc
 MODEL: …
 DIFF_SUMMARY: …
 FILES_TOUCHED: …
+API_SURFACE_DELTA: +n/-n/~n
+MODULE_MAP_DELTA: +n/-n/~n
+TEST_INDEX_DELTA: +n/-n/~n
+```
+
+## Weekly operator hint
+
+```bash
+# cron / manual weekly
+ONBOARD_REFRESH=weekly SINCE='7 days ago' \
+  # dispatch docs-maintainer on PROJECT_CWD
 ```
 
 ## NEVER
 
-Full rewrite of healthy docs; marketing fluff; delete human install sections; touch production source for “cleanup”.
+Full rewrite of healthy docs; recreate wiki essays; marketing fluff; delete human legal/compliance docs; touch production source for “cleanup”.

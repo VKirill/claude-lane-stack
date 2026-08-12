@@ -19,7 +19,9 @@ from pipeline_stages import (  # noqa: E402
     load_stages_from_profile,
     merge_llm_into_critique,
     normalize_stages,
+    resolve_onboard,
     run_full_critique,
+    stages_to_yaml_lines,
     structural_critique,
     write_critique_artifacts,
 )
@@ -38,6 +40,45 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(s["plan_critique"]["provider"], "structural")
         self.assertEqual(s["write"]["provider"], "qwen")
         self.assertFalse(s["specialist"]["enabled"])
+        self.assertEqual(s["onboard"]["provider"], "codex")
+        self.assertEqual(s["onboard"]["model"], "gpt-5.6-terra")
+        self.assertEqual(s["onboard"]["reasoning_effort"], "high")
+        self.assertEqual(s["onboard"]["service_tier"], "standard")
+
+    def test_normalize_onboard_fast_and_yaml(self) -> None:
+        s = normalize_stages(
+            {
+                "onboard": {
+                    "provider": "codex",
+                    "model": "gpt-5.6-sol",
+                    "reasoning_effort": "xhigh",
+                    "service_tier": "fast",
+                }
+            },
+            write_provider="kimi",
+        )
+        self.assertEqual(s["onboard"]["model"], "gpt-5.6-sol")
+        self.assertEqual(s["onboard"]["reasoning_effort"], "xhigh")
+        self.assertEqual(s["onboard"]["service_tier"], "fast")
+        yaml_text = "\n".join(stages_to_yaml_lines(s))
+        self.assertIn("onboard:", yaml_text)
+        self.assertIn("service_tier: fast", yaml_text)
+        # Non-codex/cursor: tier forced to standard and omitted from yaml
+        s2 = normalize_stages(
+            {"onboard": {"provider": "qwen", "service_tier": "fast"}},
+            write_provider="qwen",
+        )
+        self.assertEqual(s2["onboard"]["service_tier"], "standard")
+        lines = stages_to_yaml_lines(s2)
+        start = lines.index("  onboard:")
+        end = len(lines)
+        for i in range(start + 1, len(lines)):
+            if lines[i].startswith("  ") and not lines[i].startswith("    "):
+                end = i
+                break
+        onboard_yaml = "\n".join(lines[start:end])
+        self.assertIn("provider: qwen", onboard_yaml)
+        self.assertNotIn("service_tier:", onboard_yaml)
 
     def test_load_stages_from_yaml_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -74,6 +115,11 @@ class PipelineStagesTest(unittest.TestCase):
                         provider: codex
                         model: gpt-5.6-sol
                         reasoning_effort: high
+                      onboard:
+                        provider: codex
+                        model: gpt-5.6-sol
+                        reasoning_effort: high
+                        service_tier: fast
                     """
                 ),
                 encoding="utf-8",
@@ -84,6 +130,12 @@ class PipelineStagesTest(unittest.TestCase):
             self.assertEqual(stages["plan_critique"]["provider"], "qwen")
             self.assertTrue(stages["specialist"]["enabled"])
             self.assertEqual(stages["night_review"]["provider"], "qwen")
+            self.assertEqual(stages["onboard"]["model"], "gpt-5.6-sol")
+            self.assertEqual(stages["onboard"]["service_tier"], "fast")
+            resolved = resolve_onboard(root)
+            self.assertEqual(resolved["provider"], "codex")
+            self.assertEqual(resolved["model"], "gpt-5.6-sol")
+            self.assertEqual(resolved["service_tier"], "fast")
 
     def test_structural_critique_flags_thin_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

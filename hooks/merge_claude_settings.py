@@ -106,48 +106,68 @@ def merge_statusline(settings: dict[str, Any], statusline_path: Path) -> dict[st
 
 
 SESSION_MARK_RE = re.compile(r"lane_statusline_session\.py")
+TEAMMATE_IDLE_RE = re.compile(r"teammate_idle_sentinel\.py")
 
 
-def merge_session_mark(settings: dict[str, Any], mark_path: Path) -> dict[str, Any]:
-    """Ensure SessionStart/SessionEnd run the agent→session mark for statusLine routing."""
+def _replace_event_hooks(
+    settings: dict[str, Any],
+    event: str,
+    command: str,
+    drop_re: re.Pattern[str],
+    *,
+    timeout: int = 2,
+) -> None:
+    """Idempotently set a single-command hook entry for an event (drop prior ours)."""
     hooks = settings.setdefault("hooks", {})
-    cmd = f"python3 {shlex.quote(str(mark_path.expanduser().resolve()))}"
     entry = {
         "hooks": [
             {
                 "type": "command",
-                "command": cmd,
-                "timeout": 2,
+                "command": command,
+                "timeout": timeout,
             }
         ]
     }
-    for event in ("SessionStart", "SessionEnd"):
-        entries = hooks.setdefault(event, [])
-        if not isinstance(entries, list):
-            hooks[event] = [entry]
+    entries = hooks.setdefault(event, [])
+    if not isinstance(entries, list):
+        hooks[event] = [entry]
+        return
+    cleaned: list[object] = []
+    for item in entries:
+        if not isinstance(item, dict):
+            cleaned.append(item)
             continue
-        cleaned: list[object] = []
-        for item in entries:
-            if not isinstance(item, dict):
-                cleaned.append(item)
-                continue
-            hlist = item.get("hooks")
-            if not isinstance(hlist, list):
-                cleaned.append(item)
-                continue
-            remaining = [
-                h
-                for h in hlist
-                if not (
-                    isinstance(h, dict)
-                    and isinstance(h.get("command"), str)
-                    and SESSION_MARK_RE.search(h["command"])
-                )
-            ]
-            if remaining:
-                cleaned.append({**item, "hooks": remaining})
-        cleaned.append(entry)
-        hooks[event] = cleaned
+        hlist = item.get("hooks")
+        if not isinstance(hlist, list):
+            cleaned.append(item)
+            continue
+        remaining = [
+            h
+            for h in hlist
+            if not (
+                isinstance(h, dict)
+                and isinstance(h.get("command"), str)
+                and drop_re.search(h["command"])
+            )
+        ]
+        if remaining:
+            cleaned.append({**item, "hooks": remaining})
+    cleaned.append(entry)
+    hooks[event] = cleaned
+
+
+def merge_session_mark(settings: dict[str, Any], mark_path: Path) -> dict[str, Any]:
+    """Ensure SessionStart/SessionEnd run the agent→session mark for statusLine routing."""
+    cmd = f"python3 {shlex.quote(str(mark_path.expanduser().resolve()))}"
+    for event in ("SessionStart", "SessionEnd"):
+        _replace_event_hooks(settings, event, cmd, SESSION_MARK_RE, timeout=2)
+    return settings
+
+
+def merge_teammate_idle(settings: dict[str, Any], hook_path: Path) -> dict[str, Any]:
+    """Wire TeammateIdle sentinel (DONE|FAILED|WAIT) for agent teams."""
+    cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
+    _replace_event_hooks(settings, "TeammateIdle", cmd, TEAMMATE_IDLE_RE, timeout=5)
     return settings
 
 
@@ -248,6 +268,12 @@ def main() -> int:
         default=None,
         help="path to lane_statusline_session.py (SessionStart/End agent mark)",
     )
+    parser.add_argument(
+        "--teammate-idle",
+        type=Path,
+        default=None,
+        help="path to teammate_idle_sentinel.py (TeammateIdle DONE|FAILED|WAIT)",
+    )
     parser.add_argument("settings", type=Path)
     parser.add_argument("guard", type=Path, nargs="?")
     args = parser.parse_args()
@@ -260,14 +286,21 @@ def main() -> int:
     settings = merge_stack_capabilities(settings)
     if args.statusline is not None:
         settings = merge_statusline(settings, args.statusline)
+    hooks_dir = Path(__file__).resolve().parent
     mark = args.session_mark
     if mark is None and args.statusline is not None:
-        # default: hooks/lane_statusline_session.py next to this file
-        candidate = Path(__file__).resolve().parent / "lane_statusline_session.py"
+        candidate = hooks_dir / "lane_statusline_session.py"
         if candidate.is_file():
             mark = candidate
     if mark is not None and mark.is_file():
         settings = merge_session_mark(settings, mark)
+    idle = args.teammate_idle
+    if idle is None:
+        candidate = hooks_dir / "teammate_idle_sentinel.py"
+        if candidate.is_file():
+            idle = candidate
+    if idle is not None and idle.is_file():
+        settings = merge_teammate_idle(settings, idle)
     write_settings(args.settings, settings)
     return 0
 

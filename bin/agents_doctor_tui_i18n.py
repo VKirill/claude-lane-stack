@@ -32,12 +32,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_model": "Model",
         "field_effort": "Effort",
         "field_fast": "Fast mode",
-        "coder_fast_hint": "Codex only · service_tier=fast (~1.5× speed, ~2.5× ChatGPT credits). Independent of Effort.",
+        "coder_fast_hint": "Codex/Cursor · service_tier=fast (Codex credits or Cursor *-fast model). Independent of Effort.",
         "msg_fast": "Fast mode → {value}",
         "stages_h1": "  Conveyor stages\n",
         "stages_help": (
             "  Each stage has its own agent + model. ↑↓ fields (wraps stages) ·\n"
-            "  ←→ / Space change value · 1-4 jump stage · p/n prev/next stage.\n\n"
+            "  ←→ / Space change value · 1-5 jump stage · p/n prev/next stage.\n\n"
         ),
         "stages_pipe_h2": "  Pipeline\n",
         "stages_fields_h2": "\n  Settings · {stage}\n",
@@ -45,6 +45,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n  ←→ cycles the highlighted field. On «Provider» switch structural → Qwen/Kimi…\n"
             "  On «Model» you get the full catalog for that agent (Kimi has several).\n"
             "  Critique mode «gate» blocks pre-dispatch until pass/ack.\n"
+            "  Onboard: agent + model + effort + Fast mode (Codex/Cursor service_tier).\n"
         ),
         "stage_plan_critique": "Plan critique",
         "stage_plan_critique_badge": "CHEAP",
@@ -54,12 +55,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "stage_night_review_badge": "CODEX",
         "stage_specialist": "Specialist",
         "stage_specialist_badge": "RISK",
+        "stage_onboard": "Onboard",
+        "stage_onboard_badge": "PASS",
         "stage_fix_writer": "fix",
         "sfield_enabled": "Enabled",
         "sfield_mode": "Mode",
         "sfield_provider": "Provider",
         "sfield_model": "Model",
         "sfield_effort": "Effort",
+        "sfield_fast": "Fast mode",
         "sfield_when": "When",
         "mode_advisory": "advisory",
         "mode_gate": "gate",
@@ -71,6 +75,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prov_grok": "Grok",
         "prov_agy": "AGY",
         "prov_codex": "Codex",
+        "prov_cursor": "Cursor",
         "pipe_crit": "crit",
         "pipe_write": "write",
         "pipe_night": "night",
@@ -94,13 +99,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "work_h1": "  Writer workspace\n",
         "work_help": (
             "  Where daytime writers edit code. Not about night review.\n"
-            "  ↑↓ choose mode · Space/Enter select · +/- auto score · m multi-write\n\n"
+            "  ↑↓ choose mode · Space/Enter select · +/- auto score · [ ]/,. session · m multi-write\n\n"
         ),
         "work_mode_h2": "  Mode\n",
         "work_auto_h2": "\n  Auto thresholds  (only when Mode = Auto)\n",
         "work_score_line": "  worktree when score ≥ {n} / 10     [+/-]\n",
         "work_multi_line": "  {sw}  worktree when ≥2 write tasks     [m]\n",
         "work_thr_ignored": "  (thresholds ignored until Mode = Auto)\n",
+        "work_session_h2": "\n  Writer session\n",
+        "work_session_line": "  tasks per session = {n} / 10     [[ ]]\n",
+        "work_session_hint": "  1 = new session every task. Same run resumes until this limit.\n",
         "work_footer": (
             "\n  In-place: project_cwd = repo, PM commits main.\n"
             "  Worktree: wt-create → agent/<slug>, PM wt-merge-main.\n"
@@ -147,6 +155,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "apply_effort": "  effort    {effort}\n",
         "apply_fast": "  fast mode {value}\n",
         "apply_workspace": "  workspace {ws}\n",
+        "apply_session": "  session   {n} tasks / session\n",
         "apply_lang": "  language  {lang}\n",
         "apply_night": "  night     {night}\n",
         "apply_critique": "  critique  {crit}\n",
@@ -161,8 +170,8 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "keys_coder_pick": "↑↓ choose · Enter confirm · Esc back · q quit",
         "keys_coder": "↑↓ field · Enter list · Tab tabs · 7 Apply",
-        "keys_stages": "↑↓ field · ←→ value · 1-4 stage · p/n · Space",
-        "keys_work": "↑↓ mode · Space select · +/- score · m multi",
+        "keys_stages": "↑↓ field · ←→ value · 1-5 stage · p/n · Space",
+        "keys_work": "↑↓ mode · Space select · +/- score · [ ]/,. session · m multi",
         "keys_night": "Space night · a merge · +/- budget · n writer",
         "keys_ui": "↑↓ language · L cycle · Tab tabs",
         "keys_status": "r rescan · 1-7 tabs · q quit",
@@ -178,6 +187,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_cancelled": "Cancelled",
         "msg_workspace": "Workspace → {name}",
         "msg_ws_score": "worktree_min_score → {n}",
+        "msg_session_max": "session_max_tasks → {n}",
         "msg_multi": "multi-write worktree → {on}",
         "msg_night": "Night → {on}",
         "msg_merge": "Auto-merge → {on}",
@@ -197,6 +207,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_provider": "Stage provider → {provider}",
         "msg_stage_model": "Stage model → {model}",
         "msg_stage_effort": "Stage effort → {effort}",
+        "msg_stage_fast": "Onboard Fast mode → {value}",
+        "msg_stage_fast_na": "Fast mode only for Codex/Cursor onboard",
         "msg_stage_write_fixed": "Write stage is always on (pick provider/model)",
         "msg_stage_edit": "{stage} · {field}",
         "msg_stage_no_models": "No models for this provider — pick another agent",
@@ -208,6 +220,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_grok_blurb": "xAI Grok writer lane",
         "wr_agy_blurb": "Gemini Flash high via AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (no host MCP/plugins)",
+        "wr_cursor_blurb": "Cursor Agent CLI — any account model (+ fast siblings)",
         "wr_auto_blurb": "First available: Kimi → Qwen → Grok → AGY",
         "done_title": "✓ Project configured",
         "done_lbl_path": "path",
@@ -216,6 +229,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "done_lbl_effort": "effort",
         "done_lbl_fast": "fast mode",
         "done_lbl_ws": "workspace",
+        "done_lbl_session": "session",
         "done_lbl_lang": "language",
         "done_lbl_night": "night",
         "done_lbl_critique": "critique",
@@ -265,12 +279,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_model": "Модель",
         "field_effort": "Effort",
         "field_fast": "Fast mode",
-        "coder_fast_hint": "Только Codex · service_tier=fast (~1.5× скорость, ~2.5× кредиты ChatGPT). Не зависит от Effort.",
+        "coder_fast_hint": "Codex/Cursor · service_tier=fast (кредиты Codex или модель Cursor *-fast). Не зависит от Effort.",
         "msg_fast": "Fast mode → {value}",
         "stages_h1": "  Этапы конвейера\n",
         "stages_help": (
             "  У каждого этапа свой агент и модель. ↑↓ поля (переходит между этапами) ·\n"
-            "  ←→ / Пробел сменить значение · 1–4 этап · p/n предыдущий/следующий.\n\n"
+            "  ←→ / Пробел сменить значение · 1–5 этап · p/n предыдущий/следующий.\n\n"
         ),
         "stages_pipe_h2": "  Конвейер\n",
         "stages_fields_h2": "\n  Настройки · {stage}\n",
@@ -278,6 +292,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n  ←→ крутит выделенное поле. «Провайдер»: структурный → Qwen/Kimi/Grok…\n"
             "  «Модель»: полный каталог агента (у Kimi несколько вариантов).\n"
             "  Режим «шлюз» блокирует pre-dispatch, пока нет pass/ack.\n"
+            "  Онбординг: агент + модель + effort + Fast mode (Codex/Cursor service_tier).\n"
         ),
         "stage_plan_critique": "Критика плана",
         "stage_plan_critique_badge": "БЫСТР",
@@ -287,12 +302,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "stage_night_review_badge": "CODEX",
         "stage_specialist": "Специалист",
         "stage_specialist_badge": "РИСК",
+        "stage_onboard": "Онбординг",
+        "stage_onboard_badge": "ПАСПОРТ",
         "stage_fix_writer": "фикс",
         "sfield_enabled": "Включено",
         "sfield_mode": "Режим",
         "sfield_provider": "Провайдер",
         "sfield_model": "Модель",
         "sfield_effort": "Effort",
+        "sfield_fast": "Fast mode",
         "sfield_when": "Когда",
         "mode_advisory": "совет",
         "mode_gate": "шлюз",
@@ -304,6 +322,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prov_grok": "Grok",
         "prov_agy": "AGY",
         "prov_codex": "Codex",
+        "prov_cursor": "Cursor",
         "pipe_crit": "критика",
         "pipe_write": "код",
         "pipe_night": "ночь",
@@ -327,13 +346,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "work_h1": "  Рабочая область writer\n",
         "work_help": (
             "  Куда пишут дневные writer’ы. Не про ночной review.\n"
-            "  ↑↓ режим · Space/Enter · +/- порог auto · m multi-write\n\n"
+            "  ↑↓ режим · Space/Enter · +/- порог auto · [ ]/,. сессия · m multi-write\n\n"
         ),
         "work_mode_h2": "  Режим\n",
         "work_auto_h2": "\n  Пороги Auto  (только при Mode = Auto)\n",
         "work_score_line": "  worktree если score ≥ {n} / 10     [+/-]\n",
         "work_multi_line": "  {sw}  worktree если ≥2 write-задач     [m]\n",
         "work_thr_ignored": "  (пороги не действуют, пока Mode ≠ Auto)\n",
+        "work_session_h2": "\n  Сессия writer\n",
+        "work_session_line": "  задач на сессию = {n} / 10     [[ ]]\n",
+        "work_session_hint": "  1 = новая сессия на каждую задачу. Иначе resume в том же run до лимита.\n",
         "work_footer": (
             "\n  In-place: project_cwd = repo, PM коммитит main.\n"
             "  Worktree: wt-create → agent/<slug>, PM wt-merge-main.\n"
@@ -380,6 +402,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "apply_effort": "  effort    {effort}\n",
         "apply_fast": "  fast mode {value}\n",
         "apply_workspace": "  workspace {ws}\n",
+        "apply_session": "  сессия    {n} задач / сессия\n",
         "apply_lang": "  язык      {lang}\n",
         "apply_night": "  ночь      {night}\n",
         "apply_critique": "  critique  {crit}\n",
@@ -394,8 +417,8 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "keys_coder_pick": "↑↓ выбор · Enter · Esc назад · q выход",
         "keys_coder": "↑↓ поле · Enter список · Tab · 7 Сохранить",
-        "keys_stages": "↑↓ поле · ←→ значение · 1–4 этап · p/n · Пробел",
-        "keys_work": "↑↓ режим · Space · +/- score · m multi",
+        "keys_stages": "↑↓ поле · ←→ значение · 1–5 этап · p/n · Пробел",
+        "keys_work": "↑↓ режим · Space · +/- score · [ ]/,. сессия · m multi",
         "keys_night": "Space ночь · a merge · +/- бюджет · n writer",
         "keys_ui": "↑↓ язык · L переключить · Tab",
         "keys_status": "r rescan · 1-7 вкладки · q выход",
@@ -411,6 +434,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_cancelled": "Отмена",
         "msg_workspace": "Workspace → {name}",
         "msg_ws_score": "worktree_min_score → {n}",
+        "msg_session_max": "session_max_tasks → {n}",
         "msg_multi": "multi-write worktree → {on}",
         "msg_night": "Ночь → {on}",
         "msg_merge": "Auto-merge → {on}",
@@ -430,6 +454,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_provider": "Провайдер этапа → {provider}",
         "msg_stage_model": "Модель этапа → {model}",
         "msg_stage_effort": "Effort этапа → {effort}",
+        "msg_stage_fast": "Onboard Fast mode → {value}",
+        "msg_stage_fast_na": "Fast mode только для Codex/Cursor онбординга",
         "msg_stage_write_fixed": "Этап «Код» всегда включён (меняйте провайдер/модель)",
         "msg_stage_edit": "{stage} · {field}",
         "msg_stage_no_models": "Нет моделей — выберите другого провайдера",
@@ -441,6 +467,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_grok_blurb": "Writer-lane xAI Grok",
         "wr_agy_blurb": "Gemini Flash high через AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (без host MCP/plugins)",
+        "wr_cursor_blurb": "Cursor Agent CLI — любая модель аккаунта (+ fast)",
         "wr_auto_blurb": "Первый доступный: Kimi → Qwen → Grok → AGY",
         "done_title": "✓ Проект настроен",
         "done_lbl_path": "путь",
@@ -449,6 +476,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "done_lbl_effort": "effort",
         "done_lbl_fast": "fast mode",
         "done_lbl_ws": "workspace",
+        "done_lbl_session": "сессия",
         "done_lbl_lang": "язык",
         "done_lbl_night": "ночь",
         "done_lbl_critique": "critique",

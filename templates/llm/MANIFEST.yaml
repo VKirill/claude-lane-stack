@@ -1,0 +1,44 @@
+# LLM documentation pack manifest (inventory + weekly refresh).
+# Classifier: docs/llm/TAXONOMY.yaml (Diátaxis × load policy).
+version: 1
+project: REPLACE_ME
+audience: llm_agents
+refresh:
+  cadence: weekly
+  last_full_onboard: null
+  last_refresh: null
+  owner_role: docs-maintainer
+pack:
+  always_load:
+    - CLAUDE.md
+    - AGENTS.md
+    - docs/llm/INDEX.md
+  on_demand:
+    - docs/llm/TAXONOMY.yaml
+    - docs/ARCHITECTURE.md
+    - docs/llm/MODULE_MAP.yaml
+    - docs/llm/API_SURFACE.yaml
+    - docs/llm/TEST_INDEX.yaml
+    - docs/llm/FLOWS.md
+    - docs/llm/DOC_LAYOUT.md
+    - docs/TESTING.md
+    - docs/deployment.md
+    - docs/RUNBOOK.md
+    - docs/gotchas.md
+    - docs/DESIGN.md
+optional_when:
+  has_ui: [docs/DESIGN.md]
+  has_deploy: [docs/RUNBOOK.md, docs/deployment.md]
+  has_domain_secrets: [docs/SECURITY.md]
+  monorepo: ["apps/*/CLAUDE.md", "apps/*/docs/**", "packages/*/CLAUDE.md"]
+standards_refs:
+  - https://agents.md/
+  - https://llmstxt.org/
+  - https://diataxis.fr/
+  - https://code.claude.com/docs/en/memory
+rules:
+  - Prefer structured YAML indexes over per-function prose.
+  - Skip Diátaxis tutorials in the LLM pack (context bloat).
+  - Every factual claim needs path:line or is marked hypothesis.
+  - Never paste secrets; env names only.
+  - Keep CLAUDE.md ≤200 lines body; point to on_demand docs.

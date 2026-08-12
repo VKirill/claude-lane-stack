@@ -1,0 +1,24 @@
+# Public API / CLI / export surface — ONE file for any LLM to list system capabilities.
+# Filled by project-onboarder (deep Phase 2). Evidence from code only.
+# Do NOT list private helpers. Prefer OpenAPI / route tables / exported packages.
+version: 1
+project: REPLACE_ME
+generated_by: project-onboarder
+updated_at: null
+sources: []   # e.g. openapi.yaml, src/routes, bin/*
+surfaces: []
+# Example entries (delete when real ones exist):
+# - kind: http          # http | rpc | cli | export | webhook | queue
+#   id: POST /api/v1/chat
+#   path: src/api/chat.ts:42
+#   module: api
+#   purpose: create chat completion
+#   auth: session|api_key|none|unknown
+#   inputs: [messages, model]
+#   outputs: [stream, json]
+#   status: active      # active | deprecated | internal
+# - kind: cli
+#   id: project-onboard
+#   path: bin/project-onboard
+#   purpose: seed LLM passport
+#   auth: none

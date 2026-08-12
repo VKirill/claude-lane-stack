@@ -52,6 +52,7 @@ SAFE_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
 HARD_PROVIDER_POOL = 10
 HARD_VERIFY_POOL = 10
 HARD_MAX_TASKS = 10
+DEFAULT_MAX_TASKS = 10
 HARD_TAIL_LINES = 1000
 HARD_VERIFY_TIMEOUT = 86400
 HARD_V2_VERIFY_TIMEOUT = 7200
@@ -65,6 +66,7 @@ PRIMARY_MODELS = {
     # Project-selectable Codex programmer (opt-in). Luna+max is the intentional
     # cheap/fast coding preset; availability fallback still upgrades to Sol+high.
     "codex": "gpt-5.6-luna",
+    "cursor": "composer-2.5",
 }
 PRIMARY_EFFORTS = {
     "agy": "medium",
@@ -72,6 +74,7 @@ PRIMARY_EFFORTS = {
     "qwen": "medium",
     "kimi": "medium",
     "codex": "max",
+    "cursor": "medium",
 }
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
@@ -598,7 +601,7 @@ def trusted_provider_report(
     provider = runtime.get("provider")
     expected_provider = expected_control.get("provider", "qwen")
     provider_identity_valid = (
-        provider in {"agy", "grok", "codex", "qwen", "kimi"}
+        provider in {"agy", "grok", "codex", "qwen", "kimi", "cursor"}
         and provider == expected_provider
         and runtime.get("model") == expected_control.get("model", runtime.get("model"))
         and runtime.get("reasoning_effort")
@@ -653,6 +656,11 @@ def trusted_provider_report(
         and runtime.get("stop_reason") == "TurnCompleted"
         and runtime.get("provider_sandbox") == "off"
         and runtime.get("permission_mode") == "headless-auto"
+    ) or (
+        provider == "cursor"
+        and runtime.get("stop_reason") == "TurnCompleted"
+        and runtime.get("provider_sandbox") == "off"
+        and runtime.get("permission_mode") == "force"
     )
     required_runtime = (
         control_identity_valid
@@ -1103,13 +1111,13 @@ def build_launch_argv(
         "--max-tasks",
         str(args.max_tasks),
     ]
-    # Codex Fast mode (service_tier) — only meaningful for provider=codex.
+    # Fast mode (service_tier) — codex ChatGPT credits + cursor -fast siblings.
     # Pass only --service-tier KEY=value so recorded argv stays option/value pairs
     # (retry parser rejects unpaired flags like --fast-mode).
     service_tier = str(getattr(args, "service_tier", None) or "standard").strip().lower()
     if getattr(args, "fast_mode", False):
         service_tier = "fast"
-    if args.provider == "codex":
+    if args.provider in {"codex", "cursor"}:
         if service_tier not in {"standard", "fast"}:
             service_tier = "standard"
         session_argv.extend(["--service-tier", service_tier])
@@ -1279,7 +1287,7 @@ def cmd_start_v2(
         "service_tier": (
             "fast"
             if (
-                args.provider == "codex"
+                args.provider in {"codex", "cursor"}
                 and (
                     getattr(args, "fast_mode", False)
                     or str(getattr(args, "service_tier", "") or "").lower() == "fast"
@@ -1350,6 +1358,10 @@ def cmd_start(args: argparse.Namespace) -> int:
         project_cwd_value=args.project_cwd,
         create_artifact=True,
     )
+    if getattr(args, "max_tasks", None) is None:
+        from routing_profile import resolve_session_max_tasks
+
+        args.max_tasks = resolve_session_max_tasks(context.project_cwd)
     schema_version, run_contract = context_schema_version(context)
     lifecycle_lock = safe_child_file(context.artifact_dir, ".lifecycle.lock")
     with locked_file(lifecycle_lock):
@@ -1711,7 +1723,7 @@ def validate_recorded_argv(
         argv[session + 2 :], allowed=session_allowed, label="lane-session"
     )
     recorded_provider = control.get("provider", "qwen")
-    if recorded_provider not in {"agy", "grok", "codex", "qwen", "kimi"}:
+    if recorded_provider not in {"agy", "grok", "codex", "qwen", "kimi", "cursor"}:
         raise ContractError("recorded provider is unsupported")
     required = {
         "--provider": recorded_provider,
@@ -1738,8 +1750,8 @@ def validate_recorded_argv(
     if set(session_options) not in optional_key_sets:
         raise ContractError("recorded lane-session argv is incomplete")
     if "--service-tier" in session_options:
-        if recorded_provider != "codex":
-            raise ContractError("recorded service-tier is only valid for codex")
+        if recorded_provider not in {"codex", "cursor"}:
+            raise ContractError("recorded service-tier is only valid for codex/cursor")
         if session_options["--service-tier"] not in {"standard", "fast"}:
             raise ContractError("recorded service-tier must be standard or fast")
     model = session_options.get("--model", "")
@@ -3089,12 +3101,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--service-tier",
         choices=("standard", "fast"),
         default=None,
-        help="codex only: ChatGPT credit speed tier (default: profile or standard)",
+        help="codex/cursor: speed tier (default: profile or standard)",
     )
     start.add_argument(
         "--fast-mode",
         action="store_true",
-        help="codex only: alias for --service-tier fast",
+        help="codex/cursor: alias for --service-tier fast",
     )
     start.add_argument(
         "--idle",
@@ -3126,7 +3138,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=lambda value: bounded_int(
             value, minimum=1, maximum=HARD_MAX_TASKS, label="max-tasks"
         ),
-        default=7,
+        default=None,
+        help="warm writer tasks per session (default: routing.profile.yaml, else 10)",
     )
     start.set_defaults(handler=cmd_start)
 

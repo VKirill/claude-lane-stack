@@ -31,6 +31,24 @@ PM_CONTROL_COMMANDS = {
     "wt-create",
     "wt-merge-main",
 }
+# Host ops the PM may run directly (deploy / cutover / long detach).
+PM_OPS_COMMANDS = {
+    "lane-bg",
+    "lane-exec",
+    "lane-wait",
+    "systemctl",
+    "sleep",
+}
+_SUDO_VALUE_OPTS = {
+    "-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt",
+    "-R", "--chroot", "-T", "--command-timeout", "-C", "--close-from",
+    "-D", "--chdir",
+}
+_DOCKER_MUTATING = {"restart", "start", "stop", "kill", "pause", "unpause"}
+_DOCKER_COMPOSE_OPS = {
+    "config", "images", "logs", "ps", "top",
+    "up", "down", "start", "stop", "restart", "pull", "build", "run",
+}
 # Machine receipts under a run — owned by controller/lane-ctl, not hand-edited by PM.
 _PM_RUN_MACHINE_RECEIPT = re.compile(
     r"^\.agents/runs/[^/]+/"
@@ -89,8 +107,9 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     """PM may edit control-plane docs + dotenv files — never production source.
 
     Aligns with SOLO/dev-orchestrator: `.agents/**`, `docs/plans/**`,
-    `PROGRESS.md` / `LESSONS.md`, and dotenv (`.env*`) for secrets the human
-    trusts the PM with. Machine lifecycle receipts under a run (controller,
+    living memory (`.agents/PROGRESS.md` / `.agents/LESSONS.md`, plus
+    legacy root copies), and dotenv (`.env*`) for secrets the human trusts
+    the PM with. Machine lifecycle receipts under a run (controller,
     state/report under artifacts, events, sessions) stay tool-owned.
 
     Exception: basename exactly ``check.py`` under a run's artifacts (or run
@@ -111,7 +130,12 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
         return False
     relative = target.relative_to(root)
     normalized = relative.as_posix()
-    if normalized in {"PROGRESS.md", "LESSONS.md"}:
+    if normalized in {
+        "PROGRESS.md",
+        "LESSONS.md",
+        ".agents/PROGRESS.md",
+        ".agents/LESSONS.md",
+    }:
         return True
     if _is_env_secret_file(normalized):
         return True
@@ -158,17 +182,66 @@ def _safe_psql(args: list[str]) -> bool:
     return bool(queries) and all(not SQL_MUTATION.search(query) for query in queries)
 
 
+def _unwrap_sudo_args(args: list[str]) -> list[str] | None:
+    """Return inner argv after sudo flags, or None if sudo has no command."""
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--":
+            return args[index + 1 :]
+        if token in _SUDO_VALUE_OPTS:
+            index += 2
+            continue
+        if "=" in token and token.startswith("-"):
+            index += 1
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        return args[index:]
+    return None
+
+
 def _pm_segment_error(segment: list[str]) -> str | None:
     if not segment:
         return None
     executable = Path(segment[0]).name
     args = segment[1:]
 
+    # sudo / nohup: unwrap and re-check the inner command.
+    if executable == "sudo":
+        inner = _unwrap_sudo_args(args)
+        if not inner:
+            return "sudo requires a command"
+        return _pm_segment_error(inner)
+    if executable == "nohup":
+        if not args:
+            return "nohup requires a command"
+        return _pm_segment_error(args)
+    if executable in {"bash", "sh"}:
+        # Script path: bash /tmp/foo.sh [args…]
+        # -c: only when the inline string itself is PM-safe.
+        index = 0
+        while index < len(args) and args[index].startswith("-"):
+            if args[index] in {"-c", "-lc"}:
+                break
+            if args[index] in {"--rcfile", "--init-file"} and index + 1 < len(args):
+                index += 2
+                continue
+            index += 1
+        if index < len(args) and args[index] in {"-c", "-lc"}:
+            if index + 1 >= len(args):
+                return "bash -c requires a command string"
+            return _pm_shell_error(args[index + 1])
+        if index >= len(args):
+            return "bash requires a script path or -c"
+        return None
+
     if executable == "export":
         if args and all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", arg) for arg in args):
             return None
         return "unsupported export command"
-    if executable in PM_CONTROL_COMMANDS:
+    if executable in PM_CONTROL_COMMANDS or executable in PM_OPS_COMMANDS:
         return None
     if executable in PM_READ_COMMANDS:
         if executable == "find" and any(
@@ -262,13 +335,19 @@ def _pm_segment_error(segment: list[str]) -> str | None:
         )
     if executable == "docker":
         command = _subcommand(args, {"--context", "-H", "--host"})
-        if command in {"images", "inspect", "logs", "ps", "stats", "top", "version"}:
+        if command in {
+            "images", "inspect", "logs", "ps", "stats", "top", "version",
+            *_DOCKER_MUTATING,
+        }:
             return None
         if command == "compose":
             offset = args.index("compose") + 1
-            compose = _subcommand(args[offset:], {"-f", "--file", "-p", "--project-name"})
-            return None if compose in {"config", "images", "logs", "ps", "top"} else (
-                f"docker compose {compose or '<missing>'} is not read-only"
+            compose = _subcommand(
+                args[offset:],
+                {"-f", "--file", "-p", "--project-name", "--profile"},
+            )
+            return None if compose in _DOCKER_COMPOSE_OPS else (
+                f"docker compose {compose or '<missing>'} is not PM-safe"
             )
         if command == "exec":
             offset = args.index("exec") + 1
@@ -279,7 +358,10 @@ def _pm_segment_error(segment: list[str]) -> str | None:
                 return None
             if len(tail) >= 2 and Path(tail[1]).name == "psql":
                 return None if _safe_psql(tail[2:]) else "database mutation is forbidden"
-        return f"docker {command or '<missing>'} is not read-only"
+            # ops-expand: docker exec <ctr> <cmd…> for deploys / probes
+            if len(tail) >= 2:
+                return _pm_segment_error(tail[1:])
+        return f"docker {command or '<missing>'} is not PM-safe"
     if executable == "psql":
         return None if _safe_psql(args) else "database mutation is forbidden"
     if executable == "curl":
@@ -306,6 +388,24 @@ def _pm_segment_error(segment: list[str]) -> str | None:
     return f"command {segment[0]!r} is not allowlisted for project management"
 
 
+def _pm_redirect_target_ok(path: str) -> bool:
+    """PM may only redirect to /tmp (cutover/deploy logs), not source trees."""
+    if not path or path.isdigit():
+        return True  # fd like 1 in 2>&1
+    try:
+        resolved = Path(path).expanduser()
+        # lexical check first (path may not exist yet)
+        parts = resolved.parts
+        if parts[:1] == ("/",) and len(parts) >= 2 and parts[1] == "tmp":
+            return True
+        if parts[:1] == ("/tmp",) or (len(parts) >= 1 and parts[0] == "/tmp"):
+            return True
+    except (OSError, ValueError):
+        return False
+    text = path.replace("\\", "/")
+    return text == "/tmp" or text.startswith("/tmp/")
+
+
 def _pm_shell_error(command: str) -> str | None:
     if "\0" in command or "\n" in command or "$(" in command or "`" in command:
         return "multiline shell or command substitution is forbidden"
@@ -317,13 +417,35 @@ def _pm_shell_error(command: str) -> str | None:
     except ValueError as exc:
         return f"shell command cannot be parsed: {exc}"
     segments: list[list[str]] = [[]]
-    for token in tokens:
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
         if token in {"&&", "||", ";", "|"}:
             segments.append([])
-        elif any(char in token for char in "<>") or token == "&":
-            return "redirection or background shell execution is forbidden"
-        else:
-            segments[-1].append(token)
+            index += 1
+            continue
+        # Background job marker — allowed for PM ops (nohup … &).
+        if token == "&":
+            index += 1
+            continue
+        # Redirection: >, >>, 2>, &>, 2>&1 (possibly split as 2, >&, 1).
+        if token in {">", ">>", "<", "&>", ">&"} or re.fullmatch(r"\d>+", token):
+            index += 1
+            if index < len(tokens) and tokens[index] not in {
+                "&&", "||", ";", "|", "&", ">", ">>", "<", "&>", ">&",
+            } and not re.fullmatch(r"\d>+", tokens[index]):
+                target = tokens[index]
+                if not _pm_redirect_target_ok(target):
+                    return f"redirect target {target!r} is outside /tmp"
+                index += 1
+            continue
+        if token.isdigit() and index + 2 < len(tokens) and tokens[index + 1] == ">&":
+            index += 3
+            continue
+        if any(char in token for char in "<>"):
+            return f"unsupported redirection {token!r}"
+        segments[-1].append(token)
+        index += 1
     for segment in segments:
         error = _pm_segment_error(segment)
         if error:

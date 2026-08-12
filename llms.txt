@@ -8,7 +8,7 @@ Key facts:
 - Merging to `main` is always done by the orchestrator, never the human.
 - **Onboard 2.0**: dual scenario `minimal|full` + dual depth `fast|deep` (full defaults to deep forensic). Commands: `/project-onboard`, `/project-onboard deep`, shell `project-onboard`.
 - **Long lanes**: `lane-ctl` registers detached work; `lane-bg` uses a transient user-systemd service so provider lifetime survives host cleanup; `lane-exec` applies activity-aware idle/max. See docs/LANE-EXEC.md.
-- **Warm Grok sessions**: `lane-session` resumes run-scoped conversations, defaults to five provider slots (configurable 1–10), and rotates after seven successful tasks. Verification defaults to two separate slots (max 10); review stays independent.
+- **Warm writer sessions**: `lane-session` resumes run-scoped conversations, defaults to five provider slots (configurable 1–10), and rotates after ten successful tasks. Verification defaults to two separate slots (max 10); review stays independent.
 - **Language**: durable files English; chat with human may be Russian (docs/LANGUAGE.md).
 - **Codex models**: GPT-5.6 Sol (review/deep/high-risk), Terra (scoped write/docs), Luna (trivia only). No 5.5.
 - Author: Kirill Vechkasov (@VKirill). Release: https://github.com/VKirill/claude-lane-stack/releases/tag/v1.4.0

@@ -10,9 +10,13 @@ OUT="$OUT_DIR/AUDIT-${DAY}.md"
   echo "# Night audit — ${DAY}"
   echo; echo "Project: \`$ROOT\`"; echo "Generated: $(date -Iseconds)"; echo
   echo "## PROGRESS (live state)"; echo
-  if [[ -f "$ROOT/PROGRESS.md" ]]; then head -40 "$ROOT/PROGRESS.md"; else echo "_Missing PROGRESS.md — run project-memory-init._"; fi
+  PROGRESS_F="$ROOT/.agents/PROGRESS.md"
+  [[ -f "$PROGRESS_F" ]] || PROGRESS_F="$ROOT/PROGRESS.md"
+  LESSONS_F="$ROOT/.agents/LESSONS.md"
+  [[ -f "$LESSONS_F" ]] || LESSONS_F="$ROOT/LESSONS.md"
+  if [[ -f "$PROGRESS_F" ]]; then head -40 "$PROGRESS_F"; else echo "_Missing .agents/PROGRESS.md — run project-memory-init._"; fi
   echo; echo "## LESSONS (recent titles)"; echo
-  if [[ -f "$ROOT/LESSONS.md" ]]; then grep -E '^### ' "$ROOT/LESSONS.md" | tail -15 || echo "_No lesson entries yet._"; else echo "_Missing LESSONS.md._"; fi
+  if [[ -f "$LESSONS_F" ]]; then grep -E '^### ' "$LESSONS_F" | tail -15 || echo "_No lesson entries yet._"; else echo "_Missing .agents/LESSONS.md._"; fi
   echo; echo "## Session log index (head 25)"; echo
   if [[ -f "$OUT_DIR/INDEX.md" ]]; then head -30 "$OUT_DIR/INDEX.md"; else echo "_No session-log INDEX yet._"; fi
   echo; echo "## Agent notes OPEN"; echo
@@ -26,7 +30,7 @@ OUT="$OUT_DIR/AUDIT-${DAY}.md"
   git -C "$ROOT" diff --stat HEAD 2>/dev/null | head -40 || true
   echo '```'; echo; echo "## Suggested actions"; echo
   echo "1. Close or promote OPEN agent-notes items to todos/runs"
-  echo "2. Refresh PROGRESS.md Now/Next/Blocked"
+  echo "2. Refresh .agents/PROGRESS.md Now/Next/Blocked"
   echo "3. If a durable fork appeared in session logs → ADR in docs/decisions.md"
   echo "4. Run test suite if Last verify is stale"
   echo; echo "---"; echo "_night-audit — ~/.agents/bin/night-audit_"

@@ -8,7 +8,7 @@
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
 | Plan critique | **Structural** + optional one-shot LLM (Qwen/Codex/Kimi/Grok/AGY) → PM `decision` | `stages.plan_critique` in adoc |
-| Write (all risks) | **Kimi K3-256k** (default), Qwen 3.8, Grok 4.5, or AGY 3.6 | selected programmer lane |
+| Write (all risks) | **Kimi K3-256k** (default), Qwen 3.8, Grok 4.6/4.5, or AGY 3.6 | selected programmer lane |
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
 | Specialist (optional) | Codex Sol / other | `stages.specialist` when high_risk |
@@ -80,7 +80,7 @@ into lane writers (ephemeral bare profile).
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
-| `risk: low` UI/wiring | **kimi** by default; `qwen`/`grok`/`agy` selectable | Kimi K3-256k (effort via `KIMI_MODEL_THINKING_EFFORT`), Qwen 3.8 max, Grok 4.5 medium, or Gemini 3.6 Flash high |
+| `risk: low` UI/wiring | **kimi** by default; `qwen`/`grok`/`agy` selectable | Kimi K3-256k (effort via `KIMI_MODEL_THINKING_EFFORT`), Qwen 3.8 max, Grok 4.6/4.5 medium, or Gemini 3.6 Flash high |
 | `risk: medium` | selected writer → Codex night shift | same receipt chain + gpt-5.6-sol xhigh nightly |
 | `risk: high` auth/pay/schema | selected writer solo → Codex night shift | no silent daytime reviewer |
 | Selected model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |
@@ -141,9 +141,11 @@ See [LANE-EXEC.md](LANE-EXEC.md). One source-read-only `run-supervisor` stays
 visible through bounded watches; the detached deterministic controller remains
 alive independently and makes all lifecycle decisions.
 
-Kimi, Qwen, AGY, and Grok write tasks within the same run use `lane-session` affinity. The
-warmest free conversation is resumed, while concurrent tasks lease separate
-slots (five by default, configurable 1–10). Default rotation: seven successful tasks; review remains
+Kimi, Qwen, AGY, Grok, Cursor, and Codex write tasks within the same run use
+`lane-session` affinity. The warmest free conversation is resumed, while concurrent
+tasks lease separate slots (five by default, configurable 1–10). Default rotation:
+ten successful tasks (`workspace.session_max_tasks` in `routing.profile.yaml`,
+adoc Work tab `[` `]` / `,` `.`; `1` = new session every task). Review remains
 an independent cold session.
 Classified provider availability failures are sanitized in `runtime.json`. The
 controller waits 30 seconds by default, retries the exact selected model once, then

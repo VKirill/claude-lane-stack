@@ -20,7 +20,8 @@ skills:
 
 ## Inputs
 
-`PROJECT_CWD`, optional `SINCE` (default `24 hours ago`), `ARTIFACT_DIR`
+`PROJECT_CWD`, optional `SINCE`, `ARTIFACT_DIR`, `ONBOARD_REFRESH=weekly`  
+(weekly ⇒ default `SINCE=7 days ago`; refresh `docs/llm/*` YAML indexes + ARCHITECTURE/DESIGN)
 
 ## Run
 

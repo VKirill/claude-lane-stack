@@ -8,8 +8,12 @@ REPO="."
 FORCE=""
 SCENARIO_OVERRIDE=""
 DEPTH_OVERRIDE=""
+# Default: full pipeline (detect → seed → model fill). Opt out with --seed-only.
+RUN_FILL=1
+SEED_ONLY_FLAG=0
+RUN_FLAG=0
 
-# Args: project-onboard [path] [--force] [--minimal|--full] [--fast|--deep]
+# Args: project-onboard [path] [--force] [--minimal|--full] [--fast|--deep] [--seed-only]
 # path and flags may appear in any order
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -18,19 +22,29 @@ while [[ $# -gt 0 ]]; do
     --full) SCENARIO_OVERRIDE="full" ;;
     --fast|--lite) DEPTH_OVERRIDE="fast" ;;
     --deep) DEPTH_OVERRIDE="deep" ;;
+    --run|--fill|--exec) RUN_FLAG=1 ;;
+    --seed-only) SEED_ONLY_FLAG=1 ;;
     -h|--help)
       cat <<'USAGE'
-Usage: project-onboard [path] [--force] [--minimal|--full] [--fast|--deep]
+Usage: project-onboard [path]
 
-Maturity (what to seed):
-  minimal — CLAUDE, AGENTS, ARCHITECTURE, memory, plans
-  full    — + GOTCHAS, GLOSSARY, TESTING, deployment, nested CLAUDE, …
+Default = full onboard (auto scenario/depth + seed + Codex/Cursor fill):
+  project-onboard .
 
-Depth (how hard Codex must analyze — written to onboard.scenario.yaml):
-  deep    — default for full; forensic walk, wiki↔code audit, real verify (Recommended)
-  fast    — default for minimal; spine fill only, shallow explore
+Optional flags:
+  --minimal|--full     maturity override (else auto-detect)
+  --fast|--deep        analysis depth override (else full→deep, minimal→fast)
+  --seed-only          stubs only, do not call the model
+  --run                explicit fill (default already on)
+  --force              overwrite existing seeded files
 
-Override: ONBOARD_SCENARIO=minimal|full  ONBOARD_DEPTH=fast|deep
+Model/effort/fast: adoc Stages → onboard (.agents/routing.profile.yaml).
+TTY: split-pane TUI (left checklist · right live log). Raw stream: ONBOARD_PLAIN=1
+Attach to a running fill:
+  python3 ~/.agents/bin/onboard_fill_tui.py --repo . --art .agents/runs/_onboard/artifacts/001 \\
+    --log .agents/runs/_onboard/artifacts/001/codex-exec.log --pid \$(cat .agents/runs/_onboard/artifacts/001/writer.pid 2>/dev/null)
+
+Env: ONBOARD_SCENARIO  ONBOARD_DEPTH  ONBOARD_RUN=0  ONBOARD_DRY_RUN=1  ONBOARD_TIMEOUT  ONBOARD_PLAIN=1
 USAGE
       exit 0
       ;;
@@ -44,6 +58,13 @@ USAGE
   esac
   shift
 done
+
+# Resolve fill: default on; ONBOARD_RUN=0 / --seed-only off; --run forces on.
+case "${ONBOARD_RUN:-}" in
+  0|false|no|off|seed) RUN_FILL=0 ;;
+esac
+[[ "$SEED_ONLY_FLAG" -eq 1 ]] && RUN_FILL=0
+[[ "$RUN_FLAG" -eq 1 ]] && RUN_FILL=1
 
 # Env override (CLI wins)
 if [[ -z "$SCENARIO_OVERRIDE" && -n "${ONBOARD_SCENARIO:-}" ]]; then
@@ -122,18 +143,22 @@ detect_scenario() {
     fi
   fi
 
-  # Source size (exclude node_modules, .git, dist, build)
+  # Source size (exclude node_modules, .git, dist, build). Cap at 401 — score only needs thresholds.
+  # ponytail: find may exit 1 on EACCES under pipefail; || true keeps set -e alive on huge monorepos.
   src_files=$(find "$REPO" -type f \
     \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.py' \
        -o -name '*.go' -o -name '*.rs' -o -name '*.vue' -o -name '*.svelte' \) \
     -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/dist/*' \
     -not -path '*/.next/*' -not -path '*/build/*' -not -path '*/vendor/*' \
-    -not -path '*/__pycache__/*' -not -path '*/.venv/*' 2>/dev/null | wc -l | tr -d ' ')
-  if [[ "${src_files:-0}" -ge 400 ]]; then
-    score=$((score + 3)); reasons+=("src_files=${src_files}(+3)")
-  elif [[ "${src_files:-0}" -ge 120 ]]; then
+    -not -path '*/__pycache__/*' -not -path '*/.venv/*' \
+    -not -path '*/.worktrees/*' -not -path '*/.agents/*' -not -path '*/coverage/*' \
+    2>/dev/null | head -n 401 | wc -l | tr -d ' ' || true)
+  src_files="${src_files:-0}"
+  if [[ "$src_files" -ge 400 ]]; then
+    score=$((score + 3)); reasons+=("src_files>=400(+3)")
+  elif [[ "$src_files" -ge 120 ]]; then
     score=$((score + 2)); reasons+=("src_files=${src_files}(+2)")
-  elif [[ "${src_files:-0}" -ge 40 ]]; then
+  elif [[ "$src_files" -ge 40 ]]; then
     score=$((score + 1)); reasons+=("src_files=${src_files}(+1)")
   fi
 
@@ -154,12 +179,12 @@ detect_scenario() {
   [[ -d "$REPO/k8s" || -d "$REPO/deploy" || -d "$REPO/infra" || -d "$REPO/terraform" ]] && dscore=$((dscore + 1))
   if [[ -d "$REPO/.github/workflows" ]]; then
     local wf
-    wf=$(find "$REPO/.github/workflows" -name '*.yml' -o -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
+    wf=$(find "$REPO/.github/workflows" \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | wc -l | tr -d ' ' || true)
     [[ "${wf:-0}" -ge 1 ]] && dscore=$((dscore + 1))
   fi
   # Cargo release Docker, PM2, systemd units
   if find "$REPO" -maxdepth 3 -type f \( -name '*.service' -o -name 'safe-build.sh' \) \
-      -not -path '*/.git/*' 2>/dev/null | grep -q .; then
+      -not -path '*/.git/*' 2>/dev/null | head -1 | grep -q .; then
     dscore=$((dscore + 1))
   fi
   if [[ "$dscore" -ge 2 ]]; then
@@ -173,7 +198,7 @@ detect_scenario() {
   # Existing docs depth
   if [[ -d "$REPO/docs" ]]; then
     local docs_n
-    docs_n=$(find "$REPO/docs" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+    docs_n=$(find "$REPO/docs" -name '*.md' 2>/dev/null | head -n 20 | wc -l | tr -d ' ' || true)
     if [[ "${docs_n:-0}" -ge 5 ]]; then
       score=$((score + 2)); reasons+=("docs_md=${docs_n}(+2)")
     elif [[ "${docs_n:-0}" -ge 2 ]]; then
@@ -256,13 +281,100 @@ else
 fi
 echo "    depth: $DEPTH"
 
+# UI / site signal → seed docs/DESIGN.md
+HAS_UI=0
+if [[ -f "$REPO/next.config.js" || -f "$REPO/next.config.mjs" || -f "$REPO/next.config.ts" \
+   || -f "$REPO/vite.config.ts" || -f "$REPO/vite.config.js" || -f "$REPO/astro.config.mjs" ]]; then
+  HAS_UI=1
+fi
+if [[ "$HAS_UI" -eq 0 ]]; then
+  if find "$REPO" -maxdepth 4 -type f \( -name '*.tsx' -o -name '*.jsx' -o -name '*.vue' -o -name '*.svelte' \) \
+    -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.next/*' -not -path '*/dist/*' \
+    2>/dev/null | head -1 | grep -q .; then
+    HAS_UI=1
+  fi
+fi
+if [[ "$HAS_UI" -eq 0 ]]; then
+  if find "$REPO" -maxdepth 5 -type f \( -name 'tokens.css' -o -name 'tokens.json' -o -name 'globals.css' \) \
+    -not -path '*/node_modules/*' 2>/dev/null | head -1 | grep -q .; then
+    HAS_UI=1
+  fi
+fi
+echo "    has_ui: $HAS_UI"
+
+# Deploy / runtime signal → seed docs/RUNBOOK.md (Diátaxis how-to)
+HAS_DEPLOY=0
+if [[ "${DETECTED_DEPLOY:-0}" == "1" ]]; then
+  HAS_DEPLOY=1
+fi
+if [[ "$HAS_DEPLOY" -eq 0 ]]; then
+  if [[ -f "$REPO/Dockerfile" || -f "$REPO/docker-compose.yml" || -f "$REPO/docker-compose.yaml" \
+     || -f "$REPO/fly.toml" || -f "$REPO/railway.toml" || -f "$REPO/render.yaml" ]]; then
+    HAS_DEPLOY=1
+  fi
+fi
+if [[ "$HAS_DEPLOY" -eq 0 ]]; then
+  if find "$REPO" -maxdepth 3 -type f \( -name 'docker-compose*.yml' -o -name 'docker-compose*.yaml' \
+    -o -name '*.service' -o -name 'ecosystem.config.js' -o -name 'Procfile' \) \
+    -not -path '*/node_modules/*' 2>/dev/null | head -1 | grep -q .; then
+    HAS_DEPLOY=1
+  fi
+fi
+echo "    has_deploy: $HAS_DEPLOY"
+
+# Prefer adoc Stages → onboard (routing.profile.yaml); env overrides win later in onboarder.
+ONBOARD_PROVIDER="${ONBOARD_PROVIDER:-}"
+ONBOARD_MODEL="${CODEX_MODEL:-${ONBOARD_MODEL:-}}"
+ONBOARD_EFFORT="${CODEX_REASONING:-${ONBOARD_EFFORT:-}}"
+ONBOARD_SERVICE_TIER="${ONBOARD_SERVICE_TIER:-}"
+_profile="$REPO/.agents/routing.profile.yaml"
+if [[ -f "$_profile" ]]; then
+  # ponytail: awk scan of stages.onboard; ceiling = nested YAML quirks → use resolve_onboard
+  _in_onboard=0
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    case "$_line" in
+      "  onboard:"*) _in_onboard=1; continue ;;
+      "  "[a-zA-Z_]*) [[ $_in_onboard -eq 1 ]] && break ;;
+    esac
+    if [[ $_in_onboard -eq 1 ]]; then
+      _k="${_line%%:*}"; _k="${_k#"${_k%%[![:space:]]*}"}"
+      _v="${_line#*:}"; _v="${_v#"${_v%%[![:space:]]*}"}"; _v="${_v%%#*}"; _v="${_v%"${_v##*[![:space:]]}"}"
+      case "$_k" in
+        provider) [[ -z "$ONBOARD_PROVIDER" ]] && ONBOARD_PROVIDER="$_v" ;;
+        model) [[ -z "$ONBOARD_MODEL" ]] && ONBOARD_MODEL="$_v" ;;
+        reasoning_effort|effort) [[ -z "$ONBOARD_EFFORT" ]] && ONBOARD_EFFORT="$_v" ;;
+        service_tier) [[ -z "$ONBOARD_SERVICE_TIER" ]] && ONBOARD_SERVICE_TIER="$_v" ;;
+      esac
+    fi
+  done < "$_profile"
+fi
+# Depth-based defaults when adoc has no onboard block yet.
+if [[ -z "$ONBOARD_PROVIDER" ]]; then ONBOARD_PROVIDER="codex"; fi
+if [[ -z "$ONBOARD_MODEL" ]]; then
+  if [[ "$DEPTH" == "deep" ]]; then ONBOARD_MODEL="gpt-5.6-sol"; else ONBOARD_MODEL="gpt-5.6-terra"; fi
+fi
+if [[ -z "$ONBOARD_EFFORT" ]]; then
+  if [[ "$DEPTH" == "deep" ]]; then ONBOARD_EFFORT="high"; else ONBOARD_EFFORT="medium"; fi
+fi
+if [[ -z "$ONBOARD_SERVICE_TIER" ]]; then ONBOARD_SERVICE_TIER="standard"; fi
+echo "    agent: $ONBOARD_PROVIDER model=$ONBOARD_MODEL effort=$ONBOARD_EFFORT tier=$ONBOARD_SERVICE_TIER"
+
 mkdir -p "$REPO/.agents"
 cat > "$REPO/.agents/onboard.scenario.yaml" <<EOF
 # Written by project-onboard — dual scenario + dual depth
 # Override: --minimal|--full  --fast|--deep
 # Env: ONBOARD_SCENARIO=minimal|full  ONBOARD_DEPTH=fast|deep
+# Agent/model/effort/tier: adoc Stages → onboard (or CODEX_MODEL / CODEX_REASONING)
 scenario: $SCENARIO
 depth: $DEPTH
+provider: $ONBOARD_PROVIDER
+model: $ONBOARD_MODEL
+reasoning_effort: $ONBOARD_EFFORT
+service_tier: $ONBOARD_SERVICE_TIER
+has_ui: $HAS_UI
+has_deploy: $HAS_DEPLOY
+refresh_cadence: weekly
+taxonomy: diataxis
 detected: $DETECTED_MODE
 score: $DETECTED_SCORE
 reasons: "$DETECTED_REASONS"
@@ -271,12 +383,14 @@ signals:
   nested_packages: $DETECTED_APP_PKGS
   src_files: $DETECTED_SRC_FILES
   commits: $DETECTED_COMMITS
-  deploy: $DETECTED_DEPLOY
+  deploy: $HAS_DEPLOY
   domain_complexity: $DETECTED_DOMAIN
+  has_ui: $HAS_UI
+  has_deploy: $HAS_DEPLOY
 override: ${SCENARIO_OVERRIDE:-null}
 depth_override: ${DEPTH_OVERRIDE:-null}
 generated_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-# Codex: if depth=deep you MUST complete the deep checklist in onboard.md before STATUS: complete
+# Codex: deep → Diátaxis LLM pack (TAXONOMY + MODULE_MAP + API_SURFACE + TEST_INDEX + FLOWS); weekly docs-maintainer
 EOF
 echo "    wrote .agents/onboard.scenario.yaml"
 
@@ -291,11 +405,14 @@ fi
 command -v run-board >/dev/null 2>&1 && run-board "$REPO" || true
 
 # Doctor profile (writer + optional night review)
-# Prefer interactive setup on a TTY so new projects do not silently get kimi.
-# Non-interactive / CI: set WRITER_PROVIDER=qwen|kimi|agy|grok and optionally
-# NIGHT_REVIEW=on|off, then project-onboard applies without prompts.
+# Only for first-time setup. Never rewrite an existing routing.profile.yaml —
+# --apply with WRITER_PROVIDER=auto (non-TTY default) silently resets to kimi.
+# Force: WRITER_PROVIDER=... or FORCE_DOCTOR=1.
 if command -v agents-doctor >/dev/null 2>&1; then
-  if [[ -t 0 && -t 1 && -z "${WRITER_PROVIDER:-}" && -z "${CI:-}" ]]; then
+  _profile_path="$REPO/.agents/routing.profile.yaml"
+  if [[ -f "$_profile_path" && -z "${WRITER_PROVIDER:-}" && -z "${FORCE_DOCTOR:-}" ]]; then
+    echo "==> skip agents-doctor (existing $_profile_path)"
+  elif [[ -t 0 && -t 1 && -z "${WRITER_PROVIDER:-}" && -z "${CI:-}" ]]; then
     echo "==> agents-doctor TUI (writer + night review)"
     agents-doctor tui "$REPO" || agents-doctor setup "$REPO" || true
   else
@@ -356,9 +473,9 @@ BLOCK
 
   local DOCS_BLOCK
   if [[ "$SCENARIO" == "full" ]]; then
-    DOCS_BLOCK=$'- `docs/ARCHITECTURE.md` — system map\n- `docs/GOTCHAS.md` — sharp edges (Critical/High)\n- `docs/GLOSSARY.md` — domain terms\n- `docs/TESTING.md` — how to verify\n- `docs/deployment.md` — ship / rollback\n- `docs/plans/` — durable strategy specs\n- `PROGRESS.md` / `LESSONS.md` — living state'
+    DOCS_BLOCK=$'- `docs/ARCHITECTURE.md` — system map\n- `docs/GOTCHAS.md` — sharp edges (Critical/High)\n- `docs/GLOSSARY.md` — domain terms\n- `docs/TESTING.md` — how to verify\n- `docs/deployment.md` — ship / rollback\n- `docs/plans/` — durable strategy specs\n- `.agents/PROGRESS.md` / `.agents/LESSONS.md` — living state'
   else
-    DOCS_BLOCK=$'- `docs/` — architecture, decisions, product\n- `docs/plans/` — durable strategy specs (SEO cocoons, product plans)\n- `PROGRESS.md` — now / blocked / next\n- `LESSONS.md` — do / don'\''t from past mistakes'
+    DOCS_BLOCK=$'- `docs/` — architecture, decisions, product\n- `docs/plans/` — durable strategy specs (SEO cocoons, product plans)\n- `.agents/PROGRESS.md` — now / blocked / next\n- `.agents/LESSONS.md` — do / don'\''t from past mistakes'
   fi
 
   cat > "$f" <<EOF
@@ -589,6 +706,44 @@ fi
 
 seed_tpl "docs/ARCHITECTURE.md" "ARCHITECTURE.md"
 
+# LLM-first pack stubs (AGENTS.md + llms.txt + structured YAML indexes)
+mkdir -p "$REPO/docs/llm"
+seed_tpl "docs/llm/DOC_LAYOUT.md" "llm/DOC_LAYOUT.md"
+seed_tpl "docs/llm/INDEX.md" "llm/INDEX.md"
+seed_tpl "docs/llm/MANIFEST.yaml" "llm/MANIFEST.yaml"
+seed_tpl "docs/llm/TAXONOMY.yaml" "llm/TAXONOMY.yaml"
+seed_tpl "docs/llm/MODULE_MAP.yaml" "llm/MODULE_MAP.yaml"
+seed_tpl "docs/llm/API_SURFACE.yaml" "llm/API_SURFACE.yaml"
+seed_tpl "docs/llm/TEST_INDEX.yaml" "llm/TEST_INDEX.yaml"
+seed_tpl "llms.txt" "llms.txt"
+for _f in \
+  "$REPO/docs/llm/MODULE_MAP.yaml" \
+  "$REPO/docs/llm/API_SURFACE.yaml" \
+  "$REPO/docs/llm/MANIFEST.yaml" \
+  "$REPO/docs/llm/TAXONOMY.yaml" \
+  "$REPO/docs/llm/TEST_INDEX.yaml"; do
+  if [[ -f "$_f" ]] && grep -q 'project: REPLACE_ME' "$_f" 2>/dev/null; then
+    sed -i "s/project: REPLACE_ME/project: ${NAME}/g" "$_f"
+  fi
+done
+if [[ -f "$REPO/docs/llm/INDEX.md" ]] && grep -q 'REPLACE_ME —' "$REPO/docs/llm/INDEX.md" 2>/dev/null; then
+  sed -i "s/REPLACE_ME —/${NAME} —/g" "$REPO/docs/llm/INDEX.md"
+fi
+if [[ -f "$REPO/llms.txt" ]] && grep -q '^# REPLACE_ME$' "$REPO/llms.txt" 2>/dev/null; then
+  sed -i "s/^# REPLACE_ME$/# ${NAME}/" "$REPO/llms.txt"
+fi
+if [[ "$DEPTH" == "deep" || "$SCENARIO" == "full" ]]; then
+  seed_tpl "docs/llm/FLOWS.md" "llm/FLOWS.md"
+fi
+if [[ "$HAS_UI" -eq 1 ]]; then
+  seed_tpl "docs/DESIGN.md" "DESIGN.md"
+  echo "    UI detected → docs/DESIGN.md seeded (Google @google/design.md; fill Phase 4)"
+fi
+if [[ "$HAS_DEPLOY" -eq 1 ]]; then
+  seed_tpl "docs/RUNBOOK.md" "RUNBOOK.md"
+  echo "    deploy detected → docs/RUNBOOK.md seeded (Diátaxis how-to; fill Phase 4)"
+fi
+
 # README anamnesis stub only if missing
 if [[ ! -f "$REPO/README.md" ]]; then
   seed_tpl "README.md" "README.anamnesis.md"
@@ -656,6 +811,9 @@ fi
 write_deep_scan() {
   local out="$REPO/.agents/runs/_onboard/artifacts/001/deep-scan.md"
   mkdir -p "$(dirname "$out")"
+  # pipefail + find|head → SIGPIPE(141); never abort onboard for evidence pack
+  set +e
+  set +o pipefail
   {
     echo "# Deep scan evidence (auto) — for project-onboarder"
     echo ""
@@ -686,7 +844,8 @@ write_deep_scan() {
          -o -name 'go.mod' -o -name 'Dockerfile' -o -name 'docker-compose.yml' \
          -o -name 'docker-compose.yaml' -o -name 'ecosystem.config.js' -o -name 'Makefile' \) \
       -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/target/*' \
-      -not -path '*/.next/*' -not -path '*/dist/*' 2>/dev/null | head -80
+      -not -path '*/.next/*' -not -path '*/dist/*' -not -path '*/.worktrees/*' \
+      2>/dev/null | head -80
     echo '```'
     echo ""
     echo "## Largest source files (approx LOC)"
@@ -694,7 +853,8 @@ write_deep_scan() {
     find "$REPO" -type f \
       \( -name '*.rs' -o -name '*.ts' -o -name '*.tsx' -o -name '*.py' -o -name '*.go' -o -name '*.js' \) \
       -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/target/*' \
-      -not -path '*/.next/*' -not -path '*/dist/*' -not -path '*/vendor/*' 2>/dev/null \
+      -not -path '*/.next/*' -not -path '*/dist/*' -not -path '*/vendor/*' \
+      -not -path '*/.worktrees/*' -not -path '*/.agents/*' 2>/dev/null \
       | head -400 \
       | xargs -r wc -l 2>/dev/null \
       | sort -nr \
@@ -716,28 +876,378 @@ write_deep_scan() {
     [[ -f "$REPO/pyproject.toml" ]] && echo "pyproject — try: pytest -q"
     echo '```'
     echo ""
-    echo "## Codex deep checklist (must complete when depth=deep)"
+    echo "## Codex deep multi-phase pipeline (mandatory when depth=deep)"
     echo ""
-    echo "1. Map every runtime entrypoint and process type (daemon/API/worker/cron/SPA)."
-    echo "2. Trace 3–7 critical flows end-to-end with \`file:line\` evidence."
-    echo "3. Wiki↔code audit: list claims that contradict the working tree (interval, steps, stack)."
-    echo "4. Never/Always only from proven traps (gotchas, code guards, recent bugs)."
-    echo "5. Real verify matrix — run build/test if feasible; record expected failures without secrets."
-    echo "6. Ship path from actual Dockerfile/compose/PM2/workflows (no invented clouds)."
-    echo "7. Secrets surface: env **names** only + where they are loaded (never paste values)."
-    echo "8. Stale wiki / dead root files → PROGRESS Blocked + LESSONS if non-obvious."
-    echo "9. Report: DEPTH, modules_read, flows_traced, wiki_mismatches, GAPS ranked."
+    echo "Standards: AGENTS.md + CLAUDE.md + llms.txt + Diátaxis TAXONOMY + docs/llm/*.yaml"
+    echo "has_ui=$HAS_UI has_deploy=$HAS_DEPLOY refresh=weekly"
+    echo ""
+    echo "Write each artifact under this directory (RELATIVE paths) before the next phase:"
+    echo "  .agents/runs/_onboard/artifacts/001/phase1-layout.md"
+    echo "  .agents/runs/_onboard/artifacts/001/phase2-maps.md   → MODULE_MAP covers apps+runners; webhooks per provider"
+    echo "  .agents/runs/_onboard/artifacts/001/phase3-flows.md  → include notify stream+queue consumer when present"
+    echo "  .agents/runs/_onboard/artifacts/001/phase4-passport.md → lean MANIFEST always_load + 3–5 ADRs"
+    echo "  .agents/runs/_onboard/artifacts/001/phase4b-app-packs.md → per-app CLAUDE+docs (pipeline pass 2)"
+    echo "  .agents/runs/_onboard/artifacts/001/phase5-critique.md → VALIDATION.md (ARTIFACT_DIR set)"
+    echo "  .agents/runs/_onboard/artifacts/001/report.md"
   } > "$out"
+  set -e
+  set -o pipefail
   echo "    wrote $out"
 }
 
 write_deep_scan
 
 echo ""
-echo "Done. scenario=$SCENARIO depth=$DEPTH score=$DETECTED_SCORE"
-echo "  1) Codex fills from evidence (depth=$DEPTH) — deep checklist in deep-scan.md"
-echo "  2) Read .agents/onboard.scenario.yaml + deep-scan.md"
-echo "  3) agents-doctor setup .     # writer + night review (or --apply --writer-provider …)"
-echo "  4) claude --agent dev-orchestrator"
-echo "Override: project-onboard . --minimal|--full --fast|--deep"
-echo "Strategy docs → docs/plans/   |   Implementation → .agents/runs/"
+echo "Seed done. scenario=$SCENARIO depth=$DEPTH score=$DETECTED_SCORE has_ui=$HAS_UI has_deploy=$HAS_DEPLOY"
+echo "  agent=$ONBOARD_PROVIDER model=$ONBOARD_MODEL effort=$ONBOARD_EFFORT tier=$ONBOARD_SERVICE_TIER"
+echo "  LLM pack: docs/llm/{INDEX,TAXONOMY,MODULE_MAP,API_SURFACE,TEST_INDEX,MANIFEST} + llms.txt"
+[[ "$HAS_UI" -eq 1 ]] && echo "  DESIGN.md seeded (UI)"
+[[ "$HAS_DEPLOY" -eq 1 ]] && echo "  RUNBOOK.md seeded (deploy)"
+
+run_onboard_fill() {
+  local art="$REPO/.agents/runs/_onboard/artifacts/001"
+  mkdir -p "$art"
+  local prompt="$art/prompt.md"
+  local final="$art/codex-final.md"
+  local log="$art/codex-exec.log"
+  local instr="${HOME}/.agents/codex/instructions/onboard.md"
+  [[ -f "$instr" ]] || instr="/home/ubuntu/tools/claude-lane-stack/agents/codex/instructions/onboard.md"
+  local schemas="${HOME}/.claude/skills/project-onboard/references/PACK-SCHEMAS.md"
+  local validation="${HOME}/.claude/skills/project-onboard/references/VALIDATION.md"
+  local design_std="${HOME}/.claude/skills/project-onboard/references/design-md-standard.md"
+  local timeout_s=1200
+  [[ "$DEPTH" == "deep" ]] && timeout_s=3600
+  [[ -n "${ONBOARD_TIMEOUT:-}" ]] && timeout_s="$ONBOARD_TIMEOUT"
+
+  if [[ ! -f "$instr" ]]; then
+    echo "ERROR: missing onboard instructions: $instr" >&2
+    return 1
+  fi
+
+  # Ensure artifact dir is writable for the model (chmod in case of odd umask).
+  chmod -R u+rwX "$art" 2>/dev/null || true
+  mkdir -p "$art"
+  : >"$art/.writable"
+  rm -f "$art/.writable"
+
+  local app_pack_bin="${HOME}/.agents/bin/onboard_app_packs.py"
+  [[ -f "$app_pack_bin" ]] || app_pack_bin="/home/ubuntu/tools/claude-lane-stack/bin/onboard_app_packs.py"
+  local apps_n=0
+  if [[ -x "$app_pack_bin" || -f "$app_pack_bin" ]]; then
+    apps_n="$(python3 "$app_pack_bin" list "$REPO" 2>/dev/null | wc -l | tr -d ' ')"
+  elif [[ -d "$REPO/apps" ]]; then
+    apps_n="$(find "$REPO/apps" -mindepth 2 -maxdepth 2 -name package.json 2>/dev/null | wc -l | tr -d ' ')"
+  fi
+  # Two-pass pipeline when deep monorepo: root pack first, then per-app packs.
+  local two_pass=0
+  if [[ "$DEPTH" == "deep" && "${apps_n:-0}" -ge 2 ]]; then
+    two_pass=1
+  fi
+
+  local prompt_root="$art/prompt-root.md"
+  local prompt_apps="$art/prompt-phase4b.md"
+
+  cat > "$prompt_root" <<EOF
+You are project-onboarder. Follow these instructions exactly:
+
+1. Read and obey: $instr
+2. Schemas (MUST): $schemas
+3. Validation (MUST before STATUS complete): $validation
+4. If has_ui=1: $design_std
+
+PROJECT_CWD=$REPO
+ARTIFACT_DIR=$art
+ARTIFACT_DIR_REL=.agents/runs/_onboard/artifacts/001
+ONBOARD_SCENARIO=$SCENARIO
+ONBOARD_DEPTH=$DEPTH
+ONBOARD_SERVICE_TIER=$ONBOARD_SERVICE_TIER
+has_ui=$HAS_UI
+has_deploy=$HAS_DEPLOY
+ONBOARD_PIPELINE_PASS=root
+
+Phase 0 seed already ran. Do NOT re-run agents-doctor. Do NOT rewrite .agents/routing.profile.yaml.
+
+Writable roots: git worktree including docs/** and .agents/runs/_onboard/artifacts/001/**.
+Write RELATIVE phase files:
+  .agents/runs/_onboard/artifacts/001/phase1-layout.md
+  .agents/runs/_onboard/artifacts/001/phase2-maps.md
+  .agents/runs/_onboard/artifacts/001/phase3-flows.md
+  .agents/runs/_onboard/artifacts/001/phase4-passport.md
+$(if [[ "$two_pass" -eq 1 ]]; then
+  echo "STOP after phase4-passport.md. Do NOT write apps/*/docs or phase4b/phase5/report yet — the host pipeline runs a dedicated per-app pass next."
+else
+  cat <<'EOP'
+  .agents/runs/_onboard/artifacts/001/phase4b-app-packs.md
+  .agents/runs/_onboard/artifacts/001/phase5-critique.md
+  .agents/runs/_onboard/artifacts/001/report.md
+Also complete Phase4b per-app packs (filled local CLAUDE+docs; project surfaces; no catch-all stubs) and Phase5 validation.
+EOP
+fi)
+
+Deep completeness (PACK-SCHEMAS): lean MANIFEST always_load; MODULE_MAP covers apps+runners/hot libs; webhooks per provider; auth resolved; FLOWS notify = stream+queue consumer; decisions.md 3–5 ADRs.
+
+READ SCOPE: apps/ packages/ infra/ scripts/ tests/ docs/ root manifests /.github/workflows.
+Do NOT explore: .worktrees/ .git/ node_modules/ dist/ .next/ .nuxt/ coverage/ .agents/runs/ (except ARTIFACT_DIR) .agents/session-log/ .agents/runs-archive/ .codex/ docs/.wiki-backup/
+
+Read package.json via jq/python/cat — never node require without './'.
+Seeded stubs: full-file rewrite. English only. Evidence path:line.
+
+End with: DONE phase4-passport   or   FAILED <reason>
+EOF
+  cp "$prompt_root" "$prompt"
+
+  if [[ "$two_pass" -eq 1 ]]; then
+    cat > "$prompt_apps" <<EOF
+You are project-onboarder on PIPELINE PASS = per-app packs (Phase4b + Phase5).
+
+1. Obey: $instr (Phase 4b + Phase 5)
+2. Schemas: $schemas (Per-app pack quality bar — MUST)
+3. Validation: $validation (MUST — refuse thin/catch-all packs)
+
+PROJECT_CWD=$REPO
+ARTIFACT_DIR=$art
+ARTIFACT_DIR_REL=.agents/runs/_onboard/artifacts/001
+ONBOARD_PIPELINE_PASS=phase4b
+has_ui=$HAS_UI
+has_deploy=$HAS_DEPLOY
+
+Root pack already exists (phase1–4). The host just ran onboard_app_packs prepare:
+  - skeletons under apps/*/CLAUDE.md and apps/*/docs/ when missing
+  - projected docs/llm/API_SURFACE.yaml → each apps/<name>/docs/llm/API_SURFACE.yaml from root
+
+Your job — sequential walk of each real apps/*:
+1. Read that app's code (not only the skeleton).
+2. Fill/rewrite local CLAUDE.md + docs/{INDEX,ARCHITECTURE,GOTCHAS} + docs/llm/FLOWS.md to the quality bar (usable alone, path:line).
+3. Expand local API_SURFACE from the projection + code: split webhooks per provider; real HTTP/queue families — no catch-all mega-ids.
+4. Write .agents/runs/_onboard/artifacts/001/phase4b-app-packs.md with APP_PACKS per app.
+5. Run VALIDATION.md checks; write phase5-critique.md + report.md (STATUS complete only if green).
+
+Do NOT weaken root docs/llm maps. Do NOT skip apps because root maps exist.
+English only. End with: DONE $art/report.md   or   FAILED <reason>
+EOF
+  fi
+
+  echo "==> fill: provider=$ONBOARD_PROVIDER model=$ONBOARD_MODEL effort=$ONBOARD_EFFORT tier=$ONBOARD_SERVICE_TIER timeout=${timeout_s}s"
+  echo "    pipeline: $([[ "$two_pass" -eq 1 ]] && echo "two-pass (root → app-packs)" || echo "single-pass")"
+  echo "    apps_for_packs=$apps_n"
+  echo "    prompt=$prompt"
+  echo "    log=$log"
+  : >"$log"
+
+  if [[ "${ONBOARD_DRY_RUN:-}" == "1" ]]; then
+    echo "DRY_RUN: skip model exec"
+    echo "$ONBOARD_PROVIDER $ONBOARD_MODEL $ONBOARD_EFFORT $ONBOARD_SERVICE_TIER" > "$art/dry-run.txt"
+    return 0
+  fi
+
+  _onboard_tui_bin() {
+    local c
+    for c in \
+      "${HOME}/.agents/bin/onboard_fill_tui.py" \
+      "/home/ubuntu/tools/claude-lane-stack/bin/onboard_fill_tui.py" \
+      "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$0")")/onboard_fill_tui.py"
+    do
+      [[ -f "$c" ]] && { echo "$c"; return 0; }
+    done
+    return 1
+  }
+
+  # Run writer → log; TTY gets split-pane TUI (left checklist / right log).
+  # ONBOARD_PLAIN=1 → classic tee stream.
+  _onboard_run_writer() {
+    local -a wcmd=("$@")
+    local use_tui=0 tui=""
+    if [[ -t 1 && -z "${ONBOARD_PLAIN:-}" ]]; then
+      tui="$(_onboard_tui_bin || true)"
+      [[ -n "$tui" ]] && use_tui=1
+    fi
+
+    # Optional stdin file for Codex (`-`); Cursor gets prompt as argv.
+    local stdin_file="${ONBOARD_WRITER_STDIN:-}"
+
+    set +e
+    if [[ "$use_tui" -eq 1 ]]; then
+      echo "    UI: split-pane TUI (ONBOARD_PLAIN=1 for raw stream)"
+      if [[ -n "$stdin_file" ]]; then
+        if command -v stdbuf >/dev/null 2>&1; then
+          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" <"$stdin_file" >>"$log" 2>&1 &
+        else
+          timeout "$timeout_s" "${wcmd[@]}" <"$stdin_file" >>"$log" 2>&1 &
+        fi
+      else
+        if command -v stdbuf >/dev/null 2>&1; then
+          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" >>"$log" 2>&1 &
+        else
+          timeout "$timeout_s" "${wcmd[@]}" >>"$log" 2>&1 &
+        fi
+      fi
+      local wpid=$!
+      echo "$wpid" >"$art/writer.pid"
+      python3 "$tui" \
+        --repo "$REPO" \
+        --art "$art" \
+        --log "$log" \
+        --pid "$wpid" \
+        --has-ui "$HAS_UI" \
+        --has-deploy "$HAS_DEPLOY" \
+        --model "$ONBOARD_MODEL"
+      wait "$wpid"
+      local rc=$?
+    else
+      local hb=0
+      (
+        while true; do
+          sleep 30
+          local newest
+          newest="$(ls -1t "$art"/phase*.md "$art"/report.md 2>/dev/null | head -1 || true)"
+          if [[ -n "$newest" ]]; then
+            echo "[onboard] still running… latest=$(basename "$newest") $(date -u +%H:%M:%SZ)"
+          else
+            echo "[onboard] still running… waiting for phase1-layout.md $(date -u +%H:%M:%SZ)"
+          fi
+        done
+      ) &
+      hb=$!
+      if [[ -n "$stdin_file" ]]; then
+        if command -v stdbuf >/dev/null 2>&1; then
+          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" <"$stdin_file" 2>&1 | tee -a "$log"
+        else
+          timeout "$timeout_s" "${wcmd[@]}" <"$stdin_file" 2>&1 | tee -a "$log"
+        fi
+      else
+        if command -v stdbuf >/dev/null 2>&1; then
+          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" 2>&1 | tee -a "$log"
+        else
+          timeout "$timeout_s" "${wcmd[@]}" 2>&1 | tee -a "$log"
+        fi
+      fi
+      local rc=${PIPESTATUS[0]}
+      kill "$hb" 2>/dev/null || true
+      wait "$hb" 2>/dev/null || true
+    fi
+    set -e
+    return "$rc"
+  }
+
+  _onboard_provider_once() {
+    local prompt_file="$1"
+    local pass_label="$2"
+    local rc_local=0
+    echo "==> model pass: $pass_label (prompt=$(basename "$prompt_file"))"
+    case "$ONBOARD_PROVIDER" in
+      codex)
+        command -v codex >/dev/null 2>&1 || { echo "ERROR: codex not in PATH" >&2; return 1; }
+        # danger-full-access: workspace-write rejects some in-repo writes under
+        # .agents/ (gitignored / dockerignored) as "outside of the project".
+        local -a cmd=(
+          codex exec
+          --model "$ONBOARD_MODEL"
+          -c "model_reasoning_effort=\"$ONBOARD_EFFORT\""
+          -c 'approval_policy="never"'
+          --sandbox danger-full-access
+          --skip-git-repo-check
+          --cd "$REPO"
+          --output-last-message "$final"
+        )
+        if [[ "$ONBOARD_SERVICE_TIER" == "fast" ]]; then
+          cmd+=(-c 'service_tier="fast"' --enable fast_mode)
+        else
+          cmd+=(--disable fast_mode)
+        fi
+        cmd+=(-)
+        ONBOARD_WRITER_STDIN="$prompt_file" _onboard_run_writer "${cmd[@]}" || rc_local=$?
+        echo "    codex exit=$rc_local ($pass_label) log=$log"
+        [[ -f "$final" ]] && echo "    last-message: $final"
+        ;;
+      cursor)
+        command -v cursor-agent >/dev/null 2>&1 || { echo "ERROR: cursor-agent not in PATH" >&2; return 1; }
+        local cmodel="$ONBOARD_MODEL"
+        if [[ "$ONBOARD_SERVICE_TIER" == "fast" && "$cmodel" != *-fast ]]; then
+          cmodel="${cmodel}-fast"
+        fi
+        _onboard_run_writer cursor-agent -p --force --trust --approve-mcps \
+          --sandbox disabled \
+          --workspace "$REPO" \
+          --model "$cmodel" \
+          --output-format stream-json \
+          "$(cat "$prompt_file")" || rc_local=$?
+        echo "    cursor-agent exit=$rc_local ($pass_label) log=$log"
+        ;;
+      *)
+        echo "ERROR: stages.onboard provider='$ONBOARD_PROVIDER' not supported for --run (use codex|cursor)" >&2
+        return 1
+        ;;
+    esac
+    return "$rc_local"
+  }
+
+  local rc=0
+  _onboard_provider_once "$prompt_root" "root-pack" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "ERROR: onboard root pass failed (exit $rc). See $log" >&2
+    return "$rc"
+  fi
+
+  if [[ "$two_pass" -eq 1 ]]; then
+    echo "==> pipeline: prepare app-pack skeletons + project surfaces from root API_SURFACE"
+    if [[ -f "$app_pack_bin" ]]; then
+      python3 "$app_pack_bin" prepare "$REPO" || {
+        echo "ERROR: onboard_app_packs prepare failed" >&2
+        return 1
+      }
+    else
+      echo "WARN: onboard_app_packs.py missing — phase4b model pass without projection" >&2
+    fi
+    echo "" >>"$log"
+    echo "===== PHASE4B PASS =====" >>"$log"
+    _onboard_provider_once "$prompt_apps" "phase4b-app-packs" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+      echo "ERROR: onboard phase4b pass failed (exit $rc). See $log" >&2
+      return "$rc"
+    fi
+  fi
+
+  # Host-side gate: pack validation must pass for deep monorepo complete.
+  if [[ "$DEPTH" == "deep" && -f "$validation" ]]; then
+    echo "==> pipeline: host VALIDATION gate"
+    local val_log="$art/validation-host.log"
+    set +e
+    (
+      cd "$REPO" || exit 1
+      export ARTIFACT_DIR="$art"
+      # Extract first bash fence from VALIDATION.md and run it.
+      python3 - <<'PY' "$validation" >"$art/validation-host.sh"
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+start = text.find("```bash")
+end = text.find("```", start + 7) if start >= 0 else -1
+if start < 0 or end < 0:
+    raise SystemExit("no bash block in VALIDATION.md")
+print(text[start + 7 : end].lstrip("\n"))
+PY
+      bash "$art/validation-host.sh"
+    ) >"$val_log" 2>&1
+    local vrc=$?
+    set -e
+    if [[ $vrc -ne 0 ]]; then
+      echo "ERROR: VALIDATION gate failed (exit $vrc). See $val_log" >&2
+      tail -n 40 "$val_log" >&2 || true
+      return "$vrc"
+    fi
+    echo "    VALIDATION gate ok → $val_log"
+  fi
+
+  if [[ -f "$art/report.md" ]]; then
+    echo "==> fill complete: $art/report.md"
+  else
+    echo "==> fill finished (no report.md yet — check $log / $final)"
+  fi
+}
+
+if [[ "$RUN_FILL" -eq 1 ]]; then
+  run_onboard_fill
+else
+  echo "  Seed-only mode (no model). Full pipeline: project-onboard ."
+  echo "  Weekly refresh: docs-maintainer with ONBOARD_REFRESH=weekly"
+fi

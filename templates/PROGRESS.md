@@ -22,7 +22,7 @@
 - runs: `.agents/runs/`
 - todos: `.agents/todos/`
 - session log: `.agents/session-log/INDEX.md`
-- lessons: `LESSONS.md`
+- lessons: `.agents/LESSONS.md`
 - decisions: `docs/decisions.md`
 
 <!-- auto:session-ledger -->

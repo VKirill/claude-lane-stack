@@ -182,6 +182,12 @@ class LaneSessionTest(unittest.TestCase):
                     prompt_sha256 = re.search(
                         r"prompt_sha256=([0-9a-f]{64})", prompt
                     ).group(1)
+                    if os.environ.get("FAKE_CODEX_SESSION"):
+                        thread_id = os.environ["FAKE_CODEX_SESSION"]
+                    elif "resume" in args:
+                        thread_id = args[args.index("resume") + 1]
+                    else:
+                        thread_id = "codex-thread-test"
                     report = (
                         "<<<LANE_REPORT:BEGIN>>>\\n"
                         f"TASK_ID: {task_id}\\n"
@@ -190,7 +196,7 @@ class LaneSessionTest(unittest.TestCase):
                         "SUMMARY: fake codex report\\n"
                         "<<<LANE_REPORT:END>>>"
                     )
-                    emit({"type": "thread.started", "thread_id": "codex-thread-test"})
+                    emit({"type": "thread.started", "thread_id": thread_id})
                     emit({"type": "turn.started"})
                     emit(
                         {
@@ -328,6 +334,61 @@ class LaneSessionTest(unittest.TestCase):
                                 "total_tokens": 15,
                             },
                             "permission_denials": [],
+                        }
+                    )
+                    raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
+
+                if os.environ.get("FAKE_PROVIDER_KIND") == "cursor":
+                    # Prompt is the last arg for cursor-agent -p … --model X "<prompt>"
+                    prompt = args[-1]
+                    task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
+                    prompt_sha256 = re.search(
+                        r"prompt_sha256=([0-9a-f]{64})", prompt
+                    ).group(1)
+                    session_id = (
+                        args[args.index("--resume") + 1]
+                        if "--resume" in args
+                        else "cursor-session-test"
+                    )
+                    model = args[args.index("--model") + 1]
+                    report = (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n"
+                        "SUMMARY: fake Cursor report\\n"
+                        "<<<LANE_REPORT:END>>>"
+                    )
+                    emit(
+                        {
+                            "type": "system",
+                            "subtype": "init",
+                            "session_id": session_id,
+                            "model": "Composer 2.5",
+                            "permissionMode": "default",
+                        }
+                    )
+                    emit(
+                        {
+                            "type": "assistant",
+                            "session_id": session_id,
+                            "message": {
+                                "role": "assistant",
+                                "content": [{"type": "text", "text": report}],
+                            },
+                        }
+                    )
+                    emit(
+                        {
+                            "type": "result",
+                            "subtype": "success",
+                            "session_id": session_id,
+                            "is_error": False,
+                            "result": report,
+                            "usage": {
+                                "inputTokens": 10,
+                                "outputTokens": 5,
+                            },
                         }
                     )
                     raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
@@ -528,7 +589,7 @@ class LaneSessionTest(unittest.TestCase):
         task_id: str,
         *,
         role: str | None = None,
-        max_tasks: int = 7,
+        max_tasks: int | None = 10,
         pool_size: int | None = 2,
         sleep: float | None = None,
         exit_code: int = 0,
@@ -577,9 +638,9 @@ class LaneSessionTest(unittest.TestCase):
             str(binary or self.fake_provider),
             "--model",
             model,
-            "--max-tasks",
-            str(max_tasks),
         ]
+        if max_tasks is not None:
+            command.extend(["--max-tasks", str(max_tasks)])
         if pool_size is not None:
             command.extend(["--pool-size", str(pool_size)])
         result = subprocess.run(
@@ -598,6 +659,17 @@ class LaneSessionTest(unittest.TestCase):
 
     def _state(self) -> dict:
         return json.loads((self.run_dir / "sessions.json").read_text())
+
+    def _session_record(self, provider: str) -> dict:
+        return self._state()["sessions"][f"{provider}:grok:0"]
+
+    def test_session_max_tasks_defaults_to_ten(self) -> None:
+        self._run("grok", "default-max", max_tasks=None)
+        self.assertEqual(self._state()["defaults"]["max_tasks"], 10)
+
+        rejected = self._run("grok", "too-long", max_tasks=11, check=False)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("max-tasks must be between 1 and 10", rejected.stderr)
 
     def test_provider_pool_defaults_to_five_and_accepts_ten(self) -> None:
         self._run("grok", "default-pool", pool_size=None)
@@ -633,7 +705,11 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["provider"], "agy")
         self.assertEqual(receipt["model"], "gemini-3.6-flash-high")
         self.assertEqual(receipt["permission_mode"], "always-proceed")
+        self.assertEqual(receipt["session_id"], "agy-conversation-test")
         self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(
+            self._session_record("agy")["session_id"], "agy-conversation-test"
+        )
 
     def test_qwen_uses_typed_stream_and_reuses_session(self) -> None:
         for task_id in ("qwen-001", "qwen-002"):
@@ -653,7 +729,9 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["provider"], "qwen")
         self.assertEqual(receipt["model"], "qwen3.8-max-preview")
         self.assertEqual(receipt["permission_mode"], "yolo")
+        self.assertEqual(receipt["session_id"], "qwen-session-test")
         self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(self._session_record("qwen")["session_id"], "qwen-session-test")
 
     def test_qwen_effective_model_mismatch_fails_closed(self) -> None:
         result = self._run(
@@ -712,6 +790,7 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["stop_reason"], "TurnCompleted")
         self.assertEqual(receipt["session_id"], "kimi-session-test")
         self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(self._session_record("kimi")["session_id"], "kimi-session-test")
 
     def test_kimi_resumed_session_mismatch_fails_closed(self) -> None:
         first = self._run("kimi", "kimi-010", model="kimi-code/k3-256k", pool_size=1)
@@ -752,6 +831,51 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(medium["KIMI_MODEL_THINKING_EFFORT"], "high")
         self.assertNotIn(
             "KIMI_MODEL_THINKING_EFFORT", module.provider_environment("qwen")
+        )
+
+    def test_cursor_uses_stream_json_force_and_reuses_session(self) -> None:
+        for task_id in ("cursor-001", "cursor-002"):
+            result = self._run(
+                "cursor",
+                task_id,
+                model="composer-2.5",
+                pool_size=1,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        first, second = self._calls()
+        self.assertIn("-p", first)
+        self.assertIn("--force", first)
+        self.assertIn("--trust", first)
+        self.assertEqual(first[first.index("--output-format") + 1], "stream-json")
+        self.assertEqual(first[first.index("--model") + 1], "composer-2.5")
+        self.assertNotIn("--resume", first)
+        self.assertEqual(
+            second[second.index("--resume") + 1], "cursor-session-test"
+        )
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider"], "cursor")
+        self.assertEqual(receipt["permission_mode"], "force")
+        self.assertEqual(receipt["provider_sandbox"], "off")
+        self.assertEqual(receipt["session_id"], "cursor-session-test")
+        self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(
+            self._session_record("cursor")["session_id"], "cursor-session-test"
+        )
+
+    def test_cursor_fast_tier_appends_model_suffix(self) -> None:
+        module = self._load_lane_session()
+        self.assertEqual(
+            module._resolve_cursor_model(
+                "cursor-grok-4.5-high", service_tier="fast"
+            ),
+            "cursor-grok-4.5-high-fast",
+        )
+        self.assertEqual(
+            module._resolve_cursor_model(
+                "cursor-grok-4.5-high-fast", service_tier="standard"
+            ),
+            "cursor-grok-4.5-high",
         )
 
     def test_agy_rejects_tampered_agent_tool_allowlist_before_launch(self) -> None:
@@ -1091,6 +1215,21 @@ class LaneSessionTest(unittest.TestCase):
                 end_count=1,
             )
         self.assertIn("task_id mismatch", str(ctx.exception))
+
+        # Trailing chatter after END is ignored (Cursor often adds a summary).
+        trailing = (
+            f"{mod.REPORT_BEGIN}\n"
+            f"STATUS: partial\n"
+            f"owned L0 green\n"
+            f"{mod.REPORT_END}\n"
+            f"Задача **001** сделана. STATUS: **partial** — package red outside owns.\n"
+        )
+        report3 = mod.extract_lane_report(
+            trailing, task_id="001", prompt_sha256=expected, begin_count=1, end_count=1
+        )
+        self.assertIn("STATUS: partial", report3.splitlines()[:3])
+        self.assertIn("owned L0 green", report3)
+        self.assertNotIn("Задача", report3)
 
     def test_cancelled_provider_does_not_materialize_complete_report(self) -> None:
         result = self._run(
@@ -1528,7 +1667,7 @@ class LaneSessionTest(unittest.TestCase):
             (self.run_dir / "artifacts" / "model-mismatch" / "report.md").exists()
         )
 
-    def test_codex_sol_high_uses_ephemeral_typed_runtime(self) -> None:
+    def test_codex_sol_high_uses_isolated_typed_runtime(self) -> None:
         codex_home_log = self.cwd / "codex-home.json"
         result = self._run(
             "codex",
@@ -1543,7 +1682,8 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(args[0], "exec")
         self.assertEqual(args[args.index("--model") + 1], "gpt-5.6-sol")
         self.assertIn('model_reasoning_effort="high"', args)
-        self.assertIn("--ephemeral", args)
+        self.assertNotIn("--ephemeral", args)
+        self.assertNotIn("resume", args)
         self.assertIn("--ignore-rules", args)
         self.assertIn("--profile", args)
         self.assertEqual(args[args.index("--profile") + 1], "lane-writer")
@@ -1571,16 +1711,57 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["provider"], "codex")
         self.assertEqual(receipt["model"], "gpt-5.6-sol")
         self.assertEqual(receipt["reasoning_effort"], "high")
-        self.assertEqual(receipt["mode"], "ephemeral")
+        self.assertEqual(receipt["mode"], "new")
+        self.assertEqual(receipt["session_id"], "codex-thread-test")
         self.assertEqual(receipt["stop_reason"], "TurnCompleted")
         self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(
+            self._session_record("codex")["session_id"], "codex-thread-test"
+        )
         codex_home = json.loads(codex_home_log.read_text(encoding="utf-8"))
         self.assertTrue(codex_home["auth_exists"])
         self.assertTrue(codex_home["config_exists"])
         self.assertTrue(codex_home["skills_empty"])
         self.assertFalse(codex_home["has_mcp_servers_block"])
         self.assertNotEqual(Path(codex_home["path"]), self.fake_home / ".codex")
-        self.assertFalse(Path(codex_home["path"]).exists())
+        self.assertTrue(Path(codex_home["path"]).is_dir())
+
+    def test_codex_reuses_session_then_rotates_at_task_limit(self) -> None:
+        home_log = self.cwd / "codex-home.json"
+        extra = {"FAKE_CODEX_HOME_LOG": str(home_log)}
+        self._run("codex", "001", max_tasks=2, extra_env=extra)
+        home1 = json.loads(home_log.read_text(encoding="utf-8"))["path"]
+        self._run("codex", "002", max_tasks=2, extra_env=extra)
+        home2 = json.loads(home_log.read_text(encoding="utf-8"))["path"]
+        self._run("codex", "003", max_tasks=2, extra_env=extra)
+
+        first, second, third = self._calls()
+        self.assertEqual(first[0], "exec")
+        self.assertNotIn("resume", first)
+        self.assertEqual(second[second.index("resume") + 1], "codex-thread-test")
+        self.assertNotIn("resume", third)
+        self.assertEqual(home1, home2)
+        self.assertTrue(Path(home1).is_dir())
+
+        state = self._state()
+        self.assertEqual(state["history"][0]["rotation_reason"], "task_limit")
+        self.assertEqual(state["history"][0]["tasks"], ["001", "002"])
+        self.assertEqual(state["sessions"]["codex:grok:0"]["tasks"], ["003"])
+
+    def test_codex_resumed_thread_mismatch_fails_closed(self) -> None:
+        first = self._run("codex", "codex-010", pool_size=1)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        second = self._run(
+            "codex",
+            "codex-011",
+            pool_size=1,
+            extra_env={"FAKE_CODEX_SESSION": "codex-thread-other"},
+            check=False,
+        )
+        self.assertNotEqual(second.returncode, 0)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertIn("thread_id mismatch", receipt.get("protocol_error", ""))
 
     def test_launch_exception_writes_sanitized_failure_receipt(self) -> None:
         broken_provider = self.grok_home / "broken-provider-secret-token"

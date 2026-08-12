@@ -1,0 +1,117 @@
+# Diátaxis × load-policy classifier for the LLM doc pack.
+# https://diataxis.fr/ — tutorial | how-to | reference | explanation
+# load: always (session start) | on_demand (read when task needs it)
+# form: machine (YAML/structured) | prose (markdown)
+version: 1
+project: REPLACE_ME
+framework: diataxis
+# We intentionally omit tutorials for LLM packs (context bloat).
+omit: [tutorial]
+entries:
+  - path: CLAUDE.md
+    diataxis: how-to
+    load: always
+    form: prose
+    role: session_ops
+  - path: AGENTS.md
+    diataxis: how-to
+    load: always
+    form: prose
+    role: cross_tool_entry
+  - path: llms.txt
+    diataxis: reference
+    load: always
+    form: prose
+    role: curated_index
+  - path: docs/llm/INDEX.md
+    diataxis: reference
+    load: always
+    form: prose
+    role: curated_index
+  - path: docs/llm/MANIFEST.yaml
+    diataxis: reference
+    load: on_demand
+    form: machine
+    role: pack_inventory
+  - path: docs/llm/TAXONOMY.yaml
+    diataxis: reference
+    load: on_demand
+    form: machine
+    role: classifier
+  - path: docs/llm/MODULE_MAP.yaml
+    diataxis: reference
+    load: on_demand
+    form: machine
+    role: module_contracts
+  - path: docs/llm/API_SURFACE.yaml
+    diataxis: reference
+    load: on_demand
+    form: machine
+    role: public_api_catalog
+  - path: docs/llm/TEST_INDEX.yaml
+    diataxis: reference
+    load: on_demand
+    form: machine
+    role: verify_matrix
+  - path: docs/llm/FLOWS.md
+    diataxis: explanation
+    load: on_demand
+    form: prose
+    role: critical_flows
+  - path: docs/llm/DOC_LAYOUT.md
+    diataxis: explanation
+    load: on_demand
+    form: prose
+    role: layout_rationale
+  - path: docs/ARCHITECTURE.md
+    diataxis: explanation
+    load: on_demand
+    form: prose
+    role: boundaries
+  - path: docs/DESIGN.md
+    diataxis: reference
+    load: on_demand
+    form: mixed
+    role: ui_design_tokens
+    when: has_ui
+  - path: docs/RUNBOOK.md
+    diataxis: how-to
+    load: on_demand
+    form: prose
+    role: operate_recover
+    when: has_deploy
+  - path: docs/TESTING.md
+    diataxis: how-to
+    load: on_demand
+    form: prose
+    role: test_howto
+  - path: docs/deployment.md
+    diataxis: how-to
+    load: on_demand
+    form: prose
+    role: ship_path
+  - path: docs/gotchas.md
+    diataxis: explanation
+    load: on_demand
+    form: prose
+    role: traps
+  - path: docs/decisions.md
+    diataxis: explanation
+    load: on_demand
+    form: prose
+    role: adr
+  - path: docs/GLOSSARY.md
+    diataxis: reference
+    load: on_demand
+    form: prose
+    role: domain_terms
+  - path: .agents/PROGRESS.md
+    diataxis: how-to
+    load: on_demand
+    form: prose
+    role: living_now
+  - path: .agents/LESSONS.md
+    diataxis: explanation
+    load: on_demand
+    form: prose
+    role: non_obvious_lessons

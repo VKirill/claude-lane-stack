@@ -15,6 +15,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+_HERE = Path(__file__).resolve().parent
+for _cand in (_HERE.parent / "hooks", Path.home() / ".agents" / "hooks"):
+    if (_cand / "living_memory.py").is_file():
+        if str(_cand) not in sys.path:
+            sys.path.insert(0, str(_cand))
+        break
+from living_memory import migrate_legacy, PROGRESS  # noqa: E402
 
 AUTO_START = "<!-- auto:session-ledger -->"
 HEX_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -253,7 +260,7 @@ def main() -> int:
         if len(set(close_next)) != len(close_next) or len(set(close_open)) != len(close_open):
             raise FinalizeError("finalize checkbox targets must be unique")
 
-        progress_path = repo / "PROGRESS.md"
+        progress_path = migrate_legacy(repo, PROGRESS)
         open_path = repo / ".agents" / "agent-notes" / "OPEN.md"
         before_hashes = {"progress": file_hash(progress_path), "open_notes": file_hash(open_path)}
         progress_text = progress_path.read_text(encoding="utf-8") if progress_path.is_file() else None
@@ -366,7 +373,7 @@ def main() -> int:
         if open_path is not None and original_open_text is not None:
             atomic_write(open_path, original_open_text)
         if receipt_context and merge is not None and repo is not None:
-            progress_path = repo / "PROGRESS.md"
+            progress_path = migrate_legacy(repo, PROGRESS)
             open_path = repo / ".agents" / "agent-notes" / "OPEN.md"
             if before_hashes == {"progress": None, "open_notes": None}:
                 before_hashes = {

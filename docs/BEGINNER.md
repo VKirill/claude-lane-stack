@@ -213,7 +213,7 @@ Long silence? Workers can stall — the stack has tooling for exactly this.
 Within one run, Grok tasks also reuse warm conversations through
 `lane-session`. Related sequential tasks keep context; truly parallel tasks use
 separate pool slots (five by default, configurable 1–10). The default session
-lifetime is seven successful tasks. Multi-task runs react to lifecycle events,
+lifetime is ten successful tasks. Multi-task runs react to lifecycle events,
 verify in a separate pool (two by default), and accept each task as it finishes.
 The PM does not wait for the slowest sibling.
 

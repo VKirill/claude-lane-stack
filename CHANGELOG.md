@@ -1,3 +1,20 @@
+## 1.15.0 — 2026-08-13
+
+### Added
+- **adoc Work: tasks per writer session (1–10).** Saved as
+  `workspace.session_max_tasks`. `1` = new session every task. Keys `[` `]` or
+  `,` `.`. CLI: `agents-doctor --apply --session-max-tasks N`.
+- **Codex warm resume** (no longer ephemeral). Isolated per-slot `CODEX_HOME`.
+  All writers persist `session_id` and resume until the task limit.
+- **LLM-first onboard pack:** `MODULE_MAP` / `API_SURFACE` / `DESIGN.md` /
+  `RUNBOOK` / app-pack templates + onboard fill TUI.
+- **Living memory** hook and **teammate idle sentinel**.
+
+### Changed
+- Default warm rotation is **10** successful tasks (was 7); Codex included.
+- `lane-ctl start` / `run-controller` read `session_max_tasks` from the adoc
+  profile when `--max-tasks` is omitted.
+
 ## 1.14.16 — 2026-08-09
 
 ### Changed

@@ -1,0 +1,28 @@
+# Verify matrix for agents — command → what it proves.
+# Diátaxis: reference. Filled by project-onboarder from package.json / Makefile / CI / pytest.
+version: 1
+project: REPLACE_ME
+generated_by: project-onboarder
+default: null          # primary verify command id
+tests: []
+# Example:
+# - id: unit
+#   command: npm test
+#   proves: [unit_logic, no_type_errors_in_tests]
+#   scope: repo
+#   when: always
+#   expected: pass
+#   notes: needs DATABASE_URL for integration suite → mark those separately
+# - id: typecheck
+#   command: npm run typecheck
+#   proves: [typescript_types]
+#   scope: repo
+#   when: always
+#   expected: pass
+# - id: e2e
+#   command: npm run test:e2e
+#   proves: [critical_user_flows]
+#   scope: web
+#   when: has_ui
+#   expected: pass_or_skip_without_env
+#   requires_env: [DATABASE_URL]

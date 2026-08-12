@@ -90,8 +90,8 @@ hard-fail for new hits.
 
 Grok write lanes run through `lane-session`. Sessions are scoped to this
 run, role, worktree, and model. One slot accepts one task at a time; concurrent
-tasks spill into a pool of five slots by default, configurable from 1–10. A slot rotates after seven
-successful tasks (configurable up to a hard maximum of ten), after a provider
+tasks spill into a pool of five slots by default, configurable from 1–10. A slot rotates after ten
+successful tasks (hard maximum), after a provider
 failure, or when cwd/model changes. Review lanes never reuse writer sessions.
 Only `EndTurn` is a successful Grok terminal reason. `Cancelled`, `Error`, an
 unknown terminal reason, or a missing/invalid final report envelope is a

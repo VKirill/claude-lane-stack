@@ -1,67 +1,52 @@
-# Onboard scenarios + depth
+# Onboard scenarios + Diátaxis LLM pack
 
-Claude Lane Stack onboarding has **two axes**.
+## Axes
 
-## Axis 1 — Scenario (`minimal` | `full`)
+| Axis | Values |
+|------|--------|
+| Scenario | `minimal` \| `full` |
+| Depth | `fast` \| `deep` |
+| UI | `has_ui` → `docs/DESIGN.md` |
+| Deploy | `has_deploy` → `docs/RUNBOOK.md` |
+| Refresh | `weekly` via docs-maintainer |
+| Taxonomy | [Diátaxis](https://diataxis.fr/) in `docs/llm/TAXONOMY.yaml` (**no tutorials**) |
 
-What files get **seeded**.
+## Standards
 
-| Scenario | When | Seeds |
-|----------|------|--------|
-| **minimal** | score &lt; 5 | CLAUDE, AGENTS, ARCHITECTURE, memory, plans |
-| **full** | score ≥ 5 or multi-package monorepo | + GOTCHAS, GLOSSARY, TESTING, deployment, nested CLAUDE, optional SECURITY |
+AGENTS.md · Claude lean memory · llms.txt · Diátaxis · `@google/design.md` · structured YAML indexes
 
-Signals: workspace tools, multi-package, src size, **nested** deploy files (maxdepth 3), docs depth, domain keywords, tests, git history.
+## Pack
 
-Override: `project-onboard . --minimal | --full` or `ONBOARD_SCENARIO=…`.
+| Path | Diátaxis |
+|------|----------|
+| `docs/llm/TAXONOMY.yaml` | reference (classifier) |
+| `docs/llm/API_SURFACE.yaml` | reference — all public APIs |
+| `docs/llm/MODULE_MAP.yaml` | reference — module contracts |
+| `docs/llm/TEST_INDEX.yaml` | reference — command → proves |
+| `docs/llm/FLOWS.md` | explanation |
+| `docs/ARCHITECTURE.md` | explanation |
+| `docs/RUNBOOK.md` | how-to (deploy) |
+| `docs/DESIGN.md` | reference (UI, Google format) |
 
-## Axis 2 — Depth (`fast` | `deep`)
+## Deep pipeline
 
-How hard **Codex** must analyze before `STATUS: complete`.
-
-| Depth | Default | Behavior |
-|-------|---------|----------|
-| **fast** | minimal scenario | Passport fill; shallow explore OK |
-| **deep** | full scenario | Forensic: entrypoints, module walk, 3–7 flows, wiki↔code audit, run verify, ship/secrets surface |
-
-Override: `project-onboard . --deep | --fast` or `ONBOARD_DEPTH=…` or `/project-onboard deep`.
-
-Written to `.agents/onboard.scenario.yaml` as `depth:`.
-
-## Auto evidence
-
-`project-onboard` always writes:
-
-`.agents/runs/_onboard/artifacts/001/deep-scan.md`
-
-— top-level listing, git status/log, entrypoints, largest source files, docs index, deep checklist reminder.
-
-Codex **must** read this when depth=deep.
-
-## Who fills content
-
-| Step | Who |
-|------|-----|
-| Detect + seed + deep-scan | `project-onboard` (bash) |
-| Fill from evidence | Codex `project-onboarder` (sol for deep, terra for fast) |
-| Nightly honesty | `docs-maintain` (respects scenario; does not invent full-pack on minimal) |
-
-## Models
-
-| Depth | Model |
-|-------|--------|
-| fast | gpt-5.6-terra high |
-| deep | gpt-5.6-sol high |
-
-## Language
-
-All durable docs: **English**. See [LANGUAGE.md](LANGUAGE.md).
-
-## Slash
-
+```text
+layout (+ TAXONOMY) → maps (MODULE_MAP + API_SURFACE + TEST_INDEX)
+  → flows → passport (+ DESIGN/RUNBOOK) → per-app packs (apps/*/CLAUDE+docs)
+  → VALIDATION → report
 ```
-/project-onboard
-/project-onboard deep
-/project-onboard fast
-/project-onboard /path/to/repo deep
+
+## One-shot CLI
+
+```bash
+project-onboard .                 # full: auto-detect + seed + Codex/Cursor fill
+project-onboard . --seed-only     # stubs only
+ONBOARD_DRY_RUN=1 project-onboard .   # wire-check without calling the model
 ```
+
+## Weekly
+
+```bash
+ONBOARD_REFRESH=weekly  # docs-maintainer ≈ 7 days
+```
+

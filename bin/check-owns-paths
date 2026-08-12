@@ -53,10 +53,10 @@ IGNORE_PREFIXES = (
     "coverage/",
     ".git/",
 )
-# Root-level living-memory files are maintained by orchestration tooling (the
-# shared session-ledger hook flushes PROGRESS.md from any concurrent session,
-# project-memory/night-audit touch both), never by a task writer. Checking them
-# would turn an unrelated session flush into a false owns_paths violation.
+# Living-memory files (legacy root + canonical .agents/) are maintained by
+# orchestration tooling (session-ledger flush, project-memory, night-audit),
+# never by a task writer. Root copies stay ignored during migration.
+# Canonical paths are already covered by IGNORE_PREFIXES ".agents/".
 IGNORE_FILES = (
     "PROGRESS.md",
     "LESSONS.md",

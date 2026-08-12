@@ -10,8 +10,25 @@ install_if_missing() {
   cp "$src" "$dest"
   echo "created: $dest"
 }
-install_if_missing "$ROOT/PROGRESS.md" "$TPL/PROGRESS.md"
-install_if_missing "$ROOT/LESSONS.md" "$TPL/LESSONS.md"
+# Canonical living memory under .agents/ (survive root cleanups).
+# Migrate legacy root copies once if present.
+migrate_living() {
+  local name="$1"
+  local pref="$ROOT/.agents/$name"
+  local leg="$ROOT/$name"
+  mkdir -p "$ROOT/.agents"
+  if [[ -f "$pref" ]]; then
+    return 0
+  fi
+  if [[ -f "$leg" ]]; then
+    mv "$leg" "$pref"
+    echo "migrated: $leg -> $pref"
+    return 0
+  fi
+  install_if_missing "$pref" "$TPL/$name"
+}
+migrate_living "PROGRESS.md"
+migrate_living "LESSONS.md"
 install_if_missing "$ROOT/docs/decisions.md" "$TPL/decisions.md"
 install_if_missing "$ROOT/.agents/agent-notes/OPEN.md" "$TPL/agent-notes-OPEN.md"
 mkdir -p "$ROOT/.agents/session-log" "$ROOT/.agents/todos" "$ROOT/.agents/runs"
@@ -28,7 +45,7 @@ for f in AGENTS.md CLAUDE.md; do
 
 ## Project memory (agents)
 
-On session start: read `PROGRESS.md` (if present), skim `LESSONS.md`.  
+On session start: read `.agents/PROGRESS.md` (if present), skim `.agents/LESSONS.md`.  
 On task done: update PROGRESS / LESSONS / `docs/decisions.md` per skill `project-memory`.  
 Auto handoff: `.agents/session-log/` (hooks). Ideas: `.agents/todos/`.
 EOP

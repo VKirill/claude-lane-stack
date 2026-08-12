@@ -14,7 +14,7 @@
 Без пяти чатов. Без ручного merge. Всё — **файлы + git**.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.14.16"><img src="https://img.shields.io/badge/version-v1.14.16-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.15.0"><img src="https://img.shields.io/badge/version-v1.15.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -220,7 +220,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.14.16   # или: main
+cd claude-lane-stack && git checkout v1.15.0   # или: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```

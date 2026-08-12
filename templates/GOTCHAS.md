@@ -21,6 +21,6 @@
 
 ## How to keep this honest
 
-- After a real agent mistake → one row here **or** one line in `LESSONS.md`.
+- After a real agent mistake → one row here **or** one line in `.agents/LESSONS.md`.
 - Do not paste stack 101 the model already knows.
 - Root `CLAUDE.md` only **points** here (≤8 short bullets max in CLAUDE).

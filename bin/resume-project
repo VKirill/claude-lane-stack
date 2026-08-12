@@ -93,7 +93,7 @@ if [[ "$MODE" == "compact" ]]; then
 fi
 
 # ── full dump (legacy) ───────────────────────────────────────────────
-for f in PROGRESS.md LESSONS.md docs/decisions.md .agents/agent-notes/OPEN.md .agents/runs/BOARD.md; do
+for f in .agents/PROGRESS.md .agents/LESSONS.md PROGRESS.md LESSONS.md docs/decisions.md .agents/agent-notes/OPEN.md .agents/runs/BOARD.md; do
   if [[ -f "$REPO/$f" ]]; then
     echo "======== $f ========"
     head -n 80 "$REPO/$f"

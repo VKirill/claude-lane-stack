@@ -101,6 +101,15 @@ class GuardShellTest(unittest.TestCase):
             "lane-stall-check /srv/app --minutes 5",
             "run-init /srv/app demo && run-validate --phase pre-dispatch --run-dir /srv/app/.agents/runs/demo",
             "wt-merge-main /srv/app demo && git push origin main",
+            # ops-expand: deploy / cutover / durable lanes
+            "sudo nohup bash /tmp/mc-cutover-resume.sh > /tmp/mc-cutover-resume-nohup.log 2>&1 &",
+            "lane-bg --dir /tmp/art --label deploy -- sleep 1",
+            "lane-wait --once --dir /tmp/art",
+            "sudo systemctl restart nginx",
+            "systemctl --user restart lane-board.service",
+            "docker restart selfystudio-bot-thin-1",
+            "docker compose -f docker-compose.yml up -d",
+            "nohup sleep 60 &",
         ):
             with self.subTest(command=command):
                 self.assertEqual(
@@ -117,9 +126,7 @@ class GuardShellTest(unittest.TestCase):
             "rm -rf node_modules",
             "mv src/a.ts src/b.ts",
             "pkill -f 'npm ci'",
-            "docker restart selfystudio-bot-thin-1",
             "docker exec app env sh -c 'touch /tmp/pwned'",
-            "systemctl --user restart lane-board.service",
             "docker exec db psql -c \"UPDATE jobs SET status = 'done'\"",
             "psql postgresql://localhost/app",
             "psql -f scripts/fix.sql",
@@ -142,7 +149,6 @@ class GuardShellTest(unittest.TestCase):
             "sed --in-place 's/a/b/' src/fix.ts",
             "python3 -c \"from pathlib import Path; Path('src/fix.ts').write_text('x')\"",
             "node -e \"require('fs').writeFileSync('src/fix.ts','x')\"",
-            "nohup sleep 60 &",
             "lane-ctl start --run-dir /tmp/r --task-file /tmp/t.yaml --project-cwd /tmp",
             "lane-ctl accept --run-dir /tmp/r --task-id 001",
         ):
@@ -165,6 +171,8 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/.agents/session-log/INDEX.md",
             "/srv/app/PROGRESS.md",
             "/srv/app/LESSONS.md",
+            "/srv/app/.agents/PROGRESS.md",
+            "/srv/app/.agents/LESSONS.md",
             "/srv/app/docs/plans/demo.md",
             "docs/plans/demo.md",
             "/tmp/demo.md",

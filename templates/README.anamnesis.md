@@ -6,7 +6,7 @@ What this product does for the end user (1–2 sentences).
 
 ## Current focus (agents: read first)
 
-- See **[PROGRESS.md](./PROGRESS.md)** for Now / Blocked / Next.
+- See **[.agents/PROGRESS.md](./.agents/PROGRESS.md)** for Now / Blocked / Next.
 - Hot areas this week: …
 - Do not touch without asking: …
 

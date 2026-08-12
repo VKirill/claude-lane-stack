@@ -7,10 +7,11 @@ and run-validate (stdlib only).
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
-KNOWN_WRITERS = frozenset({"kimi", "qwen", "agy", "grok", "codex"})
+KNOWN_WRITERS = frozenset({"kimi", "qwen", "agy", "grok", "codex", "cursor"})
 # Where writers edit code for a daytime run.
 # in_place  — project_cwd = repo (main checkout); PM commits main
 # worktree  — always wt-create → project_cwd = .worktrees/<slug>
@@ -18,12 +19,15 @@ KNOWN_WRITERS = frozenset({"kimi", "qwen", "agy", "grok", "codex"})
 WORKSPACE_MODES = frozenset({"in_place", "worktree", "auto"})
 DEFAULT_WORKSPACE_MODE = "auto"
 DEFAULT_WORKTREE_MIN_SCORE = 4
+DEFAULT_SESSION_MAX_TASKS = 10
+HARD_SESSION_MAX_TASKS = 10
 DEFAULT_MODELS = {
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
     "grok": "grok-4.5",
     "agy": "gemini-3.6-flash-high",
     "codex": "gpt-5.6-luna",
+    "cursor": "composer-2.5",
 }
 DEFAULT_EFFORTS = {
     "qwen": "medium",
@@ -31,11 +35,13 @@ DEFAULT_EFFORTS = {
     "grok": "medium",
     "agy": "medium",
     "codex": "max",
+    "cursor": "medium",
 }
-# Codex ChatGPT credit speed tier (independent of reasoning effort).
-# fast ≈ 1.5× speed, ~2.5× credits on GPT-5.6. Only meaningful for provider=codex.
+# Speed tier: Codex ChatGPT credits + Cursor model -fast siblings / [fast=…].
 SERVICE_TIERS = frozenset({"standard", "fast"})
 DEFAULT_SERVICE_TIER = "standard"
+# Providers that honor writer.service_tier / --service-tier.
+SERVICE_TIER_PROVIDERS = frozenset({"codex", "cursor"})
 
 
 def normalize_service_tier(value: Any, *, default: str = DEFAULT_SERVICE_TIER) -> str:
@@ -52,6 +58,35 @@ def normalize_service_tier(value: Any, *, default: str = DEFAULT_SERVICE_TIER) -
     if raw in {"0", "false", "no", "off", "default", "normal"}:
         return "standard"
     return default
+
+
+def resolve_cursor_model(model: str, *, service_tier: str = DEFAULT_SERVICE_TIER) -> str:
+    """Map Cursor model id ↔ fast/standard (-fast sibling or [fast=…] bracket)."""
+    raw = (model or "").strip()
+    if not raw:
+        return DEFAULT_MODELS["cursor"]
+    tier = normalize_service_tier(service_tier)
+    bracket = ""
+    base = raw
+    if raw.endswith("]") and "[" in raw:
+        base, _, inside = raw[:-1].partition("[")
+        base = base.strip()
+        bracket = inside.strip()
+    # Normalize bracket fast= flag
+    parts = [p.strip() for p in bracket.split(",") if p.strip()] if bracket else []
+    parts = [p for p in parts if not p.lower().startswith("fast=")]
+    if tier == "fast":
+        if not base.endswith("-fast"):
+            base = f"{base}-fast"
+        # Keep bracket only if it had other params; slug -fast is enough for most.
+    else:
+        if base.endswith("-fast"):
+            base = base[: -len("-fast")]
+        if any(p.lower().startswith("fast=") for p in (bracket.split(",") if bracket else [])):
+            parts.append("fast=false")
+    if parts:
+        return f"{base}[{','.join(parts)}]"
+    return base
 
 
 def find_routing_profile(start: Path) -> Path | None:
@@ -169,7 +204,7 @@ def resolve_writer(
     """Resolve provider/model/effort/service_tier from CLI + agents-doctor profile.
 
     When provider_explicit is False and provider is None/empty, use main_write.
-    ``service_tier`` is only applied for codex (standard|fast); others ignore it.
+    ``service_tier`` applies to codex + cursor (standard|fast); others ignore it.
     """
     profile = load_routing_profile(start)
     lanes = profile.get("lanes") if isinstance(profile.get("lanes"), dict) else {}
@@ -203,8 +238,13 @@ def resolve_writer(
         service_tier if service_tier is not None else profile_tier,
         default=DEFAULT_SERVICE_TIER,
     )
-    if resolved_provider != "codex":
+    if resolved_provider not in SERVICE_TIER_PROVIDERS:
         resolved_tier = DEFAULT_SERVICE_TIER
+    if resolved_provider == "cursor":
+        resolved_model = resolve_cursor_model(
+            str(resolved_model or DEFAULT_MODELS["cursor"]),
+            service_tier=resolved_tier,
+        )
     return {
         "provider": resolved_provider,
         "model": resolved_model,
@@ -267,5 +307,29 @@ def resolve_workspace(
         "effective": effective,
         "worktree_min_score": min_score,
         "worktree_on_multi_write": multi,
+        "session_max_tasks": clamp_session_max_tasks(raw.get("session_max_tasks")),
         "profile_path": profile.get("_path"),
     }
+
+
+def clamp_session_max_tasks(value: Any, *, default: int = DEFAULT_SESSION_MAX_TASKS) -> int:
+    """1 = new session per task; 10 = hard max (same slot until rotation)."""
+    if value is None or value == "":
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(HARD_SESSION_MAX_TASKS, parsed))
+
+
+def resolve_session_max_tasks(start: Path) -> int:
+    """Tasks per warm writer session from adoc profile, else env, else 10."""
+    profile = load_routing_profile(start)
+    raw = profile.get("workspace") if isinstance(profile.get("workspace"), dict) else {}
+    if raw.get("session_max_tasks") not in (None, ""):
+        return clamp_session_max_tasks(raw.get("session_max_tasks"))
+    env = os.environ.get("LANE_SESSION_MAX_TASKS")
+    if env:
+        return clamp_session_max_tasks(env)
+    return DEFAULT_SESSION_MAX_TASKS

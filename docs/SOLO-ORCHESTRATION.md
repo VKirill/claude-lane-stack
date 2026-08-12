@@ -12,7 +12,7 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 4. **Worktree for parallel / score≥4.** Isolated branch → PM merges to main → deletes worktree.
 5. **One visible supervisor per run.** `run-supervisor` watches one durable
    deterministic controller; AGY or Grok resumes only the writer session pool owned by
-   that run and rotates after seven successful tasks. **Never** one Claude
+   that run and rotates after ten successful tasks. **Never** one Claude
    subagent per writer process.
 6. **Receipts are truth.** Task YAML is immutable; `state.json` drives live
    STATUS/BOARD and only `acceptance.json` means done. Chat/idle is not status —
