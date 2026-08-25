@@ -45,6 +45,7 @@ class InstallTest(unittest.TestCase):
             (legacy_nested / "reviewer.md").write_text("stale\n", encoding="utf-8")
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             result = subprocess.run(
@@ -97,6 +98,7 @@ class InstallTest(unittest.TestCase):
             work.mkdir()
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             result = subprocess.run(
@@ -115,21 +117,44 @@ class InstallTest(unittest.TestCase):
             self.assertTrue(controller.is_file())
             self.assertEqual(controller.stat().st_mode & 0o777, 0o755)
 
-            supervisor = home / ".claude" / "agents" / "run-supervisor.md"
+            supervisor = home / ".agents" / "agents" / "claude" / "run-supervisor.md"
             content = supervisor.read_text(encoding="utf-8")
             self.assertIn("name: run-supervisor", content)
             self.assertIn("Bash(run-controller start:*)", content)
             self.assertIn("Bash(run-controller watch:*)", content)
             self.assertNotIn("Write", content.partition("---\n")[2].partition("---\n")[0])
             self.assertNotIn("Edit", content.partition("---\n")[2].partition("---\n")[0])
+            self.assertFalse((home / ".claude" / "agents" / "run-supervisor.md").exists())
 
-            orchestrator = (home / ".claude" / "agents" / "dev-orchestrator.md").read_text(
-                encoding="utf-8"
-            )
+            orchestrator = (
+                home / ".agents" / "agents" / "claude" / "dev-orchestrator.md"
+            ).read_text(encoding="utf-8")
             self.assertIn("Agent(run-supervisor", orchestrator)
             self.assertIn("no daytime LLM review", orchestrator)
             self.assertTrue((home / ".agents" / "codex" / "instructions" / "reviewer.md").is_file())
             self.assertFalse((home / ".agents" / "codex" / "instructions" / "instructions").exists())
+
+            marketplace = home / ".claude" / "plugins" / "marketplaces" / "claude-lane-stack"
+            self.assertTrue(marketplace.is_symlink())
+            self.assertEqual(marketplace.resolve(), ROOT)
+            settings = json.loads(
+                (home / ".claude" / "settings.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                settings["extraKnownMarketplaces"]["claude-lane-stack"]["source"]["path"],
+                str(ROOT),
+            )
+            self.assertTrue(settings["enabledPlugins"]["lane-stack@claude-lane-stack"])
+            self.assertTrue(
+                (ROOT / "plugins" / "lane-stack" / ".claude-plugin" / "plugin.json").is_file()
+            )
+
+            pm_skill = home / ".agents" / "pm-skills" / "orchestrator-lanes" / "SKILL.md"
+            self.assertTrue(pm_skill.is_file())
+            self.assertFalse((home / ".agents" / "skills" / "orchestrator-lanes").exists())
+            self.assertFalse((home / ".claude" / "skills" / "orchestrator-lanes").exists())
+            self.assertFalse((home / ".claude" / "skills" / "lane-contract").exists())
+            self.assertTrue((home / ".agents" / "skills" / "lane-contract" / "SKILL.md").is_file())
 
     def test_bin_install_ignores_runtime_cache_directories(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
@@ -157,6 +182,7 @@ class InstallTest(unittest.TestCase):
             work.mkdir()
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             result = subprocess.run(
@@ -189,6 +215,7 @@ class InstallTest(unittest.TestCase):
             work.mkdir()
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             result = subprocess.run(
@@ -215,6 +242,7 @@ class InstallTest(unittest.TestCase):
             subprocess.run(["git", "init", "-q"], cwd=project, check=True)
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             default = subprocess.run(
@@ -308,6 +336,7 @@ class InstallTest(unittest.TestCase):
             work.mkdir()
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             for _ in range(2):
@@ -391,7 +420,7 @@ class InstallTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("missing required command: node", result.stderr)
 
-    def test_syncs_existing_claude_skill_directory_without_nested_link(self) -> None:
+    def test_removes_stack_skills_from_claude_catalog(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             tmp = Path(raw_tmp)
             home = tmp / "home"
@@ -399,12 +428,10 @@ class InstallTest(unittest.TestCase):
             existing = home / ".claude" / "skills" / "lane-contract"
             existing.mkdir(parents=True)
             work.mkdir()
-            sentinel = existing / "user-note.txt"
-            sentinel.write_text("preserve me\n", encoding="utf-8")
-            nested = existing / "lane-contract"
-            nested.symlink_to(home / ".agents" / "skills" / "lane-contract")
+            (existing / "user-note.txt").write_text("stale catalog copy\n", encoding="utf-8")
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             result = subprocess.run(
@@ -419,12 +446,12 @@ class InstallTest(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve me\n")
-            self.assertFalse(nested.exists())
-            self.assertFalse(nested.is_symlink())
-            self.assertEqual(
-                (existing / "SKILL.md").read_bytes(),
-                (ROOT / "skills" / "lane-contract" / "SKILL.md").read_bytes(),
+            self.assertFalse(existing.exists())
+            self.assertTrue(
+                (home / ".agents" / "skills" / "lane-contract" / "SKILL.md").is_file()
+            )
+            self.assertTrue(
+                (home / ".claude" / "plugins" / "marketplaces" / "claude-lane-stack").is_symlink()
             )
 
     def test_installs_dedicated_codex_night_review_profile(self) -> None:
@@ -436,6 +463,7 @@ class InstallTest(unittest.TestCase):
             work.mkdir()
             env = os.environ.copy()
             env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
             result = subprocess.run(

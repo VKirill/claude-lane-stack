@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "hooks"))
 
 from merge_claude_settings import (  # noqa: E402
+    PLUGIN_ID,
+    MARKETPLACE_NAME,
+    merge_plugin_marketplace,
     merge_stack_capabilities,
     merge_teammate_idle,
     load_settings,
@@ -78,6 +81,25 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
             self.assertIn("teammate_idle_sentinel.py", cmd)
             out2 = merge_teammate_idle(out, hook)
             self.assertEqual(len(out2["hooks"]["TeammateIdle"]), 1)
+
+    def test_merge_plugin_marketplace(self) -> None:
+        settings = {
+            "enabledPlugins": {"ponytail@ponytail": True},
+            "extraKnownMarketplaces": {
+                "ponytail": {"source": {"source": "github", "repo": "DietrichGebert/ponytail"}}
+            },
+        }
+        out = merge_plugin_marketplace(settings, ROOT)
+        self.assertTrue(out["enabledPlugins"]["ponytail@ponytail"])
+        self.assertTrue(out["enabledPlugins"][PLUGIN_ID])
+        self.assertEqual(
+            out["extraKnownMarketplaces"][MARKETPLACE_NAME]["source"]["path"],
+            str(ROOT),
+        )
+        self.assertEqual(
+            out["extraKnownMarketplaces"]["ponytail"]["source"]["repo"],
+            "DietrichGebert/ponytail",
+        )
 
 
 if __name__ == "__main__":

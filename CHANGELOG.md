@@ -1,3 +1,47 @@
+## 1.17.0 — 2026-08-26
+
+### Added
+- **Planning layer** between todos and runs: skill `project-planning` +
+  canon `docs/PLANS.md`. `.agents/plans/` holds `ROADMAP.md` and
+  `items/<slug>/PLAN.md` + `meta.yaml` (status draft|active|blocked|done|parked).
+  Plan tasks are coarse product outcomes with run links; schema-v2
+  decomposition still happens at run time (lane-contract / orchestrator-lanes).
+- **Umbrella skill `project-life`**: single router over the whole lifecycle
+  (idea→todo→plan→run→artifacts→PROGRESS/LESSONS/history) with linking
+  discipline (todo↔plan↔run back-links), session rituals, and a
+  "where does X go" decision guide. Focused skills stay separate; the
+  umbrella only routes.
+
+## 1.16.0 — 2026-08-25
+
+### Changed
+- **Claude-facing stack is a plugin marketplace.** Catalog:
+  `.claude-plugin/marketplace.json`. Plugin: `plugins/lane-stack/`
+  (`plugin.json`, agents, commands, skills). `./install.sh` symlinks the
+  checkout to `~/.claude/plugins/marketplaces/claude-lane-stack`, writes
+  `extraKnownMarketplaces` + `enabledPlugins["lane-stack@claude-lane-stack"]`,
+  and runs `claude plugin install lane-stack@claude-lane-stack`. Stack
+  agents/skills are **not** copied into `~/.claude/agents` or
+  `~/.claude/skills` (user copies override plugins; Codex also scans the
+  Claude skill catalog). Host runtime (`bin/`, board, writer profiles) still
+  rsyncs to `~/.agents`. PM playbooks stay out of the shared writer catalog.
+  Re-running install **deletes** leftover `~/.claude/skills/<stack-skill>`
+  directories (plugin is the Claude source of truth).
+
+## 1.15.1 — 2026-08-24
+
+### Changed
+- **PM playbook is Claude-only.** `orchestrator-lanes` (and deprecated
+  `orchestrator-workflow`) install to `~/.agents/pm-skills/` only — not
+  `~/.agents/skills/` and **not** `~/.claude/skills/` (Codex also scans the
+  Claude catalog and was `wt-create`-ing despite adoc `in_place`).
+  `dev-orchestrator` Reads the pm-skills path on WRITE runs. `install.sh`
+  disables the names in `~/.grok/config.toml` when the file exists.
+- **Dropped CLI encyclopedia skills** `claude-code` and `codex` from the
+  stack `skills/` tree (lane docs/profiles already cover writers). Host
+  catalog copies archived; `~/tools/skill-updater` and its 05:30 cron
+  removed (was rewriting those SKILL.md from GitHub changelogs via Codex).
+
 ## 1.15.0 — 2026-08-13
 
 ### Added

@@ -1,0 +1,19 @@
+{
+  "name": "lane-stack",
+  "version": "1.17.0",
+  "description": "Solo PM conveyor for Claude Code: orchestrator agents, lane playbooks, onboard and resume commands.",
+  "author": {
+    "name": "VKirill",
+    "url": "https://github.com/VKirill/claude-lane-stack"
+  },
+  "homepage": "https://github.com/VKirill/claude-lane-stack",
+  "repository": "https://github.com/VKirill/claude-lane-stack",
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "dev-orchestrator",
+    "lanes",
+    "run-supervisor",
+    "claude-code"
+  ]
+}

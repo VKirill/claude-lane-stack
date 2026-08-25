@@ -240,6 +240,37 @@ def merge_stack_capabilities(settings: dict[str, Any]) -> dict[str, Any]:
     return settings
 
 
+MARKETPLACE_NAME = "claude-lane-stack"
+PLUGIN_ID = "lane-stack@claude-lane-stack"
+
+
+def merge_plugin_marketplace(
+    settings: dict[str, Any], stack_root: Path
+) -> dict[str, Any]:
+    """Register the lane-stack marketplace + enable the Claude plugin.
+
+    extraKnownMarketplaces uses a directory source so Claude Code loads the
+    checkout in place (install.sh also symlinks it under
+    ~/.claude/plugins/marketplaces/). Does not clobber other marketplaces.
+    """
+    extra = settings.setdefault("extraKnownMarketplaces", {})
+    if not isinstance(extra, dict):
+        extra = {}
+        settings["extraKnownMarketplaces"] = extra
+    extra[MARKETPLACE_NAME] = {
+        "source": {
+            "source": "directory",
+            "path": str(Path(stack_root).expanduser().resolve()),
+        }
+    }
+    enabled = settings.setdefault("enabledPlugins", {})
+    if not isinstance(enabled, dict):
+        enabled = {}
+        settings["enabledPlugins"] = enabled
+    enabled[PLUGIN_ID] = True
+    return settings
+
+
 def write_settings(path: Path, settings: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
@@ -274,6 +305,12 @@ def main() -> int:
         default=None,
         help="path to teammate_idle_sentinel.py (TeammateIdle DONE|FAILED|WAIT)",
     )
+    parser.add_argument(
+        "--plugin-root",
+        type=Path,
+        default=None,
+        help="lane-stack checkout (wires extraKnownMarketplaces + enabledPlugins)",
+    )
     parser.add_argument("settings", type=Path)
     parser.add_argument("guard", type=Path, nargs="?")
     args = parser.parse_args()
@@ -284,6 +321,13 @@ def main() -> int:
         parser.error("guard path is required unless --check is used")
     settings = merge_guard(settings, args.guard)
     settings = merge_stack_capabilities(settings)
+    plugin_root = args.plugin_root
+    if plugin_root is None:
+        candidate = Path(__file__).resolve().parents[1]
+        if (candidate / ".claude-plugin" / "marketplace.json").is_file():
+            plugin_root = candidate
+    if plugin_root is not None:
+        settings = merge_plugin_marketplace(settings, plugin_root)
     if args.statusline is not None:
         settings = merge_statusline(settings, args.statusline)
     hooks_dir = Path(__file__).resolve().parent

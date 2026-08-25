@@ -12,7 +12,7 @@
 Talk to Claude Code — it runs Codex / Qwen / Grok / Kimi / AGY, checks work, **merges to `main`**, reviews at night.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.15.0"><img src="https://img.shields.io/badge/version-v1.15.0-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.16.0"><img src="https://img.shields.io/badge/version-v1.16.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -216,12 +216,25 @@ Every unit of work lives under `.agents/runs/<slug>/tasks/*.yaml`:
 
 ### ① Install once
 
+This repo **is a Claude Code plugin marketplace**. `./install.sh` installs the host runtime (`~/.agents`) **and** the Claude plugin.
+
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.15.0   # or: main
+cd claude-lane-stack && git checkout v1.16.0   # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
+
+After install, Claude Code has **`lane-stack@claude-lane-stack`**. Skills are `/lane-stack:<name>` (example: `/lane-stack:orchestrator-lanes`). Marketplace checkout: `~/.claude/plugins/marketplaces/claude-lane-stack`.
+
+Plugin-only (runtime already on the machine):
+
+```bash
+claude plugin marketplace add VKirill/claude-lane-stack
+claude plugin install lane-stack@claude-lane-stack -y
+```
+
+From a local clone: `claude plugin marketplace add .` then the same `install` line. Reload with `/reload-plugins`.
 
 **Needs:** Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`  
 **Optional:** Codex · Qwen · Grok · Kimi · AGY · Linux: `bubblewrap`
@@ -280,6 +293,12 @@ claude --agent dev-orchestrator --name lane-pm-myproject
 ## ❓ FAQ
 
 <details>
+<summary><strong>Plugin or <code>~/.agents</code>?</strong></summary>
+
+**Claude-facing** (PM agents, playbook skills, `/project-onboard`) ships as plugin `lane-stack` in marketplace `claude-lane-stack`. **Host runtime** (`bin/`, board, writer profiles) still lives in `~/.agents`. `./install.sh` does both. Do not copy stack agents into `~/.claude/agents` — those copies override the plugin.
+</details>
+
+<details>
 <summary><strong>Do I need every CLI?</strong></summary>
 
 No. **Claude Code alone** works (`claude-only`). Each extra CLI is a pluggable writer (or Codex review rail).
@@ -322,6 +341,7 @@ Chat: any language. Agent-written files: **English** ([LANGUAGE.md](docs/LANGUAG
 | [PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md) | Claude Code + Codex features |
 | [FILE-CONTRACT.md](docs/FILE-CONTRACT.md) | Layout & receipts |
 | [agents/claude/README.md](agents/claude/README.md) | Role agent names |
+| [plugins/lane-stack/README.md](plugins/lane-stack/README.md) | Claude plugin layout |
 | [CHANGELOG.md](CHANGELOG.md) | Releases |
 
 ---

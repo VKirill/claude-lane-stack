@@ -14,7 +14,7 @@
 Без пяти чатов. Без ручного merge. Всё — **файлы + git**.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.15.0"><img src="https://img.shields.io/badge/version-v1.15.0-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.16.0"><img src="https://img.shields.io/badge/version-v1.16.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -218,12 +218,25 @@
 
 ### ① Один раз на машину
 
+Этот репозиторий — **marketplace плагинов Claude Code**. `./install.sh` ставит runtime (`~/.agents`) **и** Claude-плагин.
+
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.15.0   # или: main
+cd claude-lane-stack && git checkout v1.16.0   # или: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
+
+После установки в Claude Code есть **`lane-stack@claude-lane-stack`**. Скиллы: `/lane-stack:<name>` (например `/lane-stack:orchestrator-lanes`). Marketplace: `~/.claude/plugins/marketplaces/claude-lane-stack`.
+
+Только плагин (runtime уже стоит):
+
+```bash
+claude plugin marketplace add VKirill/claude-lane-stack
+claude plugin install lane-stack@claude-lane-stack -y
+```
+
+Из локального клона: `claude plugin marketplace add .` и та же `install`. Подхватить: `/reload-plugins`.
 
 **Нужно:** Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`  
 **Опционально:** Codex · Qwen · Grok · Kimi · AGY · Linux: `bubblewrap`
@@ -282,6 +295,12 @@ claude --agent dev-orchestrator --name lane-pm-myproject
 ## ❓ FAQ для тапочков
 
 <details>
+<summary><strong>Плагин или <code>~/.agents</code>?</strong></summary>
+
+**Claude-часть** (агенты PM, playbook-скиллы, `/project-onboard`) — плагин `lane-stack` в marketplace `claude-lane-stack`. **Хост** (`bin/`, board, профили writers) — `~/.agents`. `./install.sh` ставит оба. Не копируйте агентов стека в `~/.claude/agents` — эти копии перебивают плагин.
+</details>
+
+<details>
 <summary><strong>Нужны ли все CLI сразу?</strong></summary>
 
 Нет. **Достаточно Claude Code** (`claude-only`). Каждый следующий CLI — подключаемый writer (или rail ревью у Codex).
@@ -324,6 +343,7 @@ claude --agent dev-orchestrator --name lane-pm-myproject
 | [PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md) | Claude Code + Codex |
 | [FILE-CONTRACT.md](docs/FILE-CONTRACT.md) | Раскладка |
 | [agents/claude/README.md](agents/claude/README.md) | Имена role-агентов |
+| [plugins/lane-stack/README.md](plugins/lane-stack/README.md) | Раскладка Claude-плагина |
 | [CHANGELOG.md](CHANGELOG.md) | Релизы |
 
 ---

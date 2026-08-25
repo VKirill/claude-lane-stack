@@ -55,9 +55,13 @@ echo "==> Claude Lane Stack install"
 echo " from: $STACK_ROOT"
 echo " to: $DEST"
 
-mkdir -p "$DEST"/{bin,board,docs,hooks,templates,skills,schemas,agents,agy/instructions,grok/instructions,codex/instructions}
+mkdir -p "$DEST"/{bin,board,docs,hooks,templates,skills,pm-skills,schemas,agents,agy/instructions,grok/instructions,codex/instructions}
 mkdir -p "$CLAUDE"/{agents,skills,commands}
 mkdir -p "$CODEX"
+
+# Writer CLIs (Grok/Codex/Kimi/Qwen) scan ~/.agents/skills. Keep the PM
+# playbook out of that catalog. Claude Code still gets a ~/.claude/skills link.
+PM_ONLY_SKILLS="orchestrator-lanes orchestrator-workflow"
 
 # bins
 for executable in "$STACK_ROOT"/bin/*; do
@@ -77,34 +81,74 @@ find "$DEST/hooks" "$DEST/board" -depth -type d -name __pycache__ -empty -delete
 python3 "$DEST/hooks/merge_claude_settings.py" \
   "$CLAUDE/settings.json" "$DEST/hooks/guard_shell.py" \
   --statusline "$DEST/bin/lane-statusline" \
-  --session-mark "$DEST/hooks/lane_statusline_session.py"
+  --session-mark "$DEST/hooks/lane_statusline_session.py" \
+  --plugin-root "$STACK_ROOT"
 
-# skills
+# skills — writers get ~/.agents/skills. Claude loads them from the plugin
+# (namespaced). Do not link stack skills into ~/.claude/skills (Codex also
+# scans that catalog; user copies override plugin agents too).
 for d in "$STACK_ROOT"/skills/*/; do
   name="$(basename "$d")"
-  rsync -a "${RSYNC_FILTERS[@]}" "$d" "$DEST/skills/$name/"
-  claude_skill="$CLAUDE/skills/$name"
-  if [[ -L "$claude_skill" ]]; then
-    ln -sfn "$DEST/skills/$name" "$claude_skill"
-  elif [[ -d "$claude_skill" ]]; then
-    # Preserve an existing user-managed directory, but keep stack-owned files
-    # current. Plain `ln -sfn` would create a misleading nested self-link.
-    rsync -a "${RSYNC_FILTERS[@]}" "$d" "$claude_skill/"
-    legacy_nested="$claude_skill/$name"
-    if [[ -L "$legacy_nested" ]] \
-      && [[ "$(readlink -f "$legacy_nested")" == "$DEST/skills/$name" ]]; then
-      unlink "$legacy_nested"
-    fi
-  elif [[ -e "$claude_skill" ]]; then
-    echo "error: cannot install skill over non-directory: $claude_skill" >&2
-    exit 1
+  if [[ " $PM_ONLY_SKILLS " == *" $name "* ]]; then
+    dest_dir="$DEST/pm-skills/$name"
+    rm -rf "$DEST/skills/$name"
+    rsync -a "${RSYNC_FILTERS[@]}" "$d" "$dest_dir/"
   else
-    ln -s "$DEST/skills/$name" "$claude_skill"
+    dest_dir="$DEST/skills/$name"
+    rsync -a "${RSYNC_FILTERS[@]}" "$d" "$dest_dir/"
   fi
+  rm -rf "$CLAUDE/skills/$name"
+done
+# Drop stale shared-catalog copies even if a name was removed from skills/
+for name in $PM_ONLY_SKILLS; do
+  rm -rf "$DEST/skills/$name" "$CLAUDE/skills/$name"
 done
 
-# platform agents
-rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/ "$DEST/agents/"
+python3 - "$HOME/.grok/config.toml" <<'PY'
+"""Hide PM-only skills from Grok's shared skill catalog."""
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+if not path.is_file():
+    raise SystemExit(0)
+names = ["orchestrator-lanes", "orchestrator-workflow"]
+ignore_path = "~/.agents/pm-skills"
+text = path.read_text(encoding="utf-8")
+original = text
+if "[skills]" not in text:
+    text = text.rstrip() + "\n\n[skills]\nignore = [\"~/.claude/skills\", \"" + ignore_path + "\"]\ndisabled = " + str(names).replace("'", '"') + "\n"
+else:
+    if "disabled = []" in text:
+        text = text.replace(
+            "disabled = []",
+            "disabled = [" + ", ".join(f'"{n}"' for n in names) + "]",
+            1,
+        )
+    elif "disabled =" in text:
+        for name in names:
+            quoted = f'"{name}"'
+            if quoted not in text:
+                text = text.replace("disabled = [", "disabled = [" + quoted + ", ", 1)
+    else:
+        text = text.replace("[skills]", "[skills]\ndisabled = [" + ", ".join(f'"{n}"' for n in names) + "]", 1)
+    if ignore_path not in text:
+        if 'ignore = ["~/.claude/skills"]' in text:
+            text = text.replace(
+                'ignore = ["~/.claude/skills"]',
+                'ignore = ["~/.claude/skills", "' + ignore_path + '"]',
+                1,
+            )
+        elif "ignore = [" in text:
+            text = text.replace("ignore = [", 'ignore = ["' + ignore_path + '", ', 1)
+        else:
+            text = text.replace("[skills]", '[skills]\nignore = ["' + ignore_path + '"]', 1)
+if text != original:
+    path.write_text(text, encoding="utf-8")
+PY
+
+# platform agents (-L: agents/claude is a compat symlink into the plugin)
+rsync -aL "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/ "$DEST/agents/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/agy/ "$DEST/agy/instructions/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/grok/ "$DEST/grok/instructions/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/codex/instructions/ "$DEST/codex/instructions/"
@@ -116,10 +160,32 @@ fi
 mkdir -p "$AGY/agents/agy-writer"
 install -m 0644 "$STACK_ROOT/agents/agy/agent.md" "$AGY/agents/agy-writer/agent.md"
 
-# Claude agents
-cp -a "$STACK_ROOT"/agents/claude/*.md "$CLAUDE/agents/"
-if [[ -d "$STACK_ROOT/agents/claude/commands" ]]; then
-  cp -a "$STACK_ROOT"/agents/claude/commands/* "$CLAUDE/commands/" 2>/dev/null || true
+# Claude plugin marketplace. User ~/.claude/agents copies override plugins.
+PLUGIN_ROOT="$STACK_ROOT/plugins/lane-stack"
+MARKETPLACE_LINK="$CLAUDE/plugins/marketplaces/claude-lane-stack"
+mkdir -p "$CLAUDE/plugins/marketplaces" "$CLAUDE/agents" "$CLAUDE/commands" "$CLAUDE/skills"
+if [[ -L "$MARKETPLACE_LINK" || ! -e "$MARKETPLACE_LINK" ]]; then
+  ln -sfn "$STACK_ROOT" "$MARKETPLACE_LINK"
+fi
+if [[ -d "$PLUGIN_ROOT/agents" ]]; then
+  for agent_file in "$PLUGIN_ROOT/agents/"*.md; do
+    [[ -f "$agent_file" ]] || continue
+    rm -f "$CLAUDE/agents/$(basename "$agent_file")"
+  done
+fi
+if [[ -d "$PLUGIN_ROOT/commands" ]]; then
+  for command_file in "$PLUGIN_ROOT/commands/"*.md; do
+    [[ -f "$command_file" ]] || continue
+    rm -f "$CLAUDE/commands/$(basename "$command_file")"
+  done
+fi
+if [[ "${LANE_INSTALL_CLAUDE_PLUGIN:-1}" != "0" ]] && command -v claude >/dev/null 2>&1; then
+  if ! CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin marketplace add "$MARKETPLACE_LINK" --scope user; then
+    echo "warning: claude plugin marketplace add failed; extraKnownMarketplaces is still set" >&2
+  fi
+  if ! CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin install lane-stack@claude-lane-stack -y -s user; then
+    echo "warning: claude plugin install lane-stack@claude-lane-stack failed; enable after next Claude launch" >&2
+  fi
 fi
 
 #  discovery (optional)
@@ -191,6 +257,7 @@ fi
 echo ""
 echo "Done. Start PM:"
 echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
+echo " Claude plugin: lane-stack@claude-lane-stack (marketplace → ~/.claude/plugins/marketplaces/claude-lane-stack)"
 echo " claude --agent dev-orchestrator"
 echo "Onboard: /project-onboard or project-onboard . [--deep|--fast]"
 echo "Cold start: /resume-project or resume-project ."
