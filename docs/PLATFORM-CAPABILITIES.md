@@ -78,7 +78,7 @@ Codex agents inside a lane double cost and blur `owns_paths`. Keep
 | `project-onboarder` | Codex onboard | `project-onboarder` |
 | `docs-maintainer` | Codex docs | `docs-maintainer` |
 
-adoc `main_write: qwen|grok|codex|…` selects the **process**, never a
+adoc `main_write: qwen|grok|codex|cursor|opencode|…` selects the **process**, never a
 `*-implementer` Claude agent.
 
 ## Decision rules

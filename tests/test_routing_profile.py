@@ -182,6 +182,32 @@ class RoutingProfileTest(unittest.TestCase):
             self.assertEqual(resolved["service_tier"], "fast")
             self.assertEqual(resolved["model"], "cursor-grok-4.5-high-fast")
 
+    def test_resolve_writer_opencode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".agents").mkdir()
+            (root / ".agents" / "routing.profile.yaml").write_text(
+                textwrap.dedent(
+                    """\
+                    lanes:
+                      main_write: opencode
+                    writer:
+                      provider: opencode
+                      model: alibaba-token-plan/qwen3.8-max-preview
+                      reasoning_effort: medium
+                      agent: build
+                    """
+                ),
+                encoding="utf-8",
+            )
+            resolved = resolve_writer(root, provider_explicit=False)
+            self.assertEqual(resolved["provider"], "opencode")
+            self.assertEqual(
+                resolved["model"], "alibaba-token-plan/qwen3.8-max-preview"
+            )
+            self.assertEqual(resolved["reasoning_effort"], "medium")
+            self.assertEqual(resolved["profile"]["writer"]["agent"], "build")
+
 
 if __name__ == "__main__":
     unittest.main()

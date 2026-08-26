@@ -14,7 +14,7 @@
 Без пяти чатов. Без ручного merge. Всё — **файлы + git**.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.16.0"><img src="https://img.shields.io/badge/version-v1.16.0-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.17.0"><img src="https://img.shields.io/badge/version-v1.17.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -222,7 +222,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.16.0   # или: main
+cd claude-lane-stack && git checkout v1.17.0   # или: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
@@ -251,11 +251,8 @@ agents-doctor --apply .     # или: adoc
 ### ③ Запуск PM
 
 ```bash
-# как у вас обычно:
-cc                          # меню → 1 = dev-orchestrator
-
-# или raw:
-claude --agent dev-orchestrator --name lane-pm-myproject
+lane-pm                     # бут + имя сессии <agent>-<folder>-ДД-ММ-ГГГГ
+# голый `claude --agent dev-orchestrator` часто не шлёт initialPrompt
 ```
 
 | В чате | Когда |
@@ -270,8 +267,10 @@ claude --agent dev-orchestrator --name lane-pm-myproject
 
 | Ручка | Смысл |
 |-------|--------|
-| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` |
+| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `opencode` |
 | **Model / effort** | например Codex luna + max |
+| **Модель онбординга** | Этапы → Онбординг (не Кодер) |
+| **Информация** | `?` — роли и команды первого часа |
 | **Fast mode** | Codex `service_tier: fast` |
 | **Workspace** | `in_place` · `worktree` · `auto` |
 | **Plan critique** | выкл · structural · LLM перед диспатчем |

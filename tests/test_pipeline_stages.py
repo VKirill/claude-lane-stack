@@ -7,6 +7,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin"))
@@ -16,6 +17,8 @@ from pipeline_stages import (  # noqa: E402
     attach_decision,
     compute_decision,
     critique_gate_errors,
+    critique_should_run,
+    gitnexus_caller_files,
     load_stages_from_profile,
     merge_llm_into_critique,
     normalize_stages,
@@ -28,6 +31,8 @@ from pipeline_stages import (  # noqa: E402
 from routing_profile import load_routing_profile  # noqa: E402
 from plan_critique_llm import (  # noqa: E402
     extract_json_payload,
+    invoke_codex,
+    invoke_opencode,
     parse_llm_payload,
 )
 
@@ -38,12 +43,16 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertTrue(s["plan_critique"]["enabled"])
         self.assertEqual(s["plan_critique"]["mode"], "advisory")
         self.assertEqual(s["plan_critique"]["provider"], "structural")
+        self.assertEqual(s["plan_critique"]["min_score"], 7)
+        self.assertEqual(s["plan_critique"]["min_write_tasks"], 3)
+        self.assertTrue(s["plan_critique"]["on_high_risk"])
         self.assertEqual(s["write"]["provider"], "qwen")
         self.assertFalse(s["specialist"]["enabled"])
         self.assertEqual(s["onboard"]["provider"], "codex")
         self.assertEqual(s["onboard"]["model"], "gpt-5.6-terra")
         self.assertEqual(s["onboard"]["reasoning_effort"], "high")
         self.assertEqual(s["onboard"]["service_tier"], "standard")
+        self.assertEqual(s["plan_critique"]["service_tier"], "standard")
 
     def test_normalize_onboard_fast_and_yaml(self) -> None:
         s = normalize_stages(
@@ -79,6 +88,29 @@ class PipelineStagesTest(unittest.TestCase):
         onboard_yaml = "\n".join(lines[start:end])
         self.assertIn("provider: qwen", onboard_yaml)
         self.assertNotIn("service_tier:", onboard_yaml)
+
+    def test_normalize_plan_critique_fast(self) -> None:
+        s = normalize_stages(
+            {
+                "plan_critique": {
+                    "provider": "codex",
+                    "model": "gpt-5.6-terra",
+                    "reasoning_effort": "low",
+                    "service_tier": "fast",
+                }
+            },
+            write_provider="kimi",
+        )
+        self.assertEqual(s["plan_critique"]["service_tier"], "fast")
+        yaml_text = "\n".join(stages_to_yaml_lines(s))
+        start = yaml_text.index("  plan_critique:")
+        end = yaml_text.index("  write:")
+        self.assertIn("service_tier: fast", yaml_text[start:end])
+        s2 = normalize_stages(
+            {"plan_critique": {"provider": "qwen", "service_tier": "fast"}},
+            write_provider="kimi",
+        )
+        self.assertEqual(s2["plan_critique"]["service_tier"], "standard")
 
     def test_load_stages_from_yaml_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -137,7 +169,7 @@ class PipelineStagesTest(unittest.TestCase):
             self.assertEqual(resolved["model"], "gpt-5.6-sol")
             self.assertEqual(resolved["service_tier"], "fast")
 
-    def test_structural_critique_flags_thin_plan(self) -> None:
+    def test_structural_critique_flags_empty_owns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run"
             (run_dir / "tasks").mkdir(parents=True)
@@ -159,8 +191,100 @@ class PipelineStagesTest(unittest.TestCase):
             result = structural_critique(run_dir)
             self.assertEqual(result["status"], "fail")
             codes = {f["code"] for f in result["findings"]}
-            self.assertIn("plan_thin", codes)
+            self.assertNotIn("plan_thin", codes)
             self.assertIn("owns_empty", codes)
+
+    def test_critique_skips_small_runs(self) -> None:
+        self.assertFalse(critique_should_run({"score": 2}, 1, {})[0])
+        self.assertTrue(critique_should_run({"score": 8}, 1, {})[0])
+        self.assertTrue(critique_should_run({"score": 2}, 3, {})[0])
+        self.assertTrue(critique_should_run({"score": 1, "risk": "high"}, 1, {})[0])
+
+    def test_coverage_flags_unlisted_importer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "src").mkdir()
+            (repo / "src" / "foo.py").write_text("def foo():\n    return 1\n")
+            (repo / "src" / "bar.py").write_text("from src.foo import foo\n")
+            run_dir = repo / ".agents" / "runs" / "big"
+            (run_dir / "tasks").mkdir(parents=True)
+            (run_dir / "run.yaml").write_text(
+                f"schema_version: 2\nscore: 8\nproject_cwd: {repo}\n",
+                encoding="utf-8",
+            )
+            (run_dir / "PLAN.md").write_text("# Plan\nTouch foo helper.\n")
+            (run_dir / "tasks" / "001.yaml").write_text(
+                textwrap.dedent(
+                    """\
+                    id: "001"
+                    objective: "Change foo helper used by the rest of the package"
+                    owns_paths:
+                      - src/foo.py
+                    verification:
+                      - command: "python3 -c 'print(1)'"
+                    """
+                ),
+                encoding="utf-8",
+            )
+            result = run_full_critique(
+                run_dir,
+                settings={
+                    "enabled": True,
+                    "mode": "advisory",
+                    "provider": "structural",
+                    "min_score": 7,
+                    "min_write_tasks": 3,
+                    "on_high_risk": True,
+                },
+                structural_only=True,
+            )
+            codes = {f["code"] for f in result["findings"]}
+            self.assertIn("owns_gap", codes)
+            self.assertEqual(result["decision"], "revise")
+
+    def test_owns_overlap_and_sibling_test(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "src").mkdir()
+            (repo / "tests").mkdir()
+            (repo / "src" / "foo.py").write_text("def foo():\n    return 1\n")
+            (repo / "tests" / "test_foo.py").write_text("from src.foo import foo\n")
+            run_dir = repo / ".agents" / "runs" / "big"
+            (run_dir / "tasks").mkdir(parents=True)
+            (run_dir / "run.yaml").write_text(
+                f"schema_version: 2\nscore: 8\nproject_cwd: {repo}\n",
+                encoding="utf-8",
+            )
+            (run_dir / "PLAN.md").write_text("# Plan\nTouch foo.\n")
+            (run_dir / "tasks" / "001.yaml").write_text(
+                textwrap.dedent(
+                    """\
+                    id: "001"
+                    owns_paths:
+                      - src/foo.py
+                    verification:
+                      - command: "python3 -c 'print(1)'"
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (run_dir / "tasks" / "002.yaml").write_text(
+                textwrap.dedent(
+                    """\
+                    id: "002"
+                    owns_paths:
+                      - src/
+                    verification:
+                      - command: "python3 -c 'print(1)'"
+                    """
+                ),
+                encoding="utf-8",
+            )
+            result = structural_critique(run_dir)
+            codes = {f["code"] for f in result["findings"]}
+            self.assertIn("owns_overlap", codes)
+            self.assertIn("owns_gap", codes)
+            self.assertEqual(result["decision"], "revise_required")
 
     def test_critique_gate_and_ack(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -266,7 +390,7 @@ class PipelineStagesTest(unittest.TestCase):
             structural,
             {
                 "verdict": "revise_required",
-                "summary": "owns incomplete",
+                "summary": "Add src/bar.py to owns_paths",
                 "findings": [
                     {
                         "severity": "error",
@@ -282,16 +406,16 @@ class PipelineStagesTest(unittest.TestCase):
             provider="qwen",
             model="qwen3.8-max-preview",
         )
-        self.assertEqual(merged["status"], "fail")
-        self.assertEqual(merged["decision"], "revise_required")
+        self.assertEqual(merged["status"], "pass")
+        self.assertEqual(merged["decision"], "ship")
         self.assertEqual(merged["llm_pass"]["status"], "ok")
-        self.assertTrue(any(f["code"] == "llm_owns_gap" for f in merged["findings"]))
-        self.assertIn("MUST", merged["pm_action"])
+        self.assertEqual(merged["llm_pass"]["summary"], "Add src/bar.py to owns_paths")
+        self.assertFalse(any(str(f.get("source")) == "llm" for f in merged["findings"]))
 
         warn_only = merge_llm_into_critique(
             {
                 "schema_version": 1,
-                "engine": "structural",
+                "engine": "coverage",
                 "status": "pass",
                 "summary": {"errors": 0, "warnings": 0, "infos": 0},
                 "findings": [],
@@ -300,7 +424,7 @@ class PipelineStagesTest(unittest.TestCase):
             },
             {
                 "verdict": "revise",
-                "summary": "thin notes",
+                "summary": "outcome.json is stale; run-validate schema enum",
                 "findings": [
                     {
                         "severity": "warn",
@@ -315,7 +439,8 @@ class PipelineStagesTest(unittest.TestCase):
             model="gpt-5.6-luna",
         )
         self.assertEqual(warn_only["status"], "pass")
-        self.assertEqual(warn_only["decision"], "revise")
+        self.assertEqual(warn_only["decision"], "ship")
+        self.assertEqual(warn_only["llm_pass"]["summary"], "")
 
         failed_llm = merge_llm_into_critique(
             structural,
@@ -325,7 +450,8 @@ class PipelineStagesTest(unittest.TestCase):
             llm_error="timeout",
         )
         self.assertEqual(failed_llm["llm_pass"]["status"], "error")
-        self.assertTrue(
+        self.assertEqual(failed_llm["decision"], "ship")
+        self.assertFalse(
             any(f["code"] == "llm_pass_failed" for f in failed_llm["findings"])
         )
 
@@ -416,6 +542,132 @@ class PipelineStagesTest(unittest.TestCase):
             self.assertIn("plan_critique:", text)
             self.assertIn("mode: gate", text)
             self.assertIn("provider: qwen", text)
+
+    def test_invoke_codex_fast_flags(self) -> None:
+        captured: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            captured.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, stdout='{"ok":true}', stderr="")
+
+        with patch("plan_critique_llm._run", side_effect=fake_run), patch(
+            "plan_critique_llm._which", return_value="/usr/bin/codex"
+        ):
+            invoke_codex(
+                "prompt",
+                model="gpt-5.6-terra",
+                effort="low",
+                timeout=5,
+                service_tier="fast",
+            )
+        self.assertEqual(len(captured), 1)
+        self.assertIn('service_tier="fast"', captured[0])
+        self.assertIn("fast_mode", captured[0])
+
+    def test_normalize_opencode_keeps_agent(self) -> None:
+        s = normalize_stages(
+            {
+                "plan_critique": {
+                    "provider": "opencode",
+                    "model": "google/gemini-3.6-flash",
+                    "agent": "plan",
+                },
+                "write": {
+                    "provider": "opencode",
+                    "model": "alibaba-token-plan/qwen3.8-max-preview",
+                    "agent": "wiki-writer",
+                },
+            },
+            write_provider="opencode",
+        )
+        self.assertEqual(s["plan_critique"]["agent"], "plan")
+        self.assertEqual(s["write"]["agent"], "wiki-writer")
+        yaml_text = "\n".join(stages_to_yaml_lines(s))
+        self.assertIn("agent: plan", yaml_text)
+        self.assertIn("agent: wiki-writer", yaml_text)
+
+    def test_normalize_opencode_defaults_lane_agents(self) -> None:
+        s = normalize_stages(
+            {
+                "plan_critique": {"provider": "opencode"},
+                "night_review": {"provider": "opencode"},
+                "specialist": {"provider": "opencode"},
+            },
+            write_provider="opencode",
+        )
+        self.assertEqual(s["write"]["agent"], "lane-writer")
+        self.assertEqual(s["plan_critique"]["agent"], "lane-critic")
+        self.assertEqual(s["night_review"]["agent"], "lane-reviewer")
+        self.assertEqual(s["specialist"]["agent"], "lane-reviewer")
+
+    def test_normalize_keeps_empty_opencode_effort(self) -> None:
+        s = normalize_stages(
+            {"write": {"reasoning_effort": ""}},
+            write_provider="opencode",
+        )
+        self.assertEqual(s["write"]["reasoning_effort"], "")
+
+    def test_invoke_opencode_flags(self) -> None:
+        captured: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            captured.append(list(argv))
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"type":"text","part":{"text":"{\\"verdict\\":\\"ok\\"}"}}\n',
+                stderr="",
+            )
+
+        with patch("plan_critique_llm._run", side_effect=fake_run), patch(
+            "plan_critique_llm._which", return_value="/usr/bin/opencode"
+        ):
+            text = invoke_opencode(
+                "prompt",
+                model="alibaba-token-plan/qwen3.8-max-preview",
+                effort="low",
+                timeout=5,
+                agent="plan",
+            )
+        self.assertEqual(len(captured), 1)
+        self.assertIn("run", captured[0])
+        self.assertIn("--pure", captured[0])
+        self.assertEqual(captured[0][captured[0].index("--agent") + 1], "plan")
+        self.assertEqual(captured[0][captured[0].index("--variant") + 1], "low")
+        self.assertIn("--dangerously-skip-permissions", captured[0])
+        self.assertIn('{"verdict":"ok"}', text)
+
+    def test_invoke_opencode_omits_variant_when_empty(self) -> None:
+        captured: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            captured.append(list(argv))
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"type":"text","part":{"text":"{\\"verdict\\":\\"ok\\"}"}}\n',
+                stderr="",
+            )
+
+        with patch("plan_critique_llm._run", side_effect=fake_run), patch(
+            "plan_critique_llm._which", return_value="/usr/bin/opencode"
+        ):
+            invoke_opencode(
+                "prompt",
+                model="alibaba-token-plan/kimi-k2.7-code",
+                effort="",
+                timeout=5,
+                agent="lane-critic",
+            )
+        self.assertNotIn("--variant", captured[0])
+
+    def test_gitnexus_skipped_without_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(
+                gitnexus_caller_files(root, symbol="foo", file_path="src/foo.py"),
+                [],
+            )
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-KNOWN_WRITERS = frozenset({"kimi", "qwen", "agy", "grok", "codex", "cursor"})
+KNOWN_WRITERS = frozenset({"kimi", "qwen", "agy", "grok", "codex", "cursor", "opencode"})
 # Where writers edit code for a daytime run.
 # in_place  — project_cwd = repo (main checkout); PM commits main
 # worktree  — always wt-create → project_cwd = .worktrees/<slug>
@@ -28,6 +28,7 @@ DEFAULT_MODELS = {
     "agy": "gemini-3.6-flash-high",
     "codex": "gpt-5.6-luna",
     "cursor": "composer-2.5",
+    "opencode": "alibaba-token-plan/qwen3.8-max-preview",
 }
 DEFAULT_EFFORTS = {
     "qwen": "medium",
@@ -36,6 +37,7 @@ DEFAULT_EFFORTS = {
     "agy": "medium",
     "codex": "max",
     "cursor": "medium",
+    "opencode": "medium",
 }
 # Speed tier: Codex ChatGPT credits + Cursor model -fast siblings / [fast=…].
 SERVICE_TIERS = frozenset({"standard", "fast"})

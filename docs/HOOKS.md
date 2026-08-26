@@ -10,6 +10,7 @@ Deterministic guards that catch agents mid-flight. Shared logic lives in
 | `guard_shell.py` | PreToolUse (shell + PM edits) | PM read/verify/control-plane allowlist; delegates package, source, process/service/container, and DB mutations; also blocks controller bypass, `--no-verify`, force-push, destructive SQL, and reckless `rm -rf` |
 | `guard_code_quality.py` | PostToolUse (edit) | `any`, Prisma `$queryRawUnsafe`, `@ts-ignore`, eval, hardcoded secrets |
 | `lib_payload.py` | — | Normalize stdin JSON for Claude / Codex / Grok |
+| `pm_stop_sentinel.py` | Stop + PostToolUse `Agent\|Task` (`asyncRewake`) | PM: do not idle while `run-supervisor` is live or a recent controller is terminal/orphan; wake idle PM when stage becomes accepted/blocked/failed |
 
 Set `AGENT_HOOK_CLIENT=claude|codex|grok` so deny payload matches the host.
 
@@ -154,7 +155,7 @@ Session ledger is the automatic cross-CLI layer; run reports are richer for inte
 
 See [PROJECT-MEMORY.md](./PROJECT-MEMORY.md). Init: `~/.agents/bin/project-memory-init .` 
 Night: `~/.agents/bin/night-audit .` 
-Skill: `project-memory`.
+Skill: `project-life`.
 
 ## Orchestrator guard (PM allowlist)
 

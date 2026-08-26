@@ -88,42 +88,29 @@ def build_llm_prompt(
     )
     corpus = pack_run_corpus(run_dir)
     return (
-        "You are a read-only plan reviewer for Claude Lane Stack.\n"
-        "Do NOT edit files. Do NOT run shell tools. Do NOT invent product code changes.\n"
-        "Review only the PLAN/SPEC/tasks below for dispatch readiness.\n\n"
+        "You compress coverage-auditor findings for the PM. Nothing else.\n"
+        "Do NOT invent findings. Do NOT mention outcome.json, schemas, "
+        "run-validate, or product architecture.\n"
+        "List only files to add to owns_paths or drop from PLAN.\n\n"
         f"Provider: {provider}"
         + (f" · model {model}" if model else "")
         + "\n\n"
-        "## Structural findings (already raised)\n\n"
+        "## Findings (source of truth — do not add to this list)\n\n"
         f"```json\n{structural_md}\n```\n\n"
-        "## Run corpus\n\n"
+        "## Run corpus (context only)\n\n"
         f"{corpus}\n\n"
         "## Output contract (MANDATORY)\n\n"
         "Reply with a **single JSON object** and nothing else (no markdown fences).\n"
         "Schema:\n"
         "{\n"
-        '  "verdict": "ship" | "revise" | "revise_required",\n'
-        '  "summary": "one short paragraph for the PM",\n'
-        '  "findings": [\n'
-        "    {\n"
-        '      "severity": "error" | "warn" | "info",\n'
-        '      "code": "snake_case_code",\n'
-        '      "title": "short title",\n'
-        '      "detail": "what to fix and why",\n'
-        '      "path": "PLAN.md|SPEC.md|tasks/001.yaml|null",\n'
-        '      "task_id": "001|null",\n'
-        '      "action": "fix_plan|fix_spec|fix_task|split_task|drop_dep|none"\n'
-        "    }\n"
-        "  ]\n"
+        '  "verdict": "ship",\n'
+        '  "summary": "one line: files to add to owns_paths or drop from PLAN",\n'
+        '  "findings": []\n'
         "}\n\n"
         "Rules:\n"
-        "- verdict=revise_required if any error-severity issue remains or contracts are unsafe to dispatch.\n"
-        "- verdict=revise if only warnings (should fix, not hard-broken).\n"
-        "- verdict=ship only when ready to dispatch as-is.\n"
-        "- Confirm or add issues: wrong depends_on, incomplete owns_paths, L2 in L1,\n"
-        "  vague DoD, risk-class mix, missing split, SPEC stubs.\n"
-        "- Prefer actionable findings the PM can apply by editing .agents/runs/** only.\n"
-        "- Max 12 findings. Deduplicate structural ones (same code+path) instead of repeating.\n"
+        "- findings MUST be []. Decision is computed outside you.\n"
+        "- summary names concrete paths from the findings above.\n"
+        "- If findings are empty, summary is 'no coverage gaps'.\n"
     )
 
 
@@ -379,6 +366,7 @@ def invoke_codex(
     effort: str,
     timeout: int,
     binary: str | None = None,
+    service_tier: str = "standard",
 ) -> str:
     bin_path = binary or _which("codex")
     if not bin_path:
@@ -408,6 +396,10 @@ def invoke_codex(
             str(last_message),
             "-",
         ]
+        if str(service_tier or "").strip().lower() == "fast":
+            argv[-1:-1] = ["-c", 'service_tier="fast"', "--enable", "fast_mode"]
+        else:
+            argv[-1:-1] = ["--disable", "fast_mode"]
         completed = _run(argv, cwd=cwd, env=env, timeout=timeout, stdin_text=prompt)
         result_text = (
             last_message.read_text(encoding="utf-8", errors="replace")
@@ -421,6 +413,80 @@ def invoke_codex(
         result_text = completed.stdout or ""
     if not result_text.strip():
         raise LlmCritiqueError("codex produced no final message")
+    return result_text
+
+
+def _opencode_text_from_jsonl(stdout: str) -> str:
+    parts: list[str] = []
+    for line in (stdout or "").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        part = event.get("part") if isinstance(event.get("part"), dict) else {}
+        text = part.get("text") if isinstance(part, dict) else None
+        if not isinstance(text, str):
+            text = event.get("text")
+        if isinstance(text, str) and text:
+            parts.append(text)
+    return "".join(parts)
+
+
+def invoke_opencode(
+    prompt: str,
+    *,
+    model: str,
+    effort: str,
+    timeout: int,
+    binary: str | None = None,
+    agent: str = "lane-critic",
+) -> str:
+    bin_path = binary or _which("opencode")
+    if not bin_path:
+        raise LlmCritiqueError("opencode binary not found on PATH")
+    env = os.environ.copy()
+    env["CLAUDE_LANE_AUTOMATION"] = "1"
+    env["OPENCODE_DISABLE_CLAUDE_CODE"] = "1"
+    env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "1"
+    env["OPENCODE_PERMISSION"] = '{"task":"deny"}'
+    variant = (effort or "").strip().lower()
+    with tempfile.TemporaryDirectory(prefix="plan-critique-opencode-") as raw:
+        cwd = Path(raw)
+        argv = [
+            bin_path,
+            "run",
+            "--pure",
+            "--format",
+            "json",
+            "--dir",
+            str(cwd),
+            "--agent",
+            (agent or "lane-critic").strip() or "lane-critic",
+            "--model",
+            model or "alibaba-token-plan/qwen3.8-max-preview",
+        ]
+        if variant:
+            argv.extend(["--variant", variant])
+        argv.extend(
+            [
+                "--dangerously-skip-permissions",
+                prompt,
+            ]
+        )
+        completed = _run(argv, cwd=cwd, env=env, timeout=timeout)
+    if completed.returncode != 0:
+        tail = (completed.stderr or completed.stdout or "")[-1500:]
+        raise LlmCritiqueError(f"opencode exited {completed.returncode}: {tail}")
+    result_text = _opencode_text_from_jsonl(completed.stdout or "")
+    if not result_text.strip():
+        result_text = completed.stdout or ""
+    if not result_text.strip():
+        raise LlmCritiqueError("opencode produced no final message")
     return result_text
 
 
@@ -440,6 +506,9 @@ _INVOKERS: dict[str, Callable[..., str]] = {
     "agy": lambda prompt, model, effort, timeout: invoke_agy(
         prompt, model=model, effort=effort, timeout=timeout
     ),
+    "opencode": lambda prompt, model, effort, timeout: invoke_opencode(
+        prompt, model=model, effort=effort, timeout=timeout
+    ),
 }
 
 
@@ -451,6 +520,8 @@ def invoke_llm_critique(
     model: str = "",
     effort: str = "low",
     timeout: int = 180,
+    service_tier: str = "standard",
+    agent: str = "",
 ) -> dict[str, Any]:
     """Run one provider; return {verdict, summary, findings, raw_excerpt}."""
     provider = (provider or "").strip().lower()
@@ -461,7 +532,24 @@ def invoke_llm_critique(
     )
     invoker = _INVOKERS[provider]
     try:
-        raw = invoker(prompt, model or "", effort or "low", timeout)
+        if provider == "codex":
+            raw = invoke_codex(
+                prompt,
+                model=model or "",
+                effort=effort or "low",
+                timeout=timeout,
+                service_tier=service_tier,
+            )
+        elif provider == "opencode":
+            raw = invoke_opencode(
+                prompt,
+                model=model or "",
+                effort=effort or "low",
+                timeout=timeout,
+                agent=agent or "lane-critic",
+            )
+        else:
+            raw = invoker(prompt, model or "", effort or "low", timeout)
     except subprocess.TimeoutExpired as exc:
         raise LlmCritiqueError(f"{provider} timed out after {timeout}s") from exc
     payload = parse_llm_payload(raw)

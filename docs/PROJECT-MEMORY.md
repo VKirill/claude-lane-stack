@@ -42,10 +42,9 @@ project-onboard /path/to/repo --deep
 
 ## Skills
 
-- `project-memory` — when to update which file after a task/session
+- `project-life` — todos, delivery plans, PROGRESS/LESSONS/ADR after a task/session
 - `project-onboard` — dual scenario + depth passport
 - `resume-project` — cold start (`resume-project .`)
-- `agent-todos` — ideas board
 - `lane-contract` / `orchestrator-lanes` — runs + solo merge + lane-bg
 
 ## Cold start / night audit

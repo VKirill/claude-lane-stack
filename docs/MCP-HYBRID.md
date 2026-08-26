@@ -17,6 +17,7 @@ Hosts see **3** MCP servers. MetaMCP collapses the rest into **4** tools (`@ment
 | **Claude** | `~/.claude.json` | agentmemory, gitnexus, metamcp |
 | **Grok** | `~/.grok/config.toml` | agentmemory, gitnexus, metamcp |
 | **Codex** | `~/.codex/config.toml` | agentmemory, gitnexus, metamcp (+ plugin `github@openai-curated` → GitHub Copilot MCP) |
+| **OpenCode** | `~/.config/opencode/opencode.json` → `mcp` | agentmemory, gitnexus, metamcp |
 | **Mimo** | `~/.config/mimocode/mimocode.json` → `mcp` | agentmemory, gitnexus, metamcp |
 
 ## Behind MetaMCP
@@ -51,6 +52,7 @@ metamcp --version
 mimo mcp list
 codex mcp list
 claude mcp list
+opencode mcp list
 ```
 
 ## Repowise purge (2026-07-11)

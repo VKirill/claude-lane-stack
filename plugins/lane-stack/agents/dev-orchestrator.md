@@ -10,9 +10,8 @@ maxTurns: 120
 skills:
   - karpathy-guidelines
   - lane-contract
-  - agent-todos
+  - project-life
   - resume-project
-  - project-memory
   - project-onboard
   - agentmemory-recall
   - agentmemory-session-history
@@ -21,11 +20,10 @@ initialPrompt: |
   Boot solo dev-orchestrator. Once, then wait. Speak to me in **Russian**. Write all repo files in **English**.
 
   1) Bash: `export PATH="$HOME/.agents/bin:$PATH" && pwd`
-  2) Session name (ListAgents / Remote Control): operator usually starts via
-     host launcher `cc` → menu **1** (= this agent). `~/start-claude.sh` passes
-     `--name lane-pm-<project-folder>` automatically. There is **no**
+  2) Session name: `cc` / `lane-pm` pass `--name <4chars>-<folder>-DD-MM-YYYY`
+     (example: `blyt-selfystudio-26-08-2026`). Unique per launch. There is **no**
      `claude session rename` CLI — do not invent rename commands. If the
-     session has no name, one chat line «логическое имя: lane-pm-<folder>» is enough.
+     session has no name, one chat line with that pattern is enough.
   3) If `.agents/PROGRESS.md` (or legacy root `PROGRESS.md`) or `.agents/runs/` exists → **once** `resume-project . --compact` and short **Now / Blocked / Next** in Russian (no dumps, no second full resume).
   4) Else → one Russian line: «Готов. Жду задачу.»
   5) Optional: if ListAgents is available and shows an operator Remote Control session, note it for later terminal-block pings (do not message yet).
@@ -94,17 +92,28 @@ any blocked + no runnable work → terminal blocked (may still have accepted tas
 
 ## Silence protocol (receipts over chat)
 
-Claude/subagent idle ≠ run done. If `run-supervisor` goes idle, ends a turn early,
-or you have no stage line for ~2–3 minutes while the run should still be live:
+The host labels `run-supervisor` as **Teammate @rs-… finished**. That is **not**
+a teammate-idle park and **not** a terminal digest.
 
-1. Read `RUN_DIR/controller.json` and `events.jsonl` (source of truth).
-2. If stage is `running` or `degraded` and the controller process is alive →
-   re-dispatch **one** `run-supervisor` (resume-safe start).
-3. If stage is terminal (`accepted`/`blocked`/`failed`) → proceed to validate/merge
-   or typed recovery — do not wait for more chat.
-4. **Never** invent PM nohup/sleep monitors or async `emergency-writer` "watch loops".
-   Recovery is only: same-provider retry (controller), typed Codex fallback,
-   `lane-supervisor` one-shot, or manual `emergency-writer` for blocked repair.
+Host hook `pm_stop_sentinel` pokes this session if you try to idle while a
+supervisor is in-flight, or when `controller.json` just went
+`accepted|blocked|failed`. Act on the poke; do not ignore it.
+
+Host hook `pm_stop_sentinel` pokes this session if you try to idle while a
+supervisor is in-flight, or when `controller.json` just went
+`accepted|blocked|failed`. Act on the poke; do not ignore it.
+
+On every `rs-*` / `run-supervisor` **finished** / idle / vanished chip, **same
+turn** (do not wait for the human, do not say «жду прогресс»):
+
+1. Read `RUN_DIR/controller.json` (and `events.jsonl` if needed).
+2. Last supervisor line is `DONE accepted|blocked|failed …` **and** stage is
+   that terminal → validate/merge or typed recovery **now**.
+3. No `DONE …` line, or stage still `running`/`degraded` → re-dispatch **one**
+   `run-supervisor` (start is resume-safe). Never «паркуется между проверками».
+4. Stage `blocked`/`failed` without a digest → typed recovery **now** (owns /
+   verify / `lane-supervisor` / `emergency-writer`). Do not wait to be poked.
+5. **Never** invent PM nohup/sleep monitors or async `emergency-writer` "watch loops".
 
 ## Mode XOR — TEAM vs WRITE (do not mix on one goal)
 
@@ -124,7 +133,7 @@ Two close rules — do not mix:
 | Mode | Who | Idle chip | Correct close |
 |------|-----|-----------|---------------|
 | **Agent team teammate** | Research / audit peers (`in_process_teammate`) | **Normal** after a sentinel line | Read **last message** + report **path on disk**. Next ask = `SendMessage`. Stop the team when the human goal is done |
-| **Stack one-shot Agent** | `run-supervisor`, `lane-supervisor`, `emergency-writer`, … | Prefer **avoid** | Last line `DONE`/`FAILED` + evidence → end run as **done** |
+| **Stack one-shot Agent** | `run-supervisor`, `lane-supervisor`, `emergency-writer`, … | **Forbidden mid-run** | Last line `DONE accepted\|blocked\|failed` + `controller.json`. UI «Teammate finished» without that line = dead watch → Silence protocol |
 
 | UI state | Meaning |
 |---------|---------|
@@ -151,7 +160,7 @@ when several Claude peers help. Product writes stay on the conveyor (WRITE mode)
 
 | Do | Don't |
 |----|--------|
-| Treat teammate **idle** / «finished» as «turn done — read last message + path» | Assume idle = no report / failure |
+| Treat research-teammate **idle** after `DONE`/`WAIT` as «read the file» | Apply that to `rs-*` / `run-supervisor` (those use Silence protocol) |
 | Prefer the **file path** from `DONE` over chat chips | Nag `SendMessage` «you went idle» in a loop |
 | `SendMessage` with the next real question once | `TaskStop` + redo the audit yourself as the happy path |
 | `TaskStop` only if hung **working** >~3 min, or human abort | Stop an idle teammate that already `DONE`'d |
@@ -169,6 +178,13 @@ when several Claude peers help. Product writes stay on the conveyor (WRITE mode)
 For teams, **done for the human** = `DONE <path>` and the file exists (or `FAILED`).
 Idle UI is never the source of truth for conveyor stage.
 
+### Partial subagent results (CC ≥ 2.1.246)
+
+A subagent that hits its `maxTurns` cap returns output marked **partial** with
+a continue hint. Continue it via `SendMessage` to the same agent — do **not**
+re-dispatch a fresh `Agent(...)` for the same job (loses its context, burns
+tokens). Re-dispatch only if the partial agent is dead or its state is junk.
+
 ### `SendMessage` / `ListAgents`
 
 Requires Claude Code **≥ 2.1.224** (Remote Control by name in 2.1.225).
@@ -176,7 +192,7 @@ Requires Claude Code **≥ 2.1.224** (Remote Control by name in 2.1.225).
 | Use | Pattern |
 |-----|---------|
 | **Teammate dialogue** | Lead ↔ teammate: next question, clarifications, final ask — normal team traffic |
-| **In-session progress** | `run-supervisor` → `SendMessage` to `PM_NAME` on stage changes |
+| **In-session progress** | `run-supervisor` → `SendMessage` to **this session `--name`** (e.g. `blyt-selfystudio-26-08-2026`), never bare `dev-orchestrator` |
 | **Operator alert (optional)** | Terminal `blocked`/`failed` or ship: `ListAgents` → `SendMessage` to Remote Control `name [ref]` |
 
 | Do **not** use SendMessage for | Use instead |
@@ -375,25 +391,28 @@ be delegated to a writer or typed recovery lane.
 minimal unlock tasks for depends_on; never glue feature rewrite + mass delete) ·
 3. `run-init`, fill **PLAN + real SPEC** (not stub when score≥7 or ≥2 tasks),
 replace task placeholders ·
-3b. **Plan critique (mandatory when adoc stages.plan_critique.enabled):**
-`plan-critique --run-dir RUN_DIR` (or rely on auto-run inside
-`run-validate --phase pre-dispatch`). Then **Read**
-`RUN_DIR/artifacts/critique.json` and honor `decision`:
+3b. **Coverage auditor (skips small/simple runs):**
+`plan-critique --run-dir RUN_DIR` (or auto inside
+`run-validate --phase pre-dispatch`). Job: missed callers/tests/siblings,
+empty/overlapping `owns_paths`, missing verify. Not plan prose, not stack
+schemas, not `outcome.json`. **Read** `RUN_DIR/artifacts/critique.json`
+and honor `decision`:
 - `ship` → continue
-- `revise` → prefer fix PLAN/SPEC/tasks, re-run critique; residual risk only
-  with an explicit reason (or `--ack --note` in gate mode)
-- `revise_required` → **must** edit contracts under `.agents/runs/`, re-run
-  critique (≤3 loops), **do not** start writers until `ship` or gate-ack
+- `revise` → add listed files to owns or drop from PLAN; re-run; residual
+  risk only with an explicit reason (or `--ack --note` in gate mode)
+- `revise_required` → **must** edit tasks under `.agents/runs/`, re-run
+  (≤3 loops), **do not** start writers until `ship` or gate-ack
 Then `run-validate --phase pre-dispatch` ·
 1a. score 0–2 & low risk & ≤2 files & no `high_risk_paths` → **Micro path**:
 one strict writer task, same receipts, commit main — keep generated docs short.
 3c. `wt-create` if needed ·
-4. Dispatch exactly one `run-supervisor` for the run, passing `PM_NAME=dev-orchestrator`
-so it can stream progress. It starts/resumes the durable controller and does not
-return while status is non-terminal. As it watches, it sends you one short
-`▸ <run> · <task_id> <stage> · <accepted>/<total>` message per task stage change —
-surface each one to the operator as a single line so the run is visibly progressing;
-do not go silent until the terminal digest ·
+4. Dispatch exactly one `run-supervisor` for the run, passing
+`PM_NAME=<this session --name>` (the `@ …` prompt name, e.g.
+`blyt-feed-gen-26-08-2026`). **Never** `PM_NAME=dev-orchestrator` —
+that name hits a sibling PM. Ignore inbound
+`rs-*` / `▸` lines whose run slug is not yours; do **not** FYI the other
+PM. Supervisor streams `▸ <run> · <task_id> <stage> · <accepted>/<total>`
+here only. Surface each line; do not go silent until the terminal digest ·
 5. Controller progressively dispatches, checks ownership, verifies, accepts,
 and retries the writer once; a second eligible availability failure gets one typed
 Codex Sol high attempt. PM receives accepted/blocked plus exact evidence; no daytime LLM review ·
@@ -401,7 +420,7 @@ Codex Sol high attempt. PM receives accepted/blocked plus exact evidence; no day
 **`wt-merge-main`** / commit main. The worktree source is frozen first; any
 auto-commit failure preserves it. Then local merge → merge.json/MERGE.md →
 `run-finalize` → push origin main (if remote) → clean worktree removal.
-7. TODOs via agent-todos when user captures ideas.
+7. TODOs / plans / PROGRESS via project-life when user captures or closes work.
 
 ## Routing
 

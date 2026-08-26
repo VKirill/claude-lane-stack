@@ -12,7 +12,7 @@
 Talk to Claude Code — it runs Codex / Qwen / Grok / Kimi / AGY, checks work, **merges to `main`**, reviews at night.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.16.0"><img src="https://img.shields.io/badge/version-v1.16.0-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.17.0"><img src="https://img.shields.io/badge/version-v1.17.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -220,7 +220,7 @@ This repo **is a Claude Code plugin marketplace**. `./install.sh` installs the h
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.16.0   # or: main
+cd claude-lane-stack && git checkout v1.17.0   # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
@@ -249,11 +249,8 @@ agents-doctor --apply .     # or: adoc
 ### ③ Start the PM
 
 ```bash
-# if you use the host launcher:
-cc                          # menu → 1 = dev-orchestrator
-
-# or raw:
-claude --agent dev-orchestrator --name lane-pm-myproject
+lane-pm                     # boot + session name <agent>-<folder>-DD-MM-YYYY
+# `claude --agent dev-orchestrator` alone often skips initialPrompt
 ```
 
 | In chat | When |
@@ -268,8 +265,10 @@ claude --agent dev-orchestrator --name lane-pm-myproject
 
 | Knob | Meaning |
 |------|---------|
-| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` |
+| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `opencode` |
 | **Model / effort** | e.g. Codex luna + max |
+| **Onboard model** | Stages → Onboard (not Coder) |
+| **Info** | `?` — roles + first-hour commands |
 | **Fast mode** | Codex `service_tier: fast` |
 | **Workspace** | `in_place` · `worktree` · `auto` |
 | **Plan critique** | off · structural · LLM before dispatch |

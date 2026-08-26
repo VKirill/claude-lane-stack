@@ -23,8 +23,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_ui_sub": "Language",
         "tab_status": "Status",
         "tab_status_sub": "Host CLIs",
+        "tab_info": "Info",
+        "tab_info_sub": "Roles · first hour",
         "tab_apply": "Apply",
         "tab_apply_sub": "Save to project",
+        "nav_title": "SETUP",
+        "nav_hint": "click · ↑↓",
+        "keys_nav": "click menu · ^←/^→ pane",
+        "msg_nav": "Menu · ↑↓ section · Enter work",
+        "msg_main": "Working pane",
         "sum_coder": "coder ",
         "sum_night_on": "night:ON",
         "sum_night_off": "night:off",
@@ -32,6 +39,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_model": "Model",
         "field_effort": "Effort",
         "field_fast": "Fast mode",
+        "field_agent": "Agent",
         "coder_fast_hint": "Codex/Cursor · service_tier=fast (Codex credits or Cursor *-fast model). Independent of Effort.",
         "msg_fast": "Fast mode → {value}",
         "stages_h1": "  Conveyor stages\n",
@@ -45,7 +53,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n  ←→ cycles the highlighted field. On «Provider» switch structural → Qwen/Kimi…\n"
             "  On «Model» you get the full catalog for that agent (Kimi has several).\n"
             "  Critique mode «gate» blocks pre-dispatch until pass/ack.\n"
-            "  Onboard: agent + model + effort + Fast mode (Codex/Cursor service_tier).\n"
+            "  Fast mode (Codex/Cursor) is on Critique and Onboard.\n"
         ),
         "stage_plan_critique": "Plan critique",
         "stage_plan_critique_badge": "CHEAP",
@@ -64,6 +72,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sfield_model": "Model",
         "sfield_effort": "Effort",
         "sfield_fast": "Fast mode",
+        "sfield_agent": "Agent",
         "sfield_when": "When",
         "mode_advisory": "advisory",
         "mode_gate": "gate",
@@ -76,6 +85,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prov_agy": "AGY",
         "prov_codex": "Codex",
         "prov_cursor": "Cursor",
+        "prov_opencode": "OpenCode",
         "pipe_crit": "crit",
         "pipe_write": "write",
         "pipe_night": "night",
@@ -86,7 +96,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "  One level at a time: ↑↓ fields → Enter list → Enter confirm.\n\n"
         ),
         "coder_settings": "  Settings\n",
-        "coder_open_list": "  ⏎ list",
+        "coder_open_list": "  ←→ cycle · ⏎ list",
         "coder_tip": (
             "\n  Shortcuts: p provider · m model · e effort (open that list).\n"
             "  When done: 7 or Tab → Apply → Enter to save.\n"
@@ -169,20 +179,59 @@ STRINGS: dict[str, dict[str, str]] = {
             "  New runs pick up main_write + pipeline stages + workspace.\n"
         ),
         "keys_coder_pick": "↑↓ choose · Enter confirm · Esc back · q quit",
-        "keys_coder": "↑↓ field · Enter list · Tab tabs · 7 Apply",
+        "keys_coder": "↑↓ field · ←→ value · Enter list · Tab · 8 Apply",
         "keys_stages": "↑↓ field · ←→ value · 1-5 stage · p/n · Space",
         "keys_work": "↑↓ mode · Space select · +/- score · [ ]/,. session · m multi",
         "keys_night": "Space night · a merge · +/- budget · n writer",
         "keys_ui": "↑↓ language · L cycle · Tab tabs",
-        "keys_status": "r rescan · 1-7 tabs · q quit",
+        "keys_status": "r rescan · 1-8 tabs · q quit",
+        "keys_info": "Tab next · 8 Apply · q quit",
         "keys_apply": "ENTER save · q quit",
-        "msg_boot": "2 Stages · L language · ? help · conveyor strip below",
+        "info_h1": "  What this factory does\n",
+        "info_help": (
+            "  PM is Claude. Writers are host CLIs from the Coder tab.\n"
+            "  Open this page anytime with ?\n\n"
+        ),
+        "info_roles_h2": "  Roles\n",
+        "info_roles": (
+            "  PM        Claude via lane-pm — plan, dispatch, merge. Not a writer.\n"
+            "  Writer    process from Coder: Kimi / Qwen / Grok / AGY / Codex / Cursor / OpenCode\n"
+            "  Onboard   Stages → Onboard — own provider + model (default Codex)\n"
+            "  Night     Stages → Night review — read-only repair after hours\n\n"
+        ),
+        "info_pipe_h2": "  Conveyor\n",
+        "info_pipe": (
+            "  plan (PM) → critique → write → L1 verify → night / specialist\n"
+            "  Onboard is a project passport, not a write lane.\n\n"
+        ),
+        "info_start_h2": "  Existing repo — first hour\n",
+        "info_start": (
+            "  1.  cd /path/to/repo && adoc     then Apply\n"
+            "  2.  Stages → Onboard: pick the model that will fill the passport\n"
+            "  3.  lane-pm\n"
+            "  4.  In chat: /project-onboard    or shell: project-onboard .\n"
+            "  5.  Next day: /resume-project    or say «продолж»\n\n"
+        ),
+        "info_cmds_h2": "  Commands\n",
+        "info_cmds": (
+            "  adoc                 this TUI — coder, stages, onboard model\n"
+            "  lane-pm              start the Claude PM session\n"
+            "  project-onboard .    write CLAUDE.md / docs/llm pack\n"
+            "  resume-project .     Now / Blocked / Next\n"
+            "  run-board            list runs\n\n"
+        ),
+        "info_onboard_note": (
+            "  Onboard model is Stages → Onboard (not Coder).\n"
+            "  Coder is only the daytime writer.\n"
+        ),
+        "msg_boot": "Left menu · click or ^← · ? help",
         "msg_tab": "Tab · {name}",
         "msg_focus": "Field → {name}",
         "msg_pick": "Pick {name} · ↑↓ · Enter",
         "msg_no_opts": "No options for {name}",
         "msg_coder": "Coder → {name}",
         "msg_model": "Model → {name}",
+        "msg_agent": "Agent → {name}",
         "msg_effort": "Effort → {name}",
         "msg_cancelled": "Cancelled",
         "msg_workspace": "Workspace → {name}",
@@ -199,7 +248,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_saved": "✓ Saved — closing…",
         "msg_apply_fail": "Apply failed: {err}",
         "msg_help_pick": "↑↓ choose · Enter ok · Esc back · q quit",
-        "msg_help": "1 Coder 2 Stages 3 Work 4 Night 5 UI 6 Status 7 Apply · L · q",
+        "msg_help": "1 Coder 2 Stages 3 Work 4 Night 5 UI 6 Status 7 Info 8 Apply · L · q",
         "msg_stage": "Stage → {name}",
         "msg_stage_enabled": "{stage} → {on}",
         "msg_stage_mode": "Critique mode → {mode}",
@@ -221,6 +270,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_agy_blurb": "Gemini Flash high via AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (no host MCP/plugins)",
         "wr_cursor_blurb": "Cursor Agent CLI — any account model (+ fast siblings)",
+        "wr_opencode_blurb": "OpenCode CLI — any connected model + host agent (build/plan/wiki/…)",
         "wr_auto_blurb": "First available: Kimi → Qwen → Grok → AGY",
         "done_title": "✓ Project configured",
         "done_lbl_path": "path",
@@ -270,8 +320,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_ui_sub": "Язык интерфейса",
         "tab_status": "Статус",
         "tab_status_sub": "CLI хоста",
+        "tab_info": "Информация",
+        "tab_info_sub": "Роли · первый час",
         "tab_apply": "Сохранить",
         "tab_apply_sub": "Запись в проект",
+        "nav_title": "НАСТРОЙКА",
+        "nav_hint": "клик · ↑↓",
+        "keys_nav": "клик меню · ^←/^→ панель",
+        "msg_nav": "Меню · ↑↓ раздел · Enter работа",
+        "msg_main": "Рабочая панель",
         "sum_coder": "кодер ",
         "sum_night_on": "ночь:ВКЛ",
         "sum_night_off": "ночь:выкл",
@@ -279,6 +336,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_model": "Модель",
         "field_effort": "Effort",
         "field_fast": "Fast mode",
+        "field_agent": "Агент",
         "coder_fast_hint": "Codex/Cursor · service_tier=fast (кредиты Codex или модель Cursor *-fast). Не зависит от Effort.",
         "msg_fast": "Fast mode → {value}",
         "stages_h1": "  Этапы конвейера\n",
@@ -292,7 +350,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n  ←→ крутит выделенное поле. «Провайдер»: структурный → Qwen/Kimi/Grok…\n"
             "  «Модель»: полный каталог агента (у Kimi несколько вариантов).\n"
             "  Режим «шлюз» блокирует pre-dispatch, пока нет pass/ack.\n"
-            "  Онбординг: агент + модель + effort + Fast mode (Codex/Cursor service_tier).\n"
+            "  Fast mode (Codex/Cursor) — у критики плана и онбординга.\n"
         ),
         "stage_plan_critique": "Критика плана",
         "stage_plan_critique_badge": "БЫСТР",
@@ -311,6 +369,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sfield_model": "Модель",
         "sfield_effort": "Effort",
         "sfield_fast": "Fast mode",
+        "sfield_agent": "Агент",
         "sfield_when": "Когда",
         "mode_advisory": "совет",
         "mode_gate": "шлюз",
@@ -323,6 +382,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "prov_agy": "AGY",
         "prov_codex": "Codex",
         "prov_cursor": "Cursor",
+        "prov_opencode": "OpenCode",
         "pipe_crit": "критика",
         "pipe_write": "код",
         "pipe_night": "ночь",
@@ -333,7 +393,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "  Один уровень: ↑↓ поля → Enter список → Enter выбрать.\n\n"
         ),
         "coder_settings": "  Настройки\n",
-        "coder_open_list": "  ⏎ список",
+        "coder_open_list": "  ←→ листать · ⏎ список",
         "coder_tip": (
             "\n  Ярлыки: p провайдер · m модель · e effort (открыть список).\n"
             "  Готово: 7 или Tab → Сохранить → Enter.\n"
@@ -416,20 +476,59 @@ STRINGS: dict[str, dict[str, str]] = {
             "  Новые run’ы берут main_write + этапы конвейера + workspace.\n"
         ),
         "keys_coder_pick": "↑↓ выбор · Enter · Esc назад · q выход",
-        "keys_coder": "↑↓ поле · Enter список · Tab · 7 Сохранить",
+        "keys_coder": "↑↓ поле · ←→ значение · Enter список · Tab · 8 Сохранить",
         "keys_stages": "↑↓ поле · ←→ значение · 1–5 этап · p/n · Пробел",
         "keys_work": "↑↓ режим · Space · +/- score · [ ]/,. сессия · m multi",
         "keys_night": "Space ночь · a merge · +/- бюджет · n writer",
         "keys_ui": "↑↓ язык · L переключить · Tab",
-        "keys_status": "r rescan · 1-7 вкладки · q выход",
+        "keys_status": "r rescan · 1-8 вкладки · q выход",
+        "keys_info": "Tab дальше · 8 Сохранить · q выход",
         "keys_apply": "ENTER сохранить · q выход",
-        "msg_boot": "2 Этапы · L язык · ? справка · конвейер снизу",
+        "info_h1": "  Что делает эта фабрика\n",
+        "info_help": (
+            "  PM — Claude. Писатели — CLI с вкладки Кодер.\n"
+            "  Сюда всегда можно попасть по ?\n\n"
+        ),
+        "info_roles_h2": "  Роли\n",
+        "info_roles": (
+            "  PM        Claude через lane-pm — план, диспатч, merge. Не писатель.\n"
+            "  Writer    процесс с Кодера: Kimi / Qwen / Grok / AGY / Codex / Cursor / OpenCode\n"
+            "  Онбординг Этапы → Онбординг — свой провайдер и модель (по умолчанию Codex)\n"
+            "  Ночь      Этапы → Ночной ревью — только чтение/ремонт ночью\n\n"
+        ),
+        "info_pipe_h2": "  Конвейер\n",
+        "info_pipe": (
+            "  план (PM) → критика → код → L1 verify → ночь / специалист\n"
+            "  Онбординг — паспорт проекта, не lane записи.\n\n"
+        ),
+        "info_start_h2": "  Существующий репо — первый час\n",
+        "info_start": (
+            "  1.  cd /path/to/repo && adoc     потом Сохранить\n"
+            "  2.  Этапы → Онбординг: модель, которая заполнит паспорт\n"
+            "  3.  lane-pm\n"
+            "  4.  В чате: /project-onboard     или в шелле: project-onboard .\n"
+            "  5.  Назавтра: /resume-project    или «продолж»\n\n"
+        ),
+        "info_cmds_h2": "  Команды\n",
+        "info_cmds": (
+            "  adoc                 этот TUI — кодер, этапы, модель онбординга\n"
+            "  lane-pm              сессия Claude PM\n"
+            "  project-onboard .    CLAUDE.md / пакет docs/llm\n"
+            "  resume-project .     Сейчас / Блок / Дальше\n"
+            "  run-board            список ранов\n\n"
+        ),
+        "info_onboard_note": (
+            "  Модель онбординга — Этапы → Онбординг (не Кодер).\n"
+            "  Кодер — только дневной писатель.\n"
+        ),
+        "msg_boot": "Меню слева · клик или ^← · ? справка",
         "msg_tab": "Вкладка · {name}",
         "msg_focus": "Поле → {name}",
         "msg_pick": "Выбор {name} · ↑↓ · Enter",
         "msg_no_opts": "Нет вариантов для {name}",
         "msg_coder": "Кодер → {name}",
         "msg_model": "Модель → {name}",
+        "msg_agent": "Агент → {name}",
         "msg_effort": "Effort → {name}",
         "msg_cancelled": "Отмена",
         "msg_workspace": "Workspace → {name}",
@@ -446,7 +545,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_saved": "✓ Сохранено — закрываю…",
         "msg_apply_fail": "Ошибка Apply: {err}",
         "msg_help_pick": "↑↓ · Enter · Esc назад · q выход",
-        "msg_help": "1 Кодер 2 Этапы 3 Work 4 Ночь 5 UI 6 Статус 7 Сохранить · L · q",
+        "msg_help": "1 Кодер 2 Этапы 3 Work 4 Ночь 5 UI 6 Статус 7 Инфо 8 Сохранить · L · q",
         "msg_stage": "Этап → {name}",
         "msg_stage_enabled": "{stage} → {on}",
         "msg_stage_mode": "Режим критики → {mode}",
@@ -468,6 +567,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_agy_blurb": "Gemini Flash high через AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (без host MCP/plugins)",
         "wr_cursor_blurb": "Cursor Agent CLI — любая модель аккаунта (+ fast)",
+        "wr_opencode_blurb": "OpenCode CLI — любая подключённая модель + агент хоста (build/plan/wiki/…)",
         "wr_auto_blurb": "Первый доступный: Kimi → Qwen → Grok → AGY",
         "done_title": "✓ Проект настроен",
         "done_lbl_path": "путь",

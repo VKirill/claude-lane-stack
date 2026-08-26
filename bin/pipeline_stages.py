@@ -9,21 +9,22 @@ Claude subagents:
                                       ↘ optional specialist (read-only)
   side role: onboard (project passport; adoc agent/model/effort/service_tier)
 
-Structural critique always runs when plan_critique is enabled. When
-provider ≠ structural, ``plan-critique`` also runs a one-shot LLM pass and
-writes a PM ``decision`` (ship | revise | revise_required) the orchestrator
-must honor before dispatch.
+Coverage helper for the PM (Fable): did PLAN/owns_paths miss callers,
+imports, or tests? Runs only on large/hard runs (score≥7, ≥3 write tasks,
+or high_risk). Essay checks (thin PLAN, missing headings) are not the job.
 """
 from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 KNOWN_STAGE_PROVIDERS = frozenset(
-    {"structural", "kimi", "qwen", "agy", "grok", "codex", "cursor"}
+    {"structural", "kimi", "qwen", "agy", "grok", "codex", "cursor", "opencode"}
 )
 CRITIQUE_MODES = frozenset({"advisory", "gate"})
 CRITIQUE_DECISIONS = frozenset({"ship", "revise", "revise_required"})
@@ -35,9 +36,9 @@ PM_ACTION = {
         "No plan corrections required."
     ),
     "revise": (
-        "Review findings; prefer fixing PLAN/SPEC/tasks, then re-run "
-        "`plan-critique`. Residual warnings may ship only with an explicit "
-        "reason in chat (advisory) or `plan-critique --ack --note '…'` (gate)."
+        "Coverage gaps: add missed files to owns_paths / PLAN, then re-run "
+        "`plan-critique`. Residual warnings may ship with an explicit reason "
+        "(advisory) or `plan-critique --ack --note '…'` (gate)."
     ),
     "revise_required": (
         "MUST edit PLAN.md / SPEC.md / tasks/*.yaml to address error findings, "
@@ -53,6 +54,7 @@ DEFAULT_MODELS = {
     "agy": "gemini-3.6-flash-high",
     "codex": "gpt-5.6-luna",
     "cursor": "composer-2.5",
+    "opencode": "alibaba-token-plan/qwen3.8-max-preview",
     "structural": "",
 }
 # Write-lane defaults (daytime implementer).
@@ -63,6 +65,7 @@ DEFAULT_WRITE_EFFORTS = {
     "agy": "medium",
     "codex": "max",
     "cursor": "medium",
+    "opencode": "medium",
 }
 # Cheap plan-critique pass defaults.
 DEFAULT_CRITIQUE_EFFORTS = {
@@ -71,7 +74,8 @@ DEFAULT_CRITIQUE_EFFORTS = {
     "grok": "low",
     "agy": "low",
     "cursor": "low",
-    "codex": "high",
+    "codex": "low",
+    "opencode": "low",
     "structural": "low",
 }
 DEFAULT_EFFORTS = DEFAULT_CRITIQUE_EFFORTS  # alias for critique
@@ -81,12 +85,16 @@ DEFAULT_ONBOARD_EFFORT = "high"
 DEFAULT_ONBOARD_EFFORTS = {
     "codex": "high",
     "cursor": "high",
+    "opencode": "medium",
     "qwen": "medium",
     "kimi": "medium",
     "grok": "medium",
     "agy": "medium",
 }
 SERVICE_TIER_STAGE_PROVIDERS = frozenset({"codex", "cursor"})
+DEFAULT_OPENCODE_WRITE_AGENT = "lane-writer"
+DEFAULT_OPENCODE_CRITIQUE_AGENT = "lane-critic"
+DEFAULT_OPENCODE_REVIEW_AGENT = "lane-reviewer"
 
 _SPEC_STUB_MARKERS = (
     "record interfaces, invariants, constraints, and the definition of done here",
@@ -125,6 +133,10 @@ def default_stages(
             "provider": "structural",
             "model": "",
             "reasoning_effort": "low",
+            "min_score": 7,
+            "min_write_tasks": 3,
+            "on_high_risk": True,
+            "service_tier": "standard",
         },
         "write": {
             "provider": wp,
@@ -174,6 +186,47 @@ def _as_bool(value: Any, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _as_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def default_opencode_agent(stage_id: str = "write") -> str:
+    if stage_id == "plan_critique":
+        return DEFAULT_OPENCODE_CRITIQUE_AGENT
+    if stage_id in {"night_review", "specialist"}:
+        return DEFAULT_OPENCODE_REVIEW_AGENT
+    return DEFAULT_OPENCODE_WRITE_AGENT
+
+
+def _opencode_agent(block: dict[str, Any], *, default: str) -> dict[str, str]:
+    raw = str(block.get("agent") or default).strip()
+    return {"agent": raw or default}
+
+
+def _effort_from_block(block: dict[str, Any], default: str) -> str:
+    # Explicit empty stays empty (OpenCode model with no variants).
+    if "reasoning_effort" in block:
+        return str(block.get("reasoning_effort") or "").strip()
+    if "effort" in block:
+        return str(block.get("effort") or "").strip()
+    return default
+
+
+def _normalize_service_tier(block: dict[str, Any], provider: str) -> str:
+    raw = block.get("service_tier")
+    if raw is None and "fast_mode" in block:
+        raw = "fast" if _as_bool(block.get("fast_mode"), False) else "standard"
+    tier = str(raw or "standard").strip().lower()
+    if tier not in {"standard", "fast"}:
+        tier = "standard"
+    if provider not in SERVICE_TIER_STAGE_PROVIDERS:
+        return "standard"
+    return tier
+
+
 def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi") -> dict[str, Any]:
     """Merge partial stages dict with defaults; clamp enums."""
     base = default_stages(write_provider=write_provider)
@@ -198,11 +251,18 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
         "mode": pc_mode,
         "provider": pc_provider,
         "model": str(pc.get("model") or DEFAULT_MODELS.get(pc_provider, "")).strip(),
-        "reasoning_effort": str(
-            pc.get("reasoning_effort")
-            or pc.get("effort")
-            or DEFAULT_EFFORTS.get(pc_provider, "low")
-        ).strip(),
+        "reasoning_effort": _effort_from_block(
+            pc, DEFAULT_EFFORTS.get(pc_provider, "low")
+        ),
+        "min_score": max(0, _as_int(pc.get("min_score"), 7)),
+        "min_write_tasks": max(1, _as_int(pc.get("min_write_tasks"), 3)),
+        "on_high_risk": _as_bool(pc.get("on_high_risk"), True),
+        "service_tier": _normalize_service_tier(pc, pc_provider),
+        **(
+            _opencode_agent(pc, default=default_opencode_agent("plan_critique"))
+            if pc_provider == "opencode"
+            else {}
+        ),
     }
     if pc_provider == "structural":
         base["plan_critique"]["model"] = ""
@@ -216,11 +276,14 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
         "model": str(
             write.get("model") or DEFAULT_MODELS.get(w_provider, "")
         ).strip(),
-        "reasoning_effort": str(
-            write.get("reasoning_effort")
-            or write.get("effort")
-            or DEFAULT_WRITE_EFFORTS.get(w_provider, "medium")
-        ).strip(),
+        "reasoning_effort": _effort_from_block(
+            write, DEFAULT_WRITE_EFFORTS.get(w_provider, "medium")
+        ),
+        **(
+            _opencode_agent(write, default=default_opencode_agent("write"))
+            if w_provider == "opencode"
+            else {}
+        ),
     }
 
     # night
@@ -233,11 +296,14 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
         "model": str(
             night.get("model") or DEFAULT_MODELS.get(n_provider, "")
         ).strip(),
-        "reasoning_effort": str(
-            night.get("reasoning_effort")
-            or night.get("effort")
-            or DEFAULT_WRITE_EFFORTS.get(n_provider, "medium")
-        ).strip(),
+        "reasoning_effort": _effort_from_block(
+            night, DEFAULT_WRITE_EFFORTS.get(n_provider, "medium")
+        ),
+        **(
+            _opencode_agent(night, default=default_opencode_agent("night_review"))
+            if n_provider == "opencode"
+            else {}
+        ),
     }
 
     # specialist
@@ -254,11 +320,14 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
         "model": str(
             spec.get("model") or DEFAULT_MODELS.get(s_provider, "gpt-5.6-sol")
         ).strip(),
-        "reasoning_effort": str(
-            spec.get("reasoning_effort")
-            or spec.get("effort")
-            or DEFAULT_EFFORTS.get(s_provider, "high")
-        ).strip(),
+        "reasoning_effort": _effort_from_block(
+            spec, DEFAULT_EFFORTS.get(s_provider, "high")
+        ),
+        **(
+            _opencode_agent(spec, default=default_opencode_agent("specialist"))
+            if s_provider == "opencode"
+            else {}
+        ),
     }
 
     # onboard (project passport — not part of daytime conveyor)
@@ -270,23 +339,19 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
         if o_provider == "codex"
         else DEFAULT_MODELS.get(o_provider, DEFAULT_ONBOARD_MODEL)
     )
-    o_tier_raw = onboard.get("service_tier")
-    if o_tier_raw is None and "fast_mode" in onboard:
-        o_tier_raw = "fast" if _as_bool(onboard.get("fast_mode"), False) else "standard"
-    o_tier = str(o_tier_raw or "standard").strip().lower()
-    if o_tier not in {"standard", "fast"}:
-        o_tier = "standard"
-    if o_provider not in SERVICE_TIER_STAGE_PROVIDERS:
-        o_tier = "standard"
+    o_tier = _normalize_service_tier(onboard, o_provider)
     base["onboard"] = {
         "provider": o_provider,
         "model": str(onboard.get("model") or o_default_model).strip(),
-        "reasoning_effort": str(
-            onboard.get("reasoning_effort")
-            or onboard.get("effort")
-            or DEFAULT_ONBOARD_EFFORTS.get(o_provider, DEFAULT_ONBOARD_EFFORT)
-        ).strip(),
+        "reasoning_effort": _effort_from_block(
+            onboard, DEFAULT_ONBOARD_EFFORTS.get(o_provider, DEFAULT_ONBOARD_EFFORT)
+        ),
         "service_tier": o_tier,
+        **(
+            _opencode_agent(onboard, default=default_opencode_agent("onboard"))
+            if o_provider == "opencode"
+            else {}
+        ),
     }
     return base
 
@@ -305,12 +370,12 @@ def stages_to_yaml_lines(stages: dict[str, Any]) -> list[str]:
                 rendered = str(value)
             if key == "model" and not rendered:
                 continue
-            # service_tier only meaningful for codex/cursor onboard
             if (
-                name == "onboard"
-                and key == "service_tier"
+                key == "service_tier"
                 and str(block.get("provider") or "") not in SERVICE_TIER_STAGE_PROVIDERS
             ):
+                continue
+            if key == "agent" and str(block.get("provider") or "") != "opencode":
                 continue
             lines.append(f"    {key}: {rendered}")
     return lines
@@ -420,6 +485,522 @@ def _finding(
     }
 
 
+_GENERIC_STEMS = frozenset(
+    {
+        "index",
+        "main",
+        "app",
+        "utils",
+        "util",
+        "types",
+        "type",
+        "const",
+        "constants",
+        "config",
+        "settings",
+        "style",
+        "styles",
+        "test",
+        "spec",
+        "init",
+    }
+)
+_SKIP_SCAN_DIRS = frozenset(
+    {
+        ".git",
+        "node_modules",
+        ".agents",
+        "dist",
+        "build",
+        "vendor",
+        "__pycache__",
+        ".venv",
+        ".tox",
+        "coverage",
+    }
+)
+_PATH_IN_TEXT = re.compile(
+    r"(?<![\w./])((?:[\w.-]+/){1,8}[\w.-]+\.[A-Za-z][\w.-]{0,12})"
+)
+_REVIEW_LANES = frozenset({"verify", "review", "night", "critique"})
+
+
+def _write_task_count(tasks: list[dict[str, Any]]) -> int:
+    n = 0
+    for task in tasks:
+        lane = str(task.get("lane") or "write").strip().lower()
+        if lane not in _REVIEW_LANES:
+            n += 1
+    return n
+
+
+def critique_should_run(
+    run: dict[str, Any],
+    write_count: int,
+    settings: dict[str, Any] | None,
+) -> tuple[bool, str]:
+    """Large/hard runs only. Small UI tweaks skip the helper."""
+    settings = settings or {}
+    min_score = max(0, _as_int(settings.get("min_score"), 7))
+    min_writes = max(1, _as_int(settings.get("min_write_tasks"), 3))
+    try:
+        score = int(run.get("score") or 0)
+    except (TypeError, ValueError):
+        score = 0
+    if score >= min_score:
+        return True, f"score {score}>={min_score}"
+    if write_count >= min_writes:
+        return True, f"{write_count} write tasks >={min_writes}"
+    if _as_bool(settings.get("on_high_risk"), True):
+        risk = str(run.get("risk") or "").strip().lower()
+        if risk in {"high", "critical"}:
+            return True, f"risk={risk}"
+        hrp = run.get("high_risk_paths") or []
+        if isinstance(hrp, list) and hrp:
+            return True, "high_risk_paths set"
+    return False, f"score {score}<{min_score} and {write_count} write tasks<{min_writes}"
+
+
+def _repo_root(run_dir: Path, run: dict[str, Any]) -> Path | None:
+    for key in ("project_cwd", "repo"):
+        raw = run.get(key)
+        if raw:
+            path = Path(str(raw)).expanduser()
+            if path.is_dir():
+                return path
+    for parent in (run_dir, *run_dir.parents):
+        if (parent / ".git").exists():
+            return parent
+    return None
+
+
+def _norm_own(raw: str) -> str:
+    return str(raw or "").strip().lstrip("./")
+
+
+def _owns_cover(owned: list[str], rel: str) -> bool:
+    rel_n = _norm_own(rel)
+    for own in owned:
+        if not own:
+            continue
+        if rel_n == own or rel_n.startswith(own.rstrip("/") + "/"):
+            return True
+        if own.endswith("/**") and rel_n.startswith(own[:-3]):
+            return True
+    return False
+
+
+def _needles_for_own(own: str) -> list[str]:
+    own_n = _norm_own(own)
+    path = Path(own_n)
+    needles = [own_n, path.name]
+    stem = path.stem
+    if stem and stem.lower() not in _GENERIC_STEMS:
+        if path.suffix == ".py":
+            mod = own_n[: -len(path.suffix)].replace("/", ".")
+            needles.extend([f"from {mod}", f"import {mod}"])
+        needles.append(stem)
+    # unique, keep order
+    seen: set[str] = set()
+    out: list[str] = []
+    for needle in needles:
+        if needle and needle not in seen:
+            seen.add(needle)
+            out.append(needle)
+    return out
+
+
+def _rg_files(root: Path, needle: str, limit: int = 16) -> list[Path]:
+    rg = shutil.which("rg")
+    if not rg:
+        return []
+    cmd = [
+        rg,
+        "-l",
+        "-F",
+        needle,
+        "--max-count",
+        "1",
+        "--glob",
+        "!.git",
+        "--glob",
+        "!node_modules",
+        "--glob",
+        "!.agents",
+        "--glob",
+        "!dist",
+        "--glob",
+        "!.venv",
+        str(root),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=8, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        proc = None
+    hits: list[Path] = []
+    if proc is not None:
+        for line in (proc.stdout or "").splitlines():
+            candidate = Path(line.strip())
+            if candidate.is_file():
+                hits.append(candidate)
+            if len(hits) >= limit:
+                return hits
+        return hits
+    scanned = 0
+    for path in root.rglob("*"):
+        if not path.is_file() or any(part in _SKIP_SCAN_DIRS for part in path.parts):
+            continue
+        scanned += 1
+        if scanned > 4000:
+            break
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if needle in text:
+            hits.append(path)
+        if len(hits) >= limit:
+            break
+    return hits
+
+
+def _paths_overlap(left: str, right: str) -> bool:
+    a, b = _norm_own(left), _norm_own(right)
+    if not a or not b:
+        return False
+    if a.endswith("/**"):
+        a = a[:-3]
+    if b.endswith("/**"):
+        b = b[:-3]
+    a, b = a.rstrip("/"), b.rstrip("/")
+    if a == b:
+        return True
+    return a.startswith(b + "/") or b.startswith(a + "/")
+
+
+def _owns_overlap_findings(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    write: list[tuple[str, list[str]]] = []
+    for task in tasks:
+        lane = str(task.get("lane") or "write").strip().lower()
+        if lane in _REVIEW_LANES:
+            continue
+        raw = task.get("owns_paths") or []
+        if not isinstance(raw, list):
+            continue
+        paths = [_norm_own(str(p)) for p in raw if str(p).strip()]
+        if paths:
+            write.append((str(task.get("id") or "?"), paths))
+    findings: list[dict[str, Any]] = []
+    for i, (aid, apaths) in enumerate(write):
+        for bid, bpaths in write[i + 1 :]:
+            hit = next(
+                (
+                    (a, b)
+                    for a in apaths
+                    for b in bpaths
+                    if _paths_overlap(a, b)
+                ),
+                None,
+            )
+            if hit is None:
+                continue
+            findings.append(
+                _finding(
+                    "error",
+                    "owns_overlap",
+                    f"Tasks {aid} and {bid} overlap owns_paths",
+                    f"{hit[0]} overlaps {hit[1]}. Parallel writers need disjoint owns.",
+                    path="tasks/",
+                    task_id=aid,
+                )
+            )
+    return findings
+
+
+def _sibling_test_paths(root: Path, own: str) -> list[str]:
+    own_n = _norm_own(own)
+    path = Path(own_n)
+    stem = path.stem
+    if not stem or stem.lower() in _GENERIC_STEMS:
+        return []
+    parent = str(path.parent).replace("\\", "/")
+    parent = "" if parent == "." else parent
+    candidates = [
+        f"tests/test_{stem}.py",
+        f"test_{stem}.py",
+        f"{own_n}.test.ts",
+        f"{own_n}.spec.ts",
+        f"{parent}/{stem}.test.ts" if parent else f"{stem}.test.ts",
+        f"{parent}/{stem}.spec.ts" if parent else f"{stem}.spec.ts",
+        f"{parent}/__tests__/{stem}.test.ts" if parent else f"__tests__/{stem}.test.ts",
+        f"{parent}/{stem}.test.js" if parent else f"{stem}.test.js",
+    ]
+    found: list[str] = []
+    seen: set[str] = set()
+    for rel in candidates:
+        rel_n = _norm_own(rel)
+        if rel_n in seen:
+            continue
+        seen.add(rel_n)
+        if (root / rel_n).is_file():
+            found.append(rel_n)
+    return found
+
+
+_SYM_DECL = re.compile(
+    r"^(?:export\s+(?:async\s+)?(?:function|class|const|let)\s+|async\s+def\s+|def\s+|class\s+|function\s+)([A-Za-z_][\w]*)",
+    re.M,
+)
+
+
+def _symbols_in_file(path: Path, *, limit: int = 2) -> list[str]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    for match in _SYM_DECL.finditer(text):
+        name = match.group(1)
+        if name in seen or name.lower() in _GENERIC_STEMS:
+            continue
+        seen.add(name)
+        names.append(name)
+        if len(names) >= limit:
+            break
+    return names
+
+
+def _json_object_from_stdout(text: str) -> dict[str, Any] | None:
+    start = (text or "").find("{")
+    if start < 0:
+        return None
+    try:
+        data = json.loads(text[start:])
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _gitnexus_argv() -> list[str] | None:
+    direct = shutil.which("gitnexus")
+    if direct:
+        return [direct]
+    npx = shutil.which("npx")
+    if npx:
+        return [npx, "--yes", "gitnexus"]
+    return None
+
+
+def _collect_paths_from_impact(payload: dict[str, Any]) -> list[str]:
+    files: list[str] = []
+    by_depth = payload.get("byDepth")
+    items: list[Any] = []
+    if isinstance(by_depth, dict):
+        for value in by_depth.values():
+            if isinstance(value, list):
+                items.extend(value)
+    elif isinstance(by_depth, list):
+        items = by_depth
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key in ("file", "file_path", "path"):
+            raw = item.get(key)
+            if raw:
+                files.append(str(raw).lstrip("./"))
+                break
+    return files
+
+
+def gitnexus_caller_files(
+    root: Path,
+    *,
+    symbol: str,
+    file_path: str,
+    timeout: float = 8.0,
+) -> list[str]:
+    """Upstream callers of a symbol via `gitnexus impact`. Empty if no index."""
+    if not (root / ".gitnexus").is_dir():
+        return []
+    argv = _gitnexus_argv()
+    if not argv or not symbol:
+        return []
+    cmd = [
+        *argv,
+        "impact",
+        symbol,
+        "-d",
+        "upstream",
+        "--depth",
+        "1",
+        "--include-tests",
+        "-l",
+        "12",
+        "-r",
+        root.name,
+    ]
+    if file_path:
+        cmd.extend(["-f", file_path])
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    payload = _json_object_from_stdout(proc.stdout or "")
+    if not payload or payload.get("error"):
+        return []
+    return _collect_paths_from_impact(payload)
+
+
+def coverage_findings(
+    run_dir: Path,
+    run: dict[str, Any],
+    tasks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Missed files: imports/callers of owns_paths not listed on any task."""
+    root = _repo_root(run_dir, run)
+    if root is None:
+        return []
+    owned: list[str] = []
+    for task in tasks:
+        raw = task.get("owns_paths") or []
+        if isinstance(raw, list):
+            owned.extend(_norm_own(str(p)) for p in raw if str(p).strip())
+    if not owned:
+        return []
+
+    mentioned: set[str] = set()
+    for rel in ("PLAN.md", "SPEC.md"):
+        path = run_dir / rel
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for match in _PATH_IN_TEXT.findall(text):
+            mentioned.add(_norm_own(match))
+
+    findings: list[dict[str, Any]] = []
+    seen_gap: set[str] = set()
+
+    def _add_gap(rel: str, own: str, why: str) -> None:
+        if _owns_cover(owned, rel) or rel in seen_gap:
+            return
+        if any(part in _SKIP_SCAN_DIRS for part in Path(rel).parts):
+            return
+        seen_gap.add(rel)
+        findings.append(
+            _finding(
+                "warn",
+                "owns_gap",
+                f"Possible missed file: {rel}",
+                f"{why} Add it to a task or mark out of scope in PLAN.",
+                path=rel,
+            )
+        )
+
+    scanned = 0
+    gn_budget = 20.0
+    gn_started = datetime.now(timezone.utc).timestamp()
+    for own in owned:
+        if len(findings) >= 10:
+            break
+        if scanned >= 8:
+            break
+        if Path(own).stem.lower() in _GENERIC_STEMS:
+            continue
+        target = root / own
+        if not target.is_file():
+            continue
+        scanned += 1
+        for rel in _sibling_test_paths(root, own):
+            _add_gap(rel, own, f"Sibling test of {own} is not in any owns_paths.")
+        if datetime.now(timezone.utc).timestamp() - gn_started < gn_budget:
+            symbols = _symbols_in_file(target) or (
+                [Path(own).stem] if Path(own).stem.lower() not in _GENERIC_STEMS else []
+            )
+            for symbol in symbols[:2]:
+                for rel in gitnexus_caller_files(root, symbol=symbol, file_path=own):
+                    _add_gap(
+                        rel,
+                        own,
+                        f"GitNexus caller of {symbol} ({own}) is not in any owns_paths.",
+                    )
+                if len(findings) >= 10:
+                    break
+        for needle in _needles_for_own(own)[:3]:
+            if len(needle) < 4:
+                continue
+            for hit in _rg_files(root, needle):
+                try:
+                    rel = str(hit.resolve().relative_to(root.resolve()))
+                except ValueError:
+                    continue
+                _add_gap(rel, own, f"References {own} but is not in any owns_paths.")
+                if len(findings) >= 10:
+                    break
+            if len(findings) >= 10:
+                break
+
+    for mention in sorted(mentioned):
+        if _owns_cover(owned, mention):
+            continue
+        if (root / mention).is_file() and mention not in seen_gap:
+            seen_gap.add(mention)
+            findings.append(
+                _finding(
+                    "warn",
+                    "plan_path_unowned",
+                    f"PLAN/SPEC names {mention} but no task owns it",
+                    "Add to owns_paths or drop the path from the plan.",
+                    path=mention,
+                )
+            )
+        if len(findings) >= 10:
+            break
+    return findings
+
+
+def _skipped_critique(
+    run_dir: Path,
+    *,
+    reason: str,
+    score: int,
+    task_count: int,
+) -> dict[str, Any]:
+    result = {
+        "schema_version": 1,
+        "engine": "skipped",
+        "status": "pass",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_dir": str(run_dir),
+        "score": score,
+        "task_count": task_count,
+        "skip_reason": reason,
+        "summary": {"errors": 0, "warnings": 0, "infos": 0},
+        "findings": [],
+        "llm_pass": {"status": "skipped", "provider": "below_bar"},
+        "acked_by": None,
+        "ack_note": None,
+    }
+    attach_decision(result)
+    result["pm_action"] = (
+        "Coverage helper skipped (small/simple run). "
+        "Dispatch after `run-validate --phase pre-dispatch`."
+    )
+    return result
+
+
 def structural_critique(run_dir: Path) -> dict[str, Any]:
     """Deterministic plan/task quality review. No LLM required."""
     run_dir = run_dir.expanduser().resolve()
@@ -441,53 +1022,6 @@ def structural_critique(run_dir: Path) -> dict[str, Any]:
                 path="PLAN.md",
             )
         )
-    else:
-        try:
-            plan_text = plan_path.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            findings.append(
-                _finding(
-                    "error",
-                    "plan_unreadable",
-                    "PLAN.md unreadable",
-                    str(exc),
-                    path="PLAN.md",
-                )
-            )
-            plan_text = ""
-        body = re.sub(r"(?m)^#.*$", "", plan_text).strip()
-        if len(body) < 80:
-            findings.append(
-                _finding(
-                    "error" if score >= 3 else "warn",
-                    "plan_thin",
-                    "PLAN.md is too thin",
-                    "Add goals, out-of-scope, verification plan (L1 vs L2), and risk notes.",
-                    path="PLAN.md",
-                )
-            )
-        lowered = plan_text.lower()
-        if "out of scope" not in lowered and "out-of-scope" not in lowered:
-            findings.append(
-                _finding(
-                    "warn",
-                    "plan_no_oos",
-                    "PLAN.md lacks out-of-scope",
-                    "Explicit non-goals reduce OFF-SPEC edits.",
-                    path="PLAN.md",
-                )
-            )
-        if "verif" not in lowered and "l1" not in lowered and "l2" not in lowered:
-            findings.append(
-                _finding(
-                    "warn",
-                    "plan_no_verify",
-                    "PLAN.md lacks verification notes",
-                    "Spell out L1 (per-task) vs L2 (pre-merge) checks.",
-                    path="PLAN.md",
-                )
-            )
-
     task_paths = sorted((run_dir / "tasks").glob("*.yaml"))
     task_count = len(task_paths)
     if task_count == 0:
@@ -500,68 +1034,6 @@ def structural_critique(run_dir: Path) -> dict[str, Any]:
                 path="tasks/",
             )
         )
-
-    # SPEC substance (same bar as run-validate for multi-task / high score)
-    if score >= 7 or task_count >= 2:
-        spec_path = run_dir / "SPEC.md"
-        if not spec_path.is_file():
-            findings.append(
-                _finding(
-                    "error",
-                    "spec_missing",
-                    "SPEC.md required",
-                    "Required when score≥7 or ≥2 tasks.",
-                    path="SPEC.md",
-                )
-            )
-        else:
-            try:
-                spec_text = spec_path.read_text(encoding="utf-8", errors="replace")
-            except OSError as exc:
-                findings.append(
-                    _finding(
-                        "error",
-                        "spec_unreadable",
-                        "SPEC.md unreadable",
-                        str(exc),
-                        path="SPEC.md",
-                    )
-                )
-                spec_text = ""
-            lowered = spec_text.lower()
-            for marker in _SPEC_STUB_MARKERS:
-                if marker in lowered:
-                    findings.append(
-                        _finding(
-                            "error",
-                            "spec_stub",
-                            "SPEC.md is still a template",
-                            "Fill Goal, Interfaces, Invariants, Out of scope, Definition of done.",
-                            path="SPEC.md",
-                        )
-                    )
-                    break
-            body = re.sub(r"(?m)^#.*$", "", spec_text).strip()
-            if len(body) < 120:
-                findings.append(
-                    _finding(
-                        "error",
-                        "spec_thin",
-                        "SPEC.md is too thin",
-                        "Multi-task / high-score runs need a professional SPEC body.",
-                        path="SPEC.md",
-                    )
-                )
-            for heading in (
-                "goal",
-                "interface",
-                "invariant",
-                "out of scope",
-                "definition of done",
-            ):
-                if heading not in lowered and heading.replace(" ", "-") not in lowered:
-                    # soft — section titles vary
-                    pass
 
     tasks: list[dict[str, Any]] = []
     for path in task_paths:
@@ -587,41 +1059,6 @@ def structural_critique(run_dir: Path) -> dict[str, Any]:
                     "owns_empty",
                     f"Task {tid}: empty owns_paths",
                     "Every write task needs explicit file ownership.",
-                    path=str(path.relative_to(run_dir)),
-                    task_id=tid,
-                )
-            )
-        elif isinstance(owns, list) and len(owns) >= 12:
-            findings.append(
-                _finding(
-                    "warn",
-                    "owns_large",
-                    f"Task {tid}: owns_paths is large ({len(owns)})",
-                    "Prefer split when owns_paths ≥ 12 entries.",
-                    path=str(path.relative_to(run_dir)),
-                    task_id=tid,
-                )
-            )
-
-        objective = str(task.get("objective") or "").strip()
-        if len(objective) < 24:
-            findings.append(
-                _finding(
-                    "warn",
-                    "objective_thin",
-                    f"Task {tid}: thin objective",
-                    "Objective should be one clear shippable outcome.",
-                    path=str(path.relative_to(run_dir)),
-                    task_id=tid,
-                )
-            )
-        elif _VAGUE_OBJECTIVE.match(objective) and len(objective) < 48:
-            findings.append(
-                _finding(
-                    "info",
-                    "objective_vague",
-                    f"Task {tid}: vague objective start",
-                    "Prefer concrete product outcomes over 'fix/improve'.",
                     path=str(path.relative_to(run_dir)),
                     task_id=tid,
                 )
@@ -663,43 +1100,15 @@ def structural_critique(run_dir: Path) -> dict[str, Any]:
                         )
                     )
 
-        deps = task.get("depends_on") or []
-        if isinstance(deps, list) and len(deps) > 3:
-            findings.append(
-                _finding(
-                    "info",
-                    "depends_many",
-                    f"Task {tid}: many depends_on ({len(deps)})",
-                    "Check whether every edge is a real compile/data dependency.",
-                    path=str(path.relative_to(run_dir)),
-                    task_id=tid,
-                )
-            )
-
-    # Serial-looking DAG without real parallel opportunity note
-    if task_count >= 3:
-        independent = 0
-        for task in tasks:
-            deps = task.get("depends_on") or []
-            if not deps:
-                independent += 1
-        if independent <= 1:
-            findings.append(
-                _finding(
-                    "info",
-                    "dag_serial",
-                    "Mostly serial DAG",
-                    "If owns_paths are disjoint, drop false depends_on to unlock parallel slots.",
-                    path="tasks/",
-                )
-            )
+    findings.extend(_owns_overlap_findings(tasks))
+    findings.extend(coverage_findings(run_dir, run, tasks))
 
     errors = sum(1 for f in findings if f["severity"] == "error")
     warns = sum(1 for f in findings if f["severity"] == "warn")
     status = "pass" if errors == 0 else "fail"
     result = {
         "schema_version": 1,
-        "engine": "structural",
+        "engine": "coverage",
         "status": status,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "run_dir": str(run_dir),
@@ -731,11 +1140,9 @@ def compute_decision(result: dict[str, Any]) -> str:
     findings = result.get("findings") if isinstance(result.get("findings"), list) else []
     errors = sum(1 for f in findings if isinstance(f, dict) and f.get("severity") == "error")
     warns = sum(1 for f in findings if isinstance(f, dict) and f.get("severity") == "warn")
-    llm = result.get("llm_pass") if isinstance(result.get("llm_pass"), dict) else {}
-    llm_verdict = str(llm.get("verdict") or "").lower()
-    if status == "fail" or errors > 0 or llm_verdict == "revise_required":
+    if status == "fail" or errors > 0:
         return "revise_required"
-    if warns > 0 or llm_verdict == "revise":
+    if warns > 0:
         return "revise"
     return "ship"
 
@@ -750,12 +1157,23 @@ def attach_decision(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _finding_key(f: dict[str, Any]) -> tuple[str, str, str]:
-    return (
-        str(f.get("code") or ""),
-        str(f.get("path") or ""),
-        str(f.get("task_id") or ""),
-    )
+_LLM_SUMMARY_NOISE = (
+    "outcome.json",
+    "run-validate",
+    "acceptance.json",
+    "schema enum",
+    "provider enum",
+)
+
+
+def _clean_llm_summary(text: str) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if any(token in lowered for token in _LLM_SUMMARY_NOISE):
+        return ""
+    return raw[:400]
 
 
 def merge_llm_into_critique(
@@ -766,15 +1184,14 @@ def merge_llm_into_critique(
     model: str = "",
     llm_error: str | None = None,
 ) -> dict[str, Any]:
-    """Combine structural + LLM findings; recompute status/decision."""
+    """Attach an optional LLM summary. Findings/decision stay structural."""
     result = dict(structural)
     findings: list[dict[str, Any]] = [
         dict(f) for f in (structural.get("findings") or []) if isinstance(f, dict)
     ]
-    seen = {_finding_key(f) for f in findings}
 
     if llm_error:
-        result["engine"] = "structural+llm"
+        result["engine"] = "coverage"
         result["llm_pass"] = {
             "status": "error",
             "provider": provider,
@@ -782,72 +1199,22 @@ def merge_llm_into_critique(
             "error": llm_error,
             "verdict": None,
         }
-        findings.append(
-            _finding(
-                "warn",
-                "llm_pass_failed",
-                f"LLM plan critique failed ({provider})",
-                llm_error[:800],
-                path="artifacts/critique.json",
-            )
-        )
     elif llm_payload is None:
+        result["engine"] = "coverage"
         result["llm_pass"] = {
             "status": "skipped",
             "provider": provider or "structural",
             "model": model or "",
             "verdict": None,
         }
-        if provider and provider != "structural":
-            result["engine"] = "structural"
-        else:
-            result["engine"] = "structural"
     else:
-        result["engine"] = "structural+llm"
-        llm_findings_raw = llm_payload.get("findings") or []
-        added = 0
-        for item in llm_findings_raw:
-            if not isinstance(item, dict):
-                continue
-            sev = str(item.get("severity") or "warn").lower()
-            if sev not in {"error", "warn", "info"}:
-                sev = "warn"
-            code = str(item.get("code") or "llm_finding").strip() or "llm_finding"
-            if not code.startswith("llm_") and code not in {
-                "plan_thin",
-                "spec_stub",
-                "owns_empty",
-                "verify_missing",
-                "verify_heavy",
-                "objective_thin",
-            }:
-                code = f"llm_{code}"
-            f = _finding(
-                sev,
-                code,
-                str(item.get("title") or code)[:200],
-                str(item.get("detail") or item.get("summary") or "")[:2000],
-                path=str(item.get("path")) if item.get("path") else None,
-                task_id=str(item.get("task_id")) if item.get("task_id") else None,
-            )
-            action = item.get("action")
-            if action:
-                f["action"] = str(action)
-            f["source"] = "llm"
-            key = _finding_key(f)
-            if key in seen:
-                continue
-            seen.add(key)
-            findings.append(f)
-            added += 1
-            if added >= 12:
-                break
+        result["engine"] = "coverage"
         result["llm_pass"] = {
             "status": "ok",
             "provider": provider,
             "model": model or str(llm_payload.get("model") or ""),
-            "verdict": str(llm_payload.get("verdict") or ""),
-            "summary": str(llm_payload.get("summary") or ""),
+            "verdict": None,
+            "summary": _clean_llm_summary(str(llm_payload.get("summary") or "")),
         }
 
     # Recompute summary/status from merged findings
@@ -870,20 +1237,43 @@ def run_full_critique(
     timeout: int = 180,
     invoke_llm: bool = True,
 ) -> dict[str, Any]:
-    """Structural + optional LLM pass; always attaches decision."""
+    """Coverage helper + optional LLM; skip below complexity bar."""
     run_dir = run_dir.expanduser().resolve()
     if settings is None:
         settings = resolve_plan_critique(run_dir)
+    run = _load_yaml_safe(run_dir / "run.yaml") or {}
+    task_files = sorted((run_dir / "tasks").glob("*.yaml")) if (run_dir / "tasks").is_dir() else []
+    loaded_tasks: list[dict[str, Any]] = []
+    for path in task_files:
+        task = _load_yaml_safe(path)
+        if isinstance(task, dict):
+            loaded_tasks.append(task)
+    try:
+        score = int(run.get("score") or 0)
+    except (TypeError, ValueError):
+        score = 0
+    applies, why = critique_should_run(
+        run, _write_task_count(loaded_tasks), settings
+    )
+    if not applies:
+        return _skipped_critique(
+            run_dir, reason=why, score=score, task_count=len(loaded_tasks)
+        )
     structural = structural_critique(run_dir)
     provider = str(settings.get("provider") or "structural").strip().lower()
     model = str(settings.get("model") or "").strip()
     effort = str(settings.get("reasoning_effort") or settings.get("effort") or "low")
+    needs_compress = any(
+        isinstance(item, dict) and item.get("severity") in {"error", "warn"}
+        for item in (structural.get("findings") or [])
+    )
 
     if (
         not invoke_llm
         or structural_only
         or provider in {"", "structural"}
         or not settings.get("enabled", True)
+        or not needs_compress
     ):
         return merge_llm_into_critique(
             structural, None, provider="structural", model=""
@@ -914,6 +1304,8 @@ def run_full_critique(
             model=model,
             effort=effort,
             timeout=timeout,
+            service_tier=str(settings.get("service_tier") or "standard"),
+            agent=str(settings.get("agent") or ""),
         )
         return merge_llm_into_critique(
             structural, llm_payload, provider=provider, model=model
@@ -940,7 +1332,7 @@ def critique_to_markdown(result: dict[str, Any]) -> str:
     pm_action = str(result.get("pm_action") or PM_ACTION.get(decision, ""))
     llm = result.get("llm_pass") if isinstance(result.get("llm_pass"), dict) else {}
     lines = [
-        "# Plan critique",
+        "# Coverage auditor",
         "",
         f"## PM decision: **`{decision}`**",
         "",

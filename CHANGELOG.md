@@ -1,16 +1,45 @@
 ## 1.17.0 — 2026-08-26
 
-### Added
-- **Planning layer** between todos and runs: skill `project-planning` +
-  canon `docs/PLANS.md`. `.agents/plans/` holds `ROADMAP.md` and
-  `items/<slug>/PLAN.md` + `meta.yaml` (status draft|active|blocked|done|parked).
-  Plan tasks are coarse product outcomes with run links; schema-v2
-  decomposition still happens at run time (lane-contract / orchestrator-lanes).
-- **Umbrella skill `project-life`**: single router over the whole lifecycle
-  (idea→todo→plan→run→artifacts→PROGRESS/LESSONS/history) with linking
-  discipline (todo↔plan↔run back-links), session rituals, and a
-  "where does X go" decision guide. Focused skills stay separate; the
-  umbrella only routes.
+### Changed
+- **OpenCode as conveyor writer and plan critic.** `adoc` Coder/Stages can
+  pick host OpenCode models (`opencode models`) and harness agents
+  (`lane-writer` / `lane-critic` / `lane-reviewer`; builtins `build` /
+  `plan` still listed). Writer: `opencode run
+  --pure --format json --agent … --dangerously-skip-permissions`.
+  Nested `task` denied. Resume via `--session`. Not a PM replacement.
+  Effort picker reads live `variants` per model (`opencode models
+  --verbose`). No variants → field hidden, `--variant` omitted.
+- **One skill `project-life` replaces `agent-todos` + `project-memory`.**
+  Lifecycle: idea → todo → `.agents/plans/` map → run → PROGRESS/LESSONS.
+  Cold start stays `resume-project`. `./install.sh` does not delete
+  `~/.claude/skills/project-life` (user copy is kept).
+- **`lane-pm` launcher:** `claude --agent` often skips `initialPrompt`;
+  `~/.agents/bin/lane-pm` submits the boot prompt and names the session
+  `<agent>-<folder>-DD-MM-YYYY`.
+- **PM must not wait after `rs-*` finished.** Host «Teammate finished» is
+  not a digest. Same turn: read `controller.json`; re-dispatch supervisor
+  or recover a block — do not wait to be poked.
+- **Session `--name` is unique per launch:** `<4chars>-<folder>-DD-MM-YYYY`
+  (e.g. `blyt-selfystudio-26-08-2026`) so two PMs on the same project
+  do not share a SendMessage target.
+- **`run-supervisor` SendMessage** targets that unique `--name`, never bare
+  `dev-orchestrator` (that leaked feed-gen progress into selfystudio).
+- **PM Stop sentinel.** `pm_stop_sentinel.py`: first Stop while
+  `run-supervisor` is in `background_tasks` is blocked; `PostToolUse`
+  `Agent|Task` `asyncRewake` polls `controller.json` and wakes idle PM
+  on `accepted|blocked|failed`. Disable: `LANE_PM_STOP_SENTINEL=0`.
+- **Plan critic is a coverage auditor.** Structural: empty/overlap owns,
+  missing verify, `rg` + GitNexus callers, sibling tests. LLM (if any)
+  only compresses that list — cannot add findings or change the decision.
+- **`check-owns-paths` ignores root `AGENTS.md` / `CLAUDE.md`**
+  (GitNexus `<!-- gitnexus:start -->` inject on analyze).
+- **adoc Stages: Fast mode on plan critique** when provider is Codex/Cursor
+  (`stages.plan_critique.service_tier`). Codex exec gets `service_tier=fast`.
+- **adoc Info tab** (`?`): roles, conveyor, first-hour commands for an
+  existing repo, and where to pick the onboard model (Stages → Onboard).
+- **Plan critique is a coverage helper** for large/hard runs only
+  (`score≥7`, ≥3 write tasks, or high-risk). It flags files that import
+  planned paths but are missing from `owns_paths`. Small UI tweaks skip.
 
 ## 1.16.0 — 2026-08-25
 

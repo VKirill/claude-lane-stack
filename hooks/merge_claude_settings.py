@@ -107,6 +107,7 @@ def merge_statusline(settings: dict[str, Any], statusline_path: Path) -> dict[st
 
 SESSION_MARK_RE = re.compile(r"lane_statusline_session\.py")
 TEAMMATE_IDLE_RE = re.compile(r"teammate_idle_sentinel\.py")
+PM_STOP_RE = re.compile(r"pm_stop_sentinel\.py")
 
 
 def _replace_event_hooks(
@@ -168,6 +169,78 @@ def merge_teammate_idle(settings: dict[str, Any], hook_path: Path) -> dict[str, 
     """Wire TeammateIdle sentinel (DONE|FAILED|WAIT) for agent teams."""
     cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
     _replace_event_hooks(settings, "TeammateIdle", cmd, TEAMMATE_IDLE_RE, timeout=5)
+    return settings
+
+
+def _drop_command_hooks(
+    settings: dict[str, Any], event: str, drop_re: re.Pattern[str]
+) -> None:
+    hooks = settings.setdefault("hooks", {})
+    entries = hooks.get(event, [])
+    if not isinstance(entries, list):
+        hooks[event] = []
+        return
+    cleaned: list[object] = []
+    for item in entries:
+        if not isinstance(item, dict):
+            cleaned.append(item)
+            continue
+        hlist = item.get("hooks")
+        if not isinstance(hlist, list):
+            cleaned.append(item)
+            continue
+        remaining = [
+            h
+            for h in hlist
+            if not (
+                isinstance(h, dict)
+                and isinstance(h.get("command"), str)
+                and drop_re.search(h["command"])
+            )
+        ]
+        if remaining:
+            cleaned.append({**item, "hooks": remaining})
+    hooks[event] = cleaned
+
+
+def merge_pm_stop_sentinel(settings: dict[str, Any], hook_path: Path) -> dict[str, Any]:
+    """Stop poke + PostToolUse asyncRewake for run-supervisor terminal stage."""
+    cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
+    _drop_command_hooks(settings, "Stop", PM_STOP_RE)
+    _drop_command_hooks(settings, "PostToolUse", PM_STOP_RE)
+    hooks = settings.setdefault("hooks", {})
+    stop_entries = hooks.setdefault("Stop", [])
+    if not isinstance(stop_entries, list):
+        stop_entries = []
+        hooks["Stop"] = stop_entries
+    stop_entries.append(
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": cmd,
+                    "timeout": 5,
+                }
+            ]
+        }
+    )
+    post_entries = hooks.setdefault("PostToolUse", [])
+    if not isinstance(post_entries, list):
+        post_entries = []
+        hooks["PostToolUse"] = post_entries
+    post_entries.append(
+        {
+            "matcher": "Agent|Task",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": cmd,
+                    "asyncRewake": True,
+                    "timeout": 7200,
+                }
+            ]
+        }
+    )
     return settings
 
 
@@ -306,6 +379,12 @@ def main() -> int:
         help="path to teammate_idle_sentinel.py (TeammateIdle DONE|FAILED|WAIT)",
     )
     parser.add_argument(
+        "--pm-stop",
+        type=Path,
+        default=None,
+        help="path to pm_stop_sentinel.py (Stop poke + Agent asyncRewake)",
+    )
+    parser.add_argument(
         "--plugin-root",
         type=Path,
         default=None,
@@ -345,6 +424,13 @@ def main() -> int:
             idle = candidate
     if idle is not None and idle.is_file():
         settings = merge_teammate_idle(settings, idle)
+    pm_stop = args.pm_stop
+    if pm_stop is None:
+        candidate = hooks_dir / "pm_stop_sentinel.py"
+        if candidate.is_file():
+            pm_stop = candidate
+    if pm_stop is not None and pm_stop.is_file():
+        settings = merge_pm_stop_sentinel(settings, pm_stop)
     write_settings(args.settings, settings)
     return 0
 

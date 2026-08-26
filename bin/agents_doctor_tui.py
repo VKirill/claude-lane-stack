@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Full-screen TUI for agents-doctor — conveyor stages / coder / work / night.
 
-Layout (single column):
-  header · tabs · body · pipeline strip · footer
+Layout:
+  header
+  sidebar (sections) | main (working content)
+  pipeline strip · footer
+  Keyboard + mouse.
 
 Inspired by modern ops TUIs (k9s / lazygit style focus + badges):
   clear stages, radio cards, live conveyor strip, EN/RU.
@@ -13,6 +16,7 @@ UI language: en | ru (project ui.language + global ~/.agents/doctor.ui.yaml).
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -34,7 +38,9 @@ from agents_doctor_tui_i18n import (  # type: ignore  # noqa: E402
 )
 from pipeline_stages import (  # type: ignore  # noqa: E402
     DEFAULT_MODELS,
+    DEFAULT_OPENCODE_WRITE_AGENT,
     KNOWN_STAGE_PROVIDERS,
+    default_opencode_agent,
     default_stages,
     normalize_stages,
 )
@@ -45,7 +51,7 @@ CODER_FIELDS = ("writer", "model", "effort", "fast")  # fast only when writer=co
 # Stage cards on the Stages tab (pipeline roles, not Claude subagents).
 STAGE_IDS = ("plan_critique", "write", "night_review", "specialist", "onboard")
 # Full agent catalog for stages (not limited to currently detected CLIs).
-ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex", "cursor")
+ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex", "cursor", "opencode")
 CRITIQUE_PROVIDERS = ("structural",) + ALL_AGENTS
 STAGE_FIELD_CRITIQUE = ("enabled", "mode", "provider", "model", "effort")
 STAGE_FIELD_WRITE = ("provider", "model", "effort")  # enabled always on
@@ -118,6 +124,11 @@ WRITER_MODELS: dict[str, list[str]] = {
         "o4-mini",
     ],
     "cursor": list(CURSOR_MODEL_FALLBACK),
+    "opencode": [
+        "alibaba-token-plan/qwen3.8-max-preview",
+        "google/gemini-3.6-flash",
+        "opencode/gpt-5-nano",
+    ],
     "structural": [],
     "auto": ["(stack default)"],
 }
@@ -129,6 +140,7 @@ WRITER_EFFORTS: dict[str, list[str]] = {
     "agy": ["low", "medium", "high"],
     "codex": ["low", "medium", "high", "xhigh", "max"],
     "cursor": ["low", "medium", "high"],
+    "opencode": ["low", "medium", "high"],
     "structural": ["low", "medium", "high"],
     "auto": ["medium"],
 }
@@ -140,6 +152,7 @@ WRITER_META: dict[str, dict[str, str]] = {
     "agy": {"title": "AGY", "badge": "GEMINI"},
     "codex": {"title": "Codex", "badge": "OPENAI"},
     "cursor": {"title": "Cursor", "badge": "AGENT"},
+    "opencode": {"title": "OpenCode", "badge": "MULTI"},
     "auto": {"title": "Auto", "badge": "STACK"},
 }
 
@@ -150,6 +163,7 @@ DEFAULT_MODEL = {
     "agy": "gemini-3.6-flash-high",
     "codex": "gpt-5.6-luna",
     "cursor": "composer-2.5",
+    "opencode": "alibaba-token-plan/qwen3.8-max-preview",
     "auto": "(stack default)",
 }
 
@@ -160,11 +174,12 @@ DEFAULT_EFFORT = {
     "agy": "medium",
     "codex": "max",
     "cursor": "medium",
+    "opencode": "medium",
     "auto": "medium",
 }
 
 # Tab ids (labels come from i18n).
-TAB_IDS = ("coder", "stages", "work", "night", "ui", "status", "apply")
+TAB_IDS = ("coder", "stages", "work", "night", "ui", "status", "info", "apply")
 
 WORKSPACE_MODES = ("in_place", "worktree", "auto")
 
@@ -178,6 +193,7 @@ class SetupState:
         writer: str,
         model: str,
         effort: str,
+        agent: str = DEFAULT_OPENCODE_WRITE_AGENT,
         fast_mode: bool = False,
         night_review: bool = False,
         night_provider: str = "qwen",
@@ -205,6 +221,7 @@ class SetupState:
         self.writers = writers
         self.writer = writer
         self.model = model
+        self.agent = agent or DEFAULT_OPENCODE_WRITE_AGENT
         self.effort = effort
         self.fast_mode = bool(fast_mode)
         self.night_review = night_review
@@ -298,6 +315,8 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                         out["fast_mode"] = tier == "fast"
                     elif s.startswith("fast_mode:"):
                         out["fast_mode"] = "true" in s.lower()
+                    elif s.startswith("agent:"):
+                        out["agent"] = s.split(":", 1)[1].strip().split()[0].strip("\"'")
                 if section == "workspace":
                     if raw and not raw.startswith(" ") and not raw.startswith("\t"):
                         section = None
@@ -380,6 +399,35 @@ def _radio(selected: bool) -> str:
 
 
 _CURSOR_MODELS_CACHE: list[str] | None = None
+_OPENCODE_AGENT_FALLBACK = [
+    "lane-writer",
+    "lane-critic",
+    "lane-reviewer",
+    "build",
+    "plan",
+    "general",
+    "explore",
+    "scout",
+]
+_OPENCODE_NON_CODE = (
+    "image",
+    "veo-",
+    "lyria",
+    "embedding",
+    "tts",
+    "i2v",
+    "t2v",
+    "r2v",
+    "computer-use",
+)
+# Live `opencode models --verbose` / `agent list` for this adoc visit only.
+# Refreshed on launch, rescan, OpenCode writer pick, and opening the list.
+# variants: model id → catalog variant names (empty list = no --variant).
+_OPENCODE_LIVE: dict[str, Any] = {
+    "models": None,
+    "agents": None,
+    "variants": None,
+}
 
 
 def _supports_fast(writer: str) -> bool:
@@ -423,10 +471,182 @@ def _probe_cursor_models() -> list[str]:
 def _models_for(writer: str) -> list[str]:
     if writer == "cursor":
         return _probe_cursor_models()
+    if writer == "opencode":
+        return _probe_opencode_models()
     return list(WRITER_MODELS.get(writer, ["(default)"]))
 
 
-def _efforts_for(writer: str) -> list[str]:
+def _looks_opencode_code_model(model_id: str) -> bool:
+    low = model_id.lower()
+    return not any(token in low for token in _OPENCODE_NON_CODE)
+
+
+def _variant_names(raw: Any) -> list[str]:
+    if isinstance(raw, dict):
+        return [str(key) for key in raw if str(key).strip()]
+    if isinstance(raw, list):
+        names: list[str] = []
+        for item in raw:
+            if isinstance(item, str) and item.strip():
+                names.append(item.strip())
+            elif isinstance(item, dict):
+                ident = str(item.get("id") or "").strip()
+                if ident:
+                    names.append(ident)
+        return names
+    return []
+
+
+def parse_opencode_models_verbose(text: str) -> tuple[list[str], dict[str, list[str]]]:
+    """Parse `opencode models --verbose` into ids + per-model variants."""
+    models: list[str] = []
+    variants: dict[str, list[str]] = {}
+    header: str | None = None
+    buf: list[str] = []
+    depth = 0
+    ident_re = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if depth == 0 and not buf:
+            if not stripped.startswith("{"):
+                token = stripped.split()[0] if stripped else ""
+                if token and "/" in token and ident_re.fullmatch(token):
+                    header = token
+                continue
+        if header is None:
+            continue
+        if "{" in line or "}" in line or buf:
+            buf.append(line)
+            depth += line.count("{") - line.count("}")
+            if depth == 0 and buf:
+                try:
+                    data = json.loads("\n".join(buf))
+                except ValueError:
+                    data = {}
+                mid = header
+                names: list[str] = []
+                if isinstance(data, dict):
+                    pid = str(data.get("providerID") or "").strip()
+                    iid = str(data.get("id") or "").strip()
+                    if pid and iid:
+                        mid = f"{pid}/{iid}"
+                    names = _variant_names(data.get("variants"))
+                if _looks_opencode_code_model(mid):
+                    models.append(mid)
+                    variants[mid] = names
+                header = None
+                buf = []
+                depth = 0
+    return list(dict.fromkeys(models)), variants
+
+
+def _fetch_opencode_models() -> tuple[list[str], dict[str, list[str]] | None]:
+    binary = shutil.which("opencode")
+    models: list[str] = []
+    variants: dict[str, list[str]] | None = None
+    if binary:
+        try:
+            out = subprocess.check_output(
+                [binary, "models", "--verbose"],
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=12,
+            )
+            models, variants = parse_opencode_models_verbose(out)
+            if not models:
+                for line in out.splitlines():
+                    token = line.strip().split()[0] if line.strip() else ""
+                    if not token or "/" not in token:
+                        continue
+                    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}", token):
+                        continue
+                    if _looks_opencode_code_model(token):
+                        models.append(token)
+                variants = None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            models = []
+            variants = None
+    if not models:
+        models = list(WRITER_MODELS["opencode"])
+        variants = None
+    return list(dict.fromkeys(models)), variants
+
+
+def _fetch_opencode_agents() -> list[str]:
+    names: list[str] = list(_OPENCODE_AGENT_FALLBACK)
+    binary = shutil.which("opencode")
+    if binary:
+        try:
+            out = subprocess.check_output(
+                [binary, "agent", "list"],
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=12,
+            )
+            for line in out.splitlines():
+                match = re.match(
+                    r"^([A-Za-z0-9][A-Za-z0-9_.-]*) \((primary|subagent|all)",
+                    line,
+                )
+                if match:
+                    names.append(match.group(1))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+    config = Path.home() / ".config" / "opencode" / "opencode.json"
+    try:
+        data = __import__("json").loads(config.read_text(encoding="utf-8"))
+        agents = data.get("agent") or data.get("agents") or {}
+        if isinstance(agents, dict):
+            names.extend(str(key) for key in agents if key)
+    except (OSError, ValueError):
+        pass
+    agents_dir = Path.home() / ".config" / "opencode" / "agents"
+    if agents_dir.is_dir():
+        names.extend(path.stem for path in agents_dir.glob("*.md") if path.stem)
+    return list(dict.fromkeys(names))
+
+
+def refresh_opencode_catalog() -> None:
+    """Pull live OpenCode models/agents/variants. No disk; this adoc visit only."""
+    models, variants = _fetch_opencode_models()
+    _OPENCODE_LIVE["models"] = models
+    _OPENCODE_LIVE["variants"] = variants
+    _OPENCODE_LIVE["agents"] = _fetch_opencode_agents()
+
+
+def _probe_opencode_models() -> list[str]:
+    if _OPENCODE_LIVE["models"] is None:
+        refresh_opencode_catalog()
+    return list(_OPENCODE_LIVE["models"] or WRITER_MODELS["opencode"])
+
+
+def _probe_opencode_agents() -> list[str]:
+    if _OPENCODE_LIVE["agents"] is None:
+        refresh_opencode_catalog()
+    return list(_OPENCODE_LIVE["agents"] or _OPENCODE_AGENT_FALLBACK)
+
+
+def _ensure_agent(agent: str) -> str:
+    opts = _probe_opencode_agents()
+    if agent in opts:
+        return agent
+    return opts[0] if opts else DEFAULT_OPENCODE_WRITE_AGENT
+
+
+def _preferred_effort(opts: list[str]) -> str:
+    for name in ("medium", "low", "high"):
+        if name in opts:
+            return name
+    return opts[0] if opts else ""
+
+
+def _efforts_for(writer: str, model: str = "") -> list[str]:
+    if writer == "opencode":
+        if _OPENCODE_LIVE.get("models") is None:
+            refresh_opencode_catalog()
+        live = _OPENCODE_LIVE.get("variants")
+        if isinstance(live, dict):
+            return list(live.get(model, []))
     return list(WRITER_EFFORTS.get(writer, ["medium"]))
 
 
@@ -437,11 +657,13 @@ def _ensure_model(writer: str, model: str) -> str:
     return DEFAULT_MODEL.get(writer, opts[0])
 
 
-def _ensure_effort(writer: str, effort: str) -> str:
-    opts = _efforts_for(writer)
+def _ensure_effort(writer: str, effort: str, model: str = "") -> str:
+    opts = _efforts_for(writer, model)
+    if not opts:
+        return ""
     if effort in opts:
         return effort
-    return DEFAULT_EFFORT.get(writer, opts[0])
+    return _preferred_effort(opts)
 
 
 def _field_label(state: SetupState, kind: str) -> str:
@@ -450,6 +672,7 @@ def _field_label(state: SetupState, kind: str) -> str:
         "model": _t(state, "field_model"),
         "effort": _t(state, "field_effort"),
         "fast": _t(state, "field_fast"),
+        "agent": _t(state, "field_agent"),
     }.get(kind, kind)
 
 
@@ -469,15 +692,73 @@ def _tab_sub(state: SetupState, tid: str) -> str:
     return _t(state, f"tab_{tid}_sub")
 
 
+# Lines above the first sidebar tab (title + blank). Click y maps through this.
+SIDEBAR_TAB_PAD = 2
+
+
+def pick_window(count: int, cursor: int, visible: int) -> tuple[int, int]:
+    """[start, end) so cursor stays on screen. FormattedTextControl does not scroll."""
+    if count <= 0:
+        return 0, 0
+    vis = max(1, visible)
+    cur = max(0, min(cursor, count - 1))
+    if count <= vis:
+        return 0, count
+    start = max(0, cur - vis // 3)
+    end = start + vis
+    if end > count:
+        end = count
+        start = max(0, end - vis)
+    if cur < start:
+        start = cur
+        end = min(count, start + vis)
+    if cur >= end:
+        end = cur + 1
+        start = max(0, end - vis)
+    return start, end
+
+
+def pick_visible_rows() -> int:
+    try:
+        from prompt_toolkit.application.current import get_app
+
+        rows = get_app().output.get_size().rows
+    except Exception:
+        rows = 24
+    # hdr2 + tabbar2 + rule1 + sum2 + ftr1 + pick header/footer ~5 + ▲▼ reserve 2
+    return max(8, rows - 15)
+
+
+def sidebar_hit(y: int, ntabs: int = len(TAB_IDS), pad: int = SIDEBAR_TAB_PAD) -> int | None:
+    """Map a click row in the sidebar to a tab index, or None."""
+    i = y - pad
+    if 0 <= i < ntabs:
+        return i
+    return None
+
+
 def run_tui(repo: Path, doctor: Any) -> int:
     try:
         from prompt_toolkit.application import Application
         from prompt_toolkit.key_binding import KeyBindings
-        from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
+        from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, VSplit, Window
+        from prompt_toolkit.mouse_events import MouseEventType
         from prompt_toolkit.styles import Style
     except ImportError:
         print(tr("en", "err_no_pt"), file=sys.stderr)
         return doctor.run_setup(repo, interactive=True)
+
+    # PT 3.0.x: mouse is a method, not a FormattedTextControl() kwarg.
+    class ClickControl(FormattedTextControl):
+        def __init__(self, text, on_mouse=None, **kwargs):
+            super().__init__(text, **kwargs)
+            self._on_mouse = on_mouse
+
+        def mouse_handler(self, mouse_event):
+            if self._on_mouse is None:
+                return super().mouse_handler(mouse_event)
+            self._on_mouse(mouse_event)
+            return None
 
     tools = doctor.detect()
     if not tools.get("claude", {}).get("present"):
@@ -489,8 +770,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
         writers.append("codex")
     if tools.get("cursor", {}).get("present") and "cursor" not in writers:
         writers.append("cursor")
+    if tools.get("opencode", {}).get("present") and "opencode" not in writers:
+        writers.append("opencode")
     if not writers:
         writers = ["auto"]
+    if shutil.which("opencode"):
+        refresh_opencode_catalog()
 
     suggested = doctor.default_setup_writer(tools)
     existing = _load_existing(repo)
@@ -499,8 +784,15 @@ def run_tui(repo: Path, doctor: Any) -> int:
         writer0 = suggested if suggested in writers else writers[0]
     model0 = _ensure_model(writer0, existing.get("model") or DEFAULT_MODEL.get(writer0, ""))
     effort0 = _ensure_effort(
-        writer0, existing.get("effort") or DEFAULT_EFFORT.get(writer0, "medium")
+        writer0,
+        existing.get("effort") or DEFAULT_EFFORT.get(writer0, "medium"),
+        model0,
     )
+    agent0 = existing.get("agent") or (
+        (existing.get("stages_raw") or {}).get("write") or {}
+    ).get("agent") or DEFAULT_OPENCODE_WRITE_AGENT
+    if writer0 == "opencode":
+        agent0 = _ensure_agent(str(agent0))
     night_w0 = existing.get("night_provider")
     if night_w0 not in writers:
         night_w0 = writer0 if writer0 != "auto" else writers[0]
@@ -530,6 +822,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         writer=writer0,
         model=model0,
         effort=effort0,
+        agent=agent0,
         fast_mode=bool(existing.get("fast_mode", False)) and _supports_fast(writer0),
         night_review=bool(existing.get("night_review", False)),
         night_provider=night_w0,
@@ -555,6 +848,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
     )
 
     tab_i = {"i": 0}
+    pick_view = {"start": 0, "header": 3}
+    pane = {"col": "main"}  # "nav" | "main"
 
     def _sync_stages_from_coder_night() -> None:
         """Keep stages.write / night_review in lockstep with Coder + Night tabs."""
@@ -564,6 +859,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
         )
         st["write"]["model"] = state.model
         st["write"]["reasoning_effort"] = state.effort
+        if state.writer == "opencode":
+            st["write"]["agent"] = state.agent or DEFAULT_OPENCODE_WRITE_AGENT
         st["night_review"]["enabled"] = bool(state.night_review)
         st["night_review"]["provider"] = state.night_provider
         state.stages = normalize_stages(st, write_provider=st["write"]["provider"])
@@ -580,8 +877,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.writer = prov
             state.model = _ensure_model(prov, str(w.get("model") or state.model))
             state.effort = _ensure_effort(
-                prov, str(w.get("reasoning_effort") or state.effort)
+                prov, str(w.get("reasoning_effort") or state.effort), state.model
             )
+            if prov == "opencode":
+                state.agent = _ensure_agent(
+                    str(w.get("agent") or state.agent or DEFAULT_OPENCODE_WRITE_AGENT)
+                )
         nr = st.get("night_review") or {}
         state.night_review = bool(nr.get("enabled"))
         np = str(nr.get("provider") or state.night_provider)
@@ -609,20 +910,33 @@ def run_tui(repo: Path, doctor: Any) -> int:
             ("class:hdr", "\n"),
         ]
 
-    def tabs() -> list[tuple[str, str]]:
-        parts: list[tuple[str, str]] = [("class:tabbar", " ")]
+    def sidebar() -> list[tuple[str, str]]:
+        nav_on = pane["col"] == "nav"
+        parts: list[tuple[str, str]] = [
+            ("class:side-title", f"  {_t(state, 'nav_title')}\n"),
+            ("class:side", "\n"),
+        ]
         for i, tid in enumerate(TAB_IDS):
             on = i == tab_i["i"]
-            st = "class:tab-on" if on else "class:tab-off"
-            arrow = "▸" if on else " "
-            parts.append((st, f" {arrow}{i + 1}.{_tab_label(state, tid)} "))
-            parts.append(("class:tabbar", " "))
-        parts.append(("class:tabbar", "\n"))
-        tid = TAB_IDS[tab_i["i"]]
-        parts.append(
-            ("class:tab-hint", f"  {_tab_label(state, tid)} — {_tab_sub(state, tid)}\n")
-        )
+            if on and nav_on:
+                st = "class:side-on-focus"
+            elif on:
+                st = "class:side-on"
+            else:
+                st = "class:side-off"
+            mark = "▸" if on else " "
+            parts.append((st, f" {mark}{i + 1} {_tab_label(state, tid)}\n"))
+        parts.append(("class:side", "\n"))
+        parts.append(("class:side-hint", f"  {_t(state, 'nav_hint')}\n"))
         return parts
+
+    def main_chrome() -> list[tuple[str, str]]:
+        tid = TAB_IDS[tab_i["i"]]
+        return [
+            ("class:tab-on", f"  {_tab_label(state, tid)} "),
+            ("class:tab-hint", f" {_tab_sub(state, tid)}\n"),
+            ("class:tab-hint", "\n"),
+        ]
 
     def _pipeline_parts() -> list[tuple[str, str]]:
         """Live conveyor: PM → critique → write → L1 → night/specialist."""
@@ -705,24 +1019,33 @@ def run_tui(repo: Path, doctor: Any) -> int:
         return line1 + _pipeline_parts()
 
     def _coder_fields() -> tuple[str, ...]:
+        fields = ["writer", "model"]
+        if state.writer == "opencode":
+            fields.append("agent")
+        if _efforts_for(state.writer, state.model):
+            fields.append("effort")
         if _supports_fast(state.writer):
-            return ("writer", "model", "effort", "fast")
-        return ("writer", "model", "effort")
+            fields.append("fast")
+        return tuple(fields)
 
     def _options_for(kind: str) -> list[str]:
         if kind == "writer":
             return list(state.writers)
         if kind == "model":
             return _models_for(state.writer)
+        if kind == "agent":
+            return _probe_opencode_agents()
         if kind == "fast":
             return ["off", "on"]
-        return _efforts_for(state.writer)
+        return _efforts_for(state.writer, state.model)
 
     def _current_value(kind: str) -> str:
         if kind == "writer":
             return state.writer
         if kind == "model":
             return state.model
+        if kind == "agent":
+            return state.agent
         if kind == "fast":
             return "on" if state.fast_mode else "off"
         return state.effort
@@ -740,7 +1063,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def body_coder_form() -> list[tuple[str, str]]:
         meta = WRITER_META.get(state.writer, {})
         models = _models_for(state.writer)
-        efforts = _efforts_for(state.writer)
+        efforts = _efforts_for(state.writer, state.model)
         fields = _coder_fields()
         if state.field_i >= len(fields):
             state.field_i = 0
@@ -774,15 +1097,32 @@ def run_tui(repo: Path, doctor: Any) -> int:
                     writer=meta.get("title", state.writer),
                 ),
             ),
-            (
-                "effort",
-                _t(state, "field_effort"),
-                state.effort,
-                " · ".join(
-                    (f"[{x}]" if x == state.effort else x) for x in efforts
-                ),
-            ),
         ]
+        if "agent" in fields:
+            agents = _probe_opencode_agents()
+            try:
+                ai = agents.index(state.agent)
+            except ValueError:
+                ai = 0
+            rows.append(
+                (
+                    "agent",
+                    _t(state, "field_agent"),
+                    state.agent,
+                    f"{ai + 1}/{len(agents)}" if agents else "",
+                )
+            )
+        if "effort" in fields:
+            rows.append(
+                (
+                    "effort",
+                    _t(state, "field_effort"),
+                    state.effort,
+                    " · ".join(
+                        (f"[{x}]" if x == state.effort else x) for x in efforts
+                    ),
+                )
+            )
         if "fast" in fields:
             rows.append(
                 (
@@ -818,7 +1158,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             lines.append(("class:warn", _t(state, "pick_none")))
             return lines
         current = _current_value(kind)
-        for i, opt in enumerate(opts):
+        start, end = pick_window(len(opts), state.pick_cursor, pick_visible_rows())
+        pick_view["start"] = start
+        pick_view["header"] = 3 + (1 if start > 0 else 0)
+        if start > 0:
+            lines.append(("class:dim", f"  ▲  {start} ↑\n"))
+        for i, opt in enumerate(opts[start:end], start=start):
             selected = opt == current
             focused = i == state.pick_cursor
             if selected and focused:
@@ -835,6 +1180,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 blurb = writer_blurb(state.lang, opt)
                 if blurb:
                     lines.append(("class:row-detail", f"        {blurb}\n"))
+        if end < len(opts):
+            lines.append(("class:dim", f"  ▼  {len(opts) - end} ↓\n"))
         lines.append(
             (
                 "class:help",
@@ -856,17 +1203,39 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     def _stage_fields(stage_id: str) -> tuple[str, ...]:
         if stage_id == "plan_critique":
-            return STAGE_FIELD_CRITIQUE
-        if stage_id == "write":
-            return STAGE_FIELD_WRITE
-        if stage_id == "night_review":
-            return STAGE_FIELD_NIGHT
-        if stage_id == "onboard":
-            prov = str((state.stages.get("onboard") or {}).get("provider") or "codex")
+            prov = str(
+                (state.stages.get("plan_critique") or {}).get("provider") or ""
+            )
+            fields: tuple[str, ...] = STAGE_FIELD_CRITIQUE
             if _supports_fast(prov):
-                return STAGE_FIELD_ONBOARD
-            return ("provider", "model", "effort")
-        return STAGE_FIELD_SPEC
+                fields = STAGE_FIELD_CRITIQUE + ("fast",)
+        elif stage_id == "write":
+            prov = str((state.stages.get("write") or {}).get("provider") or "")
+            fields = STAGE_FIELD_WRITE
+        elif stage_id == "night_review":
+            prov = str((state.stages.get("night_review") or {}).get("provider") or "")
+            fields = STAGE_FIELD_NIGHT
+        elif stage_id == "onboard":
+            prov = str((state.stages.get("onboard") or {}).get("provider") or "codex")
+            fields = (
+                STAGE_FIELD_ONBOARD
+                if _supports_fast(prov)
+                else ("provider", "model", "effort")
+            )
+        else:
+            prov = str((state.stages.get("specialist") or {}).get("provider") or "")
+            fields = STAGE_FIELD_SPEC
+        if prov == "opencode" and "agent" not in fields:
+            out: list[str] = []
+            for field in fields:
+                out.append(field)
+                if field == "model":
+                    out.append("agent")
+            fields = tuple(out)
+        stage_model = str((state.stages.get(stage_id) or {}).get("model") or "")
+        if prov == "opencode" and not _efforts_for(prov, stage_model):
+            fields = tuple(field for field in fields if field != "effort")
+        return fields
 
     def _loc_on(enabled: bool) -> str:
         return _t(state, "on") if enabled else _t(state, "off")
@@ -898,10 +1267,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
         opts = _models_for(provider)
         return list(opts) if opts else [DEFAULT_MODEL.get(provider, provider)]
 
-    def _efforts_for_provider(provider: str) -> list[str]:
+    def _efforts_for_provider(provider: str, model: str = "") -> list[str]:
         if provider == "structural":
             return ["low", "medium", "high"]
-        return _efforts_for(provider)
+        return _efforts_for(provider, model)
 
     def _stage_field_value(stage_id: str, field: str) -> str:
         block = state.stages.get(stage_id) or {}
@@ -965,8 +1334,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
             name=_t(state, f"sfield_{fields[state.stage_field_i]}"),
         )
 
-    def _set_provider(block: dict[str, Any], new_p: str) -> None:
+    def _set_provider(block: dict[str, Any], new_p: str, *, stage_id: str) -> None:
         block["provider"] = new_p
+        if new_p == "opencode":
+            refresh_opencode_catalog()
+            default_agent = default_opencode_agent(stage_id)
+            cur_a = str(block.get("agent") or "")
+            if cur_a not in _probe_opencode_agents():
+                block["agent"] = default_agent
+        else:
+            block.pop("agent", None)
         if new_p == "structural":
             block["model"] = ""
             block.setdefault("reasoning_effort", "low")
@@ -975,10 +1352,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             cur = str(block.get("model") or "")
             if cur not in models:
                 block["model"] = models[0] if models else DEFAULT_MODELS.get(new_p, "")
-            efforts = _efforts_for_provider(new_p)
+            efforts = _efforts_for_provider(new_p, str(block.get("model") or ""))
             cur_e = str(block.get("reasoning_effort") or block.get("effort") or "")
-            if cur_e not in efforts:
-                block["reasoning_effort"] = efforts[0] if efforts else "medium"
+            if not efforts:
+                block["reasoning_effort"] = ""
+            elif cur_e not in efforts:
+                block["reasoning_effort"] = _preferred_effort(efforts)
 
     def _cycle_stage_field(delta: int = 1) -> None:
         """← / → / Space / Enter: change the focused field's value."""
@@ -1029,14 +1408,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
             except ValueError:
                 i = 0
             new_p = opts[(i + delta) % len(opts)]
-            _set_provider(block, new_p)
+            _set_provider(block, new_p, stage_id=sid)
             # Onboard defaults: terra+high (not daytime luna+max).
             if sid == "onboard" and new_p == "codex":
                 if block.get("model") == DEFAULT_MODEL.get("codex"):
                     block["model"] = "gpt-5.6-terra"
                 if block.get("reasoning_effort") == DEFAULT_EFFORT.get("codex"):
                     block["reasoning_effort"] = "high"
-            if sid == "onboard" and not _supports_fast(new_p):
+            if sid in {"onboard", "plan_critique"} and not _supports_fast(new_p):
                 block["service_tier"] = "standard"
             state.message = _t(
                 state, "msg_stage_provider", provider=_loc_provider(new_p)
@@ -1045,7 +1424,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
             prov = str(block.get("provider") or "qwen")
             if prov == "structural":
                 # Auto-step to first real agent so user can pick models.
-                _set_provider(block, "qwen" if delta >= 0 else "codex")
+                _set_provider(
+                    block,
+                    "qwen" if delta >= 0 else "codex",
+                    stage_id=sid,
+                )
                 state.message = _t(
                     state,
                     "msg_stage_provider",
@@ -1062,12 +1445,22 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 except ValueError:
                     i = 0
                 block["model"] = opts[(i + delta) % len(opts)]
+                if prov == "opencode":
+                    efforts = _efforts_for_provider(prov, str(block["model"]))
+                    cur_e = str(block.get("reasoning_effort") or "")
+                    if not efforts:
+                        block["reasoning_effort"] = ""
+                    elif cur_e not in efforts:
+                        block["reasoning_effort"] = _preferred_effort(efforts)
                 state.message = _t(
                     state, "msg_stage_model", model=block["model"]
                 )
         elif field == "effort":
             prov = str(block.get("provider") or "qwen")
-            opts = _efforts_for_provider(prov)
+            opts = _efforts_for_provider(prov, str(block.get("model") or ""))
+            if not opts:
+                block["reasoning_effort"] = ""
+                return
             cur = str(block.get("reasoning_effort") or opts[0])
             try:
                 i = opts.index(cur)
@@ -1077,6 +1470,18 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.message = _t(
                 state, "msg_stage_effort", effort=block["reasoning_effort"]
             )
+        elif field == "agent":
+            opts = _probe_opencode_agents()
+            if not opts:
+                state.message = _t(state, "msg_no_opts", name=_t(state, "sfield_agent"))
+                return
+            cur = str(block.get("agent") or opts[0])
+            try:
+                i = opts.index(cur)
+            except ValueError:
+                i = 0
+            block["agent"] = opts[(i + delta) % len(opts)]
+            state.message = _t(state, "msg_agent", name=block["agent"])
         elif field == "fast":
             prov = str(block.get("provider") or "")
             if not _supports_fast(prov):
@@ -1141,6 +1546,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 )
                 if prov != "structural" and model and model != "—":
                     detail += f" · {model} · {effort}"
+                if _supports_fast(prov) and str(block.get("service_tier") or "") == "fast":
+                    detail += " · fast"
             elif sid == "night_review":
                 detail = (
                     f"{_loc_on(enabled)} · {_loc_provider(prov)} · {model} · {effort}"
@@ -1186,7 +1593,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 prov = str((state.stages.get(sid) or {}).get("provider") or "")
                 n = len(_models_for_provider(prov))
                 hint = f"  ←→ {n}" if n else f"  ({_t(state, 'model_na')})"
-            elif focused and field in {"mode", "when", "effort", "enabled", "fast"}:
+            elif focused and field in {"mode", "when", "effort", "enabled", "fast", "agent"}:
                 hint = "  ←→"
             lines.append((st, f"  {caret} {label:<14}  {val}{hint}\n"))
         lines.append(("class:help", _t(state, "stages_tip")))
@@ -1320,7 +1727,17 @@ def run_tui(repo: Path, doctor: Any) -> int:
             ("class:h1", _t(state, "status_h1")),
             ("class:help", _t(state, "status_help")),
         ]
-        order = ["claude", "qwen", "kimi", "grok", "agy", "codex", "cursor", "bubblewrap"]
+        order = [
+            "claude",
+            "qwen",
+            "kimi",
+            "grok",
+            "agy",
+            "codex",
+            "cursor",
+            "opencode",
+            "bubblewrap",
+        ]
         seen: set[str] = set()
         for name in order + list(state.tools):
             if name in seen or name not in state.tools:
@@ -1360,6 +1777,21 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 lines.append(("class:warn", f"    · {n}\n"))
         lines.append(("class:help", _t(state, "status_rescan")))
         return lines
+
+    def body_info() -> list[tuple[str, str]]:
+        return [
+            ("class:h1", _t(state, "info_h1")),
+            ("class:help", _t(state, "info_help")),
+            ("class:h2", _t(state, "info_roles_h2")),
+            ("class:row", _t(state, "info_roles")),
+            ("class:h2", _t(state, "info_pipe_h2")),
+            ("class:row", _t(state, "info_pipe")),
+            ("class:h2", _t(state, "info_start_h2")),
+            ("class:row", _t(state, "info_start")),
+            ("class:h2", _t(state, "info_cmds_h2")),
+            ("class:row-on", _t(state, "info_cmds")),
+            ("class:help", _t(state, "info_onboard_note")),
+        ]
 
     def body_apply() -> list[tuple[str, str]]:
         profile, _lanes, _ = doctor.pick_profile(state.tools, state.writer)
@@ -1440,7 +1872,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
         pc = state.stages.get("plan_critique") or {}
         if not pc.get("enabled"):
             return _t(state, "off")
-        return f"{pc.get('mode')}/{pc.get('provider')}"
+        summary = f"{pc.get('mode')}/{pc.get('provider')}"
+        if _supports_fast(str(pc.get("provider") or "")) and str(
+            pc.get("service_tier") or ""
+        ) == "fast":
+            summary += "/fast"
+        return summary
 
     bodies: dict[str, Callable[[], list[tuple[str, str]]]] = {
         "coder": body_coder,
@@ -1449,6 +1886,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         "night": body_night,
         "ui": body_ui,
         "status": body_status,
+        "info": body_info,
         "apply": body_apply,
     }
 
@@ -1460,9 +1898,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
             keys_txt = _t(state, f"keys_{tid}")
         return [
             ("class:ftr", "  "),
-            ("class:ftr-msg", (state.message or "")[:44]),
+            ("class:ftr-msg", (state.message or "")[:36]),
             ("class:ftr", "  ·  "),
-            ("class:ftr-keys", keys_txt),
+            ("class:ftr-keys", f"{_t(state, 'keys_nav')} · {keys_txt}"),
         ]
 
     def main_view() -> list[tuple[str, str]]:
@@ -1472,8 +1910,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     def set_writer(w: str) -> None:
         state.writer = w
+        if w == "opencode":
+            refresh_opencode_catalog()
+            state.agent = _ensure_agent(state.agent or DEFAULT_OPENCODE_WRITE_AGENT)
         state.model = _ensure_model(w, DEFAULT_MODEL.get(w, state.model))
-        state.effort = _ensure_effort(w, DEFAULT_EFFORT.get(w, state.effort))
+        state.effort = _ensure_effort(
+            w, DEFAULT_EFFORT.get(w, state.effort), state.model
+        )
         if not _supports_fast(w):
             state.fast_mode = False
         _sync_stages_from_coder_night()
@@ -1490,6 +1933,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 value=_t(state, "on") if state.fast_mode else _t(state, "off"),
             )
             return
+        if kind in {"model", "agent"} and state.writer == "opencode":
+            refresh_opencode_catalog()
         opts = _options_for(kind)
         if not opts:
             state.message = _t(state, "msg_no_opts", name=_field_label(state, kind))
@@ -1504,6 +1949,43 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.pick_cursor = 0
         state.message = _t(state, "msg_pick", name=_field_label(state, kind))
 
+    def _apply_coder_value(kind: str, chosen: str) -> None:
+        if kind == "writer":
+            set_writer(chosen)
+        elif kind == "model":
+            state.model = chosen
+            state.effort = _ensure_effort(state.writer, state.effort, chosen)
+            state.message = _t(state, "msg_model", name=chosen)
+            _sync_stages_from_coder_night()
+        elif kind == "agent":
+            state.agent = chosen
+            state.message = _t(state, "msg_agent", name=chosen)
+            _sync_stages_from_coder_night()
+        elif kind == "fast":
+            state.fast_mode = chosen == "on"
+            state.message = _t(
+                state,
+                "msg_fast",
+                value=_t(state, "on") if state.fast_mode else _t(state, "off"),
+            )
+        else:
+            state.effort = chosen
+            state.message = _t(state, "msg_effort", name=chosen)
+            _sync_stages_from_coder_night()
+
+    def _cycle_coder_field(delta: int) -> None:
+        fields = _coder_fields()
+        kind = fields[max(0, min(state.field_i, len(fields) - 1))]
+        opts = _options_for(kind)
+        if not opts:
+            return
+        cur = _current_value(kind)
+        try:
+            i = opts.index(cur)
+        except ValueError:
+            i = 0
+        _apply_coder_value(kind, opts[(i + delta) % len(opts)])
+
     def close_pick(confirm: bool) -> None:
         if state.view != "pick":
             return
@@ -1512,24 +1994,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
         fields = _coder_fields()
         if confirm and opts:
             i = max(0, min(state.pick_cursor, len(opts) - 1))
-            chosen = opts[i]
+            _apply_coder_value(kind, opts[i])
             if kind == "writer":
-                set_writer(chosen)
                 state.field_i = 1
-            elif kind == "model":
-                state.model = chosen
-                state.message = _t(state, "msg_model", name=chosen)
-                state.field_i = 2
-            elif kind == "fast":
-                state.fast_mode = chosen == "on"
-                state.message = _t(
-                    state,
-                    "msg_fast",
-                    value=_t(state, "on") if state.fast_mode else _t(state, "off"),
-                )
-            else:
-                state.effort = chosen
-                state.message = _t(state, "msg_effort", name=chosen)
+            elif kind != "fast":
                 state.field_i = 2
         else:
             state.message = _t(state, "msg_cancelled")
@@ -1650,6 +2118,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                         notes,
                         writer_model=model,
                         writer_effort=effort,
+                        writer_agent=state.agent if state.writer == "opencode" else None,
                         writer_service_tier=service_tier,
                         workspace_mode=state.workspace_mode,
                         worktree_min_score=state.worktree_min_score,
@@ -1737,6 +2206,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
             writers.append("codex")
         if state.tools.get("cursor", {}).get("present") and "cursor" not in writers:
             writers.append("cursor")
+        if state.tools.get("opencode", {}).get("present") and "opencode" not in writers:
+            writers.append("opencode")
+        if shutil.which("opencode"):
+            refresh_opencode_catalog()
         state.writers = writers or ["auto"]
         if state.writer not in state.writers:
             set_writer(state.writers[0])
@@ -1753,6 +2226,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
             fields = _coder_fields()
             state.field_i = max(0, min(state.field_i, len(fields) - 1))
             state.focus = fields[state.field_i]
+
+    def _goto_tab(i: int) -> None:
+        tab_i["i"] = i % len(TAB_IDS)
+        if TAB_IDS[tab_i["i"]] == "coder":
+            state.view = "form"
+            state.field_i = 0
+            state.focus = "writer"
+        on_tab_enter()
 
     def on_tab_enter() -> None:
         tid = TAB_IDS[tab_i["i"]]
@@ -1800,12 +2281,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     @kb.add("right")
     def _(event) -> None:
+        if pane["col"] == "nav":
+            pane["col"] = "main"
+            state.message = _t(state, "msg_main")
+            return
         tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "form":
-                fields = _coder_fields()
-                state.field_i = max(0, min(state.field_i, len(fields) - 1))
-                open_pick(fields[state.field_i])
+                _cycle_coder_field(1)
             return
         if tid == "stages":
             # Always cycle the focused field value forward.
@@ -1820,6 +2303,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
         if tid == "coder":
             if state.view == "pick":
                 close_pick(confirm=False)
+            else:
+                _cycle_coder_field(-1)
             return
         if tid == "stages":
             # Always cycle the focused field value backward.
@@ -1828,25 +2313,38 @@ def run_tui(repo: Path, doctor: Any) -> int:
         tab_i["i"] = (tab_i["i"] - 1) % len(TAB_IDS)
         on_tab_enter()
 
-    for n in range(1, 8):
+    for n in range(1, len(TAB_IDS) + 1):
 
         @kb.add(str(n))
         def _(event, n=n) -> None:
             leave_pick_if_any()
             # On Stages tab, 1–N pick a pipeline stage (not a top tab).
-            if TAB_IDS[tab_i["i"]] == "stages" and 1 <= n <= len(STAGE_IDS):
+            if (
+                pane["col"] == "main"
+                and TAB_IDS[tab_i["i"]] == "stages"
+                and 1 <= n <= len(STAGE_IDS)
+            ):
                 _select_stage(n - 1)
                 return
-            tab_i["i"] = n - 1
-            if TAB_IDS[tab_i["i"]] == "coder":
-                state.view = "form"
-                state.field_i = 0
-                state.focus = "writer"
-            on_tab_enter()
+            _goto_tab(n - 1)
+
+    @kb.add("c-left")
+    def _(event) -> None:
+        pane["col"] = "nav"
+        state.message = _t(state, "msg_nav")
+
+    @kb.add("c-right")
+    def _(event) -> None:
+        pane["col"] = "main"
+        state.message = _t(state, "msg_main")
 
     @kb.add("up")
     @kb.add("k")
     def _(event) -> None:
+        if pane["col"] == "nav":
+            leave_pick_if_any()
+            _goto_tab(tab_i["i"] - 1)
+            return
         tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "pick":
@@ -1865,6 +2363,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
     @kb.add("down")
     @kb.add("j")
     def _(event) -> None:
+        if pane["col"] == "nav":
+            leave_pick_if_any()
+            _goto_tab(tab_i["i"] + 1)
+            return
         tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
             if state.view == "pick":
@@ -1996,6 +2498,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     @kb.add("enter")
     def _(event) -> None:
+        if pane["col"] == "nav":
+            pane["col"] = "main"
+            state.message = _t(state, "msg_main")
+            return
         tid = TAB_IDS[tab_i["i"]]
         if tid == "apply":
             do_apply(event.app)
@@ -2028,6 +2534,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 "msg_night",
                 on=(_t(state, "on") if state.night_review else _t(state, "off")),
             )
+        elif tid == "info":
+            return
         else:
             tab_i["i"] = TAB_IDS.index("apply")
             on_tab_enter()
@@ -2069,17 +2577,70 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     @kb.add("?")
     def _(event) -> None:
-        if state.view == "pick":
-            state.message = _t(state, "msg_help_pick")
-        else:
-            state.message = _t(state, "msg_help")
+        leave_pick_if_any()
+        _goto_tab(TAB_IDS.index("info"))
+
+    def _sidebar_mouse(mouse_event) -> None:
+        if mouse_event.event_type != MouseEventType.MOUSE_UP:
+            return
+        hit = sidebar_hit(mouse_event.position.y)
+        if hit is None:
+            pane["col"] = "nav"
+            return
+        leave_pick_if_any()
+        pane["col"] = "nav"
+        _goto_tab(hit)
+
+    def _main_mouse(mouse_event) -> None:
+        if mouse_event.event_type != MouseEventType.MOUSE_UP:
+            return
+        pane["col"] = "main"
+        y = mouse_event.position.y
+        tid = TAB_IDS[tab_i["i"]]
+        if tid == "apply" and y >= 3:
+            do_apply()
+            return
+        if tid == "coder" and state.view == "form" and y >= 3:
+            fields = _coder_fields()
+            i = y - 3
+            if 0 <= i < len(fields):
+                state.field_i = i
+                state.focus = fields[i]
+                open_pick(fields[i])
+            return
+        if tid == "coder" and state.view == "pick" and y >= pick_view["header"]:
+            opts = _options_for(state.pick_kind)
+            i = pick_view["start"] + (y - pick_view["header"])
+            if 0 <= i < len(opts):
+                state.pick_cursor = i
+                close_pick(confirm=True)
 
     root = HSplit(
         [
             Window(content=FormattedTextControl(header), height=2, style="class:hdr"),
-            Window(content=FormattedTextControl(tabs), height=2, style="class:tabbar"),
-            Window(height=1, char="─", style="class:rule"),
-            Window(content=FormattedTextControl(main_view), style="class:main"),
+            VSplit(
+                [
+                    Window(
+                        content=ClickControl(sidebar, on_mouse=_sidebar_mouse),
+                        width=22,
+                        style="class:side",
+                    ),
+                    Window(width=1, char="│", style="class:rule"),
+                    HSplit(
+                        [
+                            Window(
+                                content=FormattedTextControl(main_chrome),
+                                height=2,
+                                style="class:tabbar",
+                            ),
+                            Window(
+                                content=ClickControl(main_view, on_mouse=_main_mouse),
+                                style="class:main",
+                            ),
+                        ]
+                    ),
+                ]
+            ),
             Window(height=1, char="─", style="class:rule"),
             Window(
                 content=FormattedTextControl(summary_strip),
@@ -2101,6 +2662,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             "tab-on": "bg:#7aa2f7 #0b0e14 bold",
             "tab-off": "bg:#1a1b26 #a9b1d6",
             "tab-hint": "bg:#12131a #7dcfff",
+            "side": "bg:#12131a #565f89",
+            "side-title": "bg:#12131a #7aa2f7 bold",
+            "side-on": "bg:#7aa2f7 #0b0e14 bold",
+            "side-on-focus": "bg:#73daca #0b0e14 bold",
+            "side-off": "bg:#12131a #a9b1d6",
+            "side-hint": "bg:#12131a #565f89",
             "main": "bg:#1a1b26 #c0caf5",
             "rule": "#3b4261",
             "h1": "bold #7dcfff",
@@ -2143,7 +2710,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         key_bindings=kb,
         style=style,
         full_screen=True,
-        mouse_support=False,
+        mouse_support=True,
     )
     try:
         result = app.run()

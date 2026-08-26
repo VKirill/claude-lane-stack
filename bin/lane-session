@@ -39,6 +39,7 @@ GROK_SANDBOX_PROFILE = "off"
 QWEN_SANDBOX_PROFILE = "off"
 KIMI_SANDBOX_PROFILE = "off"
 CURSOR_SANDBOX_PROFILE = "off"
+OPENCODE_SANDBOX_PROFILE = "off"
 CODEX_SANDBOX_PROFILE = "workspace-write"
 # Minimal config embedded when profile file is missing (install copies
 # profiles/codex/lane-writer.config.toml → ~/.codex/ and ~/.agents/profiles/).
@@ -202,6 +203,16 @@ PROVIDER_AUTH_ENV_KEYS = {
     ),
     "kimi": frozenset({"KIMI_API_KEY"}),
     "cursor": frozenset({"CURSOR_API_KEY", "CURSOR_API_ENDPOINT"}),
+    "opencode": frozenset(
+        {
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+            "OPENCODE_CONFIG",
+            "OPENCODE_CONFIG_DIR",
+        }
+    ),
 }
 # kimi-code exposes thinking effort only through the environment; the lane
 # contract allows low|medium|high while kimi models list low|high|max.
@@ -568,6 +579,38 @@ def _resolve_cursor_model(model: str, *, service_tier: str) -> str:
     return base
 
 
+def _opencode_variant(effort: str | None) -> str:
+    # Pass through catalog names (none/minimal/low/medium/high/xhigh/max).
+    # Empty → omit --variant (model has no variants).
+    return (effort or "").strip().lower()
+
+
+def _resolve_opencode_agent(args: argparse.Namespace) -> str:
+    env = (os.environ.get("LANE_OPENCODE_AGENT") or "").strip()
+    if env:
+        return env
+    for start in (getattr(args, "cwd", None), getattr(args, "run_dir", None)):
+        if not start:
+            continue
+        try:
+            from routing_profile import load_routing_profile
+
+            profile = load_routing_profile(Path(start))
+        except Exception:
+            continue
+        writer = profile.get("writer") if isinstance(profile.get("writer"), dict) else {}
+        stages = profile.get("stages") if isinstance(profile.get("stages"), dict) else {}
+        write = stages.get("write") if isinstance(stages.get("write"), dict) else {}
+        agent = str(write.get("agent") or writer.get("agent") or "").strip()
+        if agent:
+            return agent
+    try:
+        from pipeline_stages import DEFAULT_OPENCODE_WRITE_AGENT
+    except Exception:
+        return "lane-writer"
+    return DEFAULT_OPENCODE_WRITE_AGENT
+
+
 def provider_command(
     args: argparse.Namespace, lease: Lease, *, prompt_sha256: str
 ) -> list[str]:
@@ -745,6 +788,35 @@ def provider_command(
         if not lease.is_new and lease.record.get("session_id"):
             command[1:1] = ["--resume", str(lease.record["session_id"])]
         return command
+    if args.provider == "opencode":
+        prompt = args.prompt_file.read_text(encoding="utf-8")
+        boundary = lane_report_boundary(
+            task_id=args.task_id,
+            cwd=args.cwd,
+            prompt_file=args.prompt_file,
+            prompt_sha256=prompt_sha256,
+        )
+        command = [
+            binary,
+            "run",
+            "--pure",
+            "--format",
+            "json",
+            "--dir",
+            str(args.cwd),
+            "--agent",
+            _resolve_opencode_agent(args),
+            "--model",
+            args.model,
+        ]
+        variant = _opencode_variant(args.reasoning_effort)
+        if variant:
+            command.extend(["--variant", variant])
+        command.append("--dangerously-skip-permissions")
+        if not lease.is_new and lease.record.get("session_id"):
+            command.extend(["--session", str(lease.record["session_id"])])
+        command.append(prompt + boundary + "\n")
+        return command
     if args.provider != "agy":
         raise RuntimeError(f"unsupported provider {args.provider!r}")
     validate_agy_agent_definition()
@@ -835,6 +907,14 @@ def provider_environment(
         effort = KIMI_THINKING_EFFORT.get(reasoning_effort or "")
         if effort:
             environment["KIMI_MODEL_THINKING_EFFORT"] = effort
+    if provider == "opencode":
+        environment.update(
+            {
+                "OPENCODE_DISABLE_CLAUDE_CODE": "1",
+                "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
+                "OPENCODE_PERMISSION": '{"task":"deny"}',
+            }
+        )
     return environment
 
 
@@ -999,6 +1079,12 @@ def sandbox_provider_command(
         writable_paths = (home / ".kimi-code", cwd)
     elif provider == "cursor":
         writable_paths = (home / ".cursor", cwd)
+    elif provider == "opencode":
+        writable_paths = (
+            home / ".local" / "share" / "opencode",
+            home / ".config" / "opencode",
+            cwd,
+        )
     else:
         writable_paths = tuple(
             path for path in (cwd, provider_state_dir) if path is not None
@@ -1044,6 +1130,16 @@ def sandbox_provider_command(
         hidden_paths.add((home / ".grok").resolve())
         hidden_paths.add((home / ".qwen").resolve())
         hidden_paths.add((home / ".kimi-code").resolve())
+        configured_codex_home = os.environ.get("CODEX_HOME")
+        if configured_codex_home:
+            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
+    elif provider == "opencode":
+        hidden_paths.add((home / ".codex").resolve())
+        hidden_paths.add((home / ".gemini").resolve())
+        hidden_paths.add((home / ".grok").resolve())
+        hidden_paths.add((home / ".qwen").resolve())
+        hidden_paths.add((home / ".kimi-code").resolve())
+        hidden_paths.add((home / ".cursor").resolve())
         configured_codex_home = os.environ.get("CODEX_HOME")
         if configured_codex_home:
             hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
@@ -2674,6 +2770,222 @@ def stream_kimi_provider(
     )
 
 
+def classify_opencode_failure(
+    evidence: bytes,
+    *,
+    provider_exit_code: int,
+    protocol_error: str | None,
+) -> tuple[str | None, bool, bool, str | None, str | None]:
+    if protocol_error is not None:
+        return "opencode_protocol_failure", True, False, "protocol", None
+    if provider_exit_code == 0:
+        return None, False, False, None, None
+    lower = evidence.decode("utf-8", errors="ignore").lower()
+    if any(
+        needle in lower
+        for needle in (
+            "unauthorized",
+            "authentication",
+            "not logged in",
+            "api key",
+            "auth.json",
+        )
+    ):
+        return "opencode_auth_unavailable", True, True, "provider", None
+    if any(
+        needle in lower
+        for needle in ("rate limit", "quota", "status 429", "too many requests")
+    ):
+        return "opencode_quota_exhausted", True, True, "provider", None
+    return "opencode_provider_failed", True, True, "provider", None
+
+
+def stream_opencode_provider(
+    process: subprocess.Popen[bytes],
+    output: IO[bytes],
+    *,
+    expected_session_id: str | None,
+    task_id: str,
+    prompt_sha256: str,
+    report_path: Path,
+    report_root: Path,
+) -> StreamResult:
+    """Parse `opencode run --format json` events (type + sessionID + part)."""
+    assert process.stdout is not None
+    assert process.stderr is not None
+    stdout_fd = process.stdout.fileno()
+    stderr_fd = process.stderr.fileno()
+    open_fds = {stdout_fd, stderr_fd}
+    pending = b""
+    log_bytes = 0
+    log_truncated = False
+    stderr_bytes = 0
+    failure_evidence = bytearray()
+    conversation_id: str | None = None
+    usage: dict | None = None
+    response = ""
+    protocol_error: str | None = None
+    saw_stop = False
+    saw_error = False
+
+    def write_log(data: bytes) -> None:
+        nonlocal log_bytes, log_truncated
+        remaining = MAX_PROVIDER_LOG_BYTES - log_bytes
+        if remaining <= 0:
+            log_truncated = True
+            return
+        chunk = data[:remaining]
+        output.write(chunk)
+        output.flush()
+        log_bytes += len(chunk)
+        if len(chunk) < len(data):
+            log_truncated = True
+
+    def set_protocol_error(reason: str, line: bytes = b"") -> None:
+        nonlocal protocol_error
+        if protocol_error is None:
+            protocol_error = reason
+            bounded_evidence_append(failure_evidence, line)
+
+    def take_session(payload: dict) -> None:
+        nonlocal conversation_id
+        value = (
+            payload.get("sessionID")
+            or payload.get("sessionId")
+            or payload.get("session_id")
+        )
+        if not isinstance(value, str) or not value:
+            return
+        if expected_session_id and conversation_id is None and value != expected_session_id:
+            set_protocol_error("opencode resumed session_id mismatch")
+            return
+        conversation_id = value
+
+    def process_line(line: bytes) -> None:
+        nonlocal response, saw_stop, saw_error, usage
+        if not line.strip():
+            return
+        try:
+            payload = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            set_protocol_error("malformed opencode json", line)
+            return
+        if not isinstance(payload, dict) or not isinstance(payload.get("type"), str):
+            set_protocol_error("opencode event must be an object with a string type", line)
+            return
+        event_type = payload["type"]
+        print(f"OPENCODE_EVENT {event_type}", flush=True)
+        take_session(payload)
+        part = payload.get("part") if isinstance(payload.get("part"), dict) else {}
+        text = part.get("text") if isinstance(part, dict) else None
+        if not isinstance(text, str):
+            text = payload.get("text")
+        if isinstance(text, str) and text:
+            response += text
+            data = text.encode("utf-8", errors="replace")
+            write_log(data)
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+        if event_type in {"error", "session.error"}:
+            saw_error = True
+            set_protocol_error("opencode result reported an error", line)
+        if event_type in {"step_finish", "step-finish", "finish"}:
+            reason = ""
+            if isinstance(part, dict):
+                reason = str(part.get("reason") or "")
+            if reason in {"", "stop", "end", "complete"}:
+                saw_stop = True
+        usage = sanitized_usage(payload.get("usage"), TOKEN_FIELDS) or usage
+
+    def consume_stdout(chunk: bytes) -> None:
+        nonlocal pending
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            process_line(line)
+
+    def consume_stderr(chunk: bytes) -> None:
+        nonlocal stderr_bytes
+        stderr_bytes += len(chunk)
+        bounded_evidence_append(failure_evidence, chunk)
+        digest = hashlib.sha256(chunk).hexdigest()[:16]
+        write_log(
+            f"\n[opencode stderr: bytes={len(chunk)}; sha256={digest}]\n".encode("utf-8")
+        )
+        print("OPENCODE_EVENT stderr", flush=True)
+
+    while open_fds:
+        ready, _, _ = select.select(list(open_fds), [], [], 0.1)
+        for fd in ready:
+            chunk = os.read(fd, 65536)
+            if chunk:
+                consume_stdout(chunk) if fd == stdout_fd else consume_stderr(chunk)
+            else:
+                open_fds.discard(fd)
+    if pending:
+        process_line(pending)
+
+    provider_exit_code = process.wait()
+    report_sha256: str | None = None
+    if (
+        provider_exit_code == 0
+        and protocol_error is None
+        and not saw_stop
+        and REPORT_BEGIN not in response
+    ):
+        protocol_error = "opencode stream ended without result"
+    if provider_exit_code == 0 and protocol_error is None and saw_error:
+        protocol_error = "opencode result reported an error"
+    if provider_exit_code == 0 and protocol_error is None:
+        try:
+            report = extract_lane_report(
+                response,
+                task_id=task_id,
+                prompt_sha256=prompt_sha256,
+                begin_count=response.count(REPORT_BEGIN),
+                end_count=response.count(REPORT_END),
+            )
+            report_sha256 = materialize_lane_report(
+                report_path, report, root=report_root
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            protocol_error = str(exc)
+    exit_code = (
+        PROTOCOL_FAILURE_EXIT
+        if provider_exit_code == 0 and protocol_error is not None
+        else provider_exit_code
+    )
+    failure_class, retryable, fallback_eligible, source, evidence_sha256 = (
+        classify_opencode_failure(
+            bytes(failure_evidence),
+            provider_exit_code=provider_exit_code,
+            protocol_error=protocol_error,
+        )
+    )
+    return StreamResult(
+        provider_exit_code=provider_exit_code,
+        exit_code=exit_code,
+        session_id=conversation_id,
+        stop_reason="TurnCompleted" if exit_code == 0 else None,
+        usage=usage,
+        model_usage=None,
+        num_turns=None,
+        total_cost_usd=None,
+        total_cost_usd_ticks=None,
+        cost_is_partial=None,
+        usage_is_incomplete=None,
+        protocol_error=protocol_error,
+        report_sha256=report_sha256,
+        log_truncated=log_truncated,
+        stderr_bytes=stderr_bytes,
+        failure_class=failure_class,
+        failure_retryable=retryable,
+        fallback_eligible=fallback_eligible,
+        failure_source=source,
+        failure_evidence_sha256=evidence_sha256,
+    )
+
+
 def stream_provider(
     process: subprocess.Popen[bytes],
     output: IO[bytes],
@@ -2730,6 +3042,16 @@ def stream_provider(
         )
     if provider == "cursor":
         return stream_cursor_provider(
+            process,
+            output,
+            expected_session_id=expected_session_id,
+            task_id=task_id,
+            prompt_sha256=prompt_sha256,
+            report_path=report_path,
+            report_root=report_root,
+        )
+    if provider == "opencode":
+        return stream_opencode_provider(
             process,
             output,
             expected_session_id=expected_session_id,
@@ -2995,6 +3317,7 @@ def write_runtime_receipt(
         "qwen": QWEN_SANDBOX_PROFILE,
         "kimi": KIMI_SANDBOX_PROFILE,
         "cursor": CURSOR_SANDBOX_PROFILE,
+        "opencode": OPENCODE_SANDBOX_PROFILE,
     }.get(args.provider, GROK_SANDBOX_PROFILE)
     permission_mode = {
         "codex": "never",
@@ -3003,6 +3326,7 @@ def write_runtime_receipt(
         "qwen": "yolo",
         "kimi": "headless-auto",
         "cursor": "force",
+        "opencode": "skip-permissions",
     }.get(args.provider, "bypassPermissions")
     receipt: dict[str, object] = {
         "schema_version": 1,
@@ -3370,7 +3694,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--provider",
         required=True,
-        choices=("agy", "grok", "codex", "qwen", "kimi", "cursor"),
+        choices=("agy", "grok", "codex", "qwen", "kimi", "cursor", "opencode"),
     )
     run.add_argument("--run-dir", required=True, type=Path)
     run.add_argument("--task-id", required=True)

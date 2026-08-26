@@ -8,7 +8,7 @@ tools: Bash, Read, Grep, Glob
 skills:
   - project-onboard
   - project-docs
-  - project-memory
+  - project-life
 ---
 
 # project-onboarder (canonical conveyor role)

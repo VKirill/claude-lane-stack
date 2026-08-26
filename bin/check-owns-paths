@@ -57,9 +57,13 @@ IGNORE_PREFIXES = (
 # orchestration tooling (session-ledger flush, project-memory, night-audit),
 # never by a task writer. Root copies stay ignored during migration.
 # Canonical paths are already covered by IGNORE_PREFIXES ".agents/".
+# Root AGENTS.md / CLAUDE.md: GitNexus injects a <!-- gitnexus:start -->
+# block on analyze; not a writer leak.
 IGNORE_FILES = (
     "PROGRESS.md",
     "LESSONS.md",
+    "AGENTS.md",
+    "CLAUDE.md",
 )
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 

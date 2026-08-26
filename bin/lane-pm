@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Start lane-stack PM with boot text. `claude --agent` often skips initialPrompt
+# (https://github.com/anthropics/claude-code/issues/41365) — pass it as [prompt].
+set -euo pipefail
+
+AGENT="${LANE_PM_AGENT:-dev-orchestrator}"
+FOLDER="$(basename "$(pwd -P)")"
+# Unique per launch: two PMs on the same project/day must not share --name
+# (SendMessage matches session name; a collision leaks progress).
+RAND="$(tr -dc 'a-z0-9' </dev/urandom | head -c 4)"
+NAME="${RAND}-${FOLDER}-$(date +%d-%m-%Y)"
+
+agent_md() {
+  local p
+  for p in \
+    "${HOME}/.claude/plugins/marketplaces/claude-lane-stack/plugins/lane-stack/agents/${AGENT}.md" \
+    "${HOME}/.agents/agents/claude/${AGENT}.md"
+  do
+    if [[ -f "$p" ]]; then
+      printf '%s\n' "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+extract_boot() {
+  python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+if not text.startswith("---"):
+    raise SystemExit(1)
+end = text.find("\n---", 3)
+if end < 0:
+    raise SystemExit(1)
+fm = text[3 : end + 1]
+key = "initialPrompt:"
+idx = fm.find(key)
+if idx < 0:
+    raise SystemExit(1)
+rest = fm[idx + len(key) :]
+if rest.lstrip().startswith("|"):
+    body = []
+    for line in rest.splitlines()[1:]:
+        if line.startswith("  "):
+            body.append(line[2:])
+        elif line.strip() == "":
+            body.append("")
+        else:
+            break
+    print("\n".join(body).rstrip())
+else:
+    print(rest.splitlines()[0].strip().strip("\"'"))
+PY
+}
+
+MD="$(agent_md)" || {
+  echo "lane-pm: agent file not found (${AGENT}.md). Install lane-stack first." >&2
+  exit 1
+}
+BOOT="$(extract_boot "$MD")" || {
+  echo "lane-pm: no initialPrompt in $MD" >&2
+  exit 1
+}
+
+command -v claude >/dev/null 2>&1 || {
+  echo "lane-pm: claude CLI not on PATH" >&2
+  exit 1
+}
+
+exec claude --agent "$AGENT" --name "$NAME" "$BOOT" "$@"

@@ -5,7 +5,7 @@ description: Claude Code `dev-orchestrator` only. File-based multi-lane PM playb
 
 # Orchestrator lanes — solo operator
 
-Load: **karpathy-guidelines**, **lane-contract**, **project-memory**, **resume-project**.
+Load: **karpathy-guidelines**, **lane-contract**, **project-life**, **resume-project**.
 
 Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md`,
 `PLATFORM-CAPABILITIES.md` (Claude Code + Codex features we use),
@@ -179,7 +179,7 @@ task blocked → siblings continue; dependents of blocked upstream cascade-block
 
 | Lane | Who |
 |------|-----|
-| kimi / qwen / agy / grok / codex | process writer via controller (`adoc` `main_write`) |
+| kimi / qwen / agy / grok / codex / cursor / opencode | process writer via controller (`adoc` `main_write`) |
 | codex Sol fallback | one Sol **high** after two eligible writer availability failures |
 | `emergency-writer` | manual emergency after terminal block |
 | `night-reviewer` | nightly (sol **high**; xhigh only escalate) |
@@ -280,7 +280,12 @@ After ~6 tasks or heavy transcripts: handoff to PROGRESS; fresh orchestrator ses
 5. Replacement task if YAML wrong after start  
 6. Human only for business / irreversible  
 
-Silence protocol: idle ≠ done — read `controller.json` / `events.jsonl`; re-dispatch one `run-supervisor` if `running`/`degraded`.
+Silence protocol: UI «Teammate @rs-… finished» ≠ digest. Same turn: read
+`controller.json`. No `DONE accepted|blocked|failed` + stage still live →
+re-dispatch one `run-supervisor`. Stage already `blocked`/`failed` → recover
+now; do not wait for the human. Host hook `pm_stop_sentinel` pokes the PM
+if it tries to idle mid-run or after a fresh terminal stage. Host hook `pm_stop_sentinel` pokes the PM
+if it tries to idle mid-run or after a fresh terminal stage.
 
 ### Mode XOR — TEAM vs WRITE
 
@@ -318,7 +323,7 @@ Claude Code ≥ **2.1.224** (Remote Control **start-by-name** in **2.1.225**).
 | Where | What |
 |-------|------|
 | Lead ↔ teammate | Normal team dialogue (questions, clarifications, final ask) |
-| `run-supervisor` → PM | Mid-run stage lines via **`SendMessage`** (tool name exact) |
+| `run-supervisor` → PM | Mid-run `SendMessage` to the **unique** session `--name` (`<4chars>-<folder>-DD-MM-YYYY`). Never bare `dev-orchestrator` |
 | PM → operator Remote Control (optional) | On terminal `blocked`/`failed` or ship: `ListAgents` → `SendMessage` to `name [ref]` |
 | Not for | Writer start/accept/verify, replacing `controller.json`, secrets in peer text, accusing idle teammates of failure |
 

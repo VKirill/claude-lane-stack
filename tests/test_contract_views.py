@@ -258,11 +258,24 @@ class ContractViewTests(unittest.TestCase):
             owned.write_text("base\n", encoding="utf-8")
             (repo / "PROGRESS.md").write_text("base progress\n", encoding="utf-8")
             (repo / "LESSONS.md").write_text("base lessons\n", encoding="utf-8")
-            run("git", "add", "src/owned.txt", "PROGRESS.md", "LESSONS.md", cwd=repo)
+            (repo / "AGENTS.md").write_text("base agents\n", encoding="utf-8")
+            (repo / "CLAUDE.md").write_text("base claude\n", encoding="utf-8")
+            run(
+                "git",
+                "add",
+                "src/owned.txt",
+                "PROGRESS.md",
+                "LESSONS.md",
+                "AGENTS.md",
+                "CLAUDE.md",
+                cwd=repo,
+            )
             run("git", "commit", "-m", "base", cwd=repo)
             owned.write_text("changed\n", encoding="utf-8")
             (repo / "PROGRESS.md").write_text("session ledger flush\n", encoding="utf-8")
             (repo / "LESSONS.md").write_text("night audit touch\n", encoding="utf-8")
+            (repo / "AGENTS.md").write_text("<!-- gitnexus:start -->\n", encoding="utf-8")
+            (repo / "CLAUDE.md").write_text("<!-- gitnexus:start -->\n", encoding="utf-8")
             task_dir = repo / ".agents" / "runs" / "demo" / "tasks"
             task_dir.mkdir(parents=True)
             task = task_dir / "001.yaml"

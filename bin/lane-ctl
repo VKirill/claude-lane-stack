@@ -67,6 +67,7 @@ PRIMARY_MODELS = {
     # cheap/fast coding preset; availability fallback still upgrades to Sol+high.
     "codex": "gpt-5.6-luna",
     "cursor": "composer-2.5",
+    "opencode": "alibaba-token-plan/qwen3.8-max-preview",
 }
 PRIMARY_EFFORTS = {
     "agy": "medium",
@@ -75,6 +76,7 @@ PRIMARY_EFFORTS = {
     "kimi": "medium",
     "codex": "max",
     "cursor": "medium",
+    "opencode": "medium",
 }
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
@@ -601,7 +603,7 @@ def trusted_provider_report(
     provider = runtime.get("provider")
     expected_provider = expected_control.get("provider", "qwen")
     provider_identity_valid = (
-        provider in {"agy", "grok", "codex", "qwen", "kimi", "cursor"}
+        provider in {"agy", "grok", "codex", "qwen", "kimi", "cursor", "opencode"}
         and provider == expected_provider
         and runtime.get("model") == expected_control.get("model", runtime.get("model"))
         and runtime.get("reasoning_effort")
@@ -661,6 +663,11 @@ def trusted_provider_report(
         and runtime.get("stop_reason") == "TurnCompleted"
         and runtime.get("provider_sandbox") == "off"
         and runtime.get("permission_mode") == "force"
+    ) or (
+        provider == "opencode"
+        and runtime.get("stop_reason") == "TurnCompleted"
+        and runtime.get("provider_sandbox") == "off"
+        and runtime.get("permission_mode") == "skip-permissions"
     )
     required_runtime = (
         control_identity_valid
@@ -1723,7 +1730,15 @@ def validate_recorded_argv(
         argv[session + 2 :], allowed=session_allowed, label="lane-session"
     )
     recorded_provider = control.get("provider", "qwen")
-    if recorded_provider not in {"agy", "grok", "codex", "qwen", "kimi", "cursor"}:
+    if recorded_provider not in {
+        "agy",
+        "grok",
+        "codex",
+        "qwen",
+        "kimi",
+        "cursor",
+        "opencode",
+    }:
         raise ContractError("recorded provider is unsupported")
     required = {
         "--provider": recorded_provider,

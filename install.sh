@@ -62,6 +62,12 @@ mkdir -p "$CODEX"
 # Writer CLIs (Grok/Codex/Kimi/Qwen) scan ~/.agents/skills. Keep the PM
 # playbook out of that catalog. Claude Code still gets a ~/.claude/skills link.
 PM_ONLY_SKILLS="orchestrator-lanes orchestrator-workflow"
+# User-kept copies (do not wipe on install; they override the plugin).
+KEEP_CLAUDE_SKILLS="project-life"
+# User-owned skills in ~/.agents/skills: canonical on this host, never
+# overwritten by install (repo copy is the distribution snapshot).
+KEEP_AGENTS_SKILLS="project-life"
+STALE_SKILLS="agent-todos project-memory"
 
 # bins
 for executable in "$STACK_ROOT"/bin/*; do
@@ -95,13 +101,22 @@ for d in "$STACK_ROOT"/skills/*/; do
     rsync -a "${RSYNC_FILTERS[@]}" "$d" "$dest_dir/"
   else
     dest_dir="$DEST/skills/$name"
-    rsync -a "${RSYNC_FILTERS[@]}" "$d" "$dest_dir/"
+    if [[ " $KEEP_AGENTS_SKILLS " == *" $name "* && -e "$dest_dir" ]]; then
+      echo " keep user skill: $dest_dir"
+    else
+      rsync -a "${RSYNC_FILTERS[@]}" "$d" "$dest_dir/"
+    fi
   fi
-  rm -rf "$CLAUDE/skills/$name"
+  if [[ " $KEEP_CLAUDE_SKILLS " != *" $name "* ]]; then
+    rm -rf "$CLAUDE/skills/$name"
+  fi
 done
 # Drop stale shared-catalog copies even if a name was removed from skills/
-for name in $PM_ONLY_SKILLS; do
-  rm -rf "$DEST/skills/$name" "$CLAUDE/skills/$name"
+for name in $PM_ONLY_SKILLS $STALE_SKILLS; do
+  rm -rf "$DEST/skills/$name"
+  if [[ " $KEEP_CLAUDE_SKILLS " != *" $name "* ]]; then
+    rm -rf "$CLAUDE/skills/$name"
+  fi
 done
 
 python3 - "$HOME/.grok/config.toml" <<'PY'
@@ -218,6 +233,13 @@ if [[ -f "$STACK_ROOT/profiles/codex/lane-writer.config.toml" ]]; then
     "$STACK_ROOT/profiles/codex/lane-writer.config.toml" \
     "$CODEX/lane-writer.config.toml"
 fi
+if [[ -d "$STACK_ROOT/profiles/opencode/agents" ]]; then
+  mkdir -p "${HOME}/.config/opencode/agents"
+  for f in "$STACK_ROOT/profiles/opencode/agents/"*.md; do
+    [[ -f "$f" ]] || continue
+    install -m 0644 "$f" "${HOME}/.config/opencode/agents/"
+  done
+fi
 
 # Machine-readable local deploy receipt consumed by merge.json.
 SOURCE_SHA="$(git -C "$STACK_ROOT" rev-parse HEAD 2>/dev/null || true)"
@@ -258,7 +280,7 @@ echo ""
 echo "Done. Start PM:"
 echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
 echo " Claude plugin: lane-stack@claude-lane-stack (marketplace → ~/.claude/plugins/marketplaces/claude-lane-stack)"
-echo " claude --agent dev-orchestrator"
+echo " lane-pm   # or: claude --agent dev-orchestrator (boot may not auto-send)"
 echo "Onboard: /project-onboard or project-onboard . [--deep|--fast]"
 echo "Cold start: /resume-project or resume-project ."
 echo "Daytime runs: one visible run-supervisor watches durable run-controller"

@@ -7,7 +7,7 @@ color: orange
 permissionMode: default
 background: true
 maxTurns: 300
-tools: Read, Bash(run-controller start:*), Bash(run-controller watch:*), Bash(run-controller status:*), SendMessage
+tools: Read, Bash(run-controller start:*), Bash(run-controller watch:*), Bash(run-controller status:*), SendMessage, ListAgents
 skills:
   - lane-contract
 ---
@@ -25,8 +25,10 @@ so the operator can see that the run is still supervised.
 
 `RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`kimi`, `qwen`, `agy`,
 `grok`, or `codex`), optional `WRITER_MODEL`, optional `WRITER_EFFORT`, optional
-`PM_NAME` (default `dev-orchestrator`), and optional provider/verification pool
-sizes.
+`PM_NAME` (the **unique** parent session `--name`, e.g.
+`blyt-feed-gen-26-08-2026`), and optional provider/verification pool
+sizes. Bare `dev-orchestrator` is not a valid target when more than one PM
+session is open — Claude relays that name to a random sibling.
 
 **Prefer omitting `--provider`** so `run-controller` loads agents-doctor profile:
 
@@ -54,12 +56,12 @@ source. `codex` = durable bare lane-writer (luna+max by default), not Sol night 
    a. Run one direct `run-controller watch --run-dir RUN_DIR --timeout 30`.
    b. Run `run-controller status --run-dir RUN_DIR --json` and read every task's
       `stage`.
-   c. For each task whose stage differs from the reported map, send one short
-      `SendMessage` to `PM_NAME` (sibling name from the session roster, default
-      `dev-orchestrator`):
+      c. For each task whose stage differs from the reported map, send one short
+      `SendMessage` to the **resolved PM target** (see Targeting). Text:
       `▸ <run> · <task_id> <stage> · <accepted>/<total> accepted` (add
       `failure_class` when the stage is `blocked`). Then update the reported map.
-      Do not send a message for an unchanged stage.
+      Do not send a message for an unchanged stage. If no unique target,
+      skip SendMessage — progress stays in this transcript only.
    d. If watch returned `2` (still running), loop again immediately. Do not
       return, idle, or ask the PM to poll.
 6. If watch returns `0`, run `run-controller status --run-dir RUN_DIR --json`
@@ -82,7 +84,8 @@ After the terminal `DONE …` line:
 
 1. **Stop.** No more tools. No "I'll keep watching". No offer of follow-ups.
 2. Do **not** wait for `SendMessage` resume. One watch job = one Agent run.
-3. Mid-run progress uses `SendMessage` to `PM_NAME` only; that is not completion.
+3. Mid-run progress uses `SendMessage` to the resolved unique PM name only;
+   that is not completion.
 4. Do not call `TaskStop` on yourself. Completing the turn is the close path.
 
 ## Silence / non-idle rules (mandatory)
@@ -97,6 +100,24 @@ After the terminal `DONE …` line:
   `failed`. Stage `degraded` means some tasks are blocked but others remain
   runnable — keep watching.
 - Partial task blocks are normal: the controller continues other DAG branches.
+
+## Targeting (mandatory)
+
+`SendMessage` matches a **session `--name`**, not the agent type. Two PMs
+named `blyt-selfystudio-26-08-2026` and `m2ab-selfystudio-26-08-2026`
+must never share a target.
+
+Resolve once per supervisor run:
+
+1. `folder` = basename of `PROJECT_CWD` or `project_cwd` from `run.yaml`.
+2. `ListAgents`.
+3. If `PM_NAME` is an **exact** roster name → use it (two PMs on one
+   project are distinguished only by this).
+4. Else: roster names matching `????-<folder>-DD-MM-YYYY`. If exactly one
+   → use it.
+5. Never send to bare `dev-orchestrator`. If 0 or ≥2 fuzzy matches → no
+   SendMessage (keep watching; terminal `DONE` still required in this
+   transcript). Do not idle because chat relay failed.
 
 ## Hard rules
 

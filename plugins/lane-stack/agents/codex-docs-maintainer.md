@@ -7,7 +7,7 @@ maxTurns: 25
 tools: Bash, Read, Grep, Glob
 skills:
   - docs-maintain
-  - project-memory
+  - project-life
 ---
 
 # codex-docs-maintainer → `docs-maintainer` (compat alias)

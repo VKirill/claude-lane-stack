@@ -7,7 +7,7 @@
 | Role | Who | Default model |
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
-| Plan critique | **Structural** + optional one-shot LLM (Qwen/Codex/Kimi/Grok/AGY) → PM `decision` | `stages.plan_critique` in adoc |
+| Plan critique | **Structural** + optional one-shot LLM (Qwen/Codex/Kimi/Grok/AGY/Cursor/OpenCode) → PM `decision` | `stages.plan_critique` in adoc |
 | Write (all risks) | **Kimi K3-256k** (default), Qwen 3.8, Grok 4.6/4.5, or AGY 3.6 | selected programmer lane |
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |

@@ -393,6 +393,47 @@ class LaneSessionTest(unittest.TestCase):
                     )
                     raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
 
+                if os.environ.get("FAKE_PROVIDER_KIND") == "opencode":
+                    prompt = args[-1]
+                    task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
+                    prompt_sha256 = re.search(
+                        r"prompt_sha256=([0-9a-f]{64})", prompt
+                    ).group(1)
+                    session_id = (
+                        args[args.index("--session") + 1]
+                        if "--session" in args
+                        else "opencode-session-test"
+                    )
+                    report = (
+                        "<<<LANE_REPORT:BEGIN>>>\\n"
+                        f"TASK_ID: {task_id}\\n"
+                        f"PROMPT_SHA256: {prompt_sha256}\\n"
+                        "STATUS: complete\\n"
+                        "SUMMARY: fake OpenCode report\\n"
+                        "<<<LANE_REPORT:END>>>"
+                    )
+                    emit(
+                        {
+                            "type": "step_start",
+                            "sessionID": session_id,
+                        }
+                    )
+                    emit(
+                        {
+                            "type": "text",
+                            "sessionID": session_id,
+                            "part": {"text": report},
+                        }
+                    )
+                    emit(
+                        {
+                            "type": "step_finish",
+                            "sessionID": session_id,
+                            "part": {"reason": "stop"},
+                        }
+                    )
+                    raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
+
                 if os.environ.get("FAKE_PROVIDER_KIND") == "kimi":
                     prompt = args[args.index("-p") + 1]
                     task_id = re.search(r"task_id=([^;]+)", prompt).group(1)
@@ -822,6 +863,14 @@ class LaneSessionTest(unittest.TestCase):
         self.assertFalse(receipt["protocol_valid"])
         self.assertEqual(receipt["failure_class"], "kimi_protocol_failure")
 
+    def test_opencode_variant_passthrough_and_empty(self) -> None:
+        module = self._load_lane_session()
+        self.assertEqual(module._opencode_variant("xhigh"), "xhigh")
+        self.assertEqual(module._opencode_variant("max"), "max")
+        self.assertEqual(module._opencode_variant("none"), "none")
+        self.assertEqual(module._opencode_variant(""), "")
+        self.assertEqual(module._opencode_variant(None), "")
+
     def test_kimi_environment_maps_thinking_effort(self) -> None:
         module = self._load_lane_session()
         low = module.provider_environment("kimi", reasoning_effort="low")
@@ -862,6 +911,47 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(
             self._session_record("cursor")["session_id"], "cursor-session-test"
         )
+
+    def test_opencode_uses_json_run_and_reuses_session(self) -> None:
+        for task_id in ("opencode-001", "opencode-002"):
+            result = self._run(
+                "opencode",
+                task_id,
+                model="alibaba-token-plan/qwen3.8-max-preview",
+                pool_size=1,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+        first, second = self._calls()
+        self.assertEqual(first[0], "run")
+        self.assertIn("--pure", first)
+        self.assertEqual(first[first.index("--format") + 1], "json")
+        self.assertEqual(first[first.index("--agent") + 1], "lane-writer")
+        self.assertEqual(
+            first[first.index("--model") + 1],
+            "alibaba-token-plan/qwen3.8-max-preview",
+        )
+        self.assertIn("--dangerously-skip-permissions", first)
+        self.assertNotIn("--session", first)
+        self.assertEqual(
+            second[second.index("--session") + 1], "opencode-session-test"
+        )
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertEqual(receipt["provider"], "opencode")
+        self.assertEqual(receipt["permission_mode"], "skip-permissions")
+        self.assertEqual(receipt["provider_sandbox"], "off")
+        self.assertEqual(receipt["session_id"], "opencode-session-test")
+        self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(
+            self._session_record("opencode")["session_id"], "opencode-session-test"
+        )
+
+    def test_opencode_environment_isolates_plugins(self) -> None:
+        module = self._load_lane_session()
+        env = module.provider_environment("opencode")
+        self.assertEqual(env["OPENCODE_DISABLE_CLAUDE_CODE"], "1")
+        self.assertEqual(env["OPENCODE_DISABLE_DEFAULT_PLUGINS"], "1")
+        self.assertIn('"task":"deny"', env["OPENCODE_PERMISSION"])
 
     def test_cursor_fast_tier_appends_model_suffix(self) -> None:
         module = self._load_lane_session()

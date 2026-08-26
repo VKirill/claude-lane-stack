@@ -15,6 +15,7 @@ from merge_claude_settings import (  # noqa: E402
     MARKETPLACE_NAME,
     merge_plugin_marketplace,
     merge_stack_capabilities,
+    merge_pm_stop_sentinel,
     merge_teammate_idle,
     load_settings,
     write_settings,
@@ -81,6 +82,55 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
             self.assertIn("teammate_idle_sentinel.py", cmd)
             out2 = merge_teammate_idle(out, hook)
             self.assertEqual(len(out2["hooks"]["TeammateIdle"]), 1)
+
+    def test_merge_pm_stop_keeps_other_stop_hooks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            hook = Path(tmp) / "pm_stop_sentinel.py"
+            hook.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            settings = {
+                "hooks": {
+                    "Stop": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "python3 /tmp/session_ledger.py flush",
+                                }
+                            ]
+                        }
+                    ],
+                    "PostToolUse": [
+                        {
+                            "matcher": "Edit|Write",
+                            "hooks": [
+                                {"type": "command", "command": "/tmp/guardian.sh"}
+                            ],
+                        }
+                    ],
+                }
+            }
+            out = merge_pm_stop_sentinel(settings, hook)
+            stop_cmds = [
+                h["command"]
+                for e in out["hooks"]["Stop"]
+                for h in e.get("hooks", [])
+                if isinstance(h, dict)
+            ]
+            self.assertTrue(any("session_ledger.py" in c for c in stop_cmds))
+            self.assertTrue(any("pm_stop_sentinel.py" in c for c in stop_cmds))
+            post = out["hooks"]["PostToolUse"]
+            self.assertTrue(any(e.get("matcher") == "Edit|Write" for e in post))
+            ours = [e for e in post if e.get("matcher") == "Agent|Task"]
+            self.assertEqual(len(ours), 1)
+            self.assertTrue(ours[0]["hooks"][0]["asyncRewake"])
+            out2 = merge_pm_stop_sentinel(out, hook)
+            stop_cmds2 = [
+                h["command"]
+                for e in out2["hooks"]["Stop"]
+                for h in e.get("hooks", [])
+                if isinstance(h, dict) and "pm_stop_sentinel.py" in str(h.get("command"))
+            ]
+            self.assertEqual(len(stop_cmds2), 1)
 
     def test_merge_plugin_marketplace(self) -> None:
         settings = {
