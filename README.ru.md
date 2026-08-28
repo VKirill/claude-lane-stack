@@ -48,6 +48,11 @@
 | **🏭 Завод, не пять чатов** | **🛡️ Свои пути** | **🌙 Ночное ревью** | **📦 Авто-merge в main** |
 | Один PM держит контекст | Writers не лезут чужое | Независимый Codex Sol | Merge руками не вы |
 
+| | | | |
+|:--:|:--:|:--:|:--:|
+| **🧠 Память** | **📚 Живые docs** | **🎨 Дизайн** | **ℹ️ Первый час** |
+| Opt-in корпус фактов | `docs/` из git, не эссе | `docs/DESIGN.md` | `/info` · `/app-architect` |
+
 ---
 
 ## ✨ Зачем это
@@ -62,7 +67,8 @@
 | Модели затирают файлы | **`owns_paths`** на каждой задаче |
 | Никто не ревьюит ИИ | **Ночная смена** (review → fix → re-review) |
 | Merge веток руками | **PM мержит `main`** после проверок |
-| «А что мы делали?» | **`resume-project`** → Сейчас / Блок / Дальше |
+| «А что мы делали?» | **`resume-project`** + **память** (факты, не чат) |
+| Доки гниют после спринта | **Ночная Luna** обновляет все stale-страницы `docs/` |
 | Job умирает через ~2 мин Bash | **Отцепленные процессы** (чат можно закрыть) |
 
 > [!TIP]
@@ -84,11 +90,12 @@
 | CLI | Обязателен? | Роль |
 |-----|-------------|------|
 | **[Claude Code](https://code.claude.com/docs)** | **Да** | PM (`dev-orchestrator`), watch, чат с вами |
-| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Опц. | Дневной writer · **ночной Sol-ревью** · onboard · docs · emergency |
+| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Опц. | Дневной writer · **ночной Sol-ревью** · onboard · **docs (Luna)** · emergency |
 | **Qwen Code** | Опц. | Дневной **writer** |
 | **Grok** (xAI CLI) | Опц. | Дневной **writer** |
 | **Kimi** CLI | Опц. | Дневной **writer** (часто default в full) |
 | **AGY** (Gemini-oriented) | Опц. | Дневной **writer** |
+| **Cursor** / **OpenCode** | Опц. | Ещё дневные **writer** (вкладка Кодер в `adoc`) |
 
 ```text
   Вы ──чат──►  Claude Code · dev-orchestrator          ← всегда
@@ -168,6 +175,7 @@
 | Код продукта | Writer из **adoc** | Repair после findings |
 | Watch | **`run-supervisor`** | `night-shift` |
 | LLM-ревью каждого коммита? | **Нет** | **Да** — Codex Sol |
+| Docs / память | Writer **не** трогает `docs/` | **`docs-maintain-all`** (Luna, все stale) · **`memory-maintain-project`** |
 | Готово | `acceptance.json` + **main** | Finding fixed + re-review |
 
 ---
@@ -184,8 +192,10 @@
 | **`lane-supervisor`** | Claude (1 action) | Typed `lane-ctl` |
 | **`emergency-writer`** | Claude → Codex | Только после **terminal** block |
 | **`night-reviewer` / night-shift** | Codex Sol | Ночное ревью |
-| **`project-onboarder`** | Codex | Паспорт проекта |
-| **`docs-maintainer`** | Codex | Обновление доков |
+| **`project-onboarder`** | Codex | Паспорт (`docs/llm/*`, CLAUDE) |
+| **`docs-maintainer`** | Codex Luna max fast | INIT + ночные живые `docs/` |
+| **`memory-maintainer`** | Codex (adoc) | Opt-in корпус фактов (`.agents/memory/`) |
+| **`design-lead`** | Claude | Снять / обновить `docs/DESIGN.md` |
 
 Встроенные Claude: **Explore**, **Plan**, **general-purpose** (research / side-task — **не** daytime product writer).  
 Алиасы: `codex-implementer` → `emergency-writer` и т.д. → [`agents/claude/README.md`](agents/claude/README.md)
@@ -211,6 +221,32 @@
 
 > [!IMPORTANT]
 > Нет `acceptance.json` → **не готово**. «В чате зелёное» ≠ «зашипили».
+
+---
+
+## 🧠 Память и 📚 живые docs
+
+Два **opt-in** модуля в `adoc` (свои вкладки, не в Этапах). Выкл, пока Enabled + Apply. Writer в фича-lane **не** пишет wiki и не пишет корпус фактов.
+
+| | **Память** | **Docs** |
+|--|------------|----------|
+| Что | Факты в `.agents/memory/` (CORE + по запросу) | Живые `docs/` + `web.yaml` + `llms.txt` |
+| Не | `docs/`, LESSONS, чаты | Память, `wiki/`, `TODO/`, `docs/plans/` |
+| Первое включение | корпус `lane-memory` | stubs `docs-web` сразу; Luna INIT в фоне |
+| Ночь | `memory-maintain-project` | cron в час → `docs-maintain-all --if-hour` |
+| Вход | session ledger + git | **закоммиченный** `git log --since` ∩ `owns` / stub |
+| Модель | из вкладки Память | Codex **Luna max fast** |
+| Коммит | нет | нет |
+
+```text
+обычная сессия Claude / Codex / Cursor
+        ↓ commit
+git log --since=yesterday
+        ↓ hour (дефолт 05:00)
+docs-web → daylog → docs-stale → Luna (все stale-страницы)
+```
+
+Незакоммиченное ночь не видит. Daylog: `.agents/session-log/DOCS-DAY-YYYY-MM-DD.md`.
 
 ---
 
@@ -259,21 +295,26 @@ lane-pm                     # бут + имя сессии <agent>-<folder>-ДД
 |--------|--------|
 | `/project-onboard` | Первый раз |
 | `/resume-project` | После перерыва |
+| `/info` | Шпаргалка конвейера |
+| `/app-architect` | Новый app / сервис |
 | «Добавь тёмную тему» | Обычная фича |
 
 ---
 
 ## ⚙️ adoc (просто)
 
+Вкладки: **Кодер · Этапы · Память · Документация · Работа · Ночь · UI · Статус · Инфо · Применить**.
+
 | Ручка | Смысл |
 |-------|--------|
-| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `opencode` |
+| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `cursor` / `opencode` |
 | **Model / effort** | например Codex luna + max |
-| **Модель онбординга** | Этапы → Онбординг (не Кодер) |
+| **Этапы** | критика плана · код · ночной ревью · специалист · онбординг |
+| **Память** | opt-in корпус фактов · inject · maintain |
+| **Документация** | opt-in живые `docs/` · час · все stale (лимит 0) |
 | **Информация** | `?` — роли и команды первого часа |
-| **Fast mode** | Codex `service_tier: fast` |
+| **Fast mode** | Codex / Cursor `service_tier: fast` |
 | **Workspace** | `in_place` · `worktree` · `auto` |
-| **Plan critique** | выкл · structural · LLM перед диспатчем |
 
 ---
 
@@ -288,6 +329,9 @@ lane-pm                     # бут + имя сессии <agent>-<folder>-ДД
 | `lane-ctl …` | Control plane |
 | `night-shift` · `night-shift-all` | Ночь |
 | `plan-critique --run-dir …` | Качество плана |
+| `docs-maintain-project` · `docs-maintain-all` | Живые docs (INIT / ночь / lint) |
+| `docs-web` · `docs-stale` | Stubs / INDEX / карта stale (без LLM) |
+| `lane-memory` · `memory-maintain-project` | Корпус фактов |
 
 ---
 
@@ -329,6 +373,12 @@ lane-pm                     # бут + имя сессии <agent>-<folder>-ДД
 Чат: русский ок. Файлы агентов: **английский** ([LANGUAGE.md](docs/LANGUAGE.md)).
 </details>
 
+<details>
+<summary><strong>Обычный чат Claude/Codex обновляет docs?</strong></summary>
+
+Ночь смотрит **коммиты**. Включи Docs в `adoc` **в этом** репо и Apply. Незакоммиченное невидимо. Фича-lane `docs/` не пишет.
+</details>
+
 ---
 
 ## 📚 Документация
@@ -341,6 +391,8 @@ lane-pm                     # бут + имя сессии <agent>-<folder>-ДД
 | [LANE-EXEC.md](docs/LANE-EXEC.md) | Процессы |
 | [PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md) | Claude Code + Codex |
 | [FILE-CONTRACT.md](docs/FILE-CONTRACT.md) | Раскладка |
+| [DOCS-STAGE.md](docs/DOCS-STAGE.md) | Чертёж живых docs |
+| [PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md) | Память vs docs |
 | [agents/claude/README.md](agents/claude/README.md) | Имена role-агентов |
 | [plugins/lane-stack/README.md](plugins/lane-stack/README.md) | Раскладка Claude-плагина |
 | [CHANGELOG.md](CHANGELOG.md) | Релизы |

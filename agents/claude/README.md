@@ -15,6 +15,7 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `night-reviewer` | Review | Night/branch read-only review | Codex Sol |
 | `project-onboarder` | Onboard | CLAUDE.md / docs pack | Codex Terra/Sol |
 | `docs-maintainer` | Docs | INIT + nightly living docs/ | Codex Luna max fast |
+| `memory-maintainer` | Memory | Opt-in fact corpus | Codex (adoc `stages.memory`) |
 | `design-lead` | Design | Extract/refresh `docs/DESIGN.md` | Claude |
 
 ## Compatibility aliases (deprecated)
@@ -37,7 +38,7 @@ and sessions still resolve. **Do not use aliases in new task text.**
 | `main_write: qwen` | `run-controller` → `lane-session` → qwen CLI |
 | `main_write: grok` | same → grok CLI |
 | `main_write: codex` | same → `codex exec` (lane-writer profile) |
-| `main_write: kimi` / `agy` | same |
+| `main_write: kimi` / `agy` / `cursor` / `opencode` | same |
 
 There is **no** `qwen-implementer` / `kimi-implementer` Claude agent — and there
 should not be. One watch agent + one process pool is the conveyor.
@@ -51,6 +52,7 @@ terminal block → Agent(emergency-writer)  # not “spawn codex because adoc is
 night review   → night-shift / Agent(night-reviewer)
 onboard        → Agent(project-onboarder)
 docs           → Agent(docs-maintainer)
+memory         → Agent(memory-maintainer)
 design         → Agent(design-lead)
 ```
 

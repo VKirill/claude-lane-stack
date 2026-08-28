@@ -11,4 +11,4 @@ claude plugin install lane-stack@claude-lane-stack -y
 
 `./install.sh` does that and still rsyncs the host runtime (`bin/`, board, writer profiles) to `~/.agents`.
 
-Skills are namespaced as `/lane-stack:<skill>`. Work cheat sheet: `/lane-stack:info` or `/info`. New app/service talk: `/lane-stack:app-architect`. PM playbooks (`orchestrator-lanes`, `orchestrator-workflow`, `info`, `app-architect`) live only in this plugin + `~/.agents/pm-skills` — they are not copied to the shared writer catalog.
+Skills are namespaced as `/lane-stack:<skill>`. Work cheat sheet: `/lane-stack:info` or `/info`. New app/service talk: `/lane-stack:app-architect`. Living docs: `/lane-stack:docs-maintain`. Fact corpus: `/lane-stack:lane-memory`. PM playbooks (`orchestrator-lanes`, `orchestrator-workflow`, `info`, `app-architect`) live only in this plugin + `~/.agents/pm-skills` — they are not copied to the shared writer catalog.

@@ -46,6 +46,11 @@ Talk to Claude Code — it runs Codex / Qwen / Grok / Kimi / AGY, checks work, *
 | **🏭 Factory, not five chats** | **🛡️ Owned paths** | **🌙 Night review** | **📦 Auto-merge to main** |
 | One PM holds context | Writers stay in their lane | Independent Codex Sol rail | You never merge by hand |
 
+| | | | |
+|:--:|:--:|:--:|:--:|
+| **🧠 Memory** | **📚 Living docs** | **🎨 Design** | **ℹ️ First hour** |
+| Opt-in fact corpus | `docs/` from git, not essays | `docs/DESIGN.md` | `/info` · `/app-architect` |
+
 ---
 
 ## ✨ Why this exists
@@ -60,7 +65,8 @@ Working with AI coding tools usually means: five windows, copy-paste, midnight m
 | Models overwrite each other | **`owns_paths`** on every task |
 | Nobody reviews the AI | **Typed night shift** (review → fix → re-review) |
 | You merge branches | **PM merges `main`** after checks |
-| “What were we doing?” | **`resume-project`** → Now / Blocked / Next |
+| “What were we doing?” | **`resume-project`** + **memory** (facts, not chat) |
+| Docs rot after the sprint | **Night Luna** refreshes every stale `docs/` page |
 | Jobs die at ~2 min Bash | **Detached processes** (survive chat close) |
 
 > [!TIP]
@@ -82,11 +88,12 @@ The stack is a **control plane** that runs **real CLI coding agents** as durable
 | CLI | Required? | Role |
 |-----|-----------|------|
 | **[Claude Code](https://code.claude.com/docs)** | **Yes** | PM (`dev-orchestrator`), watchers, chat with you |
-| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Optional | Day writer · **night Sol review** · onboard · docs · emergency |
+| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Optional | Day writer · **night Sol review** · onboard · **docs (Luna)** · emergency |
 | **Qwen Code** | Optional | Daytime durable **writer** |
 | **Grok** (xAI CLI) | Optional | Daytime durable **writer** |
 | **Kimi** CLI | Optional | Daytime durable **writer** (often full-profile default) |
 | **AGY** (Gemini-oriented) | Optional | Daytime durable **writer** |
+| **Cursor** / **OpenCode** | Optional | Extra daytime **writer** rails (`adoc` Coder) |
 
 ```text
   You ──chat──►  Claude Code · dev-orchestrator          ← always
@@ -166,6 +173,7 @@ You talk to the PM. The PM starts the **conveyor**. The writer is a **background
 | Product code | Writer from **adoc** | Repair after findings |
 | Watch | **`run-supervisor`** | `night-shift` |
 | LLM review every commit? | **No** | **Yes** — Codex Sol |
+| Docs / memory | Writers do **not** touch `docs/` | **`docs-maintain-all`** (Luna, all stale pages) · **`memory-maintain-project`** |
 | Done | `acceptance.json` + **main** | Finding fixed + re-review |
 
 ---
@@ -182,8 +190,10 @@ You talk to the PM. The PM starts the **conveyor**. The writer is a **background
 | **`lane-supervisor`** | Claude (1 action) | Typed `lane-ctl` recovery |
 | **`emergency-writer`** | Claude → Codex | After **terminal** block only |
 | **`night-reviewer` / night-shift** | Codex Sol | Night review + findings |
-| **`project-onboarder`** | Codex | Project passport |
-| **`docs-maintainer`** | Codex | Docs refresh |
+| **`project-onboarder`** | Codex | Project passport (`docs/llm/*`, CLAUDE) |
+| **`docs-maintainer`** | Codex Luna max fast | INIT + nightly living `docs/` |
+| **`memory-maintainer`** | Codex (adoc) | Opt-in fact corpus (`.agents/memory/`) |
+| **`design-lead`** | Claude | Extract / refresh `docs/DESIGN.md` |
 
 Built-ins Claude may also use: **Explore**, **Plan**, **general-purpose** (research / side tasks — **not** the daytime product conveyor).  
 Aliases: `codex-implementer` → `emergency-writer`, etc. → [`agents/claude/README.md`](agents/claude/README.md)
@@ -209,6 +219,32 @@ Every unit of work lives under `.agents/runs/<slug>/tasks/*.yaml`:
 
 > [!IMPORTANT]
 > No `acceptance.json` → **not done**. Chat green ≠ shipped.
+
+---
+
+## 🧠 Memory and 📚 living docs
+
+Two **opt-in** modules in `adoc` (own tabs, not buried in Stages). Off until Enabled + Apply. Writers on a feature lane do **not** update wiki or the fact corpus.
+
+| | **Memory** | **Docs** |
+|--|------------|----------|
+| What | Facts in `.agents/memory/` (CORE + on-demand) | Living `docs/` + `web.yaml` + `llms.txt` |
+| Not | `docs/`, LESSONS, chat logs | Memory, `wiki/`, `TODO/`, `docs/plans/` |
+| First enable | `lane-memory` corpus | `docs-web` stubs now; Luna INIT in background |
+| Night | `memory-maintain-project` | cron hour → `docs-maintain-all --if-hour` |
+| Input | session ledger + git | **committed** `git log --since` ∩ `owns` / stubs |
+| Model | from adoc Memory tab | Codex **Luna max fast** |
+| Commit | no | no |
+
+```text
+regular Claude / Codex / Cursor session
+        ↓ commit
+git log --since=yesterday
+        ↓ hour (default 05:00)
+docs-web → daylog → docs-stale → Luna (every stale page)
+```
+
+Uncommitted work is invisible to the 05:00 job. Daylog: `.agents/session-log/DOCS-DAY-YYYY-MM-DD.md`.
 
 ---
 
@@ -257,21 +293,26 @@ lane-pm                     # boot + session name <agent>-<folder>-DD-MM-YYYY
 |---------|------|
 | `/project-onboard` | First time on a repo |
 | `/resume-project` | After a break |
+| `/info` | Conveyor cheat sheet |
+| `/app-architect` | New app / service talk |
 | “Add dark mode to settings” | Normal feature work |
 
 ---
 
 ## ⚙️ adoc (simple)
 
+Tabs: **Coder · Stages · Memory · Docs · Work · Night · UI · Status · Info · Apply**.
+
 | Knob | Meaning |
 |------|---------|
-| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `opencode` |
+| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `cursor` / `opencode` |
 | **Model / effort** | e.g. Codex luna + max |
-| **Onboard model** | Stages → Onboard (not Coder) |
+| **Stages** | plan-critique · write · night review · specialist · onboard |
+| **Memory** | opt-in fact corpus · inject · maintain |
+| **Docs** | opt-in living `docs/` · hour · all stale pages (cap 0) |
 | **Info** | `?` — roles + first-hour commands |
-| **Fast mode** | Codex `service_tier: fast` |
+| **Fast mode** | Codex / Cursor `service_tier: fast` |
 | **Workspace** | `in_place` · `worktree` · `auto` |
-| **Plan critique** | off · structural · LLM before dispatch |
 
 ---
 
@@ -286,6 +327,9 @@ lane-pm                     # boot + session name <agent>-<folder>-DD-MM-YYYY
 | `lane-ctl …` | Typed control plane |
 | `night-shift` · `night-shift-all` | Night review/repair |
 | `plan-critique --run-dir …` | Plan quality gate |
+| `docs-maintain-project` · `docs-maintain-all` | Living docs (INIT / night / lint) |
+| `docs-web` · `docs-stale` | Stubs / INDEX / stale map (no LLM) |
+| `lane-memory` · `memory-maintain-project` | Fact corpus |
 
 ---
 
@@ -327,6 +371,12 @@ The **PM**. You never merge. If it asks you to — the PM is wrong.
 Chat: any language. Agent-written files: **English** ([LANGUAGE.md](docs/LANGUAGE.md)).
 </details>
 
+<details>
+<summary><strong>Does a normal Claude/Codex chat update docs?</strong></summary>
+
+**Commits** feed the night job. Enable Docs in `adoc` on **that** repo, Apply. Uncommitted edits are invisible. Feature lanes do not write `docs/`.
+</details>
+
 ---
 
 ## 📚 Documentation
@@ -339,6 +389,8 @@ Chat: any language. Agent-written files: **English** ([LANGUAGE.md](docs/LANGUAG
 | [LANE-EXEC.md](docs/LANE-EXEC.md) | Process survival |
 | [PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md) | Claude Code + Codex features |
 | [FILE-CONTRACT.md](docs/FILE-CONTRACT.md) | Layout & receipts |
+| [DOCS-STAGE.md](docs/DOCS-STAGE.md) | Living docs blueprint |
+| [PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md) | Memory vs docs |
 | [agents/claude/README.md](agents/claude/README.md) | Role agent names |
 | [plugins/lane-stack/README.md](plugins/lane-stack/README.md) | Claude plugin layout |
 | [CHANGELOG.md](CHANGELOG.md) | Releases |
