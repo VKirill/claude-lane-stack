@@ -734,6 +734,69 @@ def trusted_provider_report(
     }
 
 
+def recovery_advice(
+    *,
+    status: str,
+    reason: str,
+    report_trusted: bool,
+    report_status: str | None,
+    fallback_eligible: object,
+) -> dict[str, object]:
+    """Tell the PM whether this looks like a writer crash or a contract block."""
+    if status == "provider_partial" or (
+        report_trusted and report_status == "partial"
+    ):
+        return {
+            "kind": "contract_or_scope",
+            "retry_ok": False,
+            "fallback_ok": False,
+            "next": "replace_task",
+            "reason": "trusted_partial_report",
+        }
+    if fallback_eligible is True:
+        return {
+            "kind": "provider_unavailable",
+            "retry_ok": True,
+            "fallback_ok": True,
+            "next": "retry_or_fallback",
+            "reason": "fallback_eligible",
+        }
+    if status in {
+        "provider_incomplete",
+        "failed",
+        "verification_failed",
+        "provider_failed",
+    }:
+        return {
+            "kind": "writer_failure",
+            "retry_ok": True,
+            "fallback_ok": False,
+            "next": "retry",
+            "reason": reason,
+        }
+    if status in {
+        "accepted",
+        "verified",
+        "awaiting_verification",
+        "running",
+        "verifying",
+    }:
+        return {
+            "kind": "none",
+            "retry_ok": False,
+            "fallback_ok": False,
+            "next": "none",
+            "reason": status,
+        }
+    return {
+        "kind": "inspect",
+        "retry_ok": False,
+        "fallback_ok": False,
+        "next": "inspect",
+        "reason": reason,
+    }
+
+
 def task_status_v2(
     run_dir: Path,
     task_id: str,
@@ -834,13 +897,18 @@ def task_status_v2(
         next_action = "wait"
     elif exit_code == 0:
         if not report_complete:
-            status = "provider_incomplete"
-            reason = (
-                "report_incomplete"
-                if report_evidence.get("trusted")
-                else str(report_evidence.get("reason", "report_untrusted"))
-            )
-            next_action = "retry"
+            if report_evidence.get("trusted") and report_status == "partial":
+                status = "provider_partial"
+                reason = "report_partial"
+                next_action = "inspect"
+            else:
+                status = "provider_incomplete"
+                reason = (
+                    "report_incomplete"
+                    if report_evidence.get("trusted")
+                    else str(report_evidence.get("reason", "report_untrusted"))
+                )
+                next_action = "retry"
         elif verification_trusted and verification.get("status") == "passed":
             status = "verified"
             reason = "verification_passed"
@@ -911,6 +979,13 @@ def task_status_v2(
             "status": report_status,
             "path": str(report_path),
         },
+        "recovery": recovery_advice(
+            status=status,
+            reason=reason,
+            report_trusted=bool(report_evidence.get("trusted")),
+            report_status=report_status if isinstance(report_status, str) else None,
+            fallback_eligible=runtime.get("fallback_eligible"),
+        ),
         "verification": {
             "exists": verification_path.is_file(),
             "verified": bool(

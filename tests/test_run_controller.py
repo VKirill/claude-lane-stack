@@ -101,6 +101,8 @@ class RunControllerTest(unittest.TestCase):
                                 item["status"] = "failed"
                             elif item.get("provider") in {"agy", "grok", "qwen", "kimi"} and task_id in plan.get("fail_always", []):
                                 item["status"] = "failed"
+                            elif task_id in plan.get("partial_always", []):
+                                item["status"] = "provider_partial"
                             elif task_id in plan.get("fail_first", []) and item["attempt"] == 1:
                                 item["status"] = "provider_failed"
                             else:
@@ -141,6 +143,23 @@ class RunControllerTest(unittest.TestCase):
                                 and task_id in plan.get("eligible_failure", [])
                             ),
                         },
+                        "recovery": (
+                            {
+                                "kind": "contract_or_scope",
+                                "retry_ok": False,
+                                "fallback_ok": False,
+                                "next": "replace_task",
+                                "reason": "trusted_partial_report",
+                            }
+                            if item["status"] == "provider_partial"
+                            else {
+                                "kind": "writer_failure",
+                                "retry_ok": True,
+                                "fallback_ok": False,
+                                "next": "retry",
+                                "reason": item["status"],
+                            }
+                        ),
                     }
                 elif action == "retry":
                     item = state[task_id]
@@ -472,6 +491,44 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(outcome["failure_class"], "failed")
         self.assertEqual(outcome["attempts"], 2)
         self.assertEqual(outcome["files_changed"], [])
+
+    def test_trusted_partial_report_blocks_without_retry(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.fake_plan.write_text(
+            json.dumps({"finish_after": {"001": 1}, "partial_always": ["001"]}),
+            encoding="utf-8",
+        )
+        report = self.run_dir / "artifacts" / "001" / "report.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(
+            "TASK_ID: 001\nSTATUS: partial\nPROMPT_SHA256: "
+            + ("a" * 64)
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        actions = self.actions()
+        self.assertEqual([action for action in actions if action["action"] == "retry"], [])
+        self.assertEqual(
+            [action for action in actions if action["action"] == "fallback"], []
+        )
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["tasks"]["001"]["stage"], "blocked")
+        self.assertEqual(receipt["tasks"]["001"]["retries"], 0)
+        self.assertEqual(
+            receipt["tasks"]["001"]["last_failure_class"], "provider_partial"
+        )
+        outcome = json.loads(
+            (self.run_dir / "artifacts" / "001" / "outcome.json").read_text()
+        )
+        self.assertEqual(outcome["exit_status"], "blocked")
+        self.assertEqual(outcome["failure_class"], "provider_partial")
+        self.assertEqual(outcome["report_status"], "partial")
+        self.assertEqual(outcome["attempts"], 1)
 
     def test_large_verification_result_does_not_block_acceptance(self) -> None:
         self.write_run(provider_slots=1)

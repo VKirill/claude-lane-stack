@@ -44,6 +44,7 @@ from pipeline_stages import (  # type: ignore  # noqa: E402
     KNOWN_STAGE_PROVIDERS,
     default_opencode_agent,
     default_stages,
+    migrate_profile_stages,
     normalize_stages,
     resolve_opencode_agent,
 )
@@ -886,6 +887,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
         refresh_opencode_catalog()
 
     suggested = doctor.default_setup_writer(tools)
+    profile_path = repo / ".agents" / "routing.profile.yaml"
+    if profile_path.is_file():
+        migrate_profile_stages(profile_path)
     existing = _load_existing(repo)
     writer0 = existing.get("writer")
     if writer0 not in writers:

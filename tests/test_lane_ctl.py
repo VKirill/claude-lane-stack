@@ -1333,10 +1333,10 @@ class LaneCtlTest(unittest.TestCase):
             (
                 "002",
                 "partial",
-                "provider_incomplete",
-                "report_incomplete",
+                "provider_partial",
+                "report_partial",
                 False,
-                "retry",
+                "inspect",
             ),
             (
                 "003",
@@ -1367,6 +1367,11 @@ class LaneCtlTest(unittest.TestCase):
                 self.assertIs(status["report_complete"], complete)
                 self.assertEqual(status["next_action"], next_action)
                 self.assertIs(status["report"]["complete"], complete)
+                if expected == "provider_partial":
+                    self.assertEqual(status["report"]["status"], "partial")
+                    self.assertEqual(status["recovery"]["next"], "replace_task")
+                    self.assertIs(status["recovery"]["retry_ok"], False)
+                    self.assertIs(status["recovery"]["fallback_ok"], False)
 
     def test_v2_tampered_report_fails_status_verify_and_accept_closed(self) -> None:
         task_file = self.write_v2_task(

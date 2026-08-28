@@ -164,6 +164,17 @@ _VAGUE_OBJECTIVE = re.compile(
 )
 
 
+STAGE_ORDER = (
+    "plan_critique",
+    "write",
+    "night_review",
+    "specialist",
+    "onboard",
+    "memory",
+    "docs",
+)
+
+
 def default_stages(
     *,
     write_provider: str = "kimi",
@@ -543,19 +554,63 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
     return base
 
 
+def merge_stage_seed(
+    seed: dict[str, Any], existing: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Defaults first; existing values win. New stage keys stay from seed."""
+    prev = existing if isinstance(existing, dict) else {}
+    out: dict[str, Any] = {}
+    for name in STAGE_ORDER:
+        base = seed.get(name) if isinstance(seed.get(name), dict) else {}
+        old = prev.get(name) if isinstance(prev.get(name), dict) else {}
+        out[name] = {**base, **old}
+    return out
+
+
+_STAGES_BLOCK = re.compile(r"(?ms)^stages:.*?(?=^notes:|\Z)")
+
+
+def migrate_profile_stages(profile_path: Path) -> list[str]:
+    """Write any new stage blocks into an existing profile. Returns names added."""
+    if not profile_path.is_file():
+        return []
+    try:
+        text = profile_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    try:
+        from routing_profile import load_routing_profile
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from routing_profile import load_routing_profile
+    data = load_routing_profile(profile_path.parent)
+    raw = data.get("stages") if isinstance(data.get("stages"), dict) else {}
+    missing = [name for name in STAGE_ORDER if name not in raw]
+    if not missing:
+        return []
+    writer = data.get("writer") if isinstance(data.get("writer"), dict) else {}
+    lanes = data.get("lanes") if isinstance(data.get("lanes"), dict) else {}
+    write_provider = str(lanes.get("main_write") or writer.get("provider") or "kimi")
+    block = "\n".join(
+        stages_to_yaml_lines(normalize_stages(raw, write_provider=write_provider))
+    ) + "\n"
+    if _STAGES_BLOCK.search(text):
+        new_text = _STAGES_BLOCK.sub(block, text, count=1)
+    elif re.search(r"(?m)^notes:", text):
+        new_text = re.sub(r"(?m)^notes:", block + "notes:", text, count=1)
+    else:
+        new_text = text.rstrip() + "\n" + block
+    if new_text == text:
+        return []
+    profile_path.write_text(new_text, encoding="utf-8")
+    return missing
+
+
 def stages_to_yaml_lines(stages: dict[str, Any]) -> list[str]:
     """Emit YAML lines for the stages: block (no leading stages: key)."""
     stages = normalize_stages(stages)
     lines: list[str] = ["stages:"]
-    for name in (
-        "plan_critique",
-        "write",
-        "night_review",
-        "specialist",
-        "onboard",
-        "memory",
-        "docs",
-    ):
+    for name in STAGE_ORDER:
         block = stages[name]
         lines.append(f"  {name}:")
         for key, value in block.items():

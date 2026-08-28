@@ -1,5 +1,26 @@
 #!/usr/bin/env bash
-# Short alias for agents-doctor (project routing TUI / setup).
+# Always run agents-doctor from the stack checkout in install.json.
+# ~/.agents/bin copies go stale; source_repo has the current TUI/stages.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-exec "$ROOT/agents-doctor" "$@"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+source_doctor() {
+  python3 -c '
+import json, sys
+from pathlib import Path
+path = Path.home() / ".agents" / "install.json"
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(1)
+repo = Path(str(data.get("source_repo") or "")).expanduser()
+doctor = repo / "bin" / "agents-doctor"
+print(doctor) if doctor.is_file() else sys.exit(1)
+'
+}
+
+SRC="$(source_doctor 2>/dev/null || true)"
+if [[ -n "${SRC}" ]]; then
+  exec "$SRC" "$@"
+fi
+exec "$HERE/agents-doctor" "$@"

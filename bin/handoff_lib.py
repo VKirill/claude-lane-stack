@@ -27,6 +27,7 @@ CONTRACT_NO_RETRY_CLASSES = frozenset(
         "verification_script_missing",
         "lane_profile_mismatch",
         "contract_invalid",
+        "provider_partial",
     }
 )
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -494,6 +495,7 @@ def write_outputs(
         from pipeline_stages import (
             DEFAULT_OPENCODE_WRITE_AGENT,
             default_stages,
+            merge_stage_seed,
             normalize_stages,
             stages_to_yaml_lines,
         )
@@ -502,6 +504,7 @@ def write_outputs(
         from pipeline_stages import (
             DEFAULT_OPENCODE_WRITE_AGENT,
             default_stages,
+            merge_stage_seed,
             normalize_stages,
             stages_to_yaml_lines,
         )
@@ -660,32 +663,40 @@ def write_outputs(
                     night_enabled = "true" in s.lower()
         except OSError:
             pass
-    stage_seed = stages if isinstance(stages, dict) else None
-    if stage_seed is None:
-        stage_seed = default_stages(
+    try:
+        from routing_profile import load_routing_profile
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from routing_profile import load_routing_profile
+    prev = load_routing_profile(repo).get("stages")
+    stage_seed = merge_stage_seed(
+        default_stages(
             write_provider=str(main_write or "kimi"),
             write_model=writer_model,
             write_effort=writer_effort,
             night_enabled=night_enabled,
-        )
-    else:
-        # Keep write stage aligned with main_write / model / effort.
-        stage_seed = dict(stage_seed)
-        stage_seed["write"] = {
-            **(stage_seed.get("write") if isinstance(stage_seed.get("write"), dict) else {}),
-            "provider": main_write,
-            "model": writer_model,
-            "reasoning_effort": writer_effort,
+        ),
+        prev if isinstance(prev, dict) else {},
+    )
+    if isinstance(stages, dict):
+        stage_seed = merge_stage_seed(stage_seed, stages)
+    # Keep write stage aligned with main_write / model / effort.
+    stage_seed = dict(stage_seed)
+    stage_seed["write"] = {
+        **(stage_seed.get("write") if isinstance(stage_seed.get("write"), dict) else {}),
+        "provider": main_write,
+        "model": writer_model,
+        "reasoning_effort": writer_effort,
+    }
+    if main_write == "opencode":
+        stage_seed["write"]["agent"] = opencode_agent
+    if "night_review" in stage_seed and isinstance(stage_seed["night_review"], dict):
+        stage_seed["night_review"] = {
+            **stage_seed["night_review"],
+            "enabled": night_enabled
+            if "enabled" not in stage_seed["night_review"]
+            else stage_seed["night_review"].get("enabled", night_enabled),
         }
-        if main_write == "opencode":
-            stage_seed["write"]["agent"] = opencode_agent
-        if "night_review" in stage_seed and isinstance(stage_seed["night_review"], dict):
-            stage_seed["night_review"] = {
-                **stage_seed["night_review"],
-                "enabled": night_enabled
-                if "enabled" not in stage_seed["night_review"]
-                else stage_seed["night_review"].get("enabled", night_enabled),
-            }
     normalized_stages = normalize_stages(
         stage_seed, write_provider=str(main_write or "kimi")
     )
@@ -1009,7 +1020,25 @@ def _run_tui(repo: Path) -> int:
         return run_setup(repo, interactive=True)
 
 
+def _reexec_from_source_repo() -> None:
+    """Stale ~/.agents copy jumps to install.json source_repo."""
+    here = Path(__file__).resolve()
+    install = Path.home() / ".agents" / "install.json"
+    if not install.is_file():
+        return
+    try:
+        data = json.loads(install.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    repo = Path(str(data.get("source_repo") or "")).expanduser()
+    source = (repo / "bin" / "agents-doctor").resolve()
+    if not source.is_file() or source == here:
+        return
+    os.execv(sys.executable, [sys.executable, str(source), *sys.argv[1:]])
+
+
 def main(argv: list[str] | None = None) -> int:
+    _reexec_from_source_repo()
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in {"setup"}:
         return setup_main(argv[1:])
@@ -1190,31 +1219,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.apply:
         repo = Path(args.repo).expanduser().resolve()
-        stages_arg = None
+        stages_arg: dict | None = None
         if (
             args.plan_critique is not None
             or args.plan_critique_mode is not None
             or args.plan_critique_provider is not None
-            or args.night_review is not None
         ):
-            try:
-                from pipeline_stages import default_stages
-            except ImportError:
-                sys.path.insert(0, str(Path(__file__).resolve().parent))
-                from pipeline_stages import default_stages
-            stages_arg = default_stages(
-                write_provider=str(lanes.get("main_write") or "kimi"),
-                night_enabled=(args.night_review == "on")
-                if args.night_review is not None
-                else False,
-            )
-            pc = stages_arg["plan_critique"]
+            pc: dict = {}
             if args.plan_critique is not None:
                 pc["enabled"] = args.plan_critique == "on"
             if args.plan_critique_mode is not None:
                 pc["mode"] = args.plan_critique_mode
             if args.plan_critique_provider is not None:
                 pc["provider"] = args.plan_critique_provider
+            stages_arg = {"plan_critique": pc}
         if args.night_review is not None:
             writer = lanes.get("main_write")
             provider = (

@@ -145,6 +145,7 @@ class InstallTest(unittest.TestCase):
                 str(ROOT),
             )
             self.assertTrue(settings["enabledPlugins"]["lane-stack@claude-lane-stack"])
+            self.assertEqual(settings["env"]["CLAUDE_CODE_SUBAGENT_MODEL"], "sonnet")
             self.assertTrue(
                 (ROOT / "plugins" / "lane-stack" / ".claude-plugin" / "plugin.json").is_file()
             )
@@ -358,6 +359,7 @@ class InstallTest(unittest.TestCase):
 
             installed = json.loads(settings.read_text(encoding="utf-8"))
             self.assertEqual(installed["theme"], "dark")
+            self.assertEqual(installed["env"]["CLAUDE_CODE_SUBAGENT_MODEL"], "sonnet")
             entries = installed["hooks"]["PreToolUse"]
             self.assertIn(
                 {

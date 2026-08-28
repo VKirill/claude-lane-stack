@@ -222,7 +222,8 @@ Also: high-risk write → prefer worktree even under auto; avoid parallel writer
 run-controller start → one run-supervisor watches
 provider slots (default 5) release ready DAG tasks
 complete → owns → L1 verify → accept (progressive)
-retry once; eligible 2nd failure → Codex Sol high fallback (not xhigh by default)
+retry once only if `recovery.retry_ok`; eligible 2nd failure → Codex Sol
+trusted STATUS:partial / `provider_partial` → block + replace task (not retry, not Sol)
 task blocked → siblings continue; dependents of blocked upstream cascade-blocked
 ```
 
@@ -326,12 +327,19 @@ After ~6 tasks or heavy transcripts: handoff to PROGRESS; fresh orchestrator ses
 
 ## Recovery ladder (typed only)
 
-1. Same-provider retry (controller / `lane-ctl retry` via **lane-supervisor**)  
-2. Codex Sol **high** fallback if `fallback_eligible`  
-3. `lane-supervisor` one-shot (status / retry / accept / verify — **one** typed action)  
-4. `emergency-writer` after **terminal** block only (ADR-codex-effort)  
-5. Replacement task if YAML wrong after start  
-6. Human only for business / irreversible  
+**Before retry or fallback — re-check.** Read `lane-ctl status --json`:
+`report.status`, `recovery.next`, `recovery.retry_ok`, `recovery.fallback_ok`,
+`provider.fallback_eligible`. Two same `last_failure_class` values are not
+enough. Trusted `STATUS: partial` / `provider_partial` is a contract or
+sandbox block (often `.agents` in owns), not a writer crash.
+
+1. Recheck status JSON + `report.md` STATUS  
+2. Same-provider retry only if `recovery.retry_ok` (controller / `lane-ctl retry` via **lane-supervisor**)  
+3. Codex Sol **high** fallback only if `recovery.fallback_ok` **and** `fallback_eligible`  
+4. `recovery.next: replace_task` → replacement YAML (drop `.agents/**` from owns; PM applies playbooks)  
+5. `lane-supervisor` one-shot (status / retry / accept / verify — **one** typed action)  
+6. `emergency-writer` after **terminal** block only (ADR-codex-effort)  
+7. Human only for business / irreversible  
 
 Silence protocol: UI «Teammate @rs-… finished» ≠ digest. Same turn: read
 `controller.json`. No `DONE accepted|blocked|failed` + stage still live →

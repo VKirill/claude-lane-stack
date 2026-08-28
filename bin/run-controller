@@ -33,6 +33,8 @@ TERMINAL_FAILURES = frozenset(
         "stalled",
     }
 )
+# Trusted STATUS:partial / impossible owns — not a writer crash; do not retry.
+CONTRACT_BLOCK_STATUSES = frozenset({"provider_partial"})
 RUNNING_STATUSES = frozenset({"launching", "running", "unknown", "verifying"})
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 PRIMARY_MODELS = {
@@ -501,11 +503,19 @@ def write_task_outcome(receipt: dict[str, Any], task_id: str) -> None:
 
     report_path = artifact_dir / "report.md"
     report_sha256: str | None = None
+    report_status: str | None = None
     if report_path.is_file():
         try:
-            report_sha256 = hashlib.sha256(report_path.read_bytes()).hexdigest()
+            report_bytes = report_path.read_bytes()
+            report_sha256 = hashlib.sha256(report_bytes).hexdigest()
+            for line in report_bytes.decode("utf-8", errors="replace").splitlines()[:20]:
+                if line.startswith("STATUS:"):
+                    value = line.split(":", 1)[1].strip()
+                    report_status = value or None
+                    break
         except OSError:
             report_sha256 = None
+            report_status = None
 
     stage = task_state.get("stage")
     stage = stage if isinstance(stage, str) else None
@@ -539,6 +549,7 @@ def write_task_outcome(receipt: dict[str, Any], task_id: str) -> None:
         "never_touch_hits": string_list(owns.get("never_touch_hits")),
         "report_path": str(report_path) if report_sha256 is not None else None,
         "report_sha256": report_sha256,
+        "report_status": report_status,
         "updated_at": utc_now(),
     }
     atomic_json(artifact_dir / "outcome.json", outcome)
@@ -1117,6 +1128,29 @@ def run_controller(args: argparse.Namespace) -> int:
                             stage="running",
                         )
                         progress = True
+                elif lane_status in CONTRACT_BLOCK_STATUSES or (
+                    isinstance(status.get("recovery"), dict)
+                    and status["recovery"].get("retry_ok") is False
+                    and lane_status in TERMINAL_FAILURES
+                ):
+                    failure_class = provider.get("failure_class")
+                    task_state["last_failure_class"] = (
+                        failure_class
+                        if isinstance(failure_class, str)
+                        else str(lane_status)
+                    )
+                    mark_task_blocked(
+                        receipt_path,
+                        receipt,
+                        tasks,
+                        task_id,
+                        str(task_state["last_failure_class"]),
+                    )
+                    progress = True
+                    terminal = finalize_if_run_terminal(receipt_path, receipt)
+                    if terminal is not None:
+                        return terminal
+                    continue
                 elif lane_status in TERMINAL_FAILURES:
                     if task_state["retries"] < 1:
                         if lane_status == "stalled":

@@ -37,9 +37,11 @@ owner. `run-supervisor` plus `run-controller` own the closed loop; `lane-bg`,
    snapshot registered from the trusted task contract at `start`, under a
    separate bounded verification pool.
 6. Retry a failed or stalled AGY/Grok task once. Attempt 3 is reserved for the
-   fixed Codex Sol high adapter and `fallback` is allowed only when the second
-   selected provider runtime receipt says `fallback_eligible: true`. Otherwise return
-   `blocked`; never choose a provider or model ad hoc.
+   fixed Codex Sol high adapter. `fallback` is allowed only when
+   `recovery.fallback_ok` is true and the second runtime receipt says
+   `fallback_eligible: true`. If `report.status` is `partial` or
+   `recovery.next` is `replace_task`, return `blocked` and do not call
+   fallback. Never choose a provider or model ad hoc.
 7. Never commit, push, merge, deploy, edit source, or claim the run shipped.
 8. Run `accept` only after the PM has produced `owns-check.json` and any
    required `review.json`; it writes the task's technical acceptance receipt.
@@ -63,9 +65,9 @@ lane-ctl accept --run-dir RUN_DIR --task-file TASK_FILE --project-cwd PROJECT_CW
 ```
 
 Return a compact status: `started`, `running`, `provider_incomplete`,
-`awaiting_verification`, `verified`, `accepted`, `verification_failed`, `failed`,
-`stalled`, `cancelled`, or `blocked`, followed by `next_action` and the evidence
-path.
+`provider_partial`, `awaiting_verification`, `verified`, `accepted`,
+`verification_failed`, `failed`, `stalled`, `cancelled`, or `blocked`, followed
+by `next_action` / `recovery.next` and the evidence path.
 
 ## Typed recovery only
 

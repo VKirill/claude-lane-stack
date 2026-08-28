@@ -108,12 +108,14 @@ same outer Bubblewrap boundary. It is ephemeral, has multi-agent disabled, and
 cannot write `.agents`; `lane-session` parses its JSON event stream and writes
 the canonical report only after `turn.completed`.
 
-Status deliberately distinguishes `provider_incomplete`,
+Status deliberately distinguishes `provider_incomplete`, `provider_partial`,
 `awaiting_verification`, `verified`, and `verification_failed`. Provider exit 0
-with a partial root report becomes `provider_incomplete → retry`. A missing,
-duplicate, malformed, oversized, wrong-task, or wrong-prompt report envelope is
-a provider protocol failure (exit 65) and is also retryable; neither case is
-ready for verification.
+with a trusted `STATUS: partial` report is `provider_partial → inspect` (contract
+or sandbox block: replace the task; do not retry or Sol-fallback). A missing,
+untrusted, or non-partial incomplete report is `provider_incomplete → retry`.
+A missing, duplicate, malformed, oversized, wrong-task, or wrong-prompt report
+envelope is a provider protocol failure (exit 65) and is also retryable; neither
+incomplete case is ready for verification.
 
 For schema v2, `status`, `verify`, and `accept` also require the current
 attempt's trusted `runtime.json` and matching `report_sha256`. Changing a root

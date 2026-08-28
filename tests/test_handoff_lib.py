@@ -13,6 +13,7 @@ from handoff_lib import (  # noqa: E402
     CONTRACT_NO_RETRY_CLASSES,
     build_handoff,
     classify_verify_failure,
+    next_act_for_failure,
     write_handoff,
 )
 
@@ -36,6 +37,8 @@ class HandoffLibTest(unittest.TestCase):
             "verification_failed",
         )
         self.assertNotIn("verification_failed", CONTRACT_NO_RETRY_CLASSES)
+        self.assertIn("provider_partial", CONTRACT_NO_RETRY_CLASSES)
+        self.assertEqual(next_act_for_failure("provider_partial"), "fix_contract")
 
     def test_write_handoff_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

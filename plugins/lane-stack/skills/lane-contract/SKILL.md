@@ -32,7 +32,7 @@ PM до dispatch
 6) Один run-supervisor. lane = adoc main_write.
 
 Писатель
-- Только owns_paths. Не .agents. Не merge/push main.
+- Только owns_paths. Не `.agents` (`run-validate` rejects it — sandbox remounts `.agents` read-only). Не merge/push main.
 - L0 — узкие проверки. Вне owns сломалось → Gaps, не «починить мир».
 
 Тиры

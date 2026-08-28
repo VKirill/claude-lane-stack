@@ -214,22 +214,121 @@ def write_dirt_baseline(cwd: Path, path: Path) -> list[str]:
     return files
 
 
+# controller.json stages that still occupy a shared in_place tree.
+LIVE_SIBLING_STAGES = frozenset({"running", "pending", "blocked"})
+
+
+def _task_owns_patterns(task: dict) -> list[str]:
+    raw = task.get("owns_paths") or task.get("files") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
+def _receipt_files(path: Path) -> list[str]:
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    files = (
+        data.get("files_changed")
+        or data.get("evaluated_files")
+        or data.get("changed_files")
+        or []
+    )
+    if not isinstance(files, list):
+        return []
+    return [str(item).removeprefix("./") for item in files if str(item).strip()]
+
+
+def _accepted_run_still_dirty(run_dir: Path, receipt: dict, changed: set[str]) -> bool:
+    tasks = receipt.get("tasks")
+    if not isinstance(tasks, dict):
+        return False
+    for task_id in tasks:
+        if not SAFE_NAME.fullmatch(str(task_id)):
+            continue
+        art = run_dir / "artifacts" / str(task_id)
+        claimed = _receipt_files(art / "outcome.json") + _receipt_files(art / "owns-check.json")
+        if any(rel in changed for rel in claimed):
+            return True
+    return False
+
+
+def sibling_owns_patterns(task_path: Path, cwd: Path, changed: list[str]) -> list[str]:
+    """Owns globs from other in-tree runs that explain current dirt.
+
+    Live runs contribute all owns_paths. Accepted runs contribute only when
+    their recorded files_changed still appear in `changed` (unmerged leftover).
+    # ponytail: leftover run dirs can hide a leak into a path an old accepted
+    # run also listed in files_changed; upgrade: only unmerged / still-dirty runs.
+    """
+    if task_path.parent.name != "tasks":
+        return []
+    this_run = task_path.parent.parent
+    runs_root = this_run.parent
+    if runs_root.name != "runs":
+        return []
+    changed_set = {item.removeprefix("./") for item in changed}
+    patterns: list[str] = []
+    for run_dir in runs_root.iterdir():
+        if run_dir == this_run or not run_dir.is_dir() or run_dir.name.startswith("."):
+            continue
+        receipt_path = run_dir / "controller.json"
+        if not receipt_path.is_file():
+            continue
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(receipt, dict):
+            continue
+        raw_cwd = receipt.get("project_cwd")
+        if isinstance(raw_cwd, str) and raw_cwd:
+            try:
+                if Path(raw_cwd).resolve() != cwd:
+                    continue
+            except OSError:
+                continue
+        stage = str(receipt.get("stage") or "")
+        include = stage in LIVE_SIBLING_STAGES
+        if not include and stage == "accepted":
+            include = _accepted_run_still_dirty(run_dir, receipt, changed_set)
+        if not include:
+            continue
+        tasks_dir = run_dir / "tasks"
+        if not tasks_dir.is_dir():
+            continue
+        for candidate in tasks_dir.glob("*.yaml"):
+            patterns.extend(_task_owns_patterns(load_task(candidate)))
+    return patterns
+
+
 def evaluate_details(
     changed: list[str],
     owns: list,
     never: list,
     *,
     baseline: set[str] | None = None,
+    sibling_owns: list | None = None,
 ) -> dict:
     """Classify tree dirt into owns violations, never_touch hits, and foreign ignored.
 
     Foreign/parallel-session dirt outside owns_paths must not fail the task when
     the writer did not introduce it. With a dirt baseline (files dirty at lane
-    start), only *new* outside-owns paths fail (writer leak). Without a baseline,
-    outside-owns paths are treated as foreign (warn-only) so shared dirty mains
-    do not freeze runs; never_touch still hard-fails for newly introduced hits
-    (or all hits when no baseline).
+    start), only *new* outside-owns paths fail (writer leak), unless they match
+    a live/unmerged sibling run's owns_paths. Without a baseline, outside-owns
+    paths are treated as foreign (warn-only) so shared dirty mains do not freeze
+    runs; never_touch still hard-fails for newly introduced hits (or all hits
+    when no baseline).
     """
+    sibling = list(sibling_owns or [])
     violations: list[str] = []
     never_hits: list[str] = []
     foreign_ignored: list[str] = []
@@ -245,12 +344,12 @@ def evaluate_details(
                 evaluated.append(rel)
             continue
         if owns and not match_any(rel, owns):
+            if in_baseline or match_any(rel, sibling):
+                foreign_ignored.append(rel)
+                continue
             if baseline is not None:
-                if in_baseline:
-                    foreign_ignored.append(rel)
-                else:
-                    violations.append(rel)
-                    evaluated.append(rel)
+                violations.append(rel)
+                evaluated.append(rel)
             else:
                 # No baseline: cannot attribute leak vs parallel dirt — ignore.
                 foreign_ignored.append(rel)
@@ -264,6 +363,7 @@ def evaluate_details(
         "violations": violations,
         "never_touch_hits": never_hits,
         "foreign_ignored": foreign_ignored,
+        "sibling_owns": sibling,
         "baseline_used": baseline is not None,
         "status": (
             "passed"
@@ -459,7 +559,12 @@ def main() -> int:
         print(f"(mode: {mode})")
         if baseline is not None:
             print(f"(dirt-baseline: {baseline_path} · {len(baseline)} pre-existing)")
-        details = evaluate_details(changed, owns, never, baseline=baseline)
+        sibling = sibling_owns_patterns(task_path, cwd, changed)
+        if sibling:
+            print(f"(sibling-owns: {len(sibling)} pattern(s) from other runs)")
+        details = evaluate_details(
+            changed, owns, never, baseline=baseline, sibling_owns=sibling
+        )
         exit_code = print_evaluation(details)
     except GitCommandError as exc:
         details = {
@@ -470,6 +575,7 @@ def main() -> int:
             "violations": [],
             "never_touch_hits": [],
             "foreign_ignored": [],
+            "sibling_owns": [],
             "baseline_used": baseline is not None,
             "status": "failed",
             "error": str(exc),

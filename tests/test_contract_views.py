@@ -380,6 +380,142 @@ class ContractViewTests(unittest.TestCase):
             self.assertIn("apps/other/foreign.txt", receipt["foreign_ignored"])
             self.assertNotIn("apps/other/foreign.txt", receipt["violations"])
 
+    def test_owns_check_ignores_sibling_run_dirt_with_baseline(self) -> None:
+        """New dirt that another live/unmerged run owns is foreign, not a leak."""
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run("git", "init", "-b", "main", cwd=repo)
+            run("git", "config", "user.email", "test@example.com", cwd=repo)
+            run("git", "config", "user.name", "Test", cwd=repo)
+            owned = repo / "apps" / "admin" / "nav.ts"
+            owned.parent.mkdir(parents=True)
+            owned.write_text("base\n", encoding="utf-8")
+            hero = repo / "apps" / "marketing" / "HeroIntro.vue"
+            hero.parent.mkdir(parents=True)
+            hero.write_text("base hero\n", encoding="utf-8")
+            run("git", "add", "apps/admin/nav.ts", "apps/marketing/HeroIntro.vue", cwd=repo)
+            run("git", "commit", "-m", "base", cwd=repo)
+
+            this_tasks = repo / ".agents" / "runs" / "admin-nav" / "tasks"
+            this_tasks.mkdir(parents=True)
+            task = this_tasks / "001.yaml"
+            task.write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\n"
+                "owns_paths:\n  - apps/admin/**\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+            artifact = repo / ".agents" / "runs" / "admin-nav" / "artifacts" / "001"
+            artifact.mkdir(parents=True)
+            baseline = artifact / "dirt-baseline.json"
+            write = run(
+                str(ROOT / "bin" / "check-owns-paths"),
+                "--write-dirt-baseline",
+                str(baseline),
+                "--cwd",
+                str(repo),
+            )
+            self.assertEqual(write.returncode, 0, write.stdout + write.stderr)
+
+            sibling_tasks = repo / ".agents" / "runs" / "hero-block" / "tasks"
+            sibling_tasks.mkdir(parents=True)
+            (sibling_tasks / "001.yaml").write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\n"
+                "owns_paths:\n  - apps/marketing/**\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+            sibling_art = repo / ".agents" / "runs" / "hero-block" / "artifacts" / "001"
+            sibling_art.mkdir(parents=True)
+            (repo / ".agents" / "runs" / "hero-block" / "controller.json").write_text(
+                json.dumps(
+                    {
+                        "project_cwd": str(repo),
+                        "stage": "accepted",
+                        "tasks": {"001": {"stage": "accepted"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (sibling_art / "outcome.json").write_text(
+                json.dumps(
+                    {
+                        "task_id": "001",
+                        "files_changed": ["apps/marketing/HeroIntro.vue"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            owned.write_text("admin writer\n", encoding="utf-8")
+            hero.write_text("sibling writer\n", encoding="utf-8")
+            leak = repo / "apps" / "other" / "leak.txt"
+            leak.parent.mkdir(parents=True)
+            leak.write_text("real leak\n", encoding="utf-8")
+
+            result = run(str(ROOT / "bin" / "check-owns-paths"), str(task), "--cwd", str(repo))
+
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            receipt = json.loads((artifact / "owns-check.json").read_text())
+            self.assertEqual(receipt["status"], "failed")
+            self.assertIn("apps/marketing/HeroIntro.vue", receipt["foreign_ignored"])
+            self.assertNotIn("apps/marketing/HeroIntro.vue", receipt["violations"])
+            self.assertIn("apps/other/leak.txt", receipt["violations"])
+
+    def test_owns_check_ignores_live_sibling_owns_with_baseline(self) -> None:
+        """A still-running sibling run's owns_paths explain dirt that appeared after baseline."""
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run("git", "init", "-b", "main", cwd=repo)
+            run("git", "config", "user.email", "test@example.com", cwd=repo)
+            run("git", "config", "user.name", "Test", cwd=repo)
+            owned = repo / "apps" / "admin" / "nav.ts"
+            owned.parent.mkdir(parents=True)
+            owned.write_text("base\n", encoding="utf-8")
+            run("git", "add", "apps/admin/nav.ts", cwd=repo)
+            run("git", "commit", "-m", "base", cwd=repo)
+
+            this_tasks = repo / ".agents" / "runs" / "admin-nav" / "tasks"
+            this_tasks.mkdir(parents=True)
+            task = this_tasks / "001.yaml"
+            task.write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\n"
+                "owns_paths:\n  - apps/admin/**\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+            artifact = repo / ".agents" / "runs" / "admin-nav" / "artifacts" / "001"
+            artifact.mkdir(parents=True)
+            write = run(
+                str(ROOT / "bin" / "check-owns-paths"),
+                "--write-dirt-baseline",
+                str(artifact / "dirt-baseline.json"),
+                "--cwd",
+                str(repo),
+            )
+            self.assertEqual(write.returncode, 0, write.stdout + write.stderr)
+
+            sibling_tasks = repo / ".agents" / "runs" / "hero-block" / "tasks"
+            sibling_tasks.mkdir(parents=True)
+            (sibling_tasks / "001.yaml").write_text(
+                f"schema_version: 2\nid: '001'\nproject_cwd: '{repo}'\n"
+                "owns_paths:\n  - apps/marketing/**\nnever_touch: []\n",
+                encoding="utf-8",
+            )
+            (repo / ".agents" / "runs" / "hero-block" / "controller.json").write_text(
+                json.dumps({"project_cwd": str(repo), "stage": "running", "tasks": {}}),
+                encoding="utf-8",
+            )
+
+            owned.write_text("admin writer\n", encoding="utf-8")
+            hero = repo / "apps" / "marketing" / "HeroIntro.vue"
+            hero.parent.mkdir(parents=True)
+            hero.write_text("sibling still writing\n", encoding="utf-8")
+
+            result = run(str(ROOT / "bin" / "check-owns-paths"), str(task), "--cwd", str(repo))
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            receipt = json.loads((artifact / "owns-check.json").read_text())
+            self.assertEqual(receipt["status"], "passed")
+            self.assertIn("apps/marketing/HeroIntro.vue", receipt["foreign_ignored"])
+            self.assertEqual(receipt["violations"], [])
 
     def test_owns_check_ignores_npm_cache_dirt(self) -> None:
         """npm cache filled during typecheck/install must not owns-fail the lane."""

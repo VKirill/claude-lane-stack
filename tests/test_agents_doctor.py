@@ -587,6 +587,115 @@ class DoctorTuiCatalogTest(unittest.TestCase):
             self.assertIn("mode: all", text)
             self.assertIn("task: deny", text)
 
+    def test_migrate_adds_docs_keeps_memory_enabled(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        from pipeline_stages import migrate_profile_stages  # noqa: E402
+
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / ".agents" / "routing.profile.yaml"
+            profile.parent.mkdir()
+            profile.write_text(
+                "\n".join(
+                    [
+                        "lanes:",
+                        "  main_write: grok",
+                        "writer:",
+                        "  provider: grok",
+                        "stages:",
+                        "  memory:",
+                        "    enabled: true",
+                        "    provider: codex",
+                        "notes:",
+                        "  - []",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            added = migrate_profile_stages(profile)
+            self.assertIn("docs", added)
+            text = profile.read_text(encoding="utf-8")
+            self.assertIn("docs:", text)
+            self.assertRegex(text, r"(?m)^  memory:\n(?:    .*\n)*    enabled: true")
+
+    def test_apply_fills_missing_docs_without_resetting_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            for name in ("claude", "grok", "codex", "bwrap"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+            agents = repo / ".agents"
+            agents.mkdir()
+            (agents / "routing.profile.yaml").write_text(
+                "\n".join(
+                    [
+                        "lanes:",
+                        "  main_write: grok",
+                        "writer:",
+                        "  provider: grok",
+                        "  model: grok-4.5",
+                        "stages:",
+                        "  memory:",
+                        "    enabled: true",
+                        "    provider: codex",
+                        "    model: gpt-5.6-luna",
+                        "notes:",
+                        "  - []",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            result = subprocess.run(
+                [str(DOCTOR), "--apply", "--writer-provider", "grok", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            profile = (agents / "routing.profile.yaml").read_text(encoding="utf-8")
+            self.assertIn("  docs:", profile)
+            self.assertRegex(
+                profile, r"(?m)^  memory:\n(?:    .*\n)*    enabled: true"
+            )
+
+    def test_adoc_prefers_source_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            src = Path(tmp) / "stack" / "bin"
+            dest = home / ".agents" / "bin"
+            src.mkdir(parents=True)
+            dest.mkdir(parents=True)
+            (src / "agents-doctor").write_text(
+                "#!/usr/bin/env bash\necho SOURCE\n", encoding="utf-8"
+            )
+            (src / "agents-doctor").chmod(0o755)
+            (home / ".agents" / "install.json").write_text(
+                '{"source_repo": "%s"}\n' % (src.parent),
+                encoding="utf-8",
+            )
+            adoc = ROOT / "bin" / "adoc"
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            result = subprocess.run(
+                ["bash", str(adoc), "--json", "."],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.stdout.strip(), "SOURCE", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -130,6 +130,19 @@ def scope_error(raw: str) -> str | None:
     return None
 
 
+def owns_scope_error(raw: str) -> str | None:
+    detail = scope_error(raw)
+    if detail:
+        return detail
+    first = PurePosixPath(normalize_scope(raw)).parts[:1]
+    if first == (".agents",):
+        return (
+            "must not own .agents (writer sandbox remounts it read-only; "
+            "PM applies playbooks after the writer)"
+        )
+    return None
+
+
 _SPEC_STUB_MARKERS = (
     "record interfaces, invariants, constraints, and the definition of done here",
     "replace_me one paragraph",
@@ -440,8 +453,9 @@ def validate_run(run_dir: Path, phase: str) -> int:
             )
 
         for field in ("owns_paths", "never_touch"):
+            checker = owns_scope_error if field == "owns_paths" else scope_error
             for scope in task[field]:
-                detail = scope_error(scope)
+                detail = checker(scope)
                 if detail:
                     errors.append(f"task {task_id}: {field} entry {scope!r} {detail}")
 

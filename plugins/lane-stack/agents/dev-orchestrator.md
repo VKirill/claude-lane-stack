@@ -303,8 +303,10 @@ not spend turns rediscovering the code or composing a second specification.
 `lane-session` resumes related run-scoped Qwen, AGY, Grok, Kimi, Cursor, or Codex conversations. Up to ten slots
 are supported (five by default); each slot is serial, rotates after ten
 successful tasks, and is never reused for review. `Cancelled`, `Error`, an
-unknown terminal reason, or exit zero without a complete report are failures,
-never an invitation to verification.
+unknown terminal reason, or exit zero without a trusted report are failures,
+never an invitation to verification. A trusted `STATUS: partial` is
+`provider_partial` — a contract/scope block (`replace_task`), not a writer
+crash and not Sol fallback.
 After two selected-provider attempts, only a sanitized runtime failure marked
 `fallback_eligible` may start the one-shot `gpt-5.6-sol` + `high` Codex adapter.
 It is a writer attempt, not daytime review, and must pass the same report digest,

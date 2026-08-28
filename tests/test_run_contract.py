@@ -421,6 +421,18 @@ class RunContractTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_rejects_control_plane_owns_paths(self) -> None:
+        self.initialize()
+        self.write_task(
+            "001",
+            owns_paths=[".agents/seo/fotosessii/_playbooks/**"],
+        )
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("must not own .agents", result.stderr)
+
     def test_rejects_overlapping_owns_paths(self) -> None:
         self.initialize()
         self.write_task("001", owns_paths=["src/api/**"])
