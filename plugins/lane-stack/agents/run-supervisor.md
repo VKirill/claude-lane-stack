@@ -25,8 +25,7 @@ so the operator can see that the run is still supervised.
 
 `RUN_DIR`, optional `PROJECT_CWD`, optional `WRITER_PROVIDER` (`kimi`, `qwen`, `agy`,
 `grok`, or `codex`), optional `WRITER_MODEL`, optional `WRITER_EFFORT`, optional
-`PM_NAME` (the **unique** parent session `--name`, e.g.
-`blyt-feed-gen-26-08-2026`), and optional provider/verification pool
+`PM_NAME` (the **unique** parent session `--name`), and optional provider/verification pool
 sizes. Bare `dev-orchestrator` is not a valid target when more than one PM
 session is open — Claude relays that name to a random sibling.
 
@@ -104,7 +103,7 @@ After the terminal `DONE …` line:
 ## Targeting (mandatory)
 
 `SendMessage` matches a **session `--name`**, not the agent type. Two PMs
-named `blyt-selfystudio-26-08-2026` and `m2ab-selfystudio-26-08-2026`
+named differently on the same project/day
 must never share a target.
 
 Resolve once per supervisor run:

@@ -33,7 +33,7 @@ def _ctrl(dir_path: Path, slug: str, stage: str) -> Path:
 
 
 class DecideStopTests(unittest.TestCase):
-    def test_blocks_first_stop_while_supervisor_inflight(self) -> None:
+    def test_allows_stop_while_supervisor_inflight(self) -> None:
         code, err = decide_stop(
             {
                 "hook_event_name": "Stop",
@@ -47,8 +47,24 @@ class DecideStopTests(unittest.TestCase):
                 ],
             }
         )
-        self.assertEqual(code, 2)
-        self.assertIn("in-flight", err)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    def test_allows_user_leaving(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            _ctrl(cwd, "owns-fix", "blocked")
+            code, err = decide_stop(
+                {
+                    "hook_event_name": "Stop",
+                    "agent_type": "dev-orchestrator",
+                    "cwd": str(cwd),
+                    "reason": "prompt_input_exit",
+                    "last_assistant_message": "waiting",
+                }
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(err, "")
 
     def test_ignores_parked_rs_chips(self) -> None:
         code, err = decide_stop(
@@ -72,7 +88,7 @@ class DecideStopTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
 
-    def test_blocks_running_among_parked_rs_chips(self) -> None:
+    def test_allows_running_among_parked_rs_chips(self) -> None:
         code, err = decide_stop(
             {
                 "hook_event_name": "Stop",
@@ -88,8 +104,8 @@ class DecideStopTests(unittest.TestCase):
                 ],
             }
         )
-        self.assertEqual(code, 2)
-        self.assertIn("in-flight", err)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
 
     def test_allows_second_stop_while_supervisor_inflight(self) -> None:
         code, err = decide_stop(
@@ -270,22 +286,25 @@ class SpawnAndWatchTests(unittest.TestCase):
 
 class HookProcessTests(unittest.TestCase):
     def test_process_stop_exit_2(self) -> None:
-        r = subprocess.run(
-            [sys.executable, str(HOOK)],
-            input=json.dumps(
-                {
-                    "hook_event_name": "Stop",
-                    "background_tasks": [
-                        {"type": "subagent", "agent_type": "run-supervisor"}
-                    ],
-                }
-            ),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(r.returncode, 2)
-        self.assertIn("in-flight", r.stderr)
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            _ctrl(cwd, "fix-login", "running")
+            r = subprocess.run(
+                [sys.executable, str(HOOK)],
+                input=json.dumps(
+                    {
+                        "hook_event_name": "Stop",
+                        "agent_type": "dev-orchestrator",
+                        "cwd": str(cwd),
+                        "last_assistant_message": "waiting for progress",
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("Re-dispatch", r.stderr)
 
     def test_process_explore_no_watch(self) -> None:
         r = subprocess.run(

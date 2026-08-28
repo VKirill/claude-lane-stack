@@ -84,11 +84,19 @@ rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/templates/" "$DEST/templates/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/schemas/" "$DEST/schemas/"
 find "$DEST/hooks" "$DEST/board" -type f -name '*.py[co]' -delete
 find "$DEST/hooks" "$DEST/board" -depth -type d -name __pycache__ -empty -delete
+PLUGIN_LOCAL=0
+if [[ "${LANE_INSTALL_LOCAL_MARKETPLACE:-0}" != "0" ]]; then
+  PLUGIN_LOCAL=1
+fi
+MERGE_PLUGIN_ARGS=(--plugin-root "$STACK_ROOT")
+if [[ "$PLUGIN_LOCAL" == 1 ]]; then
+  MERGE_PLUGIN_ARGS+=(--plugin-local)
+fi
 python3 "$DEST/hooks/merge_claude_settings.py" \
   "$CLAUDE/settings.json" "$DEST/hooks/guard_shell.py" \
   --statusline "$DEST/bin/lane-statusline" \
   --session-mark "$DEST/hooks/lane_statusline_session.py" \
-  --plugin-root "$STACK_ROOT"
+  "${MERGE_PLUGIN_ARGS[@]}"
 
 # skills — writers get ~/.agents/skills. Claude loads them from the plugin
 # (namespaced). Do not link stack skills into ~/.claude/skills (Codex also
@@ -178,9 +186,18 @@ install -m 0644 "$STACK_ROOT/agents/agy/agent.md" "$AGY/agents/agy-writer/agent.
 # Claude plugin marketplace. User ~/.claude/agents copies override plugins.
 PLUGIN_ROOT="$STACK_ROOT/plugins/lane-stack"
 MARKETPLACE_LINK="$CLAUDE/plugins/marketplaces/claude-lane-stack"
+MARKETPLACE_GITHUB="VKirill/claude-lane-stack"
 mkdir -p "$CLAUDE/plugins/marketplaces" "$CLAUDE/agents" "$CLAUDE/commands" "$CLAUDE/skills"
-if [[ -L "$MARKETPLACE_LINK" || ! -e "$MARKETPLACE_LINK" ]]; then
-  ln -sfn "$STACK_ROOT" "$MARKETPLACE_LINK"
+if [[ "$PLUGIN_LOCAL" == 1 ]]; then
+  if [[ -L "$MARKETPLACE_LINK" || ! -e "$MARKETPLACE_LINK" ]]; then
+    ln -sfn "$STACK_ROOT" "$MARKETPLACE_LINK"
+  fi
+  MARKETPLACE_ADD="$MARKETPLACE_LINK"
+else
+  if [[ -L "$MARKETPLACE_LINK" ]]; then
+    rm -f "$MARKETPLACE_LINK"
+  fi
+  MARKETPLACE_ADD="$MARKETPLACE_GITHUB"
 fi
 if [[ -d "$PLUGIN_ROOT/agents" ]]; then
   for agent_file in "$PLUGIN_ROOT/agents/"*.md; do
@@ -195,9 +212,17 @@ if [[ -d "$PLUGIN_ROOT/commands" ]]; then
   done
 fi
 if [[ "${LANE_INSTALL_CLAUDE_PLUGIN:-1}" != "0" ]] && command -v claude >/dev/null 2>&1; then
-  if ! CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin marketplace add "$MARKETPLACE_LINK" --scope user; then
+  if ! CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin marketplace add "$MARKETPLACE_ADD" --scope user; then
     echo "warning: claude plugin marketplace add failed; extraKnownMarketplaces is still set" >&2
   fi
+  if [[ "$PLUGIN_LOCAL" != 1 ]]; then
+    CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin marketplace update claude-lane-stack >/dev/null || true
+  fi
+  python3 "$DEST/hooks/merge_claude_settings.py" \
+    "$CLAUDE/settings.json" "$DEST/hooks/guard_shell.py" \
+    --statusline "$DEST/bin/lane-statusline" \
+    --session-mark "$DEST/hooks/lane_statusline_session.py" \
+    "${MERGE_PLUGIN_ARGS[@]}"
   if ! CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin install lane-stack@claude-lane-stack -y -s user; then
     echo "warning: claude plugin install lane-stack@claude-lane-stack failed; enable after next Claude launch" >&2
   fi
@@ -279,7 +304,7 @@ fi
 echo ""
 echo "Done. Start PM:"
 echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
-echo " Claude plugin: lane-stack@claude-lane-stack (marketplace → ~/.claude/plugins/marketplaces/claude-lane-stack)"
+echo " Claude plugin: lane-stack@claude-lane-stack (GitHub autoUpdate; host ~/.agents still needs ./install.sh)"
 echo " lane-pm   # or: claude --agent dev-orchestrator (boot may not auto-send)"
 echo "Onboard: /project-onboard or project-onboard . [--deep|--fast]"
 echo "Cold start: /resume-project or resume-project ."

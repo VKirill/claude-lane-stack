@@ -3,7 +3,7 @@
 
 Stop (sync):
   exit 2 — continue the turn; stderr is the reason.
-  exit 0 — allow idle.
+  exit 0 — allow idle (also on Ctrl+C / session exit, and while rs-* is live).
 
 PostToolUse Agent|Task (asyncRewake):
   if this spawn is run-supervisor / lane-supervisor, poll controller.json
@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import sys
 import time
 from pathlib import Path
@@ -261,20 +262,44 @@ def already_acked(text: str, slug: str, stage: str) -> bool:
     ) is not None
 
 
+USER_LEAVE_REASONS = frozenset(
+    {
+        "clear",
+        "resume",
+        "logout",
+        "prompt_input_exit",
+        "interrupt",
+        "interrupted",
+        "user_interrupt",
+        "cancelled",
+        "canceled",
+    }
+)
+
+
+def user_is_leaving(payload: dict) -> bool:
+    """True when the human is exiting / interrupting — do not fight Ctrl+C."""
+    if _event(payload) in {"SessionEnd", "session_end"}:
+        return True
+    for key in ("reason", "source", "stop_reason", "end_reason"):
+        val = str(payload.get(key) or "").strip().lower()
+        if val in USER_LEAVE_REASONS:
+            return True
+    return False
+
+
 def decide_stop(payload: dict) -> tuple[int, str]:
     if _disabled() or not isinstance(payload, dict):
         return 0, ""
     event = _event(payload)
     if event and event not in {"Stop", "stop"}:
         return 0, ""
+    # Live rs-* is durable (run-controller). Blocking Stop here paints a red
+    # "Stop hook error" and fights Ctrl+C / session exit. Wake is PostToolUse.
+    if user_is_leaving(payload):
+        return 0, ""
 
     tasks = supervisor_tasks(payload, inflight_only=True)
-    if tasks and not payload.get("stop_hook_active"):
-        return (
-            2,
-            "lane pm_stop_sentinel: supervisor still in-flight. Do not idle. "
-            "Read controller.json or wait for DONE accepted|blocked|failed.",
-        )
 
     if not is_pm_session(payload):
         return 0, ""
@@ -361,6 +386,8 @@ def watch_run(cwd: Path, slug: str, *, timeout_s: float, poll_s: float) -> tuple
 
 
 def main() -> int:
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     raw = sys.stdin.read()
     if not raw.strip():
         return 0

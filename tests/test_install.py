@@ -19,6 +19,15 @@ INSTALL = ROOT / "install.sh"
 
 
 class InstallTest(unittest.TestCase):
+    def test_pm_boot_prompt_has_no_copyable_session_example(self) -> None:
+        for rel in (
+            "agents/claude/dev-orchestrator.md",
+            "plugins/lane-stack/agents/dev-orchestrator.md",
+        ):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertNotIn("blyt-", text, rel)
+            self.assertIn("Do **not** invent a", text, rel)
+
     def test_acceptance_template_includes_report_digest(self) -> None:
         acceptance = json.loads(
             (ROOT / "templates" / "run-contract" / "acceptance-v2.json").read_text(
@@ -131,19 +140,20 @@ class InstallTest(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertIn("Agent(run-supervisor", orchestrator)
             self.assertIn("no daytime LLM review", orchestrator)
+            self.assertNotIn("blyt-", orchestrator)
+            self.assertIn("Do **not** invent a", orchestrator)
             self.assertTrue((home / ".agents" / "codex" / "instructions" / "reviewer.md").is_file())
             self.assertFalse((home / ".agents" / "codex" / "instructions" / "instructions").exists())
 
             marketplace = home / ".claude" / "plugins" / "marketplaces" / "claude-lane-stack"
-            self.assertTrue(marketplace.is_symlink())
-            self.assertEqual(marketplace.resolve(), ROOT)
+            self.assertFalse(marketplace.exists())
             settings = json.loads(
                 (home / ".claude" / "settings.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(
-                settings["extraKnownMarketplaces"]["claude-lane-stack"]["source"]["path"],
-                str(ROOT),
-            )
+            ours = settings["extraKnownMarketplaces"]["claude-lane-stack"]
+            self.assertEqual(ours["source"]["source"], "github")
+            self.assertEqual(ours["source"]["repo"], "VKirill/claude-lane-stack")
+            self.assertTrue(ours["autoUpdate"])
             self.assertTrue(settings["enabledPlugins"]["lane-stack@claude-lane-stack"])
             self.assertEqual(settings["env"]["CLAUDE_CODE_SUBAGENT_MODEL"], "sonnet")
             self.assertTrue(
@@ -456,9 +466,44 @@ class InstallTest(unittest.TestCase):
             self.assertTrue(
                 (home / ".agents" / "skills" / "lane-contract" / "SKILL.md").is_file()
             )
-            self.assertTrue(
-                (home / ".claude" / "plugins" / "marketplaces" / "claude-lane-stack").is_symlink()
+            self.assertFalse(
+                (home / ".claude" / "plugins" / "marketplaces" / "claude-lane-stack").exists()
             )
+
+    def test_local_marketplace_keeps_checkout_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            home = tmp / "home"
+            work = tmp / "outside-repo"
+            home.mkdir()
+            work.mkdir()
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
+            env["LANE_INSTALL_LOCAL_MARKETPLACE"] = "1"
+            env.pop("CODEX_HOME", None)
+
+            result = subprocess.run(
+                [str(INSTALL)],
+                cwd=work,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=60,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            marketplace = home / ".claude" / "plugins" / "marketplaces" / "claude-lane-stack"
+            self.assertTrue(marketplace.is_symlink())
+            self.assertEqual(marketplace.resolve(), ROOT)
+            settings = json.loads(
+                (home / ".claude" / "settings.json").read_text(encoding="utf-8")
+            )
+            ours = settings["extraKnownMarketplaces"]["claude-lane-stack"]
+            self.assertEqual(ours["source"]["path"], str(ROOT))
+            self.assertNotIn("autoUpdate", ours)
 
     def test_installs_dedicated_codex_night_review_profile(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

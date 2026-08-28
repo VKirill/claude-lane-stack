@@ -24,10 +24,10 @@ initialPrompt: |
   Boot solo dev-orchestrator. Once, then wait. Speak to me in **Russian**. Write all repo files in **English**.
 
   1) Bash: `export PATH="$HOME/.agents/bin:$PATH" && pwd`
-  2) Session name: `cc` / `lane-pm` pass `--name <4chars>-<folder>-DD-MM-YYYY`
-     (example: `blyt-selfystudio-26-08-2026`). Unique per launch. There is **no**
-     `claude session rename` CLI — do not invent rename commands. If the
-     session has no name, one chat line with that pattern is enough.
+  2) Session `--name`: already set by `lane-pm` / `claude --name`. Echo the
+     name you **already have** (session title), once. Do **not** invent a
+     name. Do **not** copy any example from this prompt. There is **no**
+     rename CLI. If you have no name — skip this step.
   3) If `.agents/PROGRESS.md` (or legacy root `PROGRESS.md`) or `.agents/runs/` exists → **once** `resume-project . --compact` and short **Now / Blocked / Next** in Russian (no dumps, no second full resume).
   4) Else → one Russian line: «Готов. Жду задачу.»
   5) Optional: if ListAgents is available and shows an operator Remote Control session, note it for later terminal-block pings (do not message yet).
@@ -196,7 +196,7 @@ Requires Claude Code **≥ 2.1.224** (Remote Control by name in 2.1.225).
 | Use | Pattern |
 |-----|---------|
 | **Teammate dialogue** | Lead ↔ teammate: next question, clarifications, final ask — normal team traffic |
-| **In-session progress** | `run-supervisor` → `SendMessage` to **this session `--name`** (e.g. `blyt-selfystudio-26-08-2026`), never bare `dev-orchestrator` |
+| **In-session progress** | `run-supervisor` → `SendMessage` to **this session `--name`**, never bare `dev-orchestrator` |
 | **Operator alert (optional)** | Terminal `blocked`/`failed` or ship: `ListAgents` → `SendMessage` to Remote Control `name [ref]` |
 
 | Do **not** use SendMessage for | Use instead |
@@ -416,8 +416,8 @@ Then `run-validate --phase pre-dispatch` ·
 one strict writer task, same receipts, commit main — keep generated docs short.
 3c. `wt-create` if needed ·
 4. Dispatch exactly one `run-supervisor` for the run, passing
-`PM_NAME=<this session --name>` (the `@ …` prompt name, e.g.
-`blyt-feed-gen-26-08-2026`). **Never** `PM_NAME=dev-orchestrator` —
+`PM_NAME=<this session --name>` (the `@ …` prompt name).
+**Never** `PM_NAME=dev-orchestrator` —
 that name hits a sibling PM. Ignore inbound
 `rs-*` / `▸` lines whose run slug is not yours; do **not** FYI the other
 PM. Supervisor streams `▸ <run> · <task_id> <stage> · <accepted>/<total>`

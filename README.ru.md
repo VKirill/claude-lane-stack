@@ -14,7 +14,7 @@
 Без пяти чатов. Без ручного merge. Всё — **файлы + git**.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.18.0"><img src="https://img.shields.io/badge/version-v1.18.0-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.19.0"><img src="https://img.shields.io/badge/version-v1.19.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -258,12 +258,12 @@ docs-web → daylog → docs-stale → Luna (все stale-страницы)
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.18.0   # или: main
+cd claude-lane-stack && git checkout v1.19.0   # или: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
 
-После установки в Claude Code есть **`lane-stack@claude-lane-stack`**. Скиллы: `/lane-stack:<name>` (например `/lane-stack:orchestrator-lanes`). Marketplace: `~/.claude/plugins/marketplaces/claude-lane-stack`.
+После установки в Claude Code есть **`lane-stack@claude-lane-stack`**, marketplace сам обновляется с GitHub. Скиллы: `/lane-stack:<name>` (например `/lane-stack:orchestrator-lanes`). Хост `~/.agents` по-прежнему через `./install.sh`. Живой чекаут: `LANE_INSTALL_LOCAL_MARKETPLACE=1 ./install.sh`.
 
 Только плагин (runtime уже стоит):
 

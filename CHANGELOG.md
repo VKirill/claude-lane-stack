@@ -1,3 +1,14 @@
+## 1.19.0 — 2026-08-29
+
+### Changed
+- **Install registers the GitHub marketplace with `autoUpdate: true`.**
+  Live checkout: `LANE_INSTALL_LOCAL_MARKETPLACE=1`. Host `~/.agents` still
+  needs `./install.sh`.
+- **`pm_stop_sentinel` no longer blocks Stop while `rs-*` is live.** Ctrl+C
+  / session exit is allowed; wake stays on PostToolUse.
+- **`lane-pm` injects the real session `--name`.** Boot prompt no longer
+  ships a copyable example (`blyt-…`); the PM must not invent a name.
+
 ## 1.18.0 — 2026-08-28
 
 ### Changed

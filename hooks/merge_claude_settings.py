@@ -325,33 +325,81 @@ def merge_stack_capabilities(settings: dict[str, Any]) -> dict[str, Any]:
 
 MARKETPLACE_NAME = "claude-lane-stack"
 PLUGIN_ID = "lane-stack@claude-lane-stack"
+GITHUB_MARKETPLACE_REPO = "VKirill/claude-lane-stack"
+
+
+def marketplace_spec(*, local: bool, stack_root: Path | None = None) -> dict[str, Any]:
+    if local:
+        if stack_root is None:
+            raise ValueError("stack_root is required for a local marketplace")
+        return {
+            "source": {
+                "source": "directory",
+                "path": str(Path(stack_root).expanduser().resolve()),
+            }
+        }
+    return {
+        "source": {"source": "github", "repo": GITHUB_MARKETPLACE_REPO},
+        "autoUpdate": True,
+    }
 
 
 def merge_plugin_marketplace(
-    settings: dict[str, Any], stack_root: Path
+    settings: dict[str, Any],
+    stack_root: Path,
+    *,
+    local: bool = False,
 ) -> dict[str, Any]:
     """Register the lane-stack marketplace + enable the Claude plugin.
 
-    extraKnownMarketplaces uses a directory source so Claude Code loads the
-    checkout in place (install.sh also symlinks it under
-    ~/.claude/plugins/marketplaces/). Does not clobber other marketplaces.
+    Default is the GitHub marketplace with autoUpdate so a normal install
+    tracks releases. local=True keeps a directory source for live checkouts.
+    Does not clobber other marketplaces.
     """
     extra = settings.setdefault("extraKnownMarketplaces", {})
     if not isinstance(extra, dict):
         extra = {}
         settings["extraKnownMarketplaces"] = extra
-    extra[MARKETPLACE_NAME] = {
-        "source": {
-            "source": "directory",
-            "path": str(Path(stack_root).expanduser().resolve()),
-        }
-    }
+    extra[MARKETPLACE_NAME] = marketplace_spec(local=local, stack_root=stack_root)
     enabled = settings.setdefault("enabledPlugins", {})
     if not isinstance(enabled, dict):
         enabled = {}
         settings["enabledPlugins"] = enabled
     enabled[PLUGIN_ID] = True
     return settings
+
+
+def persist_known_marketplace(
+    claude_dir: Path,
+    *,
+    local: bool,
+    stack_root: Path | None = None,
+) -> None:
+    """Stamp autoUpdate on ~/.claude/plugins/known_marketplaces.json.
+
+    `claude plugin marketplace add` has no --auto-update flag; it also
+    overwrites extraKnownMarketplaces-only state. Keep installLocation.
+    """
+    path = Path(claude_dir) / "plugins" / "known_marketplaces.json"
+    if not path.is_file():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    entry = data.get(MARKETPLACE_NAME)
+    if not isinstance(entry, dict):
+        entry = {}
+        data[MARKETPLACE_NAME] = entry
+    spec = marketplace_spec(local=local, stack_root=stack_root)
+    entry["source"] = spec["source"]
+    if spec.get("autoUpdate"):
+        entry["autoUpdate"] = True
+    else:
+        entry.pop("autoUpdate", None)
+    write_settings(path, data)
 
 
 def write_settings(path: Path, settings: dict[str, Any]) -> None:
@@ -400,6 +448,11 @@ def main() -> int:
         default=None,
         help="lane-stack checkout (wires extraKnownMarketplaces + enabledPlugins)",
     )
+    parser.add_argument(
+        "--plugin-local",
+        action="store_true",
+        help="directory marketplace (no GitHub autoUpdate); or LANE_INSTALL_LOCAL_MARKETPLACE=1",
+    )
     parser.add_argument("settings", type=Path)
     parser.add_argument("guard", type=Path, nargs="?")
     args = parser.parse_args()
@@ -410,13 +463,18 @@ def main() -> int:
         parser.error("guard path is required unless --check is used")
     settings = merge_guard(settings, args.guard)
     settings = merge_stack_capabilities(settings)
+    plugin_local = args.plugin_local or os.environ.get(
+        "LANE_INSTALL_LOCAL_MARKETPLACE", "0"
+    ) not in {"", "0"}
     plugin_root = args.plugin_root
     if plugin_root is None:
         candidate = Path(__file__).resolve().parents[1]
         if (candidate / ".claude-plugin" / "marketplace.json").is_file():
             plugin_root = candidate
     if plugin_root is not None:
-        settings = merge_plugin_marketplace(settings, plugin_root)
+        settings = merge_plugin_marketplace(
+            settings, plugin_root, local=plugin_local
+        )
     if args.statusline is not None:
         settings = merge_statusline(settings, args.statusline)
     hooks_dir = Path(__file__).resolve().parent
@@ -445,6 +503,10 @@ def main() -> int:
     if ledger.is_file():
         settings = merge_subagent_usage(settings, ledger)
     write_settings(args.settings, settings)
+    if plugin_root is not None:
+        persist_known_marketplace(
+            args.settings.parent, local=plugin_local, stack_root=plugin_root
+        )
     return 0
 
 

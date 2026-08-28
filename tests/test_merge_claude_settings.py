@@ -11,9 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "hooks"))
 
 from merge_claude_settings import (  # noqa: E402
+    GITHUB_MARKETPLACE_REPO,
     PLUGIN_ID,
     MARKETPLACE_NAME,
     merge_plugin_marketplace,
+    persist_known_marketplace,
     merge_stack_capabilities,
     merge_pm_stop_sentinel,
     merge_subagent_usage,
@@ -157,14 +159,57 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
         out = merge_plugin_marketplace(settings, ROOT)
         self.assertTrue(out["enabledPlugins"]["ponytail@ponytail"])
         self.assertTrue(out["enabledPlugins"][PLUGIN_ID])
-        self.assertEqual(
-            out["extraKnownMarketplaces"][MARKETPLACE_NAME]["source"]["path"],
-            str(ROOT),
-        )
+        ours = out["extraKnownMarketplaces"][MARKETPLACE_NAME]
+        self.assertEqual(ours["source"]["source"], "github")
+        self.assertEqual(ours["source"]["repo"], GITHUB_MARKETPLACE_REPO)
+        self.assertTrue(ours["autoUpdate"])
+        self.assertNotIn("path", ours["source"])
         self.assertEqual(
             out["extraKnownMarketplaces"]["ponytail"]["source"]["repo"],
             "DietrichGebert/ponytail",
         )
+
+    def test_merge_plugin_marketplace_local(self) -> None:
+        out = merge_plugin_marketplace({}, ROOT, local=True)
+        ours = out["extraKnownMarketplaces"][MARKETPLACE_NAME]
+        self.assertEqual(ours["source"]["path"], str(ROOT))
+        self.assertNotIn("autoUpdate", ours)
+
+    def test_persist_known_marketplace_stamps_autoupdate(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            claude = Path(raw)
+            known = claude / "plugins" / "known_marketplaces.json"
+            known.parent.mkdir(parents=True)
+            known.write_text(
+                json.dumps(
+                    {
+                        "ponytail": {
+                            "source": {
+                                "source": "github",
+                                "repo": "DietrichGebert/ponytail",
+                            },
+                            "installLocation": "/tmp/ponytail",
+                        },
+                        MARKETPLACE_NAME: {
+                            "source": {
+                                "source": "directory",
+                                "path": "/tmp/old-lane",
+                            },
+                            "installLocation": "/tmp/old-lane",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            persist_known_marketplace(claude, local=False, stack_root=ROOT)
+            data = json.loads(known.read_text(encoding="utf-8"))
+            ours = data[MARKETPLACE_NAME]
+            self.assertEqual(ours["source"]["repo"], GITHUB_MARKETPLACE_REPO)
+            self.assertTrue(ours["autoUpdate"])
+            self.assertEqual(ours["installLocation"], "/tmp/old-lane")
+            self.assertEqual(
+                data["ponytail"]["source"]["repo"], "DietrichGebert/ponytail"
+            )
 
 
 if __name__ == "__main__":

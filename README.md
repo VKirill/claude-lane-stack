@@ -12,7 +12,7 @@
 Talk to Claude Code — it runs Codex / Qwen / Grok / Kimi / AGY, checks work, **merges to `main`**, reviews at night.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.18.0"><img src="https://img.shields.io/badge/version-v1.18.0-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.19.0"><img src="https://img.shields.io/badge/version-v1.19.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -256,12 +256,12 @@ This repo **is a Claude Code plugin marketplace**. `./install.sh` installs the h
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.18.0   # or: main
+cd claude-lane-stack && git checkout v1.19.0   # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
 
-After install, Claude Code has **`lane-stack@claude-lane-stack`**. Skills are `/lane-stack:<name>` (example: `/lane-stack:orchestrator-lanes`). Marketplace checkout: `~/.claude/plugins/marketplaces/claude-lane-stack`.
+After install, Claude Code has **`lane-stack@claude-lane-stack`** and the marketplace auto-updates from GitHub. Skills are `/lane-stack:<name>` (example: `/lane-stack:orchestrator-lanes`). Host `~/.agents` still needs `./install.sh`. Live checkout: `LANE_INSTALL_LOCAL_MARKETPLACE=1 ./install.sh`.
 
 Plugin-only (runtime already on the machine):
 
