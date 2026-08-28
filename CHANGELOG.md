@@ -1,3 +1,15 @@
+## 1.18.0 — 2026-08-28
+
+### Changed
+- **adoc re-execs from the source repo** and merges missing stages (Memory/Docs)
+  without resetting `memory.enabled`.
+- **Trusted `STATUS: partial`** is a contract block (`provider_partial`), not a
+  writer retry. `owns_paths` starting with `.agents` is rejected (`run-validate`).
+- **`check-owns-paths` ignores sibling-run dirt** on a shared in_place tree
+  (live runs + accepted leftover `files_changed`). Real leaks still fail-closed.
+- **`pm_stop_sentinel` ignores parked `rs-*` chips** (`idle`/`completed`).
+  Only an in-flight supervisor still blocks Stop.
+
 ## 1.17.0 — 2026-08-26
 
 ### Changed

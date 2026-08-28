@@ -125,7 +125,58 @@ def is_supervisor_spawn(payload: dict) -> bool:
     return bool(SUPERVISOR_RE.search(f"{sub} {_blob(tin)}"))
 
 
-def supervisor_tasks(payload: dict) -> list[dict]:
+# Host keeps finished rs-* chips in background_tasks. Only live watches
+# may block Stop. Unknown/missing status stays in-flight (safer).
+PARKED_STATUSES = frozenset(
+    {
+        "idle",
+        "completed",
+        "complete",
+        "done",
+        "finished",
+        "failed",
+        "stopped",
+        "cancelled",
+        "canceled",
+        "error",
+        "success",
+    }
+)
+IN_FLIGHT_STATUSES = frozenset(
+    {
+        "running",
+        "in_progress",
+        "in-progress",
+        "working",
+        "active",
+        "started",
+        "busy",
+        "pending",
+    }
+)
+
+
+def _task_status(item: dict) -> str:
+    for key in ("status", "state", "task_status", "taskStatus"):
+        raw = item.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip().lower()
+    return ""
+
+
+def supervisor_in_flight(item: dict) -> bool:
+    """True when this roster chip is still watching, not a leftover rs-* idle."""
+    if item.get("is_idle") is True or item.get("idle") is True:
+        return False
+    status = _task_status(item)
+    if status in PARKED_STATUSES:
+        return False
+    if status in IN_FLIGHT_STATUSES:
+        return True
+    return not status
+
+
+def supervisor_tasks(payload: dict, *, inflight_only: bool = False) -> list[dict]:
     raw = payload.get("background_tasks") or payload.get("backgroundTasks") or []
     if not isinstance(raw, list):
         return []
@@ -141,8 +192,11 @@ def supervisor_tasks(payload: dict) -> list[dict]:
             str(item.get(k) or "")
             for k in ("agent_type", "agentType", "description", "name")
         )
-        if agent in SUPERVISOR_TYPES or SUPERVISOR_RE.search(desc):
-            out.append(item)
+        if not (agent in SUPERVISOR_TYPES or SUPERVISOR_RE.search(desc)):
+            continue
+        if inflight_only and not supervisor_in_flight(item):
+            continue
+        out.append(item)
     return out
 
 
@@ -214,7 +268,7 @@ def decide_stop(payload: dict) -> tuple[int, str]:
     if event and event not in {"Stop", "stop"}:
         return 0, ""
 
-    tasks = supervisor_tasks(payload)
+    tasks = supervisor_tasks(payload, inflight_only=True)
     if tasks and not payload.get("stop_hook_active"):
         return (
             2,

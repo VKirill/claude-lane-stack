@@ -50,6 +50,47 @@ class DecideStopTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("in-flight", err)
 
+    def test_ignores_parked_rs_chips(self) -> None:
+        code, err = decide_stop(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "background_tasks": [
+                    {
+                        "type": "teammate",
+                        "name": "rs-money-finish",
+                        "status": "idle",
+                    },
+                    {
+                        "type": "subagent",
+                        "agent_type": "run-supervisor",
+                        "status": "completed",
+                    },
+                ],
+            }
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    def test_blocks_running_among_parked_rs_chips(self) -> None:
+        code, err = decide_stop(
+            {
+                "hook_event_name": "Stop",
+                "stop_hook_active": False,
+                "background_tasks": [
+                    {"type": "teammate", "name": "rs-auth-ux", "status": "idle"},
+                    {
+                        "type": "subagent",
+                        "agent_type": "run-supervisor",
+                        "name": "rs-db-pool-leak",
+                        "status": "running",
+                    },
+                ],
+            }
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("in-flight", err)
+
     def test_allows_second_stop_while_supervisor_inflight(self) -> None:
         code, err = decide_stop(
             {
