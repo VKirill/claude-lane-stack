@@ -3,8 +3,17 @@
 set -euo pipefail
 export PATH="${HOME}/.agents/bin:${PATH}"
 
-SINCE="${1:-24 hours ago}"
-DRY="${2:-}"
+SINCE="yesterday"
+DRY=""
+IF_HOUR=0
+for arg in "$@"; do
+  case "$arg" in
+    --if-hour) IF_HOUR=1 ;;
+    --dry-run) DRY="--dry-run" ;;
+    *) SINCE="$arg" ;;
+  esac
+done
+export DOCS_IF_HOUR="$IF_HOUR"
 ROOTS=(
   "$HOME/apps"
   "$HOME/sites"
@@ -34,4 +43,4 @@ for root in "${ROOTS[@]}"; do
 done
 
 echo "Scanned Lane Stack projects touched: $found"
-echo "Cron example: 0 3 * * * $HOME/.agents/bin/docs-maintain-all '24 hours ago' >>/tmp/docs-maintain.log 2>&1"
+echo "Cron: 0 * * * * \$HOME/.agents/bin/docs-maintain-all --if-hour >>\$HOME/.agents/logs/docs-maintain.log 2>&1"

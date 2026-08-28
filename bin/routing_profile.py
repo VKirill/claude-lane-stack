@@ -25,7 +25,7 @@ DEFAULT_MODELS = {
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
     "grok": "grok-4.5",
-    "agy": "gemini-3.6-flash-high",
+    "agy": "gemini-3.7-flash-high",
     "codex": "gpt-5.6-luna",
     "cursor": "composer-2.5",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
@@ -34,11 +34,27 @@ DEFAULT_EFFORTS = {
     "qwen": "medium",
     "kimi": "medium",
     "grok": "medium",
-    "agy": "medium",
+    "agy": "high",
     "codex": "max",
     "cursor": "medium",
     "opencode": "medium",
 }
+_AGY_EFFORTS = ("xhigh", "high", "medium", "low")
+
+
+def resolve_agy_effort(model: str, effort: str = "") -> str:
+    """AGY rejects --model *-high with --effort low/medium. Suffix wins.
+
+    AGY CLI accepts low|medium|high only; xhigh maps to high.
+    """
+    name = str(model or "").strip().lower()
+    for token in _AGY_EFFORTS:
+        if name.endswith("-" + token):
+            return "high" if token == "xhigh" else token
+    value = str(effort or "").strip().lower()
+    if value == "xhigh":
+        return "high"
+    return value if value in {"high", "medium", "low"} else "high"
 # Speed tier: Codex ChatGPT credits + Cursor model -fast siblings / [fast=…].
 SERVICE_TIERS = frozenset({"standard", "fast"})
 DEFAULT_SERVICE_TIER = "standard"
@@ -246,6 +262,10 @@ def resolve_writer(
         resolved_model = resolve_cursor_model(
             str(resolved_model or DEFAULT_MODELS["cursor"]),
             service_tier=resolved_tier,
+        )
+    if resolved_provider == "agy":
+        resolved_effort = resolve_agy_effort(
+            str(resolved_model or ""), str(resolved_effort or "")
         )
     return {
         "provider": resolved_provider,

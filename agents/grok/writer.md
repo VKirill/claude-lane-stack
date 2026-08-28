@@ -24,10 +24,16 @@ widen that boundary.
 1. Read `TASK_FILE` completely.  
 2. `cd` / work only in `PROJECT_CWD`.  
 3. Karpathy: assumptions → minimum code → surgical → verify.  
-4. Behavior change → tests first when project has a runner.  
-5. Use tools to complete the task before the final response. A future-tense
+4. Write style: `CLAUDE.md` / `AGENTS.md` / `.agents/LESSONS.md` beat this.
+   Match repo names. verb+noun; bool `is`/`has`/`can`/`should`. One job per
+   function. Never swallow errors. One behavior per test. No docs/wiki unless
+   that path is in `owns_paths`. No drive-by refactors.
+   UI work: match `docs/DESIGN.md` tokens if the file exists; do not invent a brand.
+   New or changed UI: skill `ui-ux-pro-max` (`--stack` from package.json). DESIGN.md wins over search.
+5. Behavior change → tests first when project has a runner.  
+6. Use tools to complete the task before the final response. A future-tense
    promise such as "I will implement" without the requested diff is failure.
-6. **L0 focused checks only** while implementing: unit/spec files you touched,
+7. **L0 focused checks only** while implementing: unit/spec files you touched,
    package typecheck if needed. Paste real stdout/stderr into Worker checks.
    Do **not** run monorepo-wide or full-workspace suites (`npm test` at root,
    full `apps/*/test` packages with hundreds of files) unless this is a
@@ -35,15 +41,15 @@ widen that boundary.
    focused. The controller independently reruns the task's scoped
    `verification[]` commands (**L1**) before acceptance. Full-suite / affected
    suite (**L2**) is a single pre-merge/CI pass for the whole run — not yours.
-7. Before the final response, confirm each requested owned output exists. Return
+8. Before the final response, confirm each requested owned output exists. Return
    the report through the exact final-response envelope below; `lane-session`
    validates its task/prompt binding and atomically writes `report.md`. If
    blocked, use `STATUS: partial` instead of 0-work success.
-8. No git commit/push/merge to main. Orchestrator merges. No task MCP.
-9. Only `owns_paths` or listed `files` (+ same-module OFF-SPEC if required). Honor `never_touch`.
-10. Task YAML is immutable after dispatch. Never edit `TASK_FILE` or use its old
+9. No git commit/push/merge to main. Orchestrator merges. No task MCP.
+10. Only `owns_paths` or listed `files` (+ same-module OFF-SPEC if required). Honor `never_touch`.
+11. Task YAML is immutable after dispatch. Never edit `TASK_FILE` or use its old
     `status` field as runtime state; lifecycle state lives in `state.json`.
-11. Work directly. Never delegate to an Agent/subagent or start a second coding
+12. Work directly. Never delegate to an Agent/subagent or start a second coding
     agent from shell; concurrency belongs to the orchestrator's lane pool.
 
 ## MAY

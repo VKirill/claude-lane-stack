@@ -1,0 +1,1 @@
+../../plugins/lane-stack/agents/design-lead.md

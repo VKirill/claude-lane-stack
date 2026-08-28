@@ -36,7 +36,7 @@ TERMINAL_FAILURES = frozenset(
 RUNNING_STATUSES = frozenset({"launching", "running", "unknown", "verifying"})
 CODEX_FALLBACK_MODEL = "gpt-5.6-sol"
 PRIMARY_MODELS = {
-    "agy": "gemini-3.6-flash-high",
+    "agy": "gemini-3.7-flash-high",
     "grok": "grok-4.5",
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
@@ -45,7 +45,7 @@ PRIMARY_MODELS = {
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
 }
 PRIMARY_EFFORTS = {
-    "agy": "medium",
+    "agy": "high",
     "grok": "medium",
     "qwen": "medium",
     "kimi": "medium",

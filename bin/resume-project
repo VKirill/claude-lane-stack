@@ -75,6 +75,19 @@ elif [[ -f "$HANDOFF_JSON" ]]; then
   echo
 fi
 
+if [[ -x "$BIN_ROOT/lane-memory" ]] && "$BIN_ROOT/lane-memory" enabled "$REPO" >/dev/null 2>&1; then
+  echo "======== memory CORE ========"
+  "$BIN_ROOT/lane-memory" core "$REPO" || true
+  echo
+  LAST_EP=$(ls -1t "$REPO/.agents/memory/episodes/"*.md 2>/dev/null | head -n 1 || true)
+  if [[ -n "$LAST_EP" ]]; then
+    echo "======== last episode ========"
+    echo "$LAST_EP"
+    head -n 40 "$LAST_EP"
+    echo
+  fi
+fi
+
 if [[ "$MODE" == "compact" ]]; then
   echo "======== stall (quick) ========"
   if [[ -x "$BIN_ROOT/lane-stall-check" ]]; then

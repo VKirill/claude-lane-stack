@@ -11,12 +11,14 @@ Inspired by modern ops TUIs (k9s / lazygit style focus + badges):
   clear stages, radio cards, live conveyor strip, EN/RU.
 
 Coder UX: form + drill-down lists (↑↓ fields, Enter open list).
-Stages UX: customize plan_critique / write / night / specialist / onboard per agent.
+Stages UX: customize plan_critique / write / night / specialist / onboard.
+Memory and Docs are their own tabs.
 UI language: en | ru (project ui.language + global ~/.agents/doctor.ui.yaml).
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -43,13 +45,22 @@ from pipeline_stages import (  # type: ignore  # noqa: E402
     default_opencode_agent,
     default_stages,
     normalize_stages,
+    resolve_opencode_agent,
 )
+from routing_profile import resolve_agy_effort  # type: ignore  # noqa: E402
 
 # Form field order on the Coder tab (stable indices for ↑↓).
 CODER_FIELDS = ("writer", "model", "effort", "fast")  # fast only when writer=codex
 
 # Stage cards on the Stages tab (pipeline roles, not Claude subagents).
-STAGE_IDS = ("plan_critique", "write", "night_review", "specialist", "onboard")
+STAGE_IDS = (
+    "plan_critique",
+    "write",
+    "night_review",
+    "specialist",
+    "onboard",
+)
+MODULE_TAB_IDS = ("memory", "docs")
 # Full agent catalog for stages (not limited to currently detected CLIs).
 ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex", "cursor", "opencode")
 CRITIQUE_PROVIDERS = ("structural",) + ALL_AGENTS
@@ -58,6 +69,43 @@ STAGE_FIELD_WRITE = ("provider", "model", "effort")  # enabled always on
 STAGE_FIELD_NIGHT = ("enabled", "provider", "model", "effort")
 STAGE_FIELD_SPEC = ("enabled", "when", "provider", "model", "effort")
 STAGE_FIELD_ONBOARD = ("provider", "model", "effort", "fast")  # fast: codex/cursor
+STAGE_FIELD_MEMORY = (
+    "enabled",
+    "maintain",
+    "inject",
+    "provider",
+    "model",
+    "effort",
+    "audience",
+    "personal_bot",
+    "search_engine",
+    "core_budget",
+    "note_budget",
+    "index_budget",
+    "context_budget",
+)
+STAGE_FIELD_DOCS = (
+    "enabled",
+    "maintain",
+    "provider",
+    "model",
+    "effort",
+    "page_cap",
+    "since",
+    "hour",
+)
+DOCS_PAGE_CAPS = (0, 8, 16, 24, 48)
+DOCS_SINCE_OPTS = ("yesterday", "24 hours ago", "7 days ago")
+DOCS_HOURS = tuple(range(24))
+MEMORY_BUDGET_STEPS = {
+    "core_budget": (1536, 2048, 3072, 4096, 6144),
+    "note_budget": (4000, 8000, 12000, 16000),
+    "index_budget": (32768, 65536, 131072),
+    "context_budget": (1500, 2500, 4000, 6000),
+}
+MEMORY_AUDIENCE_OPTS = ("subagent", "owner", "export")
+MEMORY_ENGINE_OPTS = ("auto", "fts5", "bm25")
+MEMORY_BOT_OPTS = ("", "claude", "codex", "grok", "qwen", "kimi", "agy", "cursor")
 
 # Fallback Cursor catalog when `cursor-agent --list-models` is unavailable.
 CURSOR_MODEL_FALLBACK = [
@@ -111,10 +159,17 @@ WRITER_MODELS: dict[str, list[str]] = {
         "grok-3-mini",
     ],
     "agy": [
+        "gemini-3.7-flash-high",
+        "gemini-3.7-flash-medium",
+        "gemini-3.7-flash-low",
         "gemini-3.6-flash-high",
-        "gemini-3.6-flash",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
+        "gemini-3.6-flash-medium",
+        "gemini-3.6-flash-low",
+        "gemini-3.5-flash-high",
+        "gemini-3.1-pro-high",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+        "gpt-oss-120b-medium",
     ],
     "codex": [
         "gpt-5.6-luna",
@@ -160,7 +215,7 @@ DEFAULT_MODEL = {
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
     "grok": "grok-4.5",
-    "agy": "gemini-3.6-flash-high",
+    "agy": "gemini-3.7-flash-high",
     "codex": "gpt-5.6-luna",
     "cursor": "composer-2.5",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
@@ -171,7 +226,7 @@ DEFAULT_EFFORT = {
     "qwen": "medium",
     "kimi": "medium",
     "grok": "medium",
-    "agy": "medium",
+    "agy": "high",
     "codex": "max",
     "cursor": "medium",
     "opencode": "medium",
@@ -179,7 +234,18 @@ DEFAULT_EFFORT = {
 }
 
 # Tab ids (labels come from i18n).
-TAB_IDS = ("coder", "stages", "work", "night", "ui", "status", "info", "apply")
+TAB_IDS = (
+    "coder",
+    "stages",
+    "memory",
+    "docs",
+    "work",
+    "night",
+    "ui",
+    "status",
+    "info",
+    "apply",
+)
 
 WORKSPACE_MODES = ("in_place", "worktree", "auto")
 
@@ -399,6 +465,7 @@ def _radio(selected: bool) -> str:
 
 
 _CURSOR_MODELS_CACHE: list[str] | None = None
+_AGY_MODELS_CACHE: list[str] | None = None
 _OPENCODE_AGENT_FALLBACK = [
     "lane-writer",
     "lane-critic",
@@ -468,9 +535,43 @@ def _probe_cursor_models() -> list[str]:
     return list(_CURSOR_MODELS_CACHE)
 
 
+def _probe_agy_models() -> list[str]:
+    """Live catalog from `agy models` (cached per process)."""
+    global _AGY_MODELS_CACHE
+    if _AGY_MODELS_CACHE is not None:
+        return list(_AGY_MODELS_CACHE)
+    binary = shutil.which("agy")
+    models: list[str] = []
+    if binary:
+        try:
+            out = subprocess.check_output(
+                [binary, "models"],
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=12,
+            )
+            for line in out.splitlines():
+                token = line.strip().split()[0] if line.strip() else ""
+                if (
+                    token
+                    and ("-" in token or "/" in token)
+                    and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}", token)
+                ):
+                    models.append(token)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            models = []
+    if not models:
+        models = list(WRITER_MODELS["agy"])
+    _AGY_MODELS_CACHE = list(dict.fromkeys(models))
+    WRITER_MODELS["agy"] = list(_AGY_MODELS_CACHE)
+    return list(_AGY_MODELS_CACHE)
+
+
 def _models_for(writer: str) -> list[str]:
     if writer == "cursor":
         return _probe_cursor_models()
+    if writer == "agy":
+        return _probe_agy_models()
     if writer == "opencode":
         return _probe_opencode_models()
     return list(WRITER_MODELS.get(writer, ["(default)"]))
@@ -647,6 +748,11 @@ def _efforts_for(writer: str, model: str = "") -> list[str]:
         live = _OPENCODE_LIVE.get("variants")
         if isinstance(live, dict):
             return list(live.get(model, []))
+    if writer == "agy":
+        name = str(model or "").strip().lower()
+        for token in ("xhigh", "high", "medium", "low"):
+            if name.endswith("-" + token):
+                return [resolve_agy_effort(model, "")]
     return list(WRITER_EFFORTS.get(writer, ["medium"]))
 
 
@@ -658,6 +764,8 @@ def _ensure_model(writer: str, model: str) -> str:
 
 
 def _ensure_effort(writer: str, effort: str, model: str = "") -> str:
+    if writer == "agy":
+        return resolve_agy_effort(model, effort)
     opts = _efforts_for(writer, model)
     if not opts:
         return ""
@@ -792,7 +900,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         (existing.get("stages_raw") or {}).get("write") or {}
     ).get("agent") or DEFAULT_OPENCODE_WRITE_AGENT
     if writer0 == "opencode":
-        agent0 = _ensure_agent(str(agent0))
+        agent0 = _ensure_agent(resolve_opencode_agent("write", str(agent0)))
     night_w0 = existing.get("night_provider")
     if night_w0 not in writers:
         night_w0 = writer0 if writer0 != "auto" else writers[0]
@@ -881,7 +989,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
             )
             if prov == "opencode":
                 state.agent = _ensure_agent(
-                    str(w.get("agent") or state.agent or DEFAULT_OPENCODE_WRITE_AGENT)
+                    resolve_opencode_agent(
+                        "write",
+                        str(w.get("agent") or state.agent or ""),
+                    )
                 )
         nr = st.get("night_review") or {}
         state.night_review = bool(nr.get("enabled"))
@@ -1222,6 +1333,20 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 if _supports_fast(prov)
                 else ("provider", "model", "effort")
             )
+        elif stage_id == "memory":
+            prov = str((state.stages.get("memory") or {}).get("provider") or "codex")
+            fields = STAGE_FIELD_MEMORY
+            if _supports_fast(prov):
+                lst = list(fields)
+                lst.insert(lst.index("effort") + 1, "fast")
+                fields = tuple(lst)
+        elif stage_id == "docs":
+            prov = str((state.stages.get("docs") or {}).get("provider") or "codex")
+            fields = STAGE_FIELD_DOCS
+            if _supports_fast(prov):
+                lst = list(fields)
+                lst.insert(lst.index("effort") + 1, "fast")
+                fields = tuple(lst)
         else:
             prov = str((state.stages.get("specialist") or {}).get("provider") or "")
             fields = STAGE_FIELD_SPEC
@@ -1276,10 +1401,22 @@ def run_tui(repo: Path, doctor: Any) -> int:
         block = state.stages.get(stage_id) or {}
         if field == "enabled":
             return _loc_on(bool(block.get("enabled")))
+        if field in {"maintain", "inject"}:
+            return _loc_on(bool(block.get(field, True)))
         if field == "mode":
             return _loc_mode(str(block.get("mode") or "advisory"))
         if field == "when":
             return _loc_when(str(block.get("when") or "high_risk"))
+        if field == "audience":
+            key = f"audience_{block.get('audience') or 'subagent'}"
+            text = _t(state, key)
+            return text if text != key else str(block.get("audience") or "subagent")
+        if field == "search_engine":
+            key = f"engine_{block.get('search_engine') or 'auto'}"
+            text = _t(state, key)
+            return text if text != key else str(block.get("search_engine") or "auto")
+        if field == "personal_bot":
+            return str(block.get("personal_bot") or "—") or "—"
         if field == "provider":
             return _loc_provider(str(block.get("provider") or "—"))
         if field == "effort":
@@ -1292,6 +1429,18 @@ def run_tui(repo: Path, doctor: Any) -> int:
             if prov == "structural":
                 return _t(state, "model_na")
             return str(block.get("model") or "—") or "—"
+        if field == "hour":
+            try:
+                hour = int(block.get("hour") or 5)
+            except (TypeError, ValueError):
+                hour = 5
+            return f"{hour:02d}:00"
+        if field == "page_cap":
+            try:
+                cap = int(block.get("page_cap") or 0)
+            except (TypeError, ValueError):
+                cap = 0
+            return _t(state, "page_cap_all") if cap <= 0 else str(cap)
         return str(block.get(field) or "—")
 
     def _select_stage(index: int) -> None:
@@ -1309,15 +1458,24 @@ def run_tui(repo: Path, doctor: Any) -> int:
             field=_t(state, f"sfield_{fields[0]}"),
         )
 
+    def _active_stage_id() -> str:
+        tid = TAB_IDS[tab_i["i"]]
+        if tid in MODULE_TAB_IDS:
+            return tid
+        return STAGE_IDS[state.stage_i]
+
     def _move_stage(delta: int) -> None:
         _select_stage((state.stage_i + delta) % len(STAGE_IDS))
 
     def _move_stage_field(delta: int) -> None:
-        """Move across fields; wrap into neighbouring stages."""
+        """Move across fields; wrap into neighbouring stages (stages tab only)."""
         state.focus = "stage_field"
-        fields = _stage_fields(STAGE_IDS[state.stage_i])
+        sid = _active_stage_id()
+        fields = _stage_fields(sid)
         new_i = state.stage_field_i + delta
-        if new_i < 0:
+        if TAB_IDS[tab_i["i"]] in MODULE_TAB_IDS:
+            state.stage_field_i = new_i % len(fields)
+        elif new_i < 0:
             _move_stage(-1)
             fields = _stage_fields(STAGE_IDS[state.stage_i])
             state.stage_field_i = len(fields) - 1
@@ -1326,7 +1484,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.stage_field_i = 0
         else:
             state.stage_field_i = new_i
-        fields = _stage_fields(STAGE_IDS[state.stage_i])
+        sid = _active_stage_id()
+        fields = _stage_fields(sid)
         state.stage_field_i = max(0, min(state.stage_field_i, len(fields) - 1))
         state.message = _t(
             state,
@@ -1338,10 +1497,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         block["provider"] = new_p
         if new_p == "opencode":
             refresh_opencode_catalog()
-            default_agent = default_opencode_agent(stage_id)
-            cur_a = str(block.get("agent") or "")
-            if cur_a not in _probe_opencode_agents():
-                block["agent"] = default_agent
+            block["agent"] = _ensure_agent(default_opencode_agent(stage_id))
         else:
             block.pop("agent", None)
         if new_p == "structural":
@@ -1362,7 +1518,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def _cycle_stage_field(delta: int = 1) -> None:
         """← / → / Space / Enter: change the focused field's value."""
         state.focus = "stage_field"
-        sid = STAGE_IDS[state.stage_i]
+        sid = _active_stage_id()
         fields = _stage_fields(sid)
         state.stage_field_i = max(0, min(state.stage_field_i, len(fields) - 1))
         field = fields[state.stage_field_i]
@@ -1410,12 +1566,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
             new_p = opts[(i + delta) % len(opts)]
             _set_provider(block, new_p, stage_id=sid)
             # Onboard defaults: terra+high (not daytime luna+max).
-            if sid == "onboard" and new_p == "codex":
+            if sid in {"onboard", "memory"} and new_p == "codex":
                 if block.get("model") == DEFAULT_MODEL.get("codex"):
                     block["model"] = "gpt-5.6-terra"
                 if block.get("reasoning_effort") == DEFAULT_EFFORT.get("codex"):
                     block["reasoning_effort"] = "high"
-            if sid in {"onboard", "plan_critique"} and not _supports_fast(new_p):
+            if sid == "docs" and new_p == "codex":
+                block["model"] = "gpt-5.6-luna"
+                block["reasoning_effort"] = "max"
+                block["service_tier"] = "fast"
+            if sid in {"onboard", "plan_critique", "memory", "docs"} and not _supports_fast(new_p):
                 block["service_tier"] = "standard"
             state.message = _t(
                 state, "msg_stage_provider", provider=_loc_provider(new_p)
@@ -1445,7 +1605,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 except ValueError:
                     i = 0
                 block["model"] = opts[(i + delta) % len(opts)]
-                if prov == "opencode":
+                if prov in {"opencode", "agy"}:
                     efforts = _efforts_for_provider(prov, str(block["model"]))
                     cur_e = str(block.get("reasoning_effort") or "")
                     if not efforts:
@@ -1497,6 +1657,87 @@ def run_tui(repo: Path, doctor: Any) -> int:
                     if block["service_tier"] == "fast"
                     else _t(state, "off"),
                 )
+        elif field in {"maintain", "inject"}:
+            block[field] = not bool(block.get(field, True))
+            state.message = _t(
+                state,
+                "msg_stage_flag",
+                field=_t(state, f"sfield_{field}"),
+                on=_loc_on(bool(block[field])),
+            )
+        elif field == "audience":
+            cur = str(block.get("audience") or "subagent")
+            try:
+                i = MEMORY_AUDIENCE_OPTS.index(cur)
+            except ValueError:
+                i = 0
+            block["audience"] = MEMORY_AUDIENCE_OPTS[(i + delta) % len(MEMORY_AUDIENCE_OPTS)]
+            state.message = _t(state, "msg_stage_audience", audience=block["audience"])
+        elif field == "search_engine":
+            cur = str(block.get("search_engine") or "auto")
+            try:
+                i = MEMORY_ENGINE_OPTS.index(cur)
+            except ValueError:
+                i = 0
+            block["search_engine"] = MEMORY_ENGINE_OPTS[(i + delta) % len(MEMORY_ENGINE_OPTS)]
+            state.message = _t(state, "msg_stage_engine", engine=block["search_engine"])
+        elif field == "personal_bot":
+            cur = str(block.get("personal_bot") or "")
+            try:
+                i = MEMORY_BOT_OPTS.index(cur)
+            except ValueError:
+                i = 0
+            block["personal_bot"] = MEMORY_BOT_OPTS[(i + delta) % len(MEMORY_BOT_OPTS)]
+            state.message = _t(
+                state, "msg_stage_bot", bot=block["personal_bot"] or "—"
+            )
+        elif field == "page_cap":
+            opts = DOCS_PAGE_CAPS
+            try:
+                cur = int(block.get("page_cap") or 0)
+            except (TypeError, ValueError):
+                cur = 0
+            try:
+                i = opts.index(cur)
+            except ValueError:
+                i = 0
+            block["page_cap"] = opts[(i + delta) % len(opts)]
+            shown = (
+                _t(state, "page_cap_all")
+                if int(block["page_cap"]) <= 0
+                else str(block["page_cap"])
+            )
+            state.message = _t(state, "msg_stage_page_cap", n=shown)
+        elif field == "since":
+            opts = DOCS_SINCE_OPTS
+            cur = str(block.get("since") or opts[0])
+            try:
+                i = opts.index(cur)
+            except ValueError:
+                i = 0
+            block["since"] = opts[(i + delta) % len(opts)]
+            state.message = _t(state, "msg_stage_since", since=block["since"])
+        elif field == "hour":
+            try:
+                cur = int(block.get("hour") or 5)
+            except (TypeError, ValueError):
+                cur = 5
+            block["hour"] = (cur + delta) % 24
+            state.message = _t(state, "msg_stage_hour", hour=f"{block['hour']:02d}:00")
+        elif field in MEMORY_BUDGET_STEPS:
+            opts = MEMORY_BUDGET_STEPS[field]
+            cur = int(block.get(field) or opts[0])
+            try:
+                i = opts.index(cur)
+            except ValueError:
+                i = min(range(len(opts)), key=lambda j: abs(opts[j] - cur))
+            block[field] = opts[(i + delta) % len(opts)]
+            state.message = _t(
+                state,
+                "msg_stage_budget",
+                field=_t(state, f"sfield_{field}"),
+                n=block[field],
+            )
         # Keep coder/night tabs in sync when write/night stages change.
         if sid in {"write", "night_review"}:
             _sync_coder_night_from_stages()
@@ -1520,7 +1761,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
         for i, sid in enumerate(STAGE_IDS):
             block = state.stages.get(sid) or {}
             selected = state.stage_i == i
-            enabled = True if sid == "write" else bool(block.get("enabled", True))
+            if sid == "write":
+                enabled = True
+            elif sid == "onboard":
+                enabled = True
+            else:
+                enabled = bool(block.get("enabled", True))
             if selected:
                 st = "class:stage-focus"
                 caret = "▸"
@@ -1568,23 +1814,27 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 )
             lines.append((st, f"  {caret} {i + 1}. {title:<18}  [{badge}]\n"))
             lines.append(("class:row-detail", f"       {detail}\n"))
-        # Field editor for selected stage
         sid = STAGE_IDS[state.stage_i]
-        fields = _stage_fields(sid)
-        state.stage_field_i = max(0, min(state.stage_field_i, len(fields) - 1))
         lines.append(
             (
                 "class:h2",
                 _t(state, "stages_fields_h2", stage=_t(state, f"stage_{sid}")),
             )
         )
+        lines.extend(_stage_settings_rows(sid))
+        lines.append(("class:help", _t(state, "stages_tip")))
+        return lines
+
+    def _stage_settings_rows(sid: str) -> list[tuple[str, str]]:
+        fields = _stage_fields(sid)
+        state.stage_field_i = max(0, min(state.stage_field_i, len(fields) - 1))
+        rows: list[tuple[str, str]] = []
         for fi, field in enumerate(fields):
             focused = state.stage_field_i == fi
             st = "class:row-on-focus" if focused else "class:row"
             caret = "▸" if focused else " "
             val = _stage_field_value(sid, field)
             label = _t(state, f"sfield_{field}")
-            # Hint how many options for model/provider
             hint = ""
             if focused and field == "provider":
                 n = len(_providers_for_stage(sid))
@@ -1593,11 +1843,53 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 prov = str((state.stages.get(sid) or {}).get("provider") or "")
                 n = len(_models_for_provider(prov))
                 hint = f"  ←→ {n}" if n else f"  ({_t(state, 'model_na')})"
-            elif focused and field in {"mode", "when", "effort", "enabled", "fast", "agent"}:
+            elif focused and field in {
+                "mode",
+                "when",
+                "effort",
+                "enabled",
+                "fast",
+                "agent",
+                "maintain",
+                "inject",
+                "audience",
+                "personal_bot",
+                "search_engine",
+                "core_budget",
+                "note_budget",
+                "index_budget",
+                "context_budget",
+                "page_cap",
+                "since",
+                "hour",
+            }:
                 hint = "  ←→"
-            lines.append((st, f"  {caret} {label:<14}  {val}{hint}\n"))
-        lines.append(("class:help", _t(state, "stages_tip")))
-        return lines
+            rows.append((st, f"  {caret} {label:<14}  {val}{hint}\n"))
+        return rows
+
+    def body_memory() -> list[tuple[str, str]]:
+        if state.focus not in {"stage_field", "stage_list"}:
+            state.focus = "stage_field"
+        return [
+            ("class:h1", _t(state, "memory_h1")),
+            ("class:help", _t(state, "memory_help")),
+            ("class:h2", _t(state, "memory_fields_h2")),
+            *_stage_settings_rows("memory"),
+            ("class:h2", _t(state, "memory_info_h2")),
+            ("class:help", _t(state, "memory_info")),
+        ]
+
+    def body_docs() -> list[tuple[str, str]]:
+        if state.focus not in {"stage_field", "stage_list"}:
+            state.focus = "stage_field"
+        return [
+            ("class:h1", _t(state, "docs_h1")),
+            ("class:help", _t(state, "docs_help")),
+            ("class:h2", _t(state, "docs_fields_h2")),
+            *_stage_settings_rows("docs"),
+            ("class:h2", _t(state, "docs_info_h2")),
+            ("class:help", _t(state, "docs_info")),
+        ]
 
     def body_work() -> list[tuple[str, str]]:
         lines: list[tuple[str, str]] = [
@@ -1882,6 +2174,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
     bodies: dict[str, Callable[[], list[tuple[str, str]]]] = {
         "coder": body_coder,
         "stages": body_stages,
+        "memory": body_memory,
+        "docs": body_docs,
         "work": body_work,
         "night": body_night,
         "ui": body_ui,
@@ -1912,7 +2206,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.writer = w
         if w == "opencode":
             refresh_opencode_catalog()
-            state.agent = _ensure_agent(state.agent or DEFAULT_OPENCODE_WRITE_AGENT)
+            state.agent = _ensure_agent(default_opencode_agent("write"))
         state.model = _ensure_model(w, DEFAULT_MODEL.get(w, state.model))
         state.effort = _ensure_effort(
             w, DEFAULT_EFFORT.get(w, state.effort), state.model
@@ -1969,8 +2263,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 value=_t(state, "on") if state.fast_mode else _t(state, "off"),
             )
         else:
-            state.effort = chosen
-            state.message = _t(state, "msg_effort", name=chosen)
+            state.effort = _ensure_effort(state.writer, chosen, state.model)
+            state.message = _t(state, "msg_effort", name=state.effort)
             _sync_stages_from_coder_night()
 
     def _cycle_coder_field(delta: int) -> None:
@@ -2072,6 +2366,61 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state, "msg_lang", name=LANG_LABEL.get(state.lang, state.lang)
         )
 
+    def _kick_docs_init(repo: Path, maintain: bool) -> None:
+        web = Path.home() / ".agents" / "bin" / "docs-web"
+        if not web.is_file():
+            web = Path(__file__).resolve().parent / "docs-web"
+        try:
+            subprocess.run(
+                [sys.executable, str(web), "rebuild", str(repo)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return
+        if not maintain:
+            return
+        runner = Path.home() / ".agents" / "bin" / "docs-maintain-project"
+        if not runner.is_file():
+            runner = Path(__file__).resolve().parent / "docs-maintain-project"
+        try:
+            listed = subprocess.run(
+                ["pgrep", "-f", f"docs-maintain-project {repo}"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if listed.returncode == 0 and listed.stdout.strip():
+                return
+        except OSError:
+            pass
+        docs_root = repo / "docs"
+        has_stub = False
+        if docs_root.is_dir():
+            for path in docs_root.rglob("*.md"):
+                try:
+                    head = path.read_text(encoding="utf-8")[:400]
+                except OSError:
+                    continue
+                if "status: stub" in head:
+                    has_stub = True
+                    break
+        if not has_stub:
+            return
+        log = Path.home() / ".agents" / "logs" / "docs-init.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ)
+        env.pop("DOCS_IF_HOUR", None)
+        with log.open("a", encoding="utf-8") as fh:
+            subprocess.Popen(
+                [str(runner), str(repo)],
+                stdout=fh,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                env=env,
+            )
+
     def do_apply(app: Any | None = None) -> None:
         import contextlib
         import io
@@ -2163,6 +2512,21 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return
 
         _save_global_lang(state.lang)
+        docs_block = state.stages.get("docs") or {}
+        if docs_block.get("enabled"):
+            cron = Path.home() / ".agents" / "bin" / "docs-cron-ensure"
+            if not cron.is_file():
+                cron = Path(__file__).resolve().parent / "docs-cron-ensure"
+            try:
+                subprocess.run(
+                    [sys.executable, str(cron)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError:
+                pass
+            _kick_docs_init(Path(state.repo), bool(docs_block.get("maintain", True)))
         state.message = _t(state, "msg_saved")
         pc = state.stages.get("plan_critique") or {}
         result = {
@@ -2254,6 +2618,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
             _sync_stages_from_coder_night()
             state.focus = "stage_field"
             state.stage_field_i = 0
+        elif tid in MODULE_TAB_IDS:
+            state.focus = "stage_field"
+            state.stage_field_i = 0
         state.message = _t(state, "msg_tab", name=_tab_label(state, tid))
 
     @kb.add("q")
@@ -2290,8 +2657,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             if state.view == "form":
                 _cycle_coder_field(1)
             return
-        if tid == "stages":
-            # Always cycle the focused field value forward.
+        if tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(1)
             return
         tab_i["i"] = (tab_i["i"] + 1) % len(TAB_IDS)
@@ -2306,27 +2672,35 @@ def run_tui(repo: Path, doctor: Any) -> int:
             else:
                 _cycle_coder_field(-1)
             return
-        if tid == "stages":
-            # Always cycle the focused field value backward.
+        if tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(-1)
             return
         tab_i["i"] = (tab_i["i"] - 1) % len(TAB_IDS)
         on_tab_enter()
 
-    for n in range(1, len(TAB_IDS) + 1):
+    def _digit_goto(n: int) -> None:
+        leave_pick_if_any()
+        if (
+            pane["col"] == "main"
+            and TAB_IDS[tab_i["i"]] == "stages"
+            and 1 <= n <= len(STAGE_IDS)
+        ):
+            _select_stage(n - 1)
+            return
+        if n == 0:
+            _goto_tab(len(TAB_IDS) - 1)
+            return
+        _goto_tab(n - 1)
+
+    for n in range(1, 10):
 
         @kb.add(str(n))
         def _(event, n=n) -> None:
-            leave_pick_if_any()
-            # On Stages tab, 1–N pick a pipeline stage (not a top tab).
-            if (
-                pane["col"] == "main"
-                and TAB_IDS[tab_i["i"]] == "stages"
-                and 1 <= n <= len(STAGE_IDS)
-            ):
-                _select_stage(n - 1)
-                return
-            _goto_tab(n - 1)
+            _digit_goto(n)
+
+    @kb.add("0")
+    def _(event) -> None:
+        _digit_goto(0)
 
     @kb.add("c-left")
     def _(event) -> None:
@@ -2351,7 +2725,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 move_pick(-1)
             else:
                 move_form_field(-1)
-        elif tid == "stages":
+        elif tid in {"stages", *MODULE_TAB_IDS}:
             _move_stage_field(-1)
         elif tid == "work":
             move_work_mode(-1)
@@ -2373,7 +2747,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 move_pick(1)
             else:
                 move_form_field(1)
-        elif tid == "stages":
+        elif tid in {"stages", *MODULE_TAB_IDS}:
             _move_stage_field(1)
         elif tid == "work":
             move_work_mode(1)
@@ -2471,7 +2845,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 fields = _coder_fields()
                 state.field_i = max(0, min(state.field_i, len(fields) - 1))
                 open_pick(fields[state.field_i])
-        elif tid == "stages":
+        elif tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(1)
         elif tid == "work":
             i = max(0, min(state.cursor, len(WORKSPACE_MODES) - 1))
@@ -2512,7 +2886,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 fields = _coder_fields()
                 state.field_i = max(0, min(state.field_i, len(fields) - 1))
                 open_pick(fields[state.field_i])
-        elif tid == "stages":
+        elif tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(1)
         elif tid == "work":
             i = max(0, min(state.cursor, len(WORKSPACE_MODES) - 1))

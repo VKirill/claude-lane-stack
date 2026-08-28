@@ -16,6 +16,7 @@ from merge_claude_settings import (  # noqa: E402
     merge_plugin_marketplace,
     merge_stack_capabilities,
     merge_pm_stop_sentinel,
+    merge_subagent_usage,
     merge_teammate_idle,
     load_settings,
     write_settings,
@@ -29,6 +30,7 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
         self.assertEqual(out["theme"], "dark")
         env = out["env"]
         self.assertEqual(env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"], "1")
+        self.assertEqual(env["CLAUDE_CODE_SUBAGENT_MODEL"], "sonnet")
         self.assertEqual(env["ENABLE_TOOL_SEARCH"], "true")
         allow = out["permissions"]["allow"]
         for tool in ("SendMessage", "ListAgents", "TaskStop", "Monitor", "Artifact"):
@@ -69,6 +71,19 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
             write_settings(path, settings)
             loaded = load_settings(path)
             self.assertIn("SendMessage", loaded["permissions"]["allow"])
+
+    def test_merge_subagent_usage_on_subagent_stop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            hook = Path(tmp) / "session_ledger.py"
+            hook.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            settings: dict = {"hooks": {}}
+            out = merge_subagent_usage(settings, hook)
+            entries = out["hooks"]["SubagentStop"]
+            self.assertEqual(len(entries), 1)
+            cmd = entries[0]["hooks"][0]["command"]
+            self.assertIn("session_ledger.py usage", cmd)
+            out2 = merge_subagent_usage(out, hook)
+            self.assertEqual(len(out2["hooks"]["SubagentStop"]), 1)
 
     def test_merge_teammate_idle_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

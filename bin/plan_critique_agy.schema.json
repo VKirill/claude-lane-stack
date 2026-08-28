@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LanePlanCritique",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "findings"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["ship", "revise", "revise_required"]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 400
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "code", "title", "detail", "action"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["error", "warn", "info"] },
+          "code": {
+            "type": "string",
+            "enum": [
+              "owns_gap",
+              "fat_task",
+              "verify_l2",
+              "missing_invariant",
+              "gold_plate",
+              "bad_dag",
+              "note"
+            ]
+          },
+          "title": { "type": "string", "maxLength": 120 },
+          "detail": { "type": "string", "maxLength": 400 },
+          "path": { "type": "string", "maxLength": 240 },
+          "task_id": { "type": "string", "maxLength": 32 },
+          "action": {
+            "type": "string",
+            "enum": ["add_owns", "drop_scope", "split_task", "fix_spec", "note"]
+          }
+        }
+      }
+    }
+  }
+}

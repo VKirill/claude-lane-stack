@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Install one hourly crontab line that honors stages.docs.hour per project."""
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+MARKER = "docs-maintain-all --if-hour"
+
+
+def desired_line() -> str:
+    home = Path.home()
+    log = home / ".agents" / "logs" / "docs-maintain.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    runner = home / ".agents" / "bin" / "docs-maintain-all"
+    if not runner.is_file():
+        runner = Path(__file__).resolve().parent / "docs-maintain-all"
+    return f"0 * * * * {runner} --if-hour >>{log} 2>&1"
+
+
+def current_crontab() -> str:
+    result = subprocess.run(["crontab", "-l"], check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        return ""
+    return result.stdout
+
+
+def ensure() -> str:
+    line = desired_line()
+    existing = current_crontab()
+    rows = [row for row in existing.splitlines() if MARKER not in row]
+    rows.append(line)
+    text = "\n".join(rows).rstrip() + "\n"
+    subprocess.run(["crontab", "-"], input=text, text=True, check=True)
+    return line
+
+
+def main() -> int:
+    line = ensure()
+    print(line)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

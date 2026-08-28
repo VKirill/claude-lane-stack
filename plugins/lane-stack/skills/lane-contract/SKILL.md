@@ -1,9 +1,49 @@
 ---
 name: lane-contract
-description: File-based task contracts under .agents/runs/ with owns_paths, verification tiers L0/L1/L2, and solo merge rules. Use when authoring or reviewing task YAML, owns_paths, acceptance, or verification commands.
+description: File-based task contracts under .agents/runs/ with owns_paths, verification tiers L0/L1/L2, and solo merge rules. Use when user says info, справка, lane-stack:lane-contract info, or when authoring or reviewing task YAML, owns_paths, acceptance, or verification commands.
+argument-hint: "[info]"
 ---
 
 # Lane contract (files only)
+
+## Info (print and stop)
+
+If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
+print the block below **verbatim** (Russian), then **stop**. Do not write task YAML.
+
+```text
+lane-contract — контракт задачи (YAML в .agents/runs/)
+
+Когда
+- Оркестратор заполняет tasks после «делай».
+- Проверка owns_paths / verification / acceptance.
+
+Как открыть шпаргалку
+- /lane-stack:lane-contract info
+- каталог: /lane-stack:info
+- раны целиком: /lane-stack:orchestrator-lanes info
+
+PM до dispatch
+1) run-init → PLAN/SPEC/tasks
+2) owns_paths + never_touch + acceptance (поведение, не «всё зелёное»)
+3) Одна задача = один product outcome. depends_on только compile/data.
+4) Parallel только при disjoint owns.
+5) run-validate --phase pre-dispatch
+6) Один run-supervisor. lane = adoc main_write.
+
+Писатель
+- Только owns_paths. Не .agents. Не merge/push main.
+- L0 — узкие проверки. Вне owns сломалось → Gaps, не «починить мир».
+
+Тиры
+- L0 writer  · L1 lane-ctl verify  · L2 PM/CI
+
+Нельзя
+- timeout_sec в плане выдумывать (дефолт 900)
+- verification[].command на файл, которого нет в cwd/worktree
+- node_modules / кэши в owns
+- мутировать YAML после первого старта
+```
 
 Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 `docs/decisions/ADR-codex-effort.md`, skill **orchestrator-lanes** (decomposition).

@@ -21,32 +21,67 @@ SENTINEL_RE = re.compile(
     re.IGNORECASE,
 )
 TAIL_CHARS = 6000
+_SAFE_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 
 
-def _disabled() -> bool:
-    return os.environ.get("LANE_TEAMMATE_IDLE_SENTINEL", "1").strip().lower() in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
-
-
-def last_assistant_text(payload: dict) -> str:
-    for key in ("last_assistant_message", "lastAssistantMessage"):
+def _payload_str(payload: dict, *keys: str) -> str:
+    for key in keys:
         raw = payload.get(key)
         if isinstance(raw, str) and raw.strip():
-            return raw
-    # Fallback: transcript may lag; best-effort only.
-    path = payload.get("transcript_path") or payload.get("agent_transcript_path")
-    if not isinstance(path, str) or not path.strip():
-        return ""
+            return raw.strip()
+    return ""
+
+
+def _session_dir(transcript_path: str) -> Path | None:
+    """Parent TeammateIdle transcript is {session}.jsonl; teammates live under {session}/."""
+    raw = Path(transcript_path).expanduser()
+    if raw.suffix == ".jsonl":
+        return raw.with_suffix("")
+    if raw.is_dir():
+        return raw
+    return None
+
+
+def resolve_teammate_transcript(payload: dict) -> Path | None:
+    """Teammate's own jsonl. TeammateIdle.transcript_path is the parent session."""
+    explicit = _payload_str(payload, "agent_transcript_path", "agentTranscriptPath")
+    if explicit:
+        path = Path(explicit).expanduser()
+        return path if path.is_file() else None
+
+    parent = _payload_str(payload, "transcript_path", "transcriptPath")
+    if not parent:
+        return None
+    session = _session_dir(parent)
+    if session is None:
+        return None
+    subdir = session / "subagents"
+    if not subdir.is_dir():
+        return None
+
+    agent_id = _payload_str(payload, "agent_id", "agentId")
+    if agent_id:
+        for name in (f"agent-{agent_id}.jsonl", f"agent-a{agent_id}.jsonl"):
+            cand = subdir / name
+            if cand.is_file():
+                return cand
+
+    teammate = _payload_str(payload, "teammate_name", "teammateName")
+    if not teammate or not _SAFE_NAME.fullmatch(teammate):
+        return None
+    matches = sorted(
+        subdir.glob(f"agent-a{teammate}-*.jsonl"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return matches[0] if matches else None
+
+
+def _assistant_from_jsonl(path: Path) -> str:
     try:
-        text = Path(path).expanduser().read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
-    # Prefer jsonl assistant text blocks from the end.
-    chunks: list[str] = []
     for line in reversed(text.splitlines()):
         line = line.strip()
         if not line:
@@ -60,8 +95,8 @@ def last_assistant_text(payload: dict) -> str:
         msg = obj.get("message") or {}
         content = msg.get("content") if isinstance(msg, dict) else None
         if isinstance(content, str) and content.strip():
-            chunks.append(content)
-        elif isinstance(content, list):
+            return content
+        if isinstance(content, list):
             parts = [
                 b.get("text", "")
                 for b in content
@@ -69,10 +104,35 @@ def last_assistant_text(payload: dict) -> str:
             ]
             joined = "".join(parts).strip()
             if joined:
-                chunks.append(joined)
-        if chunks:
-            break
-    return chunks[0] if chunks else ""
+                return joined
+    return ""
+
+
+def _disabled() -> bool:
+    return os.environ.get("LANE_TEAMMATE_IDLE_SENTINEL", "1").strip().lower() in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def last_assistant_text(payload: dict) -> str:
+    teammate_path = resolve_teammate_transcript(payload)
+    if teammate_path is not None:
+        text = _assistant_from_jsonl(teammate_path)
+        if text:
+            return text
+    for key in ("last_assistant_message", "lastAssistantMessage"):
+        raw = payload.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw
+    if _payload_str(payload, "teammate_name", "teammateName"):
+        return ""
+    parent = _payload_str(payload, "transcript_path", "transcriptPath")
+    if not parent:
+        return ""
+    return _assistant_from_jsonl(Path(parent).expanduser())
 
 
 def has_sentinel(text: str) -> bool:

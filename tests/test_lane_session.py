@@ -388,7 +388,9 @@ class LaneSessionTest(unittest.TestCase):
                             "usage": {
                                 "inputTokens": 10,
                                 "outputTokens": 5,
+                                "cacheReadTokens": 3,
                             },
+                            "total_cost_usd": 0.02,
                         }
                     )
                     raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
@@ -429,7 +431,16 @@ class LaneSessionTest(unittest.TestCase):
                         {
                             "type": "step_finish",
                             "sessionID": session_id,
-                            "part": {"reason": "stop"},
+                            "part": {
+                                "reason": "stop",
+                                "cost": 0.001,
+                                "tokens": {
+                                    "input": 671,
+                                    "output": 8,
+                                    "reasoning": 2,
+                                    "cache": {"read": 3, "write": 1},
+                                },
+                            },
                         }
                     )
                     raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
@@ -638,6 +649,7 @@ class LaneSessionTest(unittest.TestCase):
         extra_env: dict[str, str] | None = None,
         binary: Path | None = None,
         model: str = "test-model",
+        reasoning_effort: str | None = None,
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         prompt = self.cwd / f"task-{task_id}.md"
@@ -680,6 +692,8 @@ class LaneSessionTest(unittest.TestCase):
             "--model",
             model,
         ]
+        if reasoning_effort is not None:
+            command.extend(["--reasoning-effort", reasoning_effort])
         if max_tasks is not None:
             command.extend(["--max-tasks", str(max_tasks)])
         if pool_size is not None:
@@ -738,6 +752,7 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(first[first.index("--output-format") + 1], "stream-json")
         self.assertIn("--dangerously-skip-permissions", first)
         self.assertEqual(first[first.index("--agent") + 1], "agy-writer")
+        self.assertEqual(first[first.index("--effort") + 1], "high")
         self.assertNotIn("--conversation", first)
         self.assertEqual(
             second[second.index("--conversation") + 1], "agy-conversation-test"
@@ -748,9 +763,38 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["permission_mode"], "always-proceed")
         self.assertEqual(receipt["session_id"], "agy-conversation-test")
         self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(receipt["usage"]["input_tokens"], 10)
+        self.assertEqual(receipt["usage"]["output_tokens"], 5)
+        self.assertEqual(receipt["usage"]["thinking_tokens"], 2)
         self.assertEqual(
             self._session_record("agy")["session_id"], "agy-conversation-test"
         )
+
+    def test_agy_effort_follows_model_suffix(self) -> None:
+        cases = (
+            ("agy-effort-low", "gemini-3.7-flash-low", "high", "low"),
+            ("agy-effort-medium", "gemini-3.7-flash-medium", "low", "medium"),
+            ("agy-effort-high", "gemini-3.7-flash-high", "medium", "high"),
+        )
+        for task_id, model, incoming, expected in cases:
+            with self.subTest(model=model):
+                if self.args_log.is_file():
+                    self.args_log.unlink()
+                result = self._run(
+                    "agy",
+                    task_id,
+                    model=model,
+                    reasoning_effort=incoming,
+                    pool_size=1,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                argv = self._calls()[-1]
+                self.assertEqual(argv[argv.index("--effort") + 1], expected)
+                receipt = json.loads(
+                    (self.root / "runtime.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(receipt["reasoning_effort"], expected)
+                self.assertEqual(receipt["model"], model)
 
     def test_qwen_uses_typed_stream_and_reuses_session(self) -> None:
         for task_id in ("qwen-001", "qwen-002"):
@@ -908,6 +952,10 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["provider_sandbox"], "off")
         self.assertEqual(receipt["session_id"], "cursor-session-test")
         self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(receipt["usage"]["input_tokens"], 10)
+        self.assertEqual(receipt["usage"]["output_tokens"], 5)
+        self.assertEqual(receipt["usage"]["cache_read_input_tokens"], 3)
+        self.assertEqual(receipt["total_cost_usd"], 0.02)
         self.assertEqual(
             self._session_record("cursor")["session_id"], "cursor-session-test"
         )
@@ -942,6 +990,12 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["provider_sandbox"], "off")
         self.assertEqual(receipt["session_id"], "opencode-session-test")
         self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(receipt["usage"]["input_tokens"], 671)
+        self.assertEqual(receipt["usage"]["output_tokens"], 8)
+        self.assertEqual(receipt["usage"]["reasoning_tokens"], 2)
+        self.assertEqual(receipt["usage"]["cache_read_input_tokens"], 3)
+        self.assertEqual(receipt["usage"]["cache_creation_input_tokens"], 1)
+        self.assertEqual(receipt["total_cost_usd"], 0.001)
         self.assertEqual(
             self._session_record("opencode")["session_id"], "opencode-session-test"
         )
@@ -1739,6 +1793,9 @@ class LaneSessionTest(unittest.TestCase):
         receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
         self.assertEqual(receipt["provider"], "codex")
         self.assertEqual(receipt["provider_version"], "0.2.103-test")
+        self.assertEqual(receipt["usage"]["input_tokens"], 11)
+        self.assertEqual(receipt["usage"]["cached_input_tokens"], 2)
+        self.assertEqual(receipt["usage"]["output_tokens"], 7)
 
     def test_effective_grok_model_mismatch_fails_closed(self) -> None:
         result = self._run(

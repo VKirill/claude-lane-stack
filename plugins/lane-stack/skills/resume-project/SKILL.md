@@ -1,9 +1,44 @@
 ---
 name: resume-project
-description: Cold-start project context for orchestrator or human. Use when user says resume, продолж, where were we, cold start, or starting a new orchestrator session on an existing repo.
+description: Cold-start project context for orchestrator or human. Use when user says info, справка, lane-stack:resume-project info, resume, продолж, where were we, cold start, or starting a new orchestrator session on an existing repo.
+argument-hint: "[info]"
 ---
 
 # Resume project
+
+## Info (print and stop)
+
+If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
+print the block below **verbatim** (Russian), then **stop**. Do not run resume-project.
+
+```text
+resume-project — холодный старт («где мы»)
+
+Когда
+- Новая сессия оркестратора на живом репо.
+- «где мы / продолж / resume / handoff».
+- Не для туду и не для нового онбординга.
+
+Как открыть шпаргалку
+- /lane-stack:resume-project info
+- каталог: /lane-stack:info
+
+Запуск
+- /resume-project
+- CLI: ~/.agents/bin/resume-project "$(pwd)" --compact
+
+Что ответить (из HANDOFF, коротко по-русски)
+- Now
+- Blocked + next_act (fix_contract → не респавнить writer)
+- Next — только типизированные акты
+- Profile: main_write + workspace
+
+Нельзя
+- просить человека мержить
+- кодить как PM
+- слепой retry при next_act=fix_contract
+- вываливать сырой BOARD в чат
+```
 
 ## MUST
 

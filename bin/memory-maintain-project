@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# Lint + optional LLM draft refresh for SMA-style project memory.
+# Off unless stages.memory.enabled=true in adoc routing.profile.yaml.
+set -euo pipefail
+export PATH="${HOME}/.agents/bin:${PATH}"
+# Skip session-ledger / other stack hooks if Codex still inherits them.
+export CLAUDE_LANE_AUTOMATION=1
+
+REPO="${1:-.}"
+SINCE="${2:-24 hours ago}"
+DRY="${3:-}"
+REPO="$(cd "$REPO" && pwd)"
+
+MEM="${HOME}/.agents/bin/lane-memory"
+[[ -x "$MEM" ]] || MEM="$(dirname "$0")/lane-memory"
+
+if ! "$MEM" enabled "$REPO" >/dev/null 2>&1; then
+  echo "SKIP: stages.memory.enabled=false: $REPO"
+  exit 0
+fi
+
+if [[ ! -d "$REPO/.agents/memory" ]]; then
+  "$MEM" init "$REPO"
+fi
+
+echo "PROJECT=$REPO SINCE=$SINCE"
+"$MEM" lint "$REPO" || true
+"$MEM" index "$REPO" >/dev/null
+"$MEM" inject "$REPO" || true
+
+if [[ "$DRY" == "--dry-run" ]]; then
+  echo "DRY-RUN: would dispatch memory-maintainer (lint+drafts only)"
+  exit 0
+fi
+
+INV=$(mktemp -t lane-memory-inv.XXXXXX)
+python3 - "$REPO" "$SINCE" "$INV" <<'PY'
+import sys
+from pathlib import Path
+
+for cand in (
+    Path.home() / ".agents" / "bin",
+    Path("/home/ubuntu/.agents/bin"),
+    Path("/home/ubuntu/tools/claude-lane-stack/bin"),
+):
+    if (cand / "pipeline_stages.py").is_file():
+        sys.path.insert(0, str(cand))
+        break
+from pipeline_stages import resolve_memory
+
+repo = Path(sys.argv[1])
+since = sys.argv[2]
+inv_path = Path(sys.argv[3])
+settings = resolve_memory(repo)
+maintain = settings.get("maintain")
+if isinstance(maintain, str):
+    maintain = maintain.strip().lower() in {"1", "true", "yes", "on"}
+print(
+    f"memory.provider={settings.get('provider')} model={settings.get('model')} "
+    f"effort={settings.get('reasoning_effort')} "
+    f"tier={settings.get('service_tier')} maintain={bool(maintain)}"
+)
+Path("/tmp/lane-memory-stage.env").write_text(
+    f"PROVIDER={settings.get('provider') or 'codex'}\n"
+    f"MODEL={settings.get('model') or 'gpt-5.6-luna'}\n"
+    f"EFFORT={settings.get('reasoning_effort') or 'max'}\n"
+    f"TIER={settings.get('service_tier') or 'standard'}\n"
+    f"MAINTAIN={'true' if maintain else 'false'}\n",
+    encoding="utf-8",
+)
+
+def _newest(folder: Path, glob: str, limit: int) -> list[str]:
+    if not folder.is_dir():
+        return []
+    files = [p for p in folder.rglob(glob) if p.is_file() and p.name != "INDEX.md"]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return [str(p.relative_to(repo)) for p in files[:limit]]
+
+mem = repo / ".agents" / "memory"
+records = sorted(
+    p.name
+    for p in mem.glob("*.md")
+    if p.name not in {"MEMORY.md", "TAGS.md"} and not p.name.startswith("INDEX-")
+)
+drafts = sorted(
+    p.name
+    for p in (mem / "drafts").glob("*.md")
+    if p.name != "_TEMPLATE.md"
+)
+lines = [
+    f"SINCE={since}",
+    f"facts: {', '.join(records) or '(none)'}",
+    f"pending_drafts: {', '.join(drafts) or '(none)'}",
+    "read_if_present:",
+]
+for rel in (
+    ".agents/LESSONS.md",
+    ".agents/PROGRESS.md",
+    "docs/decisions.md",
+    ".agents/memory/TAGS.md",
+    ".agents/memory/MEMORY.md",
+    ".agents/memory/drafts/_TEMPLATE.md",
+):
+    mark = "yes" if (repo / rel).is_file() else "no"
+    lines.append(f"  {mark} {rel}")
+lines.append("claude_session_log (newest):")
+for rel in _newest(repo / ".agents" / "session-log", "*.md", 20):
+    lines.append(f"  {rel}")
+lines.append("episodes (newest):")
+for rel in _newest(mem / "episodes", "*.md", 8):
+    lines.append(f"  {rel}")
+inv_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+
+# shellcheck disable=SC1091
+source /tmp/lane-memory-stage.env
+
+if [[ "${MAINTAIN:-true}" != "true" ]]; then
+  echo "SKIP: stages.memory.maintain=false (lint/index/inject only)"
+  exit 0
+fi
+
+ART="$REPO/.agents/session-log"
+mkdir -p "$ART"
+DAY=$(date -u +%Y-%m-%d)
+REPORT="$ART/MEMORY-$DAY.md"
+INSTR="${HOME}/.agents/codex/instructions/memory-maintain.md"
+[[ -f "$INSTR" ]] || INSTR="$(dirname "$0")/../agents/codex/instructions/memory-maintain.md"
+
+if [[ "${PROVIDER}" != "codex" ]]; then
+  echo "NOTE: LLM refresh implemented for codex; ran lint/index/inject only (provider=$PROVIDER)"
+  {
+    echo "# MEMORY maintain $DAY"
+    echo "repo: $REPO"
+    echo "provider: $PROVIDER (lint only)"
+  } > "$REPORT"
+  echo "WROTE $REPORT"
+  exit 0
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "WARN: codex missing; lint/index done" >&2
+  exit 0
+fi
+
+SPEC=$(mktemp -t memory-maintain.XXXXXX)
+FINAL=$(mktemp -t memory-maintain-out.XXXXXX)
+{
+  cat "$INSTR"
+  echo ""
+  echo "PROJECT_CWD=$REPO"
+  echo ""
+  echo "## Inventory"
+  cat "$INV"
+} > "$SPEC"
+
+# ignore-user-config: host hooks/skills (~371k) starve Luna.
+# danger-full-access: workspace-write treats .agents/memory as RO (gitignored).
+CODEX_CMD=(
+  timeout 1800
+  codex exec
+  --ignore-user-config
+  --model "${MODEL}"
+  -c "model_reasoning_effort=${EFFORT}"
+  -c approval_policy="never"
+  --sandbox danger-full-access
+  --skip-git-repo-check
+  --cd "$REPO"
+  --output-last-message "$FINAL"
+)
+if [[ "${TIER:-standard}" == "fast" ]]; then
+  CODEX_CMD+=(-c 'service_tier="fast"' --enable fast_mode)
+else
+  CODEX_CMD+=(--disable fast_mode)
+fi
+"${CODEX_CMD[@]}" - < "$SPEC" || true
+
+"$MEM" inject "$REPO" || true
+"$MEM" lint "$REPO" || true
+
+{
+  echo "# MEMORY maintain $DAY"
+  echo "repo: $REPO"
+  echo "since: $SINCE"
+  echo "model: ${MODEL} effort=${EFFORT} tier=${TIER}"
+  echo ""
+  cat "$FINAL" 2>/dev/null || echo "(no codex output)"
+  echo ""
+  echo "## leftover drafts"
+  find "$REPO/.agents/memory/drafts" -name '*.md' ! -name '_TEMPLATE.md' -printf '%f\n' 2>/dev/null | sort || true
+} > "$REPORT"
+echo "WROTE $REPORT"

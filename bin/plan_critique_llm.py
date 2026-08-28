@@ -19,6 +19,25 @@ from typing import Any, Callable
 # Soft caps so prompts stay within small-model windows.
 _MAX_FILE_CHARS = 12_000
 _MAX_TOTAL_CHARS = 48_000
+AGY_SCHEMA_PATH = Path(__file__).with_name("plan_critique_agy.schema.json")
+CRITIQUE_SCHEMA_PATH = AGY_SCHEMA_PATH
+
+
+def _record_invoke_usage(cli: str, model: str, stdout: str) -> None:
+    try:
+        from usage_ledger import record_receipt, usage_from_stdout
+
+        usage, cost = usage_from_stdout(stdout)
+        record_receipt(
+            {
+                "provider": cli,
+                "model": model,
+                "usage": usage or {},
+                "total_cost_usd": cost,
+            }
+        )
+    except Exception:
+        pass
 
 
 class LlmCritiqueError(RuntimeError):
@@ -76,7 +95,7 @@ def build_llm_prompt(
     provider: str,
     model: str,
 ) -> str:
-    """Strict JSON-only review prompt with embedded run corpus."""
+    """Independent plan review. AGY also gets --json-schema LanePlanCritique."""
     structural_md = json.dumps(
         {
             "status": structural.get("status"),
@@ -87,30 +106,45 @@ def build_llm_prompt(
         ensure_ascii=False,
     )
     corpus = pack_run_corpus(run_dir)
+    schema_hint = (
+        "AGY: your output is enforced by LanePlanCritique JSON Schema. "
+        "Return that object only.\n"
+        if provider == "agy"
+        else "Reply with a **single JSON object** and nothing else (no fences).\n"
+    )
     return (
-        "You compress coverage-auditor findings for the PM. Nothing else.\n"
-        "Do NOT invent findings. Do NOT mention outcome.json, schemas, "
-        "run-validate, or product architecture.\n"
-        "List only files to add to owns_paths or drop from PLAN.\n\n"
+        "You are an independent plan critic. The PM wrote PLAN/SPEC/tasks. "
+        "Review the plan itself, not product architecture.\n"
+        "Structural findings below are hints. You MAY add new findings. "
+        "Do not invent files that are not in the corpus. "
+        "wiki/, TODO/, docs/** are noise unless a task must edit them.\n"
+        "Max 7 findings. Prefer fewer.\n\n"
         f"Provider: {provider}"
         + (f" · model {model}" if model else "")
         + "\n\n"
-        "## Findings (source of truth — do not add to this list)\n\n"
+        "## Structural hints\n\n"
         f"```json\n{structural_md}\n```\n\n"
-        "## Run corpus (context only)\n\n"
+        "## Run corpus\n\n"
         f"{corpus}\n\n"
-        "## Output contract (MANDATORY)\n\n"
-        "Reply with a **single JSON object** and nothing else (no markdown fences).\n"
-        "Schema:\n"
+        "## Output\n\n"
+        f"{schema_hint}"
         "{\n"
-        '  "verdict": "ship",\n'
-        '  "summary": "one line: files to add to owns_paths or drop from PLAN",\n'
-        '  "findings": []\n'
-        "}\n\n"
-        "Rules:\n"
-        "- findings MUST be []. Decision is computed outside you.\n"
-        "- summary names concrete paths from the findings above.\n"
-        "- If findings are empty, summary is 'no coverage gaps'.\n"
+        '  "verdict": "ship" | "revise" | "revise_required",\n'
+        '  "summary": "one line the PM can act on",\n'
+        '  "findings": [\n'
+        "    {\n"
+        '      "severity": "error" | "warn" | "info",\n'
+        '      "code": "owns_gap" | "fat_task" | "verify_l2" | '
+        '"missing_invariant" | "gold_plate" | "bad_dag" | "note",\n'
+        '      "title": "short",\n'
+        '      "detail": "what to change",\n'
+        '      "path": "optional path",\n'
+        '      "task_id": "optional",\n'
+        '      "action": "add_owns" | "drop_scope" | "split_task" | '
+        '"fix_spec" | "note"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
     )
 
 
@@ -240,6 +274,45 @@ def _parse_stream_or_json_array(stdout: str) -> str:
     return last_result or last_assistant or text
 
 
+def _agy_structured_blob(payload: object) -> str | None:
+    if isinstance(payload, dict) and "verdict" in payload:
+        return json.dumps(payload, ensure_ascii=False)
+    if not isinstance(payload, dict):
+        return None
+    for key in ("result", "response", "data"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            got = _agy_structured_blob(value)
+            if got:
+                return got
+        if isinstance(value, str) and value.strip():
+            try:
+                inner = json.loads(value)
+            except json.JSONDecodeError:
+                if "verdict" in value:
+                    return value
+                continue
+            got = _agy_structured_blob(inner)
+            if got:
+                return got
+    return None
+
+
+def parse_agy_stdout(stdout: str) -> str:
+    """AGY --output-format json + --json-schema → LanePlanCritique object."""
+    text = (stdout or "").strip()
+    if not text:
+        return ""
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return _parse_stream_or_json_array(text)
+    extracted = _agy_structured_blob(payload)
+    if extracted is not None:
+        return extracted
+    return _parse_stream_or_json_array(text)
+
+
 def invoke_qwen(
     prompt: str, *, model: str, timeout: int, binary: str | None = None
 ) -> str:
@@ -266,6 +339,7 @@ def invoke_qwen(
     if completed.returncode != 0:
         tail = (completed.stderr or completed.stdout or "")[-1500:]
         raise LlmCritiqueError(f"qwen exited {completed.returncode}: {tail}")
+    _record_invoke_usage("qwen", model or "qwen3.8-max-preview", completed.stdout or "")
     return _parse_stream_or_json_array(completed.stdout)
 
 
@@ -305,6 +379,7 @@ def invoke_kimi(
         if completed.returncode != 0:
             tail = (completed.stderr or completed.stdout or "")[-1500:]
             raise LlmCritiqueError(f"kimi exited {completed.returncode}: {tail}")
+    _record_invoke_usage("kimi", model or "kimi-code/k3-256k", completed.stdout or "")
     return _parse_stream_or_json_array(completed.stdout)
 
 
@@ -322,10 +397,18 @@ def invoke_grok(
         argv = [bin_path, "--no-subagents", "-p", prompt]
         if model:
             argv.extend(["--model", model])
+        if CRITIQUE_SCHEMA_PATH.is_file():
+            argv.extend(
+                [
+                    "--json-schema",
+                    CRITIQUE_SCHEMA_PATH.read_text(encoding="utf-8"),
+                ]
+            )
         completed = _run(argv, cwd=cwd, env=env, timeout=timeout)
     if completed.returncode != 0:
         tail = (completed.stderr or completed.stdout or "")[-1500:]
         raise LlmCritiqueError(f"grok exited {completed.returncode}: {tail}")
+    _record_invoke_usage("grok", model or "", completed.stdout or "")
     return completed.stdout or completed.stderr or ""
 
 
@@ -337,6 +420,10 @@ def invoke_agy(
         raise LlmCritiqueError("agy binary not found on PATH")
     env = os.environ.copy()
     env["CLAUDE_LANE_AUTOMATION"] = "1"
+    from routing_profile import resolve_agy_effort
+
+    model_id = model or "gemini-3.7-flash-high"
+    effort_id = resolve_agy_effort(model_id, effort)
     with tempfile.TemporaryDirectory(prefix="plan-critique-agy-") as raw:
         cwd = Path(raw)
         argv = [
@@ -344,19 +431,22 @@ def invoke_agy(
             "--print",
             prompt,
             "--model",
-            model or "gemini-3.6-flash-high",
+            model_id,
             "--effort",
-            effort or "low",
+            effort_id,
             "--dangerously-skip-permissions",
             "--sandbox=false",
             "--output-format",
             "json",
         ]
+        if CRITIQUE_SCHEMA_PATH.is_file():
+            argv.extend(["--json-schema", str(CRITIQUE_SCHEMA_PATH)])
         completed = _run(argv, cwd=cwd, env=env, timeout=timeout)
     if completed.returncode != 0:
         tail = (completed.stderr or completed.stdout or "")[-1500:]
         raise LlmCritiqueError(f"agy exited {completed.returncode}: {tail}")
-    return _parse_stream_or_json_array(completed.stdout)
+    _record_invoke_usage("agy", model_id, completed.stdout or "")
+    return parse_agy_stdout(completed.stdout)
 
 
 def invoke_codex(
@@ -396,10 +486,14 @@ def invoke_codex(
             str(last_message),
             "-",
         ]
+        extra: list[str] = []
+        if CRITIQUE_SCHEMA_PATH.is_file():
+            extra.extend(["--output-schema", str(CRITIQUE_SCHEMA_PATH), "--json"])
         if str(service_tier or "").strip().lower() == "fast":
-            argv[-1:-1] = ["-c", 'service_tier="fast"', "--enable", "fast_mode"]
+            extra.extend(["-c", 'service_tier="fast"', "--enable", "fast_mode"])
         else:
-            argv[-1:-1] = ["--disable", "fast_mode"]
+            extra.extend(["--disable", "fast_mode"])
+        argv[-1:-1] = extra
         completed = _run(argv, cwd=cwd, env=env, timeout=timeout, stdin_text=prompt)
         result_text = (
             last_message.read_text(encoding="utf-8", errors="replace")
@@ -413,6 +507,7 @@ def invoke_codex(
         result_text = completed.stdout or ""
     if not result_text.strip():
         raise LlmCritiqueError("codex produced no final message")
+    _record_invoke_usage("codex", model or "gpt-5.6-luna", completed.stdout or "")
     return result_text
 
 
@@ -482,6 +577,11 @@ def invoke_opencode(
     if completed.returncode != 0:
         tail = (completed.stderr or completed.stdout or "")[-1500:]
         raise LlmCritiqueError(f"opencode exited {completed.returncode}: {tail}")
+    _record_invoke_usage(
+        "opencode",
+        model or "alibaba-token-plan/qwen3.8-max-preview",
+        completed.stdout or "",
+    )
     result_text = _opencode_text_from_jsonl(completed.stdout or "")
     if not result_text.strip():
         result_text = completed.stdout or ""
@@ -518,7 +618,7 @@ def invoke_llm_critique(
     *,
     provider: str,
     model: str = "",
-    effort: str = "low",
+    effort: str = "",
     timeout: int = 180,
     service_tier: str = "standard",
     agent: str = "",

@@ -1,9 +1,49 @@
 ---
 name: project-life
-description: "Единый скилл ведения задач и жизни проекта: идеи/туду → планы/roadmap → раны → артефакты → прогресс/уроки. Use when user says туду, запиши, идея, backlog, потом, план, спланируй, roadmap, этапы, приоритеты, прогресс, урок, итоги — or todo, plan, lesson, progress. Cold-start «где мы / handoff / продолж» is resume-project, not this skill."
+description: "Единый скилл ведения задач и жизни проекта: идеи/туду → планы/roadmap → раны → артефакты → прогресс/уроки. Use when user says info, справка, lane-stack:project-life info, туду, запиши, идея, backlog, потом, план, спланируй, планируем, пока план, не запускай, обсудим, roadmap, этапы, приоритеты, прогресс, урок, итоги — or todo, plan, planning, lesson, progress. Cold-start «где мы / handoff / продолж» is resume-project, not this skill."
+argument-hint: "[info]"
 ---
 
 # Project life — one skill for tasks & project memory
+
+## Info (print and stop)
+
+If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
+print the block below **verbatim** (Russian), then **stop**. Do not create a todo or plan unless the user already asked for that in the same message.
+
+```text
+project-life — туду, план, память. Не ран.
+
+Цепочка
+idea → todo → plan → run → merge
+                 память: PROGRESS · LESSONS · decisions
+
+Как открыть шпаргалку
+- /lane-stack:project-life info
+- каталог: /lane-stack:info
+
+Фразы → действие
+- «запиши / туду / потом / не теряй»     → .agents/todos/ + INDEX
+- «покажи туду»                         → прочитай INDEX, ответь по-русски
+- «закрой / сделано / не надо»          → status done/dropped
+- «планируем / не запускай / обсудим»   → .agents/plans/items/<slug>/, ран НЕ открывать
+- «архитектор / новое приложение / сервис» → skill app-architect, artifacts/ в том же плане
+- «делай / реализуй / в работу»         → выход в orchestrator-lanes
+- «где мы / продолж»                    → это resume-project, не этот скилл
+
+План без рана
+1) .agents/plans/items/<YYYY-MM-DD-slug>/  status: draft
+2) Решения в PLAN.md + History. Чат не хранилище.
+3) UI: в Links должен быть docs/DESIGN.md (или spawn design-lead).
+4) Запрещено до «делай»: run-init, run-supervisor, Claude Plan mode, ~/.claude/plans/
+
+Файлы
+- .agents/todos/   .agents/plans/   .agents/PROGRESS.md   .agents/LESSONS.md
+- docs/decisions.md
+- docs/plans/ = длинная стратегия, не очередь задач
+
+На диск — English. В чат — русский. Секреты не писать.
+```
 
 Everything lives in files under `.agents/` (project) or `~/.agents/` (global).
 **Durable files: English only.** Chat may be Russian — answer in RU, write EN
@@ -31,7 +71,7 @@ memory update after work is not.
     items/<YYYY-MM-DD-slug>/{README.md, AGENT.md, meta.yaml}
   plans/            # delivery map         → references/plans.md
     ROADMAP.md
-    items/<YYYY-MM-DD-slug>/{PLAN.md, meta.yaml}
+    items/<YYYY-MM-DD-slug>/{PLAN.md, meta.yaml, artifacts/}
   runs/             # execution contracts  (skill lane-contract)
     <slug>/artifacts/<task>/...
   PROGRESS.md       # now / blocked / next → references/memory.md
@@ -50,18 +90,47 @@ Choose project root when cwd has `.git`/`package.json`/`CLAUDE.md`; use
 | User says (≈) | Do | Reference |
 |---------------|----|-----------|
 | «занеси в туду / запиши / потом / не теряй» | Create/update todo item + INDEX | `references/todos.md` |
-| discuss only, no capture | Optionally append open item README/AGENT | — |
+| chat about a todo, no «запиши» | Do not invent a todo; ask if they want it filed | — |
 | «покажи туду / что в бэклоге» | Read INDEX + open items, answer in RU | — |
 | «закрой / сделано / не надо» | status done/dropped + INDEX | `references/todos.md` |
-| «спланируй / разбей на этапы / roadmap / приоритеты» | Create/update plan + ROADMAP row | `references/plans.md` |
+| «планируем / пока план / не запускай / обсудим / спланируй / разбей на этапы» | **Planning session** — draft in `.agents/plans/`, no run | `references/plans.md` |
+| «архитектор / новое приложение / новый сервис / спроектируем продукт» | Load **app-architect**. Same plan folder, living `artifacts/`. No run | skill `app-architect` |
 | «что дальше по проекту» (already in session) | PROGRESS → ROADMAP → todos INDEX counts | — |
-| «делай / реализуй / в работу» | Spawn a run (`~/.agents/docs/FILE-CONTRACT.md`; Claude: skill `lane-contract`), link it from plan/todo | — |
+| «делай / реализуй / в работу / запускай ран» | Exit planning. Spawn a run (`lane-contract`), link it from the plan | — |
 | run закончился зелёным | Tick plan task → refresh ROADMAP → rewrite PROGRESS | `references/memory.md` |
 | поправили тебя / наступил на грабли | One LESSONS entry | `references/memory.md` |
 | зафиксировано крупное необратимое решение | ADR entry in docs/decisions.md | `references/memory.md` |
 | «итоги / конец сессии» | PROGRESS current, ideas filed as todos, no orphan runs | `references/memory.md` |
 | «что делали / почему так / покажи отчёт» | Read session-log INDEX, run artifacts, findings — don't write them | — |
 | «где мы / handoff / продолж» (cold start) | `~/.agents/bin/resume-project .` (Claude: skill `resume-project`), not this file | — |
+
+## Planning session
+
+Stay here until the user says «делай / реализуй / в работу / запускай ран».
+
+Triggers: «планируем», «пока план», «не запускай», «обсудим», «спланируй»,
+«разбей на этапы», «только карта», «пока не в ран».
+
+1. Create or open `.agents/plans/items/<YYYY-MM-DD-slug>/` (`status: draft`).
+2. Each decision → edit `PLAN.md` + dated **History**. Chat is not the store.
+3. Screenshots / notes → optional `items/<slug>/artifacts/`; link from PLAN **Links**.
+4. Ask the next scoped question. Do not invent a run or score a conveyor.
+
+Forbidden until «делай»:
+- `run-init`, `run-controller`, `run-supervisor`, writers
+- Claude Code **Plan mode** and any write under `~/.claude/plans/`
+- owns_paths / task YAML in this `PLAN.md`
+
+If the host is already in Claude Plan mode: tell the user to switch to
+**default** and keep writing under `.agents/plans/`. Do not copy the
+harness file as the canon (you may quote it once into `PLAN.md`).
+
+UI / visual initiative: Links must include `docs/DESIGN.md`. If it is
+missing, spawn **design-lead** (skill `project-design`) or draft DESIGN.md
+here — do not `run-init` a UI lane without it.
+
+Exit: «делай» → `lane-contract` / orchestrator-lanes Phase 0. Set plan
+`status: active`, link the run in the task table + `meta.yaml.runs`.
 
 ## Decision guide (where does X go?)
 
@@ -75,7 +144,8 @@ Choose project root when cwd has `.git`/`package.json`/`CLAUDE.md`; use
 | "we got burned by…" | **LESSONS** |
 | "we chose A over B forever" | **docs/decisions.md** |
 | leftover debt / simplify later | **`.agents/agent-notes/OPEN.md`** |
-| reports, screenshots, receipts | **run artifacts** (immutable, stay in the run) |
+| planning-session notes / screenshots | **`.agents/plans/items/<slug>/artifacts/`** (until a run exists) |
+| reports, screenshots, receipts after a run | **run artifacts** (immutable, stay in the run) |
 | "why is this code here" | session-log / findings (read only) |
 
 ## Linking discipline (what makes it ONE system)
@@ -141,6 +211,8 @@ A vague ask («сделай красиво», unclear scope, two plausible readi
 ## Anti-patterns
 
 - ❌ Chat-only todos/plans/results — if it matters, it's a file
+- ❌ Claude Plan mode / `~/.claude/plans/` as the project plan
+- ❌ `run-init` during a planning session
 - ❌ One mega-file mixing todo+plan+progress (layers keep files small)
 - ❌ Appending status updates to PROGRESS forever (rewrite it)
 - ❌ Task YAML / owns_paths inside `.agents/plans/` PLAN.md (that's lane-contract)

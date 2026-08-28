@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from pipeline_stages import (  # noqa: E402
     attach_decision,
     compute_decision,
     critique_gate_errors,
+    critique_inbox_errors,
     critique_should_run,
     gitnexus_caller_files,
     load_stages_from_profile,
@@ -27,22 +29,42 @@ from pipeline_stages import (  # noqa: E402
     stages_to_yaml_lines,
     structural_critique,
     write_critique_artifacts,
+    write_critique_reply,
 )
 from routing_profile import load_routing_profile  # noqa: E402
 from plan_critique_llm import (  # noqa: E402
+    AGY_SCHEMA_PATH,
+    CRITIQUE_SCHEMA_PATH,
     extract_json_payload,
+    invoke_agy,
     invoke_codex,
+    invoke_grok,
     invoke_opencode,
+    parse_agy_stdout,
     parse_llm_payload,
 )
 
 
 class PipelineStagesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._usage_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._usage_tmp.cleanup)
+        self._old_usage = os.environ.get("AGENTS_USAGE_DB")
+        os.environ["AGENTS_USAGE_DB"] = str(Path(self._usage_tmp.name) / "usage.sqlite")
+
+    def tearDown(self) -> None:
+        if self._old_usage is None:
+            os.environ.pop("AGENTS_USAGE_DB", None)
+        else:
+            os.environ["AGENTS_USAGE_DB"] = self._old_usage
+
     def test_normalize_defaults(self) -> None:
         s = normalize_stages(None, write_provider="qwen")
         self.assertTrue(s["plan_critique"]["enabled"])
         self.assertEqual(s["plan_critique"]["mode"], "advisory")
-        self.assertEqual(s["plan_critique"]["provider"], "structural")
+        self.assertEqual(s["plan_critique"]["provider"], "agy")
+        self.assertEqual(s["plan_critique"]["model"], "gemini-3.7-flash-high")
+        self.assertEqual(s["plan_critique"]["reasoning_effort"], "high")
         self.assertEqual(s["plan_critique"]["min_score"], 7)
         self.assertEqual(s["plan_critique"]["min_write_tasks"], 3)
         self.assertTrue(s["plan_critique"]["on_high_risk"])
@@ -53,6 +75,105 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(s["onboard"]["reasoning_effort"], "high")
         self.assertEqual(s["onboard"]["service_tier"], "standard")
         self.assertEqual(s["plan_critique"]["service_tier"], "standard")
+        self.assertFalse(s["memory"]["enabled"])
+        self.assertEqual(s["memory"]["provider"], "codex")
+        self.assertTrue(s["memory"]["maintain"])
+        self.assertTrue(s["memory"]["inject"])
+        self.assertEqual(s["memory"]["audience"], "subagent")
+        self.assertEqual(s["memory"]["search_engine"], "auto")
+        self.assertEqual(s["memory"]["core_budget"], 3072)
+        self.assertEqual(s["memory"]["note_budget"], 8000)
+        self.assertEqual(s["memory"]["index_budget"], 65536)
+        self.assertEqual(s["memory"]["context_budget"], 2500)
+        self.assertEqual(s["memory"]["personal_bot"], "")
+        self.assertFalse(s["docs"]["enabled"])
+        self.assertTrue(s["docs"]["maintain"])
+        self.assertEqual(s["docs"]["provider"], "codex")
+        self.assertEqual(s["docs"]["model"], "gpt-5.6-luna")
+        self.assertEqual(s["docs"]["reasoning_effort"], "max")
+        self.assertEqual(s["docs"]["service_tier"], "fast")
+        self.assertEqual(s["docs"]["page_cap"], 0)
+        self.assertEqual(s["docs"]["since"], "yesterday")
+        self.assertEqual(s["docs"]["hour"], 5)
+        yaml_text = "\n".join(stages_to_yaml_lines(s))
+        self.assertIn("  memory:", yaml_text)
+        self.assertIn("  docs:", yaml_text)
+        self.assertIn("    page_cap: 0", yaml_text)
+        self.assertIn("    enabled: false", yaml_text)
+        self.assertIn("    maintain: true", yaml_text)
+        self.assertIn("    inject: true", yaml_text)
+        self.assertIn("    provider: codex", yaml_text)
+        self.assertIn("    audience: subagent", yaml_text)
+        self.assertIn("    search_engine: auto", yaml_text)
+
+    def test_normalize_memory_knobs_and_yaml(self) -> None:
+        s = normalize_stages(
+            {
+                "memory": {
+                    "enabled": True,
+                    "maintain": False,
+                    "inject": False,
+                    "audience": "export",
+                    "search_engine": "fts5",
+                    "core_budget": 4096,
+                    "note_budget": 12000,
+                    "index_budget": 131072,
+                    "context_budget": 1500,
+                }
+            },
+            write_provider="kimi",
+        )
+        self.assertTrue(s["memory"]["enabled"])
+        self.assertFalse(s["memory"]["maintain"])
+        self.assertEqual(s["memory"]["audience"], "export")
+        self.assertEqual(s["memory"]["search_engine"], "fts5")
+        self.assertEqual(s["memory"]["core_budget"], 4096)
+        yaml_text = "\n".join(stages_to_yaml_lines(s))
+        self.assertIn("  memory:", yaml_text)
+        self.assertIn("    enabled: true", yaml_text)
+        self.assertIn("    audience: export", yaml_text)
+        self.assertIn("    core_budget: 4096", yaml_text)
+        bad = normalize_stages(
+            {"memory": {"audience": "everyone", "search_engine": "vector", "core_budget": 0}},
+            write_provider="kimi",
+        )
+        self.assertEqual(bad["memory"]["audience"], "subagent")
+        self.assertEqual(bad["memory"]["search_engine"], "auto")
+        self.assertEqual(bad["memory"]["core_budget"], 3072)
+
+    def test_normalize_docs_knobs_and_yaml(self) -> None:
+        s = normalize_stages(
+            {
+                "docs": {
+                    "enabled": True,
+                    "maintain": False,
+                    "page_cap": 8,
+                    "since": "7 days ago",
+                    "hour": 22,
+                    "service_tier": "standard",
+                }
+            },
+            write_provider="kimi",
+        )
+        self.assertTrue(s["docs"]["enabled"])
+        self.assertFalse(s["docs"]["maintain"])
+        self.assertEqual(s["docs"]["model"], "gpt-5.6-luna")
+        self.assertEqual(s["docs"]["page_cap"], 8)
+        self.assertEqual(s["docs"]["since"], "7 days ago")
+        self.assertEqual(s["docs"]["hour"], 22)
+        self.assertEqual(s["docs"]["service_tier"], "standard")
+        yaml_text = "\n".join(stages_to_yaml_lines(s))
+        self.assertIn("  docs:", yaml_text)
+        self.assertIn("    page_cap: 8", yaml_text)
+        unlimited = normalize_stages(
+            {"docs": {"since": "last week", "page_cap": 0, "hour": 99}},
+            write_provider="kimi",
+        )
+        self.assertEqual(unlimited["docs"]["since"], "yesterday")
+        self.assertEqual(unlimited["docs"]["page_cap"], 0)
+        self.assertEqual(unlimited["docs"]["hour"], 5)
+        neg = normalize_stages({"docs": {"page_cap": -3}}, write_provider="kimi")
+        self.assertEqual(neg["docs"]["page_cap"], 0)
 
     def test_normalize_onboard_fast_and_yaml(self) -> None:
         s = normalize_stages(
@@ -111,6 +232,31 @@ class PipelineStagesTest(unittest.TestCase):
             write_provider="kimi",
         )
         self.assertEqual(s2["plan_critique"]["service_tier"], "standard")
+
+    def test_normalize_agy_aligns_effort_to_model_suffix(self) -> None:
+        s = normalize_stages(
+            {
+                "plan_critique": {
+                    "provider": "agy",
+                    "model": "gemini-3.7-flash-low",
+                    "reasoning_effort": "high",
+                },
+                "write": {
+                    "provider": "agy",
+                    "model": "gemini-3.7-flash-medium",
+                    "reasoning_effort": "low",
+                },
+                "night_review": {
+                    "provider": "agy",
+                    "model": "gemini-3.7-flash-high",
+                    "reasoning_effort": "medium",
+                },
+            },
+            write_provider="agy",
+        )
+        self.assertEqual(s["plan_critique"]["reasoning_effort"], "low")
+        self.assertEqual(s["write"]["reasoning_effort"], "medium")
+        self.assertEqual(s["night_review"]["reasoning_effort"], "high")
 
     def test_load_stages_from_yaml_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -314,15 +460,16 @@ class PipelineStagesTest(unittest.TestCase):
             result = structural_critique(run_dir)
             write_critique_artifacts(run_dir, result)
             settings = {"enabled": True, "mode": "gate"}
-            # pass or fail depending on findings
-            if result["status"] == "fail":
-                errs = critique_gate_errors(run_dir, settings)
+            errs = critique_gate_errors(run_dir, settings)
+            if any(
+                isinstance(f, dict) and f.get("severity") in {"error", "warn"}
+                for f in (result.get("findings") or [])
+            ):
                 self.assertTrue(errs)
                 ack_critique(run_dir, note="accepted for micro", by="pm")
-                errs2 = critique_gate_errors(run_dir, settings)
-                self.assertEqual(errs2, [])
-            else:
                 self.assertEqual(critique_gate_errors(run_dir, settings), [])
+            else:
+                self.assertEqual(errs, [])
 
     def test_plan_critique_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -397,20 +544,23 @@ class PipelineStagesTest(unittest.TestCase):
                         "code": "owns_gap",
                         "title": "Missing companion path",
                         "detail": "Add src/bar.py to owns_paths",
-                        "path": "tasks/001.yaml",
+                        "path": "src/bar.py",
                         "task_id": "001",
-                        "action": "fix_task",
+                        "action": "add_owns",
                     }
                 ],
             },
             provider="qwen",
             model="qwen3.8-max-preview",
         )
-        self.assertEqual(merged["status"], "pass")
-        self.assertEqual(merged["decision"], "ship")
+        self.assertEqual(merged["status"], "fail")
+        self.assertEqual(merged["decision"], "revise_required")
         self.assertEqual(merged["llm_pass"]["status"], "ok")
+        self.assertEqual(merged["llm_pass"]["verdict"], "revise_required")
         self.assertEqual(merged["llm_pass"]["summary"], "Add src/bar.py to owns_paths")
-        self.assertFalse(any(str(f.get("source")) == "llm" for f in merged["findings"]))
+        llm_findings = [f for f in merged["findings"] if f.get("source") == "llm"]
+        self.assertEqual(len(llm_findings), 1)
+        self.assertEqual(llm_findings[0]["id"], "llm:owns_gap:src/bar.py")
 
         warn_only = merge_llm_into_critique(
             {
@@ -439,8 +589,9 @@ class PipelineStagesTest(unittest.TestCase):
             model="gpt-5.6-luna",
         )
         self.assertEqual(warn_only["status"], "pass")
-        self.assertEqual(warn_only["decision"], "ship")
+        self.assertEqual(warn_only["decision"], "revise")
         self.assertEqual(warn_only["llm_pass"]["summary"], "")
+        self.assertTrue(any(f.get("source") == "llm" for f in warn_only["findings"]))
 
         failed_llm = merge_llm_into_critique(
             structural,
@@ -454,6 +605,139 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertFalse(
             any(f["code"] == "llm_pass_failed" for f in failed_llm["findings"])
         )
+
+    def test_wiki_owns_gap_is_info(self) -> None:
+        from pipeline_stages import _finding
+
+        finding = _finding(
+            "warn",
+            "owns_gap",
+            "Possible missed file: wiki/gotchas.md",
+            "References src/foo.py",
+            path="wiki/gotchas.md",
+        )
+        self.assertEqual(finding["severity"], "info")
+        self.assertEqual(finding["id"], "structural:owns_gap:wiki/gotchas.md")
+        result = attach_decision({"findings": [finding], "status": "pass"})
+        self.assertEqual(result["decision"], "ship")
+        self.assertEqual(result["summary"]["infos"], 1)
+
+    def test_docs_owns_gap_is_info(self) -> None:
+        from pipeline_stages import _finding
+
+        root = _finding(
+            "warn",
+            "owns_gap",
+            "Possible missed file: docs/llm/API_SURFACE.yaml",
+            "References apps/api/src/foo.ts",
+            path="docs/llm/API_SURFACE.yaml",
+        )
+        nested = _finding(
+            "warn",
+            "owns_gap",
+            "Possible missed file: apps/api/docs/ARCHITECTURE.md",
+            "References apps/api/src/foo.ts",
+            path="apps/api/docs/ARCHITECTURE.md",
+        )
+        self.assertEqual(root["severity"], "info")
+        self.assertEqual(nested["severity"], "info")
+        result = attach_decision({"findings": [root, nested], "status": "pass"})
+        self.assertEqual(result["decision"], "ship")
+
+    def test_inbox_blocks_until_reply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            (run_dir / "artifacts").mkdir(parents=True)
+            result = attach_decision(
+                {
+                    "findings": [
+                        {
+                            "severity": "warn",
+                            "code": "verify_heavy",
+                            "title": "L2-shaped verify",
+                            "detail": "Use focused L1",
+                            "path": "tasks/003.yaml",
+                            "task_id": "003",
+                            "source": "structural",
+                        }
+                    ],
+                    "status": "pass",
+                }
+            )
+            write_critique_artifacts(run_dir, result)
+            settings = {"enabled": True, "mode": "advisory"}
+            errs = critique_gate_errors(run_dir, settings)
+            self.assertTrue(errs)
+            self.assertIn("inbox open", errs[0])
+            fid = result["findings"][0]["id"]
+            write_critique_reply(
+                run_dir, [{"id": fid, "verdict": "skip"}]
+            )
+            bad = critique_inbox_errors(run_dir, result)
+            self.assertTrue(any("skip requires note" in e for e in bad))
+            write_critique_reply(
+                run_dir,
+                [{"id": fid, "verdict": "skip", "note": "L1 is enough here"}],
+            )
+            self.assertEqual(critique_gate_errors(run_dir, settings), [])
+
+    def test_parse_agy_stdout_and_schema_flag(self) -> None:
+        envelope = json.dumps(
+            {
+                "result": {
+                    "usage": {
+                        "input_tokens": 9,
+                        "output_tokens": 2,
+                        "cache_read_tokens": 5,
+                    },
+                    "cost": 0.01,
+                    "response": {
+                        "verdict": "revise",
+                        "summary": "split 001",
+                        "findings": [],
+                    },
+                }
+            }
+        )
+        parsed = parse_llm_payload(parse_agy_stdout(envelope))
+        self.assertEqual(parsed["verdict"], "revise")
+        self.assertTrue(AGY_SCHEMA_PATH.is_file())
+        captured: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            captured.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, stdout=envelope, stderr="")
+
+        with patch("plan_critique_llm._run", side_effect=fake_run), patch(
+            "plan_critique_llm._which", return_value="/usr/bin/agy"
+        ):
+            for model, incoming, expected in (
+                ("gemini-3.7-flash-low", "high", "low"),
+                ("gemini-3.7-flash-medium", "low", "medium"),
+                ("gemini-3.7-flash-high", "low", "high"),
+            ):
+                captured.clear()
+                text = invoke_agy("prompt", model=model, effort=incoming, timeout=5)
+                argv = captured[0]
+                self.assertEqual(argv[argv.index("--effort") + 1], expected, model)
+                self.assertEqual(argv[argv.index("--model") + 1], model)
+        self.assertIn("--json-schema", captured[0])
+        self.assertEqual(
+            captured[0][captured[0].index("--json-schema") + 1],
+            str(AGY_SCHEMA_PATH),
+        )
+        self.assertIn("split 001", text)
+        from usage_ledger import rows
+
+        recorded = [row for row in rows(Path(os.environ["AGENTS_USAGE_DB"])) if row["cli"] == "agy"]
+        self.assertEqual(len(recorded), 3)
+        self.assertEqual({row["model"] for row in recorded}, {
+            "gemini-3.7-flash-low",
+            "gemini-3.7-flash-medium",
+            "gemini-3.7-flash-high",
+        })
+        self.assertTrue(all(row["input_tokens"] == 9 for row in recorded))
+        self.assertTrue(all(row["cache_tokens"] == 5 for row in recorded))
 
     def test_parse_llm_payload(self) -> None:
         text = 'Here you go:\n```json\n{"verdict":"ship","summary":"ok","findings":[]}\n```\n'
@@ -563,8 +847,41 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         self.assertIn('service_tier="fast"', captured[0])
         self.assertIn("fast_mode", captured[0])
+        self.assertIn("--output-schema", captured[0])
+        self.assertEqual(
+            captured[0][captured[0].index("--output-schema") + 1],
+            str(CRITIQUE_SCHEMA_PATH),
+        )
+        self.assertIn("--json", captured[0])
 
-    def test_normalize_opencode_keeps_agent(self) -> None:
+    def test_invoke_grok_passes_schema(self) -> None:
+        captured: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            captured.append(list(argv))
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=json.dumps(
+                    {
+                        "verdict": "ship",
+                        "summary": "ok",
+                        "findings": [],
+                        "usage": {"input_tokens": 4, "output_tokens": 1},
+                    }
+                ),
+                stderr="",
+            )
+
+        with patch("plan_critique_llm._run", side_effect=fake_run), patch(
+            "plan_critique_llm._which", return_value="/usr/bin/grok"
+        ):
+            invoke_grok("prompt", model="grok-4.6", timeout=5)
+        self.assertIn("--json-schema", captured[0])
+        schema_arg = captured[0][captured[0].index("--json-schema") + 1]
+        self.assertIn("LanePlanCritique", schema_arg)
+
+    def test_normalize_opencode_keeps_custom_agent(self) -> None:
         s = normalize_stages(
             {
                 "plan_critique": {
@@ -580,11 +897,32 @@ class PipelineStagesTest(unittest.TestCase):
             },
             write_provider="opencode",
         )
-        self.assertEqual(s["plan_critique"]["agent"], "plan")
+        self.assertEqual(s["plan_critique"]["agent"], "lane-critic")
         self.assertEqual(s["write"]["agent"], "wiki-writer")
         yaml_text = "\n".join(stages_to_yaml_lines(s))
-        self.assertIn("agent: plan", yaml_text)
+        self.assertIn("agent: lane-critic", yaml_text)
         self.assertIn("agent: wiki-writer", yaml_text)
+
+    def test_normalize_opencode_remaps_stock_agents(self) -> None:
+        from pipeline_stages import resolve_opencode_agent
+
+        s = normalize_stages(
+            {
+                "plan_critique": {"provider": "opencode", "agent": "build"},
+                "write": {"agent": "plan"},
+                "night_review": {"provider": "opencode", "agent": "explore"},
+                "specialist": {"provider": "opencode", "agent": "scout"},
+                "onboard": {"provider": "opencode", "agent": "build"},
+            },
+            write_provider="opencode",
+        )
+        self.assertEqual(s["write"]["agent"], "lane-writer")
+        self.assertEqual(s["plan_critique"]["agent"], "lane-critic")
+        self.assertEqual(s["night_review"]["agent"], "lane-reviewer")
+        self.assertEqual(s["specialist"]["agent"], "lane-reviewer")
+        self.assertEqual(s["onboard"]["agent"], "lane-writer")
+        self.assertEqual(resolve_opencode_agent("write", "wiki-writer"), "wiki-writer")
+        self.assertEqual(resolve_opencode_agent("write", "build"), "lane-writer")
 
     def test_normalize_opencode_defaults_lane_agents(self) -> None:
         s = normalize_stages(

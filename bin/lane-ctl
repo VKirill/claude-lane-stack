@@ -59,7 +59,7 @@ HARD_V2_VERIFY_TIMEOUT = 7200
 MAX_PRIMARY_ATTEMPTS = 2
 MAX_ATTEMPTS = 3
 PRIMARY_MODELS = {
-    "agy": "gemini-3.6-flash-high",
+    "agy": "gemini-3.7-flash-high",
     "grok": "grok-4.5",
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
@@ -70,7 +70,7 @@ PRIMARY_MODELS = {
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
 }
 PRIMARY_EFFORTS = {
-    "agy": "medium",
+    "agy": "high",
     "grok": "medium",
     "qwen": "medium",
     "kimi": "medium",

@@ -69,6 +69,12 @@ Promote durable OPEN notes or close checkboxes after a green run. Night
 audit (`~/.agents/bin/night-audit .`) closes OPEN items or spawns
 todos/runs.
 
+## Fact corpus (opt-in)
+
+If adoc `stages.memory.enabled: true`, durable non-code facts live in
+`.agents/memory/` (skill `lane-memory`). Not a second PROGRESS. Query with
+`lane-memory context . "<task>"`. Write only via `lane-memory write`.
+
 ## History & artifacts (read-only layers)
 
 - `.agents/session-log/` — auto handoff evidence (files/shell/git), written by

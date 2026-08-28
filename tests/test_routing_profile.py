@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "bin"))
 from routing_profile import (  # noqa: E402
     lane_matches_profile,
     load_routing_profile,
+    resolve_agy_effort,
     resolve_cursor_model,
     resolve_session_max_tasks,
     resolve_workspace,
@@ -207,6 +208,60 @@ class RoutingProfileTest(unittest.TestCase):
             )
             self.assertEqual(resolved["reasoning_effort"], "medium")
             self.assertEqual(resolved["profile"]["writer"]["agent"], "build")
+
+    def test_resolve_agy_effort_suffix_wins(self) -> None:
+        cases = (
+            ("gemini-3.7-flash-low", "high", "low"),
+            ("gemini-3.7-flash-low", "medium", "low"),
+            ("gemini-3.7-flash-low", "low", "low"),
+            ("gemini-3.7-flash-medium", "high", "medium"),
+            ("gemini-3.7-flash-medium", "low", "medium"),
+            ("gemini-3.7-flash-medium", "medium", "medium"),
+            ("gemini-3.7-flash-high", "low", "high"),
+            ("gemini-3.7-flash-high", "medium", "high"),
+            ("gemini-3.7-flash-high", "high", "high"),
+            ("gemini-3.6-flash-medium", "high", "medium"),
+            ("claude-sonnet-4-6", "low", "low"),
+            ("claude-sonnet-4-6", "medium", "medium"),
+            ("claude-sonnet-4-6", "high", "high"),
+            ("claude-sonnet-4-6", "", "high"),
+            ("gemini-3.7-flash-xhigh", "low", "high"),
+            ("gpt-oss-120b-medium", "", "medium"),
+        )
+        for model, incoming, expected in cases:
+            self.assertEqual(
+                resolve_agy_effort(model, incoming),
+                expected,
+                f"{model!r} + {incoming!r}",
+            )
+
+    def test_resolve_writer_agy_aligns_effort_to_model_suffix(self) -> None:
+        for model, yaml_effort, expected in (
+            ("gemini-3.7-flash-low", "high", "low"),
+            ("gemini-3.7-flash-medium", "low", "medium"),
+            ("gemini-3.7-flash-high", "medium", "high"),
+        ):
+            with self.subTest(model=model):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    (root / ".agents").mkdir()
+                    (root / ".agents" / "routing.profile.yaml").write_text(
+                        textwrap.dedent(
+                            f"""\
+                            lanes:
+                              main_write: agy
+                            writer:
+                              provider: agy
+                              model: {model}
+                              reasoning_effort: {yaml_effort}
+                            """
+                        ),
+                        encoding="utf-8",
+                    )
+                    resolved = resolve_writer(root, provider_explicit=False)
+                    self.assertEqual(resolved["provider"], "agy")
+                    self.assertEqual(resolved["model"], model)
+                    self.assertEqual(resolved["reasoning_effort"], expected)
 
 
 if __name__ == "__main__":

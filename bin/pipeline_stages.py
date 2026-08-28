@@ -19,9 +19,16 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_BIN = Path(__file__).resolve().parent
+if str(_BIN) not in sys.path:
+    sys.path.insert(0, str(_BIN))
+
+from routing_profile import resolve_agy_effort  # noqa: E402
 
 KNOWN_STAGE_PROVIDERS = frozenset(
     {"structural", "kimi", "qwen", "agy", "grok", "codex", "cursor", "opencode"}
@@ -32,26 +39,43 @@ SPECIALIST_WHEN = frozenset({"high_risk", "always"})
 
 PM_ACTION = {
     "ship": (
-        "Dispatch after `run-validate --phase pre-dispatch`. "
-        "No plan corrections required."
+        "No reply needed. Dispatch after `run-validate --phase pre-dispatch`."
     ),
     "revise": (
-        "Coverage gaps: add missed files to owns_paths / PLAN, then re-run "
-        "`plan-critique`. Residual warnings may ship with an explicit reason "
-        "(advisory) or `plan-critique --ack --note '…'` (gate)."
+        "Reply every warn/error id in artifacts/critique-reply.json "
+        "(`take` or `skip` + note). Then dispatch. "
+        "Bulk skip: `plan-critique --ack --note '…'`."
     ),
     "revise_required": (
-        "MUST edit PLAN.md / SPEC.md / tasks/*.yaml to address error findings, "
-        "then re-run `plan-critique` until decision is ship (or gate-ack with "
-        "an explicit note). Do not start run-controller / writers yet."
+        "Reply every error/warn id in artifacts/critique-reply.json "
+        "before writers. `take` = edit PLAN/SPEC/tasks and re-run "
+        "`plan-critique`. `skip` needs a note. "
+        "Bulk: `plan-critique --ack --note '…'`."
     ),
+}
+_NOISE_PATH_PREFIXES = ("wiki/", "TODO/", "docs/")
+_DEFAULT_FINDING_ACTION = {
+    "owns_gap": "add_owns",
+    "plan_path_unowned": "add_owns",
+    "owns_overlap": "split_task",
+    "fat_task": "split_task",
+    "gold_plate": "drop_scope",
+    "verify_heavy": "note",
+    "verify_l2": "note",
+    "missing_invariant": "fix_spec",
+    "owns_empty": "fix_spec",
+    "verify_missing": "fix_spec",
+    "plan_missing": "fix_spec",
+    "no_tasks": "fix_spec",
+    "task_parse": "fix_spec",
+    "bad_dag": "note",
 }
 
 DEFAULT_MODELS = {
     "qwen": "qwen3.8-max-preview",
     "kimi": "kimi-code/k3-256k",
     "grok": "grok-4.5",
-    "agy": "gemini-3.6-flash-high",
+    "agy": "gemini-3.7-flash-high",
     "codex": "gpt-5.6-luna",
     "cursor": "composer-2.5",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
@@ -62,7 +86,7 @@ DEFAULT_WRITE_EFFORTS = {
     "qwen": "medium",
     "kimi": "medium",
     "grok": "medium",
-    "agy": "medium",
+    "agy": "high",
     "codex": "max",
     "cursor": "medium",
     "opencode": "medium",
@@ -72,7 +96,7 @@ DEFAULT_CRITIQUE_EFFORTS = {
     "qwen": "low",
     "kimi": "low",
     "grok": "low",
-    "agy": "low",
+    "agy": "high",
     "cursor": "low",
     "codex": "low",
     "opencode": "low",
@@ -89,12 +113,36 @@ DEFAULT_ONBOARD_EFFORTS = {
     "qwen": "medium",
     "kimi": "medium",
     "grok": "medium",
-    "agy": "medium",
+    "agy": "high",
 }
 SERVICE_TIER_STAGE_PROVIDERS = frozenset({"codex", "cursor"})
+MEMORY_AUDIENCES = frozenset({"owner", "subagent", "export"})
+MEMORY_SEARCH_ENGINES = frozenset({"auto", "fts5", "bm25"})
+DEFAULT_MEMORY_CORE_BUDGET = 3072
+DEFAULT_MEMORY_NOTE_BUDGET = 8000
+DEFAULT_MEMORY_INDEX_BUDGET = 65536
+DEFAULT_MEMORY_CONTEXT_BUDGET = 2500
+DEFAULT_DOCS_MODEL = "gpt-5.6-luna"
+DEFAULT_DOCS_EFFORT = "max"
+DEFAULT_DOCS_PAGE_CAP = 0
+DEFAULT_DOCS_SINCE = "yesterday"
+DEFAULT_DOCS_HOUR = 5
+DOCS_SINCE_CHOICES = ("yesterday", "24 hours ago", "7 days ago")
 DEFAULT_OPENCODE_WRITE_AGENT = "lane-writer"
 DEFAULT_OPENCODE_CRITIQUE_AGENT = "lane-critic"
 DEFAULT_OPENCODE_REVIEW_AGENT = "lane-reviewer"
+OPENCODE_STOCK_AGENTS = frozenset(
+    {
+        "build",
+        "plan",
+        "general",
+        "explore",
+        "scout",
+        "compaction",
+        "title",
+        "summary",
+    }
+)
 
 _SPEC_STUB_MARKERS = (
     "record interfaces, invariants, constraints, and the definition of done here",
@@ -130,9 +178,9 @@ def default_stages(
         "plan_critique": {
             "enabled": True,
             "mode": "advisory",
-            "provider": "structural",
-            "model": "",
-            "reasoning_effort": "low",
+            "provider": "agy",
+            "model": DEFAULT_MODELS.get("agy", "gemini-3.7-flash-high"),
+            "reasoning_effort": DEFAULT_CRITIQUE_EFFORTS.get("agy", "high"),
             "min_score": 7,
             "min_write_tasks": 3,
             "on_high_risk": True,
@@ -175,6 +223,33 @@ def default_stages(
             "reasoning_effort": DEFAULT_ONBOARD_EFFORT,
             "service_tier": "standard",
         },
+        "memory": {
+            "enabled": False,
+            "maintain": True,
+            "inject": True,
+            "provider": "codex",
+            "model": DEFAULT_ONBOARD_MODEL,
+            "reasoning_effort": DEFAULT_ONBOARD_EFFORT,
+            "service_tier": "standard",
+            "audience": "subagent",
+            "search_engine": "auto",
+            "core_budget": 3072,
+            "note_budget": 8000,
+            "index_budget": 65536,
+            "context_budget": 2500,
+            "personal_bot": "",
+        },
+        "docs": {
+            "enabled": False,
+            "maintain": True,
+            "provider": "codex",
+            "model": DEFAULT_DOCS_MODEL,
+            "reasoning_effort": DEFAULT_DOCS_EFFORT,
+            "service_tier": "fast",
+            "page_cap": DEFAULT_DOCS_PAGE_CAP,
+            "since": DEFAULT_DOCS_SINCE,
+            "hour": DEFAULT_DOCS_HOUR,
+        },
     }
 
 
@@ -201,8 +276,19 @@ def default_opencode_agent(stage_id: str = "write") -> str:
     return DEFAULT_OPENCODE_WRITE_AGENT
 
 
+def resolve_opencode_agent(stage_id: str, current: str = "") -> str:
+    """Role default, unless the user already picked a non-stock agent."""
+    default = default_opencode_agent(stage_id)
+    raw = (current or "").strip()
+    if not raw or raw in OPENCODE_STOCK_AGENTS:
+        return default
+    return raw
+
+
 def _opencode_agent(block: dict[str, Any], *, default: str) -> dict[str, str]:
-    raw = str(block.get("agent") or default).strip()
+    raw = str(block.get("agent") or "").strip()
+    if not raw or raw in OPENCODE_STOCK_AGENTS:
+        raw = default
     return {"agent": raw or default}
 
 
@@ -238,6 +324,8 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
     night = raw.get("night_review") if isinstance(raw.get("night_review"), dict) else {}
     spec = raw.get("specialist") if isinstance(raw.get("specialist"), dict) else {}
     onboard = raw.get("onboard") if isinstance(raw.get("onboard"), dict) else {}
+    memory = raw.get("memory") if isinstance(raw.get("memory"), dict) else {}
+    docs = raw.get("docs") if isinstance(raw.get("docs"), dict) else {}
 
     # plan_critique
     pc_provider = str(pc.get("provider") or base["plan_critique"]["provider"]).strip()
@@ -353,6 +441,105 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
             else {}
         ),
     }
+
+    # memory — SMA-style fact corpus; off unless the project opts in
+    m_provider = str(memory.get("provider") or "codex").strip()
+    if m_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+        m_provider = "codex"
+    m_default_model = (
+        DEFAULT_ONBOARD_MODEL
+        if m_provider == "codex"
+        else DEFAULT_MODELS.get(m_provider, DEFAULT_ONBOARD_MODEL)
+    )
+    m_aud = str(memory.get("audience") or "subagent").strip().lower()
+    if m_aud not in MEMORY_AUDIENCES:
+        m_aud = "subagent"
+    m_engine = str(memory.get("search_engine") or "auto").strip().lower()
+    if m_engine not in MEMORY_SEARCH_ENGINES:
+        m_engine = "auto"
+
+    def _memory_budget(key: str, default: int) -> int:
+        n = _as_int(memory.get(key), default)
+        return default if n <= 0 else n
+
+    base["memory"] = {
+        "enabled": _as_bool(memory.get("enabled"), False),
+        "maintain": _as_bool(memory.get("maintain"), True),
+        "inject": _as_bool(memory.get("inject"), True),
+        "provider": m_provider,
+        "model": str(memory.get("model") or m_default_model).strip(),
+        "reasoning_effort": _effort_from_block(
+            memory, DEFAULT_ONBOARD_EFFORTS.get(m_provider, DEFAULT_ONBOARD_EFFORT)
+        ),
+        "service_tier": _normalize_service_tier(memory, m_provider),
+        "audience": m_aud,
+        "search_engine": m_engine,
+        "core_budget": _memory_budget("core_budget", DEFAULT_MEMORY_CORE_BUDGET),
+        "note_budget": _memory_budget("note_budget", DEFAULT_MEMORY_NOTE_BUDGET),
+        "index_budget": _memory_budget("index_budget", DEFAULT_MEMORY_INDEX_BUDGET),
+        "context_budget": _memory_budget(
+            "context_budget", DEFAULT_MEMORY_CONTEXT_BUDGET
+        ),
+        "personal_bot": str(memory.get("personal_bot") or "").strip(),
+        **(
+            _opencode_agent(memory, default=default_opencode_agent("memory"))
+            if m_provider == "opencode"
+            else {}
+        ),
+    }
+
+    # docs — living docs/; off unless the project opts in
+    d_provider = str(docs.get("provider") or "codex").strip()
+    if d_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+        d_provider = "codex"
+    d_default_model = (
+        DEFAULT_DOCS_MODEL
+        if d_provider == "codex"
+        else DEFAULT_MODELS.get(d_provider, DEFAULT_DOCS_MODEL)
+    )
+    d_since = str(docs.get("since") or DEFAULT_DOCS_SINCE).strip() or DEFAULT_DOCS_SINCE
+    if d_since not in DOCS_SINCE_CHOICES:
+        d_since = DEFAULT_DOCS_SINCE
+    d_cap = _as_int(docs.get("page_cap"), DEFAULT_DOCS_PAGE_CAP)
+    if d_cap < 0:
+        d_cap = DEFAULT_DOCS_PAGE_CAP
+    d_hour = _as_int(docs.get("hour"), DEFAULT_DOCS_HOUR)
+    if d_hour < 0 or d_hour > 23:
+        d_hour = DEFAULT_DOCS_HOUR
+    d_effort_default = (
+        DEFAULT_DOCS_EFFORT
+        if d_provider == "codex"
+        else DEFAULT_ONBOARD_EFFORTS.get(d_provider, DEFAULT_DOCS_EFFORT)
+    )
+    d_tier_default = "fast" if d_provider == "codex" else "standard"
+    base["docs"] = {
+        "enabled": _as_bool(docs.get("enabled"), False),
+        "maintain": _as_bool(docs.get("maintain"), True),
+        "provider": d_provider,
+        "model": str(docs.get("model") or d_default_model).strip(),
+        "reasoning_effort": _effort_from_block(docs, d_effort_default),
+        "service_tier": (
+            _normalize_service_tier(docs, d_provider)
+            if "service_tier" in docs or "fast_mode" in docs
+            else _normalize_service_tier(
+                {"service_tier": d_tier_default}, d_provider
+            )
+        ),
+        "page_cap": d_cap,
+        "since": d_since,
+        "hour": d_hour,
+        **(
+            _opencode_agent(docs, default=default_opencode_agent("docs"))
+            if d_provider == "opencode"
+            else {}
+        ),
+    }
+    for block in base.values():
+        if isinstance(block, dict) and str(block.get("provider") or "") == "agy":
+            block["reasoning_effort"] = resolve_agy_effort(
+                str(block.get("model") or ""),
+                str(block.get("reasoning_effort") or ""),
+            )
     return base
 
 
@@ -360,7 +547,15 @@ def stages_to_yaml_lines(stages: dict[str, Any]) -> list[str]:
     """Emit YAML lines for the stages: block (no leading stages: key)."""
     stages = normalize_stages(stages)
     lines: list[str] = ["stages:"]
-    for name in ("plan_critique", "write", "night_review", "specialist", "onboard"):
+    for name in (
+        "plan_critique",
+        "write",
+        "night_review",
+        "specialist",
+        "onboard",
+        "memory",
+        "docs",
+    ):
         block = stages[name]
         lines.append(f"  {name}:")
         for key, value in block.items():
@@ -420,6 +615,34 @@ def resolve_plan_critique(start: Path) -> dict[str, Any]:
     }
 
 
+def resolve_memory(start: Path) -> dict[str, Any]:
+    """Load stages.memory (opt-in SMA corpus). Default enabled=false."""
+    from routing_profile import load_routing_profile  # local import — same bin/
+
+    profile = load_routing_profile(start)
+    stages = load_stages_from_profile(profile)
+    block = stages.get("memory") or {}
+    return {
+        **block,
+        "stages": stages,
+        "profile_path": profile.get("_path"),
+    }
+
+
+def resolve_docs(start: Path) -> dict[str, Any]:
+    """Load stages.docs (opt-in living docs/). Default enabled=false."""
+    from routing_profile import load_routing_profile  # local import — same bin/
+
+    profile = load_routing_profile(start)
+    stages = load_stages_from_profile(profile)
+    block = stages.get("docs") or {}
+    return {
+        **block,
+        "stages": stages,
+        "profile_path": profile.get("_path"),
+    }
+
+
 def resolve_onboard(start: Path) -> dict[str, Any]:
     """Load onboard stage (provider/model/effort/service_tier) for a project path."""
     from routing_profile import load_routing_profile  # local import — same bin/
@@ -466,6 +689,27 @@ def _load_yaml_safe(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _is_noise_path(path: str) -> bool:
+    rel = _norm_own(path)
+    if any(rel.startswith(prefix) for prefix in _NOISE_PATH_PREFIXES):
+        return True
+    return "/docs/" in rel
+
+
+def _finding_key(finding: dict[str, Any]) -> str:
+    raw = str(
+        finding.get("path") or finding.get("task_id") or finding.get("title") or "x"
+    )
+    key = re.sub(r"[^\w./-]+", "_", raw).strip("._")
+    return key[:80] or "x"
+
+
+def assign_finding_id(finding: dict[str, Any]) -> str:
+    source = str(finding.get("source") or "structural")
+    code = str(finding.get("code") or "note")
+    return f"{source}:{code}:{_finding_key(finding)}"
+
+
 def _finding(
     severity: str,
     code: str,
@@ -474,15 +718,117 @@ def _finding(
     *,
     path: str | None = None,
     task_id: str | None = None,
+    source: str = "structural",
+    action: str | None = None,
 ) -> dict[str, Any]:
-    return {
-        "severity": severity,  # error | warn | info
+    finding = {
+        "severity": severity if severity in {"error", "warn", "info"} else "warn",
         "code": code,
         "title": title,
         "detail": detail,
         "path": path,
         "task_id": task_id,
+        "source": source,
+        "action": action or _DEFAULT_FINDING_ACTION.get(code, "note"),
     }
+    if code in {"owns_gap", "plan_path_unowned"} and _is_noise_path(path or ""):
+        finding["severity"] = "info"
+    finding["id"] = assign_finding_id(finding)
+    return finding
+
+
+def stamp_findings(result: dict[str, Any]) -> dict[str, Any]:
+    """Stable ids, noise demote, summary refresh. Safe to call twice."""
+    findings: list[dict[str, Any]] = [
+        f for f in (result.get("findings") or []) if isinstance(f, dict)
+    ]
+    for finding in findings:
+        code = str(finding.get("code") or "note")
+        if not finding.get("source"):
+            finding["source"] = "structural"
+        if not finding.get("action"):
+            finding["action"] = _DEFAULT_FINDING_ACTION.get(code, "note")
+        if code in {"owns_gap", "plan_path_unowned"} and _is_noise_path(
+            str(finding.get("path") or "")
+        ):
+            finding["severity"] = "info"
+        finding["id"] = assign_finding_id(finding)
+    result["findings"] = findings
+    errors = sum(1 for f in findings if f.get("severity") == "error")
+    warns = sum(1 for f in findings if f.get("severity") == "warn")
+    infos = sum(1 for f in findings if f.get("severity") == "info")
+    result["summary"] = {"errors": errors, "warnings": warns, "infos": infos}
+    if str(result.get("status") or "").lower() != "ack":
+        result["status"] = "pass" if errors == 0 else "fail"
+    return result
+
+
+def inbox_required(result: dict[str, Any]) -> list[dict[str, Any]]:
+    stamp_findings(result)
+    return [
+        f
+        for f in (result.get("findings") or [])
+        if isinstance(f, dict) and f.get("severity") in {"error", "warn"}
+    ]
+
+
+def load_critique_reply(run_dir: Path) -> dict[str, Any] | None:
+    path = run_dir / "artifacts" / "critique-reply.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_critique_reply(run_dir: Path, items: list[dict[str, Any]]) -> Path:
+    art = run_dir / "artifacts"
+    art.mkdir(parents=True, exist_ok=True)
+    path = art / "critique-reply.json"
+    path.write_text(
+        json.dumps({"schema_version": 1, "items": items}, indent=2, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def critique_inbox_errors(run_dir: Path, result: dict[str, Any]) -> list[str]:
+    needed = inbox_required(result)
+    if not needed:
+        return []
+    reply = load_critique_reply(run_dir)
+    items = {
+        str(item.get("id")): item
+        for item in ((reply or {}).get("items") or [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    missing: list[str] = []
+    bad: list[str] = []
+    for finding in needed:
+        fid = str(finding.get("id") or "")
+        item = items.get(fid)
+        if item is None:
+            missing.append(fid)
+            continue
+        verdict = str(item.get("verdict") or "").strip().lower()
+        note = str(item.get("note") or "").strip()
+        if verdict not in {"take", "skip"}:
+            bad.append(f"{fid}: verdict must be take|skip")
+        elif verdict == "skip" and not note:
+            bad.append(f"{fid}: skip requires note")
+    errors: list[str] = []
+    if missing:
+        shown = ", ".join(missing[:8])
+        extra = f" (+{len(missing) - 8})" if len(missing) > 8 else ""
+        errors.append(
+            "plan_critique inbox open — write artifacts/critique-reply.json "
+            f"take|skip for: {shown}{extra}"
+        )
+    errors.extend(f"plan_critique reply {msg}" for msg in bad)
+    return errors
 
 
 _GENERIC_STEMS = frozenset(
@@ -1149,6 +1495,7 @@ def compute_decision(result: dict[str, Any]) -> str:
 
 def attach_decision(result: dict[str, Any]) -> dict[str, Any]:
     """Mutate/return result with decision + pm_action fields."""
+    stamp_findings(result)
     decision = compute_decision(result)
     if decision not in CRITIQUE_DECISIONS:
         decision = "revise_required"
@@ -1184,7 +1531,7 @@ def merge_llm_into_critique(
     model: str = "",
     llm_error: str | None = None,
 ) -> dict[str, Any]:
-    """Attach an optional LLM summary. Findings/decision stay structural."""
+    """Attach LLM review. New findings join the inbox (source=llm)."""
     result = dict(structural)
     findings: list[dict[str, Any]] = [
         dict(f) for f in (structural.get("findings") or []) if isinstance(f, dict)
@@ -1213,18 +1560,28 @@ def merge_llm_into_critique(
             "status": "ok",
             "provider": provider,
             "model": model or str(llm_payload.get("model") or ""),
-            "verdict": None,
+            "verdict": llm_payload.get("verdict"),
             "summary": _clean_llm_summary(str(llm_payload.get("summary") or "")),
         }
+        raw_llm = llm_payload.get("findings")
+        if isinstance(raw_llm, list):
+            for item in raw_llm[:7]:
+                if not isinstance(item, dict):
+                    continue
+                findings.append(
+                    _finding(
+                        str(item.get("severity") or "warn"),
+                        str(item.get("code") or "note"),
+                        str(item.get("title") or "Plan remark")[:120],
+                        str(item.get("detail") or "")[:400],
+                        path=str(item.get("path") or "") or None,
+                        task_id=str(item.get("task_id") or "") or None,
+                        source="llm",
+                        action=str(item.get("action") or "") or None,
+                    )
+                )
 
-    # Recompute summary/status from merged findings
-    errors = sum(1 for f in findings if f.get("severity") == "error")
-    warns = sum(1 for f in findings if f.get("severity") == "warn")
-    infos = sum(1 for f in findings if f.get("severity") == "info")
     result["findings"] = findings
-    result["summary"] = {"errors": errors, "warnings": warns, "infos": infos}
-    if str(result.get("status") or "").lower() != "ack":
-        result["status"] = "pass" if errors == 0 else "fail"
     result["generated_at"] = datetime.now(timezone.utc).isoformat()
     return attach_decision(result)
 
@@ -1263,17 +1620,13 @@ def run_full_critique(
     provider = str(settings.get("provider") or "structural").strip().lower()
     model = str(settings.get("model") or "").strip()
     effort = str(settings.get("reasoning_effort") or settings.get("effort") or "low")
-    needs_compress = any(
-        isinstance(item, dict) and item.get("severity") in {"error", "warn"}
-        for item in (structural.get("findings") or [])
-    )
-
+    if provider == "agy":
+        effort = resolve_agy_effort(model, effort)
     if (
         not invoke_llm
         or structural_only
         or provider in {"", "structural"}
         or not settings.get("enabled", True)
-        or not needs_compress
     ):
         return merge_llm_into_critique(
             structural, None, provider="structural", model=""
@@ -1366,6 +1719,8 @@ def critique_to_markdown(result: dict[str, Any]) -> str:
         loc = f.get("path") or f.get("task_id") or "—"
         lines.append(f"## [{sev}] {f.get('title')}")
         lines.append("")
+        if f.get("id"):
+            lines.append(f"- id: `{f.get('id')}`")
         lines.append(f"- code: `{f.get('code')}`")
         lines.append(f"- where: `{loc}`")
         if f.get("action"):
@@ -1374,12 +1729,14 @@ def critique_to_markdown(result: dict[str, Any]) -> str:
             lines.append(f"- source: `{f.get('source')}`")
         lines.append(f"- {f.get('detail')}")
         lines.append("")
-    if decision == "revise_required" or result.get("status") == "fail":
+    needed = inbox_required(result)
+    if needed:
         lines.append("---")
         lines.append("")
         lines.append(
-            "Fix findings, re-run `plan-critique`, or acknowledge with "
-            "`plan-critique --ack --note '...'` when mode is `gate`."
+            f"{len(needed)} inbox item(s). Write `artifacts/critique-reply.json` "
+            "with `{id, verdict: take|skip, note}` per id. "
+            "`skip` requires note. Bulk: `plan-critique --ack --note '...'`."
         )
         lines.append("")
     return "\n".join(lines)
@@ -1402,6 +1759,16 @@ def write_critique_artifacts(
         json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     md_path.write_text(critique_to_markdown(result), encoding="utf-8")
+    try:
+        from usage_ledger import record_critique_result
+
+        record_critique_result(
+            run_dir,
+            result,
+            mode=str((resolve_plan_critique(run_dir) or {}).get("mode") or ""),
+        )
+    except Exception:
+        pass
 
     prompt_path: Path | None = None
     # Keep a debug prompt only when LLM was requested but not successfully run
@@ -1476,7 +1843,7 @@ def load_critique(run_dir: Path) -> dict[str, Any] | None:
 
 
 def ack_critique(run_dir: Path, *, note: str, by: str = "pm") -> dict[str, Any]:
-    """Mark a failed critique as acknowledged for gate mode."""
+    """Bulk-skip remaining inbox items (same note on every id)."""
     result = load_critique(run_dir)
     if result is None:
         result = structural_critique(run_dir)
@@ -1485,12 +1852,19 @@ def ack_critique(run_dir: Path, *, note: str, by: str = "pm") -> dict[str, Any]:
     result["ack_note"] = note
     result["acked_at"] = datetime.now(timezone.utc).isoformat()
     attach_decision(result)
+    write_critique_reply(
+        run_dir,
+        [
+            {"id": str(f.get("id")), "verdict": "skip", "note": note}
+            for f in inbox_required(result)
+        ],
+    )
     write_critique_artifacts(run_dir, result)
     return result
 
 
 def critique_gate_errors(run_dir: Path, settings: dict[str, Any]) -> list[str]:
-    """Return validation errors for pre-dispatch when plan_critique is enabled."""
+    """Block dispatch on unreplied inbox ids when plan_critique is enabled."""
     if not settings.get("enabled"):
         return []
     mode = str(settings.get("mode") or "advisory").lower()
@@ -1501,21 +1875,5 @@ def critique_gate_errors(run_dir: Path, settings: dict[str, Any]) -> list[str]:
                 "plan_critique mode=gate requires artifacts/critique.json — "
                 "run `plan-critique --run-dir <run>` before pre-dispatch"
             ]
-        # advisory: soft — no hard fail
         return []
-    status = str(result.get("status") or "").lower()
-    decision = str(result.get("decision") or compute_decision(result)).lower()
-    if mode == "gate" and status not in {"pass", "ack"}:
-        errors = (result.get("summary") or {}).get("errors", "?")
-        return [
-            f"plan_critique gate blocked: critique status={status!r} "
-            f"decision={decision!r} (errors={errors}). Fix PLAN/SPEC/tasks and "
-            f"re-run plan-critique, or `plan-critique --ack --note '...'` "
-            f"with an explicit reason"
-        ]
-    if mode == "gate" and decision == "revise_required" and status != "ack":
-        return [
-            f"plan_critique gate blocked: decision=revise_required. "
-            f"Apply pm_action from artifacts/critique.json, re-run plan-critique"
-        ]
-    return []
+    return critique_inbox_errors(run_dir, result)

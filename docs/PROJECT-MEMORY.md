@@ -42,6 +42,7 @@ project-onboard /path/to/repo --deep
 
 ## Skills
 
+- `lane-memory` — opt-in SMA fact corpus (`.agents/memory/`, adoc `stages.memory`)
 - `project-life` — todos, delivery plans, PROGRESS/LESSONS/ADR after a task/session
 - `project-onboard` — dual scenario + depth passport
 - `resume-project` — cold start (`resume-project .`)

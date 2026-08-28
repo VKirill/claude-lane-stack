@@ -564,6 +564,29 @@ if [[ "$REMOTE_ATTEMPTED" == "true" && "$REMOTE_PUSHED" != "true" ]]; then
 fi
 
 if [[ -d "$WT_PATH" ]]; then
+  BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+  if ! PYTHONPATH="$BIN_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$REPO" "$WT_PATH" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.home() / ".agents" / "bin"))
+main = Path(sys.argv[1])
+wt = Path(sys.argv[2])
+try:
+    import lane_memory as lm
+except ImportError:
+    raise SystemExit(0)
+if not lm.enabled(main):
+    raise SystemExit(0)
+pending = lm.pending_worktree_ids(main, wt)
+if not pending:
+    raise SystemExit(0)
+copied = lm.export_worktree(main, wt)
+print("exported memory:", ",".join(str(p) for p in copied) or pending)
+PY
+  then
+    echo "wt-merge-main: memory export from worktree failed; cleanup blocked" >&2
+    exit 1
+  fi
   if ! git worktree remove "$WT_PATH" 2>/dev/null; then
     echo "wt-merge-main: merge shipped, but clean worktree removal failed: $WT_PATH" >&2
     exit 1

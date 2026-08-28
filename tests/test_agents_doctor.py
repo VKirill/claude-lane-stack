@@ -70,7 +70,7 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertFalse(missing_payload["tools"]["agy"]["present"])
             self.assertEqual(
                 missing_payload["tools"]["agy"]["unavailable_reason"],
-                "gemini-3.6-flash-high unavailable",
+                "gemini-3.7-flash-high unavailable",
             )
 
             agy.write_text(
@@ -477,14 +477,23 @@ class DoctorTuiCatalogTest(unittest.TestCase):
         self.assertEqual(tui.sidebar_hit(2), 0)
         self.assertEqual(tui.sidebar_hit(8), 6)
         self.assertEqual(tui.sidebar_hit(9), 7)
+        self.assertEqual(tui.sidebar_hit(11), 9)
         self.assertIsNone(tui.sidebar_hit(1))
-        self.assertIsNone(tui.sidebar_hit(10))
+        self.assertIsNone(tui.sidebar_hit(12))
         self.assertIn("info", tui.TAB_IDS)
+        self.assertIn("memory", tui.TAB_IDS)
+        self.assertIn("docs", tui.TAB_IDS)
+        self.assertNotIn("memory", tui.STAGE_IDS)
+        self.assertNotIn("docs", tui.STAGE_IDS)
         self.assertEqual(tui.TAB_IDS[-1], "apply")
         import agents_doctor_tui_i18n as i18n  # noqa: E402
 
         self.assertIn("tab_info", i18n.STRINGS["en"])
         self.assertIn("tab_info", i18n.STRINGS["ru"])
+        self.assertIn("tab_memory", i18n.STRINGS["ru"])
+        self.assertIn("tab_docs", i18n.STRINGS["ru"])
+        self.assertIn("Enabled", i18n.STRINGS["en"]["memory_info"])
+        self.assertIn("docs-web", i18n.STRINGS["ru"]["docs_info"])
         self.assertIn("/project-onboard", i18n.STRINGS["en"]["info_start"])
         self.assertIn("project-onboard .", i18n.STRINGS["ru"]["info_cmds"])
         self.assertEqual(tui.pick_window(10, 0, 5), (0, 5))
@@ -553,6 +562,23 @@ class DoctorTuiCatalogTest(unittest.TestCase):
         self.assertEqual(variants["prov/has-var"], ["low", "max"])
         self.assertEqual(variants["prov/no-var"], [])
         self.assertNotIn("prov/happyhorse-1.1-i2v", models)
+
+    def test_agy_tui_effort_locked_to_model_suffix(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import agents_doctor_tui as tui  # noqa: E402
+
+        self.assertEqual(tui._efforts_for("agy", "gemini-3.7-flash-low"), ["low"])
+        self.assertEqual(tui._efforts_for("agy", "gemini-3.7-flash-medium"), ["medium"])
+        self.assertEqual(tui._efforts_for("agy", "gemini-3.7-flash-high"), ["high"])
+        self.assertEqual(tui._ensure_effort("agy", "high", "gemini-3.7-flash-low"), "low")
+        self.assertEqual(
+            tui._ensure_effort("agy", "low", "gemini-3.7-flash-medium"), "medium"
+        )
+        self.assertEqual(
+            tui._ensure_effort("agy", "medium", "gemini-3.7-flash-high"), "high"
+        )
+        self.assertEqual(tui._ensure_effort("agy", "low", "claude-sonnet-4-6"), "low")
+        self.assertEqual(tui._ensure_effort("agy", "medium", "claude-sonnet-4-6"), "medium")
 
     def test_harness_opencode_agents_exist(self) -> None:
         root = ROOT / "profiles" / "opencode" / "agents"

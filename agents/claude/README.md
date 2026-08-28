@@ -14,7 +14,8 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `emergency-writer` | Emergency write | Shell-out write **after** terminal block | Codex Terra/Sol |
 | `night-reviewer` | Review | Night/branch read-only review | Codex Sol |
 | `project-onboarder` | Onboard | CLAUDE.md / docs pack | Codex Terra/Sol |
-| `docs-maintainer` | Docs | Nightly ARCHITECTURE/PROGRESS refresh | Codex Terra |
+| `docs-maintainer` | Docs | INIT + nightly living docs/ | Codex Luna max fast |
+| `design-lead` | Design | Extract/refresh `docs/DESIGN.md` | Claude |
 
 ## Compatibility aliases (deprecated)
 
@@ -50,6 +51,7 @@ terminal block → Agent(emergency-writer)  # not “spawn codex because adoc is
 night review   → night-shift / Agent(night-reviewer)
 onboard        → Agent(project-onboarder)
 docs           → Agent(docs-maintainer)
+design         → Agent(design-lead)
 ```
 
 See also: `docs/PLATFORM-CAPABILITIES.md`, `docs/ROUTING.md`.

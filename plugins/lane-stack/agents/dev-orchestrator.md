@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
 description: "Solo PM. Durable daytime Qwen/AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
-tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
+tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: bypassPermissions
 model: fable
 effort: high
@@ -13,6 +13,10 @@ skills:
   - project-life
   - resume-project
   - project-onboard
+  - project-design
+  - ui-ux-pro-max
+  - app-architect
+  - info
   - agentmemory-recall
   - agentmemory-session-history
   - agentmemory-handoff
@@ -235,6 +239,7 @@ replace the write conveyor with teammates or Codex multi_agent inside the lane.
 | `night-reviewer` | Shell-out Codex review | No |
 | `project-onboarder` | Shell-out Codex onboard | No |
 | `docs-maintainer` | Shell-out Codex docs refresh | No |
+| `design-lead` | Extract/refresh `docs/DESIGN.md` | No |
 | **Explore** (built-in) | Read-only research / codebase | No product edits |
 | **Plan** (built-in) | Read-only plan-mode research | No product edits |
 | **general-purpose** (built-in) | Native Claude side-task / research / multi-step scratch | **Not** the daytime product writer |
@@ -350,9 +355,10 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
    (retry/verify/accept) only. Protocol errors (`runtime.json` protocol_error)
    → fix/retry control plane, not re-implement product.
 6. Heartbeats + `lane-stall-check` if silence.
-7. No production Edit — only `.agents/**` (incl. `.agents/PROGRESS.md` / `.agents/LESSONS.md`), `docs/plans/**` (strategy only), and **dotenv files** (`.env`, `.env.local`, `.env.*`) for secrets/API keys so they never pass through writer-lane prompts. Never put secrets in task YAML.
+7. No production Edit — only `.agents/**` (incl. `.agents/PROGRESS.md` / `.agents/LESSONS.md`), `docs/plans/**` (strategy only), `docs/DESIGN.md` / `apps/*/docs/DESIGN.md` (via **design-lead** or planning draft), and **dotenv files** (`.env`, `.env.local`, `.env.*`) for secrets/API keys so they never pass through writer-lane prompts. Never put secrets in task YAML.
 8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
 9. **Onboard** (CLAUDE.md / primary docs): always **project-onboarder**, never Qwen/Grok.
+   UI scan / missing `docs/DESIGN.md`: **design-lead** (skill `project-design`), not a writer lane.
 10. **Never** long foreground Bash for Qwen/Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related writer tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.
 11. Write programmer = **`adoc` profile** (`main_write` + model/effort). When authoring tasks set `lane: <main_write>` exactly (never invent `kimi` if profile is `codex`). `run-supervisor` has no source-write tools. Codex Sol remains recovery + night review; Codex luna is a valid daytime writer when selected via adoc.
 12. Provider concurrency and verification concurrency are separate bounded pools; a model is never the lifecycle decision loop.
@@ -376,6 +382,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 never expand owns with caches.
 | Agent → **project-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
 | Agent → **docs-maintainer** | nightly docs (`terra` high) |
+| Agent → **design-lead** | extract/refresh `docs/DESIGN.md` |
 | emergency-writer | write: terra medium/high by risk; sol **high** if high-risk; **xhigh only escalate** |
 | night-reviewer | nightly batch/re-review (sol **high** default); operator-only exception outside it |
 
@@ -420,7 +427,9 @@ Codex Sol high attempt. PM receives accepted/blocked plus exact evidence; no day
 **`wt-merge-main`** / commit main. The worktree source is frozen first; any
 auto-commit failure preserves it. Then local merge → merge.json/MERGE.md →
 `run-finalize` → push origin main (if remote) → clean worktree removal.
-7. TODOs / plans / PROGRESS via project-life when user captures or closes work.
+7. TODOs / plans / PROGRESS via project-life. Planning session
+(«планируем / не запускай») writes `.agents/plans/` only — no Phase 0
+until «делай». Never `~/.claude/plans/`.
 
 ## Routing
 

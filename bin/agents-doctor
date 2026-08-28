@@ -233,7 +233,10 @@ def detect() -> dict:
     p = which("agy")
     agy_models = command_lines(["agy", "models"]) if p else []
     agy_agents = command_lines(["agy", "agents"]) if p else []
-    agy_model_ready = "gemini-3.6-flash-high" in agy_models
+    agy_model_ready = any(
+        name in agy_models
+        for name in ("gemini-3.7-flash-high", "gemini-3.6-flash-high")
+    )
     agy_agent_ready = any(line.strip() == "agy-writer" for line in agy_agents)
     tools["agy"] = {
         "present": bool(
@@ -250,7 +253,7 @@ def detect() -> dict:
         "version": run_version(["agy", "--version"]) if p else None,
         "required": False,
         "unavailable_reason": (
-            "gemini-3.6-flash-high unavailable"
+            "gemini-3.7-flash-high unavailable"
             if p and not agy_model_ready
             else "agy-writer agent unavailable"
             if p and not agy_agent_ready
@@ -513,7 +516,7 @@ def write_outputs(
         "qwen": "qwen3.8-max-preview",
         "kimi": "kimi-code/k3-256k",
         "grok": "grok-4.5",
-        "agy": "gemini-3.6-flash-high",
+        "agy": "gemini-3.7-flash-high",
         "codex": "gpt-5.6-luna",
         "cursor": "composer-2.5",
         "opencode": "alibaba-token-plan/qwen3.8-max-preview",
@@ -522,7 +525,7 @@ def write_outputs(
         "qwen": "medium",
         "kimi": "medium",
         "grok": "medium",
-        "agy": "medium",
+        "agy": "high",
         "codex": "max",
         "cursor": "medium",
         "opencode": "medium",
@@ -532,6 +535,10 @@ def write_outputs(
             writer_model = default_models[main_write]
         if not writer_effort:
             writer_effort = default_efforts[main_write]
+    if main_write == "agy":
+        from routing_profile import resolve_agy_effort
+
+        writer_effort = resolve_agy_effort(writer_model or "", writer_effort or "")
     ws_mode = (workspace_mode or "auto").strip().lower()
     if ws_mode not in {"in_place", "worktree", "auto"}:
         ws_mode = "auto"

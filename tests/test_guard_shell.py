@@ -100,6 +100,8 @@ class GuardShellTest(unittest.TestCase):
             "jq . .agents/runs/demo/events.jsonl",
             "lane-stall-check /srv/app --minutes 5",
             "run-init /srv/app demo && run-validate --phase pre-dispatch --run-dir /srv/app/.agents/runs/demo",
+            "lane-memory context /srv/app resume",
+            "memory-maintain-project /srv/app \"24 hours ago\"",
             "wt-merge-main /srv/app demo && git push origin main",
             # ops-expand: deploy / cutover / durable lanes
             "sudo nohup bash /tmp/mc-cutover-resume.sh > /tmp/mc-cutover-resume-nohup.log 2>&1 &",
@@ -169,6 +171,7 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/.agents/todos/idea.md",
             "/srv/app/.agents/findings/foo.json",
             "/srv/app/.agents/session-log/INDEX.md",
+            "/srv/app/.agents/memory/drafts/always-read.md",
             "/srv/app/PROGRESS.md",
             "/srv/app/LESSONS.md",
             "/srv/app/.agents/PROGRESS.md",
@@ -206,6 +209,13 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/.agents/runs/demo/artifacts/001/state.json",
             "/srv/app/.agents/runs/demo/artifacts/001/report.md",
             "/srv/app/.agents/runs/demo/controller/lane-bg.pid",
+            "/srv/app/.agents/memory/always-read.md",
+            "/srv/app/.agents/memory/MEMORY.md",
+            "/srv/app/.agents/memory.local/secret.md",
+            "/srv/app/.agents/sma/local-memory/secret.md",
+            "/srv/app/.agents/sma/index/memory-lexical.sqlite",
+            "/srv/app/.cls/local-memory/secret.md",
+            "/srv/app/.cls/index/memory-lexical.sqlite",
             "/srv/app/docs/plans/../../src/evil.md",
         ):
             with self.subTest(path=path):

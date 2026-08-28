@@ -612,6 +612,7 @@ def validate_run(run_dir: Path, phase: str) -> int:
                     timeout=int(
                         __import__("os").environ.get("PLAN_CRITIQUE_TIMEOUT", "180")
                     ),
+                    invoke_llm=bool(critique_settings.get("profile_path")),
                 )
                 write_critique_artifacts(
                     run_dir,
@@ -621,10 +622,16 @@ def validate_run(run_dir: Path, phase: str) -> int:
                     ),
                     recommended_model=str(critique_settings.get("model") or ""),
                 )
+                inbox_n = sum(
+                    1
+                    for item in (crit.get("findings") or [])
+                    if isinstance(item, dict) and item.get("severity") in {"error", "warn"}
+                )
                 print(
                     "run-validate: plan_critique "
                     f"decision={crit.get('decision')} status={crit.get('status')} "
-                    f"llm={(crit.get('llm_pass') or {}).get('status')}",
+                    f"llm={(crit.get('llm_pass') or {}).get('status')} "
+                    f"inbox={inbox_n}",
                     file=sys.stderr,
                 )
             except Exception as crit_exc:  # noqa: BLE001
@@ -680,6 +687,13 @@ def validate_run(run_dir: Path, phase: str) -> int:
     if errors:
         raise ContractError("\n".join(dict.fromkeys(errors)))
     print(f"run-validate: valid {phase} tasks={len(tasks)} run_dir={run_dir}")
+    if phase == "pre-dispatch":
+        try:
+            from usage_ledger import record_critique_dispatch
+
+            record_critique_dispatch(run_dir)
+        except Exception:
+            pass
     if phase == "pre-merge" and len(tasks) > 1:
         print(
             "run-validate: L2 reminder — run one focused full/affected suite for the "

@@ -30,6 +30,8 @@ PM_CONTROL_COMMANDS = {
     "run-validate",
     "wt-create",
     "wt-merge-main",
+    "lane-memory",
+    "memory-maintain-project",
 }
 # Host ops the PM may run directly (deploy / cutover / long detach).
 PM_OPS_COMMANDS = {
@@ -151,6 +153,16 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
             parts = normalized.split("/", 2)
             receipt_path = parts[2] if len(parts) >= 3 else normalized
         if _PM_RUN_MACHINE_RECEIPT.search(receipt_path):
+            return False
+        # SMA corpus: records only through lane-memory. Drafts are the inbox.
+        if receipt_path.startswith(".agents/memory/"):
+            rest = receipt_path[len(".agents/memory/") :]
+            return rest.startswith("drafts/") and suffix in _PM_TEXT_SUFFIXES
+        if receipt_path.startswith(".agents/memory.local/"):
+            return False
+        if receipt_path.startswith(".agents/sma/"):
+            return False
+        if receipt_path.startswith(".cls/"):
             return False
         if receipt_path.startswith(".agents/"):
             return suffix in _PM_TEXT_SUFFIXES

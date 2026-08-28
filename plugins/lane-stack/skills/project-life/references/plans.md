@@ -15,9 +15,18 @@ Do not confuse:
 
 1. Slug: `YYYY-MM-DD-` + kebab 3–6 words (ASCII).
 2. Files: `items/<slug>/PLAN.md` + `meta.yaml`; add row to `ROADMAP.md`.
+   Optional `items/<slug>/artifacts/` for discussion notes/screenshots.
 3. From a todo: copy Intent/Context from its `AGENT.md`, set `source_todos`,
    mark the todo `ready`.
 4. Tell user in Russian one sentence + path.
+
+## Planning session (draft only)
+
+If the user is shaping work and has not said «делай»:
+- Keep `meta.status: draft`. Update PLAN.md + History each turn.
+- Do not `run-init`. Do not write `~/.claude/plans/`.
+- No owns_paths / task YAML here (that is the run `PLAN.md`).
+- «делай» → `status: active`, then lane-contract.
 
 ## PLAN.md (sections always, in this order)
 

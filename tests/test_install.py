@@ -151,6 +151,10 @@ class InstallTest(unittest.TestCase):
 
             pm_skill = home / ".agents" / "pm-skills" / "orchestrator-lanes" / "SKILL.md"
             self.assertTrue(pm_skill.is_file())
+            self.assertTrue((home / ".agents" / "pm-skills" / "info" / "SKILL.md").is_file())
+            self.assertTrue((home / ".agents" / "pm-skills" / "app-architect" / "SKILL.md").is_file())
+            self.assertFalse((home / ".agents" / "skills" / "info").exists())
+            self.assertFalse((home / ".agents" / "skills" / "app-architect").exists())
             self.assertFalse((home / ".agents" / "skills" / "orchestrator-lanes").exists())
             self.assertFalse((home / ".claude" / "skills" / "orchestrator-lanes").exists())
             self.assertFalse((home / ".claude" / "skills" / "lane-contract").exists())

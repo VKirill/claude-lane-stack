@@ -14,7 +14,12 @@ sys_path_hooks = str(ROOT / "hooks")
 import sys
 
 sys.path.insert(0, sys_path_hooks)
-from teammate_idle_sentinel import decide, has_sentinel, last_assistant_text  # noqa: E402
+from teammate_idle_sentinel import (  # noqa: E402
+    decide,
+    has_sentinel,
+    last_assistant_text,
+    resolve_teammate_transcript,
+)
 
 
 def run_hook(payload: dict, *, env_extra: dict | None = None) -> subprocess.CompletedProcess[str]:
@@ -95,6 +100,67 @@ class SentinelUnitTests(unittest.TestCase):
                 {"hook_event_name": "TeammateIdle", "transcript_path": str(path)}
             )
             self.assertEqual(code, 0)
+
+    def _assistant_line(self, text: str) -> str:
+        return json.dumps(
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": text}]},
+            }
+        )
+
+    def test_prefers_agent_transcript_over_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "sess.jsonl"
+            agent = Path(tmp) / "agent.jsonl"
+            parent.write_text(self._assistant_line("PM still planning") + "\n")
+            agent.write_text(
+                self._assistant_line("DONE accepted /tmp/run") + "\n"
+            )
+            payload = {
+                "hook_event_name": "TeammateIdle",
+                "teammate_name": "rs-history-modal-scroll-jump",
+                "transcript_path": str(parent),
+                "agent_transcript_path": str(agent),
+            }
+            self.assertEqual(resolve_teammate_transcript(payload), agent)
+            self.assertIn("DONE", last_assistant_text(payload))
+            code, err = decide(payload)
+            self.assertEqual(code, 0)
+            self.assertEqual(err, "")
+
+    def test_resolves_teammate_jsonl_by_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "sess.jsonl"
+            sub = Path(tmp) / "sess" / "subagents"
+            sub.mkdir(parents=True)
+            parent.write_text(self._assistant_line("PM last message") + "\n")
+            (sub / "agent-ars-history-modal-scroll-jump-abc123.jsonl").write_text(
+                self._assistant_line("DONE accepted /tmp/run") + "\n"
+            )
+            payload = {
+                "hook_event_name": "TeammateIdle",
+                "teammate_name": "rs-history-modal-scroll-jump",
+                "transcript_path": str(parent),
+            }
+            code, err = decide(payload)
+            self.assertEqual(code, 0, err)
+            self.assertIn("DONE", last_assistant_text(payload))
+
+    def test_parent_transcript_alone_does_not_pass_for_teammate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "sess.jsonl"
+            parent.write_text(
+                self._assistant_line("DONE this is the PM close line") + "\n"
+            )
+            payload = {
+                "hook_event_name": "TeammateIdle",
+                "teammate_name": "rs-openrouter-muse",
+                "transcript_path": str(parent),
+            }
+            self.assertIsNone(resolve_teammate_transcript(payload))
+            code, _ = decide(payload)
+            self.assertEqual(code, 2)
 
 
 class HookProcessTests(unittest.TestCase):

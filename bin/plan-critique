@@ -12,8 +12,8 @@ Writes artifacts/critique.json + critique.md with decision:
   ship | revise | revise_required
 
 When provider ≠ structural, invokes that provider (qwen/codex/kimi/grok/agy)
-for a second pass and merges findings. Orchestrator MUST read decision and
-fix the plan when revise_required.
+for an independent review. Findings get stable ids. PM replies in
+artifacts/critique-reply.json (take|skip+note) before dispatch.
 """
 from __future__ import annotations
 
@@ -146,9 +146,19 @@ def main(argv: list[str] | None = None) -> int:
         prompt = run_dir / "artifacts" / "critique-prompt.md"
         if prompt.is_file():
             print(f"  wrote {prompt}  (debug prompt; LLM pass incomplete)")
+        inbox = [
+            f
+            for f in (result.get("findings") or [])
+            if isinstance(f, dict) and f.get("severity") in {"error", "warn"}
+        ]
+        if inbox:
+            print(
+                f"  inbox: {len(inbox)} open — "
+                f"write {run_dir / 'artifacts' / 'critique-reply.json'}"
+            )
         for f in (result.get("findings") or [])[:8]:
             print(
-                f"  [{f.get('severity')}] {f.get('title')} "
+                f"  [{f.get('severity')}] {f.get('id') or f.get('title')} "
                 f"({f.get('path') or f.get('task_id') or '—'})"
             )
         total = len(result.get("findings") or [])

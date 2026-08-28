@@ -265,6 +265,9 @@ SUCCESS_STOP_REASONS = frozenset({"EndTurn"})
 TOKEN_FIELDS = {
     "input_tokens",
     "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_tokens",
+    "cache_write_tokens",
     "output_tokens",
     "reasoning_tokens",
     "total_tokens",
@@ -602,8 +605,13 @@ def _resolve_opencode_agent(args: argparse.Namespace) -> str:
         stages = profile.get("stages") if isinstance(profile.get("stages"), dict) else {}
         write = stages.get("write") if isinstance(stages.get("write"), dict) else {}
         agent = str(write.get("agent") or writer.get("agent") or "").strip()
-        if agent:
-            return agent
+        try:
+            from pipeline_stages import resolve_opencode_agent
+
+            return resolve_opencode_agent("write", agent)
+        except Exception:
+            if agent:
+                return agent
     try:
         from pipeline_stages import DEFAULT_OPENCODE_WRITE_AGENT
     except Exception:
@@ -820,6 +828,9 @@ def provider_command(
     if args.provider != "agy":
         raise RuntimeError(f"unsupported provider {args.provider!r}")
     validate_agy_agent_definition()
+    from routing_profile import resolve_agy_effort
+
+    args.reasoning_effort = resolve_agy_effort(args.model, args.reasoning_effort)
     prompt = args.prompt_file.read_text(encoding="utf-8")
     boundary = lane_report_boundary(
         task_id=args.task_id,
@@ -1334,6 +1345,15 @@ def sanitized_usage(value: object, allowed: set[str]) -> dict | None:
         for key in allowed
         if (scalar := safe_scalar(value.get(key))) is not None
     }
+    try:
+        from usage_ledger import normalize_usage
+
+        mapped = normalize_usage(value) or {}
+    except Exception:
+        mapped = {}
+    for key, scalar in mapped.items():
+        if key in allowed and key not in result and safe_scalar(scalar) is not None:
+            result[key] = scalar
     return result or None
 
 
@@ -1964,6 +1984,7 @@ def stream_agy_provider(
     result_status: str | None = None
     protocol_error: str | None = None
     saw_result = False
+    total_cost_usd: float | None = None
 
     def write_log(data: bytes) -> None:
         nonlocal log_bytes, log_truncated
@@ -1985,7 +2006,7 @@ def stream_agy_provider(
             bounded_evidence_append(failure_evidence, line)
 
     def process_line(line: bytes) -> None:
-        nonlocal conversation_id, usage, num_turns, response, result_status, saw_result
+        nonlocal conversation_id, usage, num_turns, response, result_status, saw_result, total_cost_usd
         if not line.strip():
             return
         try:
@@ -2049,6 +2070,15 @@ def stream_agy_provider(
             if isinstance(turns, int) and not isinstance(turns, bool) and turns >= 0:
                 num_turns = turns
             usage = sanitized_usage(result.get("usage"), TOKEN_FIELDS)
+            if usage is None:
+                usage = sanitized_usage(payload.get("usage"), TOKEN_FIELDS)
+            cost = safe_scalar(result.get("cost"))
+            if cost is None:
+                cost = safe_scalar(payload.get("cost"))
+            if cost is None:
+                cost = safe_scalar(result.get("total_cost_usd"))
+            if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+                total_cost_usd = float(cost)
             error = result.get("error")
             if isinstance(error, str):
                 bounded_evidence_append(failure_evidence, error.encode("utf-8"))
@@ -2122,7 +2152,7 @@ def stream_agy_provider(
         usage=usage,
         model_usage=None,
         num_turns=num_turns,
-        total_cost_usd=None,
+        total_cost_usd=total_cost_usd,
         total_cost_usd_ticks=None,
         cost_is_partial=None,
         usage_is_incomplete=None,
@@ -2194,6 +2224,7 @@ def stream_cursor_provider(
     failure_evidence = bytearray()
     conversation_id: str | None = None
     usage: dict | None = None
+    total_cost_usd: float | None = None
     num_turns: int | None = None
     response: str | None = None
     assistant_text = ""
@@ -2223,7 +2254,7 @@ def stream_cursor_provider(
 
     def process_line(line: bytes) -> None:
         nonlocal conversation_id, usage, num_turns, response, assistant_text
-        nonlocal result_subtype, result_is_error, saw_result
+        nonlocal result_subtype, result_is_error, saw_result, total_cost_usd
         if not line.strip():
             return
         try:
@@ -2281,6 +2312,11 @@ def stream_cursor_provider(
             if isinstance(turns, int) and not isinstance(turns, bool) and turns >= 0:
                 num_turns = turns
             usage = sanitized_usage(payload.get("usage"), TOKEN_FIELDS) or usage
+            cost = safe_scalar(payload.get("total_cost_usd"))
+            if cost is None and isinstance(payload.get("usage"), dict):
+                cost = safe_scalar(payload["usage"].get("costUSD"))
+            if cost is not None:
+                total_cost_usd = cost
 
     def consume_stdout(chunk: bytes) -> None:
         nonlocal pending
@@ -2355,7 +2391,7 @@ def stream_cursor_provider(
         usage=usage,
         model_usage=None,
         num_turns=num_turns,
-        total_cost_usd=None,
+        total_cost_usd=total_cost_usd,
         total_cost_usd_ticks=None,
         cost_is_partial=None,
         usage_is_incomplete=None,
@@ -2823,6 +2859,7 @@ def stream_opencode_provider(
     failure_evidence = bytearray()
     conversation_id: str | None = None
     usage: dict | None = None
+    total_cost_usd: float | None = None
     response = ""
     protocol_error: str | None = None
     saw_stop = False
@@ -2862,7 +2899,7 @@ def stream_opencode_provider(
         conversation_id = value
 
     def process_line(line: bytes) -> None:
-        nonlocal response, saw_stop, saw_error, usage
+        nonlocal response, saw_stop, saw_error, usage, total_cost_usd
         if not line.strip():
             return
         try:
@@ -2895,7 +2932,19 @@ def stream_opencode_provider(
                 reason = str(part.get("reason") or "")
             if reason in {"", "stop", "end", "complete"}:
                 saw_stop = True
-        usage = sanitized_usage(payload.get("usage"), TOKEN_FIELDS) or usage
+        chunk, cost, merge = None, 0.0, None
+        try:
+            from usage_ledger import merge_usage, usage_from_event
+
+            chunk, cost = usage_from_event(payload)
+            merge = merge_usage
+        except Exception:
+            chunk = sanitized_usage(payload.get("usage"), TOKEN_FIELDS)
+        if chunk:
+            mapped = sanitized_usage(chunk, TOKEN_FIELDS) or chunk
+            usage = merge(usage, mapped) if merge else mapped
+        if cost:
+            total_cost_usd = (total_cost_usd or 0.0) + cost
 
     def consume_stdout(chunk: bytes) -> None:
         nonlocal pending
@@ -2926,6 +2975,17 @@ def stream_opencode_provider(
         process_line(pending)
 
     provider_exit_code = process.wait()
+    if usage is None and conversation_id:
+        try:
+            from usage_ledger import usage_from_opencode_export
+
+            exported, export_cost = usage_from_opencode_export(conversation_id)
+        except Exception:
+            exported, export_cost = None, 0.0
+        if exported:
+            usage = sanitized_usage(exported, TOKEN_FIELDS) or exported
+        if export_cost:
+            total_cost_usd = (total_cost_usd or 0.0) + export_cost
     report_sha256: str | None = None
     if (
         provider_exit_code == 0
@@ -2970,7 +3030,7 @@ def stream_opencode_provider(
         usage=usage,
         model_usage=None,
         num_turns=None,
-        total_cost_usd=None,
+        total_cost_usd=total_cost_usd,
         total_cost_usd_ticks=None,
         cost_is_partial=None,
         usage_is_incomplete=None,
@@ -3383,6 +3443,12 @@ def write_runtime_receipt(
     }
     receipt.update({key: value for key, value in optional.items() if value is not None})
     save_state(path, receipt)
+    try:
+        from usage_ledger import record_receipt
+        record_receipt(receipt)
+    except Exception:
+        # ponytail: receipt write stays the source of truth; usage db is best-effort
+        pass
 
 
 def finish_lease(

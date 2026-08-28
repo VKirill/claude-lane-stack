@@ -1,9 +1,44 @@
 ---
 name: project-onboard
-description: Primary project onboarding for Claude Lane Stack. Diátaxis-classified LLM pack (MODULE_MAP, API_SURFACE, TEST_INDEX, TAXONOMY, RUNBOOK, Google DESIGN.md). Schemas + validation in references/. Weekly docs-maintainer. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, deep onboard, wiki→llm docs.
+description: Primary project onboarding for Claude Lane Stack. Diátaxis-classified LLM pack (MODULE_MAP, API_SURFACE, TEST_INDEX, TAXONOMY, RUNBOOK, Google DESIGN.md). Schemas + validation in references/. Weekly docs-maintainer. Use when: info, справка, lane-stack:project-onboard info, /project-onboard, онбординг, init project, bootstrap CLAUDE.md, deep onboard, wiki→llm docs.
+argument-hint: "[info]"
 ---
 
 # Project onboard (Claude Lane Stack)
+
+## Info (print and stop)
+
+If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
+print the block below **verbatim** (Russian), then **stop**. Do not start onboard.
+
+```text
+project-onboard — первичная карта репо (CLAUDE.md + LLM-pack)
+
+Когда
+- Нет CLAUDE.md / пустой или чужой репо.
+- Уже живой UI без DESIGN.md → design-lead (project-design), не повторный onboard.
+
+Как открыть шпаргалку
+- /lane-stack:project-onboard info
+- каталог: /lane-stack:info
+
+Запуск
+- /project-onboard
+- /project-onboard deep
+- /project-onboard /path/to/repo fast
+- CLI: project-onboard .
+- агент: project-onboarder (Codex, не Grok)
+
+Флаги
+- deep / fast — глубина
+- full / minimal — scenario
+- --seed-only — только заглушки, без модели
+
+После
+- RU-саммари: поверхности, модули, тесты, DESIGN?, RUNBOOK?
+- has_ui → docs/DESIGN.md (Google)
+- weekly refresh: docs-maintainer, не этот скилл
+```
 
 ## Who runs it
 
@@ -14,6 +49,7 @@ description: Primary project onboarding for Claude Lane Stack. Diátaxis-classif
 | Instructions | `~/.agents/codex/instructions/onboard.md` |
 | Model / effort / fast | **adoc** `stages.onboard` |
 | Weekly refresh | `docs-maintainer` (`ONBOARD_REFRESH=weekly`) |
+| Existing UI, no DESIGN.md | `design-lead` (skill `project-design`) — extract, do not re-onboard |
 
 Default CLI = full pipeline. `--seed-only` = stubs without model. Do **not** use Grok.
 

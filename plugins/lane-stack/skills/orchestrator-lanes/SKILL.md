@@ -1,17 +1,77 @@
 ---
 name: orchestrator-lanes
-description: Claude Code `dev-orchestrator` only. File-based multi-lane PM playbook (score, DAG, run-controller, L0/L1/L2, ship). Use when this session IS that agent. SKIP: Grok, Codex, Kimi, Qwen, AGY, Cursor writer CLIs and any default coding agent — do not load, do not wt-create.
+description: Claude Code `dev-orchestrator` only. File-based multi-lane PM playbook (score, DAG, run-controller, L0/L1/L2, ship). Use when this session IS that agent, or user says info / справка / lane-stack:orchestrator-lanes info. SKIP: Grok, Codex, Kimi, Qwen, AGY, Cursor writer CLIs and any default coding agent — do not load, do not wt-create.
+argument-hint: "[info]"
 ---
 
 # Orchestrator lanes — solo operator
 
-Load: **karpathy-guidelines**, **lane-contract**, **project-life**, **resume-project**.
+## Info (print and stop)
+
+If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
+print the block below **verbatim** (Russian), then **stop**. Do not score. Do not `run-init`.
+
+```text
+orchestrator-lanes — раны (только сессия dev-orchestrator)
+
+Когда
+- Человек сказал «делай / реализуй / в работу / запускай ран».
+- До этого — project-life, план в .agents/plans/. Ран не открывать.
+
+Как открыть шпаргалку
+- /lane-stack:orchestrator-lanes info
+- каталог всех процессов: /lane-stack:info
+
+Старт рана
+1) cwd = проект. Сессия = dev-orchestrator.
+2) Score один раз (0–2 micro … 11+ спроси).
+3) run-init → заполнить PLAN/SPEC/tasks по lane-contract.
+4) run-validate --phase pre-dispatch.
+5) Один Agent(run-supervisor) на ран.
+6) lane из adoc (.agents/routing.profile.yaml), не хардкод kimi.
+
+UI
+- Нужны полные docs/DESIGN.md и apps/<app>/docs/DESIGN.md.
+- Нет файла → сначала design-lead, потом run-init.
+- Task read_first: оба DESIGN.md. Не в owns_paths, если исход не токены.
+
+Нельзя
+- run-init на фразе «планируем / не запускай»
+- Claude Plan mode / ~/.claude/plans/
+- второй run-supervisor на тот же ран
+- просить человека мержить main
+```
+
+Load: **karpathy-guidelines**, **lane-contract**, **project-life**, **resume-project**, **project-design**, **ui-ux-pro-max**.
 
 Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md`,
 `PLATFORM-CAPABILITIES.md` (Claude Code + Codex features we use),
 `docs/decisions/ADR-codex-effort.md` under the lane-stack / `~/.agents/docs/`.
 
 You are the **only** person who merges to `main`. Human never merges.
+
+---
+
+## Planning vs run
+
+If the user is in a **planning session** (`project-life`: «планируем /
+не запускай / спланируй / обсудим / пока план») or has **not** said
+«делай / реализуй / в работу / запускай ран»:
+
+- Do **not** announce score, `run-init`, or dispatch writers.
+- Follow **project-life → Planning session**. Write `.agents/plans/` only.
+- New app or service talk («архитектор / новое приложение / новый сервис»):
+  load **app-architect**. Same draft plan, living `artifacts/`. Still no run.
+- Claude Code Plan mode is not this. Do not write `~/.claude/plans/`.
+  If the host is in Plan mode, tell the user to switch to default.
+
+Phase 0 starts only after «делай / реализуй / в работу».
+
+**UI / visual initiative:** root `docs/DESIGN.md` plus the **full**
+`apps/<name>/docs/DESIGN.md` for every UI app you touch. If any of those
+are missing, spawn **design-lead** before `run-init`. UI task `read_first`
+lists both root and that app's DESIGN.md. Do not put them in writer
+`owns_paths` unless the outcome is tokens/docs.
 
 ---
 
@@ -89,36 +149,29 @@ Bad multi-task runs almost always start here. Apply **before** `run-init` / befo
 run-init "$(pwd)" <slug> --score <score>
 # Fill PLAN.md, SPEC.md (required content when score≥7 or ≥2 tasks), tasks/*.yaml
 plan-critique --run-dir "$(pwd)/.agents/runs/<slug>"   # stages.plan_critique (adoc)
-# MUST read artifacts/critique.json → decision + pm_action (see below)
+# Every error/warn id → artifacts/critique-reply.json (take | skip+note)
 run-validate --run-dir "$(pwd)/.agents/runs/<slug>" --phase pre-dispatch
 run-board "$(pwd)"
 ```
 
 **Plan critique** (configure in `adoc` → **Stages**):
 
-1. **Structural** checks always run when `enabled`.
-2. When `provider` is `qwen` / `codex` / `kimi` / `grok` / `agy` (not `structural`),
-   `plan-critique` **invokes that model** one-shot and merges findings.
-3. Writes `artifacts/critique.json` + `critique.md` with a PM **`decision`**:
+1. Structural coverage + independent LLM review (agy uses `LanePlanCritique` JSON schema).
+2. Writes `artifacts/critique.json` + `critique.md`. Findings with `error`/`warn` are **inbox**.
+3. PM **must** reply before `run-controller` / writers (advisory and gate):
 
-| `decision` | PM must |
-|------------|---------|
-| `ship` | Proceed to pre-dispatch → controller |
-| `revise` | Prefer fix PLAN/SPEC/tasks, re-run `plan-critique`; residual risk only with explicit reason (advisory) or `--ack --note` (gate) |
-| `revise_required` | **Stop.** Edit contracts under `.agents/runs/<slug>/`, re-run `plan-critique` until `ship` (or gate-ack). **Do not** start writers |
-
-**MUST after every `plan-critique` / pre-dispatch validate:**
-
-```bash
-# Read decision (do not skip)
-python3 -c "import json; d=json.load(open('.agents/runs/<slug>/artifacts/critique.json')); print(d['decision'], d.get('pm_action','')); print(d.get('summary')); [print(f['severity'], f['title'], f.get('detail','')[:120]) for f in d.get('findings') or []]"
+```json
+{"schema_version":1,"items":[{"id":"structural:verify_heavy:003","verdict":"skip","note":"L1 is enough"}]}
 ```
 
-- If `decision=revise_required`: apply findings (fix_plan / fix_spec / fix_task / split_task), re-run `plan-critique`, re-read decision. Loop ≤3 times then escalate to human with critique.md.
-- If `decision=revise`: fix cheap wins, re-critique, or state residual risk in chat before dispatch.
-- If `decision=ship`: continue.
-- `run-validate --phase pre-dispatch` **auto-runs** plan-critique when the artifact is missing.
-- `mode: advisory` warns; `mode: gate` blocks until `status: pass|ack` and not `revise_required`.
+| `verdict` | Meaning |
+|-----------|---------|
+| `take` | You edited PLAN/SPEC/tasks for that id; re-run `plan-critique` |
+| `skip` | Leave as-is; **note required** |
+
+Bulk skip: `plan-critique --ack --note 'reason'`.  
+`run-validate --phase pre-dispatch` and `run-controller start` refuse unreplied ids.  
+`wiki/` `TODO/` `docs/plans/` owns_gap is `info` — no reply.
 
 ### PLAN.md
 

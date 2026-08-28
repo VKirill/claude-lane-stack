@@ -15,6 +15,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_coder_sub": "CLI + model + effort",
         "tab_stages": "Stages",
         "tab_stages_sub": "Conveyor · per-agent",
+        "tab_memory": "Memory",
+        "tab_memory_sub": "Fact corpus · opt-in",
+        "tab_docs": "Docs",
+        "tab_docs_sub": "Living docs/ · night",
         "tab_work": "Work",
         "tab_work_sub": "in-place vs worktree",
         "tab_night": "Night",
@@ -54,6 +58,43 @@ STRINGS: dict[str, dict[str, str]] = {
             "  On «Model» you get the full catalog for that agent (Kimi has several).\n"
             "  Critique mode «gate» blocks pre-dispatch until pass/ack.\n"
             "  Fast mode (Codex/Cursor) is on Critique and Onboard.\n"
+            "  Memory and Docs are their own tabs — not stages.\n"
+        ),
+        "memory_h1": "  Project memory\n",
+        "memory_help": (
+            "  Facts that cannot be derived from git. Off until Enabled.\n"
+            "  ↑↓ fields · ←→ / Space change value.\n\n"
+        ),
+        "memory_fields_h2": "  Settings\n",
+        "memory_info_h2": "\n  How it works\n",
+        "memory_info": (
+            "  1. Enabled = the only switch that creates/uses the corpus.\n"
+            "  2. Layout: .agents/memory/ in git · .cls/local-memory/ this machine ·\n"
+            "     .cls/index/ FTS (derived). Not PROGRESS / LESSONS / docs/.\n"
+            "  3. CORE loads every session when Inject is on. Rest is on-demand:\n"
+            "     lane-memory context / search / explain.\n"
+            "  4. Write only via lane-memory write (one door). Night agent does not\n"
+            "     invent facts. Maintain = nightly memory-maintain-project.\n"
+            "  5. Defaults: Codex terra high · audience subagent · search auto.\n"
+            "     Budgets are recommended; change only if a pack overflows.\n"
+        ),
+        "docs_h1": "  Project docs\n",
+        "docs_help": (
+            "  Living docs/ only. Off until Enabled. Night does not commit.\n"
+            "  ↑↓ fields · ←→ / Space change value.\n\n"
+        ),
+        "docs_fields_h2": "  Settings\n",
+        "docs_info_h2": "\n  How it works\n",
+        "docs_info": (
+            "  1. Enabled + Apply = docs-web skeleton now, Luna INIT in background\n"
+            "     if stubs exist. Writers do not update docs in feature lanes.\n"
+            "  2. At Hour: docs-web → daylog → docs-stale → Luna on stale_docs.\n"
+            "     stub always stale, filled first. No commit.\n"
+            "  3. Living tree is docs/. wiki/ / TODO/ / docs/plans/ are archive.\n"
+            "  4. Night updates every stale page (page_cap 0 = all). Optional\n"
+            "     cap only if you set one. Since = git window. Hour = local clock.\n"
+            "  5. Daylog: docs/log.md + .agents/session-log/DOCS-DAY-YYYY-MM-DD.md\n"
+            "     maps today's committed files to the pages Luna should edit.\n"
         ),
         "stage_plan_critique": "Plan critique",
         "stage_plan_critique_badge": "CHEAP",
@@ -65,6 +106,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "stage_specialist_badge": "RISK",
         "stage_onboard": "Onboard",
         "stage_onboard_badge": "PASS",
+        "stage_memory": "Memory",
+        "stage_memory_badge": "SMA",
+        "stage_docs": "Docs",
+        "stage_docs_badge": "WIKI",
         "stage_fix_writer": "fix",
         "sfield_enabled": "Enabled",
         "sfield_mode": "Mode",
@@ -74,6 +119,28 @@ STRINGS: dict[str, dict[str, str]] = {
         "sfield_fast": "Fast mode",
         "sfield_agent": "Agent",
         "sfield_when": "When",
+        "sfield_maintain": "Maintain",
+        "sfield_inject": "Inject CORE",
+        "sfield_audience": "Audience",
+        "sfield_personal_bot": "Bot CORE",
+        "sfield_search_engine": "Search",
+        "sfield_core_budget": "CORE bytes",
+        "sfield_note_budget": "Note bytes",
+        "sfield_index_budget": "Index bytes",
+        "sfield_context_budget": "Pack bytes",
+        "sfield_page_cap": "Page cap",
+        "page_cap_all": "all",
+        "sfield_since": "Since",
+        "sfield_hour": "Hour",
+        "msg_stage_page_cap": "Docs page cap: {n}",
+        "msg_stage_since": "Docs window: {since}",
+        "msg_stage_hour": "Docs cron hour: {hour}",
+        "audience_owner": "owner",
+        "audience_subagent": "subagent",
+        "audience_export": "export",
+        "engine_auto": "auto",
+        "engine_fts5": "fts5",
+        "engine_bm25": "bm25",
         "mode_advisory": "advisory",
         "mode_gate": "gate",
         "when_high_risk": "high-risk only",
@@ -99,7 +166,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "coder_open_list": "  ←→ cycle · ⏎ list",
         "coder_tip": (
             "\n  Shortcuts: p provider · m model · e effort (open that list).\n"
-            "  When done: 7 or Tab → Apply → Enter to save.\n"
+            "  When done: 0 or Tab → Apply → Enter to save.\n"
         ),
         "coder_models_of": "{n}/{total} options for {writer}",
         "pick_h1": "  Choose {label}{parent}\n",
@@ -179,13 +246,15 @@ STRINGS: dict[str, dict[str, str]] = {
             "  New runs pick up main_write + pipeline stages + workspace.\n"
         ),
         "keys_coder_pick": "↑↓ choose · Enter confirm · Esc back · q quit",
-        "keys_coder": "↑↓ field · ←→ value · Enter list · Tab · 8 Apply",
+        "keys_coder": "↑↓ field · ←→ value · Enter list · Tab · 0 Apply",
         "keys_stages": "↑↓ field · ←→ value · 1-5 stage · p/n · Space",
+        "keys_memory": "↑↓ field · ←→ value · Space · 0 Apply",
+        "keys_docs": "↑↓ field · ←→ value · Space · 0 Apply",
         "keys_work": "↑↓ mode · Space select · +/- score · [ ]/,. session · m multi",
         "keys_night": "Space night · a merge · +/- budget · n writer",
         "keys_ui": "↑↓ language · L cycle · Tab tabs",
-        "keys_status": "r rescan · 1-8 tabs · q quit",
-        "keys_info": "Tab next · 8 Apply · q quit",
+        "keys_status": "r rescan · 1-9 tabs · 0 Apply · q quit",
+        "keys_info": "Tab next · 0 Apply · q quit",
         "keys_apply": "ENTER save · q quit",
         "info_h1": "  What this factory does\n",
         "info_help": (
@@ -248,7 +317,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_saved": "✓ Saved — closing…",
         "msg_apply_fail": "Apply failed: {err}",
         "msg_help_pick": "↑↓ choose · Enter ok · Esc back · q quit",
-        "msg_help": "1 Coder 2 Stages 3 Work 4 Night 5 UI 6 Status 7 Info 8 Apply · L · q",
+        "msg_help": "1 Coder 2 Stages 3 Memory 4 Docs 5 Work 6 Night 7 UI 8 Status 9 Info 0 Apply · L · q",
         "msg_stage": "Stage → {name}",
         "msg_stage_enabled": "{stage} → {on}",
         "msg_stage_mode": "Critique mode → {mode}",
@@ -259,6 +328,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_fast": "Onboard Fast mode → {value}",
         "msg_stage_fast_na": "Fast mode only for Codex/Cursor onboard",
         "msg_stage_write_fixed": "Write stage is always on (pick provider/model)",
+        "msg_stage_flag": "{field} → {on}",
+        "msg_stage_audience": "Memory audience → {audience}",
+        "msg_stage_bot": "Memory bot CORE → {bot}",
+        "msg_stage_engine": "Memory search → {engine}",
+        "msg_stage_budget": "{field} → {n}",
         "msg_stage_edit": "{stage} · {field}",
         "msg_stage_no_models": "No models for this provider — pick another agent",
         "model_na": "n/a (structural)",
@@ -267,7 +341,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_qwen_blurb": "Fast everyday coder for product work",
         "wr_kimi_blurb": "Long-context Kimi K3 (256k)",
         "wr_grok_blurb": "xAI Grok writer lane",
-        "wr_agy_blurb": "Gemini Flash high via AGY",
+        "wr_agy_blurb": "Gemini 3.7 Flash high via AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (no host MCP/plugins)",
         "wr_cursor_blurb": "Cursor Agent CLI — any account model (+ fast siblings)",
         "wr_opencode_blurb": "OpenCode CLI — any connected model + host agent (build/plan/wiki/…)",
@@ -312,6 +386,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "tab_coder_sub": "CLI + модель + effort",
         "tab_stages": "Этапы",
         "tab_stages_sub": "Конвейер · агенты",
+        "tab_memory": "Память",
+        "tab_memory_sub": "Факты · opt-in",
+        "tab_docs": "Документация",
+        "tab_docs_sub": "Живые docs/ · ночь",
         "tab_work": "Work",
         "tab_work_sub": "main или worktree",
         "tab_night": "Ночь",
@@ -350,7 +428,44 @@ STRINGS: dict[str, dict[str, str]] = {
             "\n  ←→ крутит выделенное поле. «Провайдер»: структурный → Qwen/Kimi/Grok…\n"
             "  «Модель»: полный каталог агента (у Kimi несколько вариантов).\n"
             "  Режим «шлюз» блокирует pre-dispatch, пока нет pass/ack.\n"
-            "  Fast mode (Codex/Cursor) — у критики плана и онбординга.\n"
+            "  Fast mode (Codex/Cursor) — критика и онбординг.\n"
+            "  Память и Документация — отдельные вкладки, не этапы.\n"
+        ),
+        "memory_h1": "  Память проекта\n",
+        "memory_help": (
+            "  Факты, которые нельзя вывести из git. Выкл, пока не Enabled.\n"
+            "  ↑↓ поля · ←→ / Пробел сменить значение.\n\n"
+        ),
+        "memory_fields_h2": "  Настройки\n",
+        "memory_info_h2": "\n  Как работает\n",
+        "memory_info": (
+            "  1. Enabled — единственный рубильник корпуса.\n"
+            "  2. Раскладка: .agents/memory/ в git · .cls/local-memory/ эта машина ·\n"
+            "     .cls/index/ FTS. Не PROGRESS / LESSONS / docs/.\n"
+            "  3. CORE грузится каждую сессию, если Inject вкл. Остальное по запросу:\n"
+            "     lane-memory context / search / explain.\n"
+            "  4. Писать только через lane-memory write (одна дверь). Ночной агент\n"
+            "     факты не выдумывает. Фон = memory-maintain-project.\n"
+            "  5. Дефолт: Codex terra high · audience subagent · search auto.\n"
+            "     Бюджеты уже рекомендуемые; крути, если пак не влезает.\n"
+        ),
+        "docs_h1": "  Документация проекта\n",
+        "docs_help": (
+            "  Живые только docs/. Выкл, пока не Enabled. Ночь не коммитит.\n"
+            "  ↑↓ поля · ←→ / Пробел сменить значение.\n\n"
+        ),
+        "docs_fields_h2": "  Настройки\n",
+        "docs_info_h2": "\n  Как работает\n",
+        "docs_info": (
+            "  1. Enabled + Apply = скелет docs-web сразу, Luna INIT в фоне\n"
+            "     если есть stub. Writer в фича-lane docs не трогает.\n"
+            "  2. В Час: docs-web → daylog → docs-stale → Luna по stale_docs.\n"
+            "     stub всегда stale, fill первым. Без commit.\n"
+            "  3. Живое дерево — docs/. wiki/ / TODO/ / docs/plans/ — архив.\n"
+            "  4. Ночь правит все stale-страницы (лимит 0 = все). Потолок\n"
+            "     только если выставишь сам. Окно = git since. Час — локальный.\n"
+            "  5. Daylog: docs/log.md + .agents/session-log/DOCS-DAY-YYYY-MM-DD.md\n"
+            "     карта сегодняшних коммитов → какие страницы править точечно.\n"
         ),
         "stage_plan_critique": "Критика плана",
         "stage_plan_critique_badge": "БЫСТР",
@@ -362,6 +477,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "stage_specialist_badge": "РИСК",
         "stage_onboard": "Онбординг",
         "stage_onboard_badge": "ПАСПОРТ",
+        "stage_memory": "Память",
+        "stage_memory_badge": "SMA",
+        "stage_docs": "Документация",
+        "stage_docs_badge": "WIKI",
         "stage_fix_writer": "фикс",
         "sfield_enabled": "Включено",
         "sfield_mode": "Режим",
@@ -371,6 +490,28 @@ STRINGS: dict[str, dict[str, str]] = {
         "sfield_fast": "Fast mode",
         "sfield_agent": "Агент",
         "sfield_when": "Когда",
+        "sfield_maintain": "Фон",
+        "sfield_inject": "Вшивать ядро",
+        "sfield_audience": "Аудитория",
+        "sfield_personal_bot": "Ядро бота",
+        "sfield_search_engine": "Поиск",
+        "sfield_core_budget": "Ядро байт",
+        "sfield_note_budget": "Заметка байт",
+        "sfield_index_budget": "Индекс байт",
+        "sfield_context_budget": "Пакет байт",
+        "sfield_page_cap": "Лимит страниц",
+        "page_cap_all": "все",
+        "sfield_since": "Окно",
+        "sfield_hour": "Час",
+        "msg_stage_page_cap": "Лимит страниц docs: {n}",
+        "msg_stage_since": "Окно docs: {since}",
+        "msg_stage_hour": "Час cron docs: {hour}",
+        "audience_owner": "владелец",
+        "audience_subagent": "субагент",
+        "audience_export": "экспорт",
+        "engine_auto": "auto",
+        "engine_fts5": "fts5",
+        "engine_bm25": "bm25",
         "mode_advisory": "совет",
         "mode_gate": "шлюз",
         "when_high_risk": "только high-risk",
@@ -396,7 +537,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "coder_open_list": "  ←→ листать · ⏎ список",
         "coder_tip": (
             "\n  Ярлыки: p провайдер · m модель · e effort (открыть список).\n"
-            "  Готово: 7 или Tab → Сохранить → Enter.\n"
+            "  Готово: 0 или Tab → Сохранить → Enter.\n"
         ),
         "coder_models_of": "{n}/{total} вариантов для {writer}",
         "pick_h1": "  Выберите {label}{parent}\n",
@@ -476,13 +617,15 @@ STRINGS: dict[str, dict[str, str]] = {
             "  Новые run’ы берут main_write + этапы конвейера + workspace.\n"
         ),
         "keys_coder_pick": "↑↓ выбор · Enter · Esc назад · q выход",
-        "keys_coder": "↑↓ поле · ←→ значение · Enter список · Tab · 8 Сохранить",
+        "keys_coder": "↑↓ поле · ←→ значение · Enter список · Tab · 0 Сохранить",
         "keys_stages": "↑↓ поле · ←→ значение · 1–5 этап · p/n · Пробел",
+        "keys_memory": "↑↓ поле · ←→ значение · Пробел · 0 Сохранить",
+        "keys_docs": "↑↓ поле · ←→ значение · Пробел · 0 Сохранить",
         "keys_work": "↑↓ режим · Space · +/- score · [ ]/,. сессия · m multi",
         "keys_night": "Space ночь · a merge · +/- бюджет · n writer",
         "keys_ui": "↑↓ язык · L переключить · Tab",
-        "keys_status": "r rescan · 1-8 вкладки · q выход",
-        "keys_info": "Tab дальше · 8 Сохранить · q выход",
+        "keys_status": "r rescan · 1–9 вкладки · 0 Сохранить · q выход",
+        "keys_info": "Tab дальше · 0 Сохранить · q выход",
         "keys_apply": "ENTER сохранить · q выход",
         "info_h1": "  Что делает эта фабрика\n",
         "info_help": (
@@ -545,7 +688,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_saved": "✓ Сохранено — закрываю…",
         "msg_apply_fail": "Ошибка Apply: {err}",
         "msg_help_pick": "↑↓ · Enter · Esc назад · q выход",
-        "msg_help": "1 Кодер 2 Этапы 3 Work 4 Ночь 5 UI 6 Статус 7 Инфо 8 Сохранить · L · q",
+        "msg_help": "1 Кодер 2 Этапы 3 Память 4 Документация 5 Work 6 Ночь 7 UI 8 Статус 9 Инфо 0 Сохранить · L · q",
         "msg_stage": "Этап → {name}",
         "msg_stage_enabled": "{stage} → {on}",
         "msg_stage_mode": "Режим критики → {mode}",
@@ -556,6 +699,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_fast": "Onboard Fast mode → {value}",
         "msg_stage_fast_na": "Fast mode только для Codex/Cursor онбординга",
         "msg_stage_write_fixed": "Этап «Код» всегда включён (меняйте провайдер/модель)",
+        "msg_stage_flag": "{field} → {on}",
+        "msg_stage_audience": "Аудитория памяти → {audience}",
+        "msg_stage_bot": "Ядро бота → {bot}",
+        "msg_stage_engine": "Поиск памяти → {engine}",
+        "msg_stage_budget": "{field} → {n}",
         "msg_stage_edit": "{stage} · {field}",
         "msg_stage_no_models": "Нет моделей — выберите другого провайдера",
         "model_na": "н/д (структурный)",
@@ -564,7 +712,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_qwen_blurb": "Быстрый повседневный кодер",
         "wr_kimi_blurb": "Длинный контекст Kimi K3 (256k)",
         "wr_grok_blurb": "Writer-lane xAI Grok",
-        "wr_agy_blurb": "Gemini Flash high через AGY",
+        "wr_agy_blurb": "Gemini 3.7 Flash high через AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (без host MCP/plugins)",
         "wr_cursor_blurb": "Cursor Agent CLI — любая модель аккаунта (+ fast)",
         "wr_opencode_blurb": "OpenCode CLI — любая подключённая модель + агент хоста (build/plan/wiki/…)",

@@ -1,0 +1,1085 @@
+#!/usr/bin/env python3
+"""Deterministic docs web: units, frontmatter merge, INDEX, web.yaml, log."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+WEB_KEYS = (
+    "id",
+    "kind",
+    "owns",
+    "uses",
+    "used_by",
+    "surfaces",
+    "hubs",
+    "processes",
+    "symbols",
+    "web_hash",
+    "web_status",
+)
+OWN_IGNORE = (
+    "node_modules/",
+    "dist/",
+    "coverage/",
+    ".git/",
+    ".agents/",
+    "vendor/",
+)
+ARCHIVE_PREFIXES = ("wiki/", "TODO/", "docs/plans/", "docs/compliance/", "docs/seo/")
+SECRET_RE = re.compile(
+    r"(?i)(api[_-]?key|secret|password|token)\s*[:=]\s*['\"][^'\"]{8,}"
+)
+_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
+_PRISMA_MODEL = re.compile(r"^model\s+(\w+)", re.M)
+HUB_FANIN = 3
+_FM = re.compile(r"^---\n(.*?)\n---\n?", re.S)
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    yaml = None  # type: ignore
+
+
+def _norm(path: str) -> str:
+    return str(path or "").strip().lstrip("./")
+
+
+def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    match = _FM.match(text)
+    if not match:
+        return {}, text
+    data: Any = {}
+    if yaml is not None:
+        try:
+            data = yaml.safe_load(match.group(1)) or {}
+        except Exception:  # noqa: BLE001
+            data = {}
+    if not isinstance(data, dict):
+        data = {}
+    return data, text[match.end() :]
+
+
+def dump_page(meta: dict[str, Any], body: str) -> str:
+    if yaml is None:
+        raise SystemExit("PyYAML required")
+    editorial = [key for key in meta if key not in WEB_KEYS]
+    web = [key for key in WEB_KEYS if key in meta]
+    ordered = {key: meta[key] for key in editorial + web}
+    dumped = yaml.safe_dump(ordered, sort_keys=False, allow_unicode=True).rstrip()
+    return f"---\n{dumped}\n---\n\n{body.lstrip()}"
+
+
+def merge_web(text: str, web: dict[str, Any]) -> str:
+    """Replace only web keys. Keep editorial fields and body."""
+    meta, body = parse_frontmatter(text)
+    before = meta.get("web_hash")
+    for key, value in web.items():
+        if key in WEB_KEYS:
+            meta[key] = value
+    if before != meta.get("web_hash"):
+        meta["updated"] = datetime.now(timezone.utc).date().isoformat()
+    return dump_page(meta, body)
+
+
+def web_hash(owns: list[str], uses: list[str]) -> str:
+    raw = json.dumps({"owns": owns, "uses": uses}, sort_keys=True)
+    return "sha256:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+_UNIT_FILES = (
+    "package.json",
+    "pyproject.toml",
+    "Cargo.toml",
+    "go.mod",
+    "Package.swift",
+    "composer.json",
+)
+_UNIT_DIRS = ("src", "app", "lib", "cmd")
+
+
+def _is_unit_dir(child: Path) -> bool:
+    if any((child / name).is_file() for name in _UNIT_FILES):
+        return True
+    if any((child / name).is_dir() for name in _UNIT_DIRS):
+        return True
+    return bool(list(child.glob("*.xcodeproj")))
+
+
+def gitnexus_status(repo: Path) -> str:
+    marker = repo / ".gitnexus"
+    if not marker.is_dir() and not (marker / "run.cjs").is_file():
+        return "missing"
+    meta_path = marker / "meta.json"
+    last = ""
+    if meta_path.is_file():
+        try:
+            last = str(json.loads(meta_path.read_text(encoding="utf-8")).get("lastCommit") or "")
+        except (OSError, json.JSONDecodeError):
+            return "stale"
+    if not last:
+        return "stale"
+    head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if head.returncode != 0 or head.stdout.strip() != last:
+        return "stale"
+    return "ok"
+
+
+def discover_units(repo: Path) -> list[dict[str, Any]]:
+    units: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in ("apps", "packages"):
+        root = repo / group
+        if not root.is_dir():
+            continue
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            if not _is_unit_dir(child):
+                continue
+            uid = child.name
+            if uid in seen:
+                continue
+            seen.add(uid)
+            units.append(
+                {
+                    "id": uid,
+                    "kind": "unit",
+                    "owns": [f"{group}/{uid}/**"],
+                    "group": group,
+                }
+            )
+    if not units:
+        for name in _UNIT_DIRS:
+            if (repo / name).is_dir():
+                units.append({"id": "app", "kind": "unit", "owns": [f"{name}/**"], "group": "components"})
+                break
+    return units
+
+
+def infer_uses(repo: Path, unit: dict[str, Any], all_ids: set[str]) -> list[str]:
+    root = repo / str(unit["owns"][0]).replace("/**", "").rstrip("/")
+    names: set[str] = set()
+    pkg = root / "package.json"
+    if pkg.is_file():
+        try:
+            data = json.loads(pkg.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            data = {}
+        for key in ("dependencies", "devDependencies", "peerDependencies"):
+            block = data.get(key) or {}
+            if isinstance(block, dict):
+                for dep in block:
+                    names.add(str(dep).rsplit("/", 1)[-1])
+    return sorted(n for n in names if n in all_ids and n != unit["id"])
+
+
+def infer_surfaces(repo: Path, unit: dict[str, Any]) -> list[dict[str, str]]:
+    root = repo / str(unit["owns"][0]).replace("/**", "").rstrip("/")
+    if not root.is_dir():
+        return []
+    out: list[dict[str, str]] = []
+    bindir = root / "bin"
+    if bindir.is_dir():
+        for child in sorted(bindir.iterdir()):
+            if child.is_file() and not child.name.startswith("."):
+                out.append(
+                    {
+                        "via": "cli",
+                        "at": str(child.relative_to(repo)),
+                    }
+                )
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix not in {".ts", ".js", ".py", ".go"}:
+            continue
+        rel = str(path.relative_to(repo))
+        if any(part in {"node_modules", "dist", "vendor", ".git"} for part in path.parts):
+            continue
+        name = path.name.lower()
+        if "route" in name or "/app/api/" in rel or "/handlers/" in rel:
+            via = "bot" if "bot" in rel else "http"
+            out.append({"via": via, "at": rel})
+        if len(out) >= 8:
+            break
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for item in out:
+        key = f"{item['via']}:{item['at']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique[:8]
+
+
+def seed_hubs(repo: Path, units: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    hubs: list[dict[str, Any]] = []
+    for unit in units:
+        callers = list(unit.get("used_by") or [])
+        if len(callers) < HUB_FANIN:
+            continue
+        hid = f"{unit['id']}-hub"
+        rel = f"docs/hubs/{unit['id']}.md"
+        _seed_stub(
+            repo,
+            rel,
+            f"{unit['id']} hub",
+            f"# {unit['id']}\n\n<!-- body:start -->\nTL;DR: _stub — shared by {', '.join(callers)}_\n<!-- body:end -->\n",
+            id=hid,
+            kind="hub",
+            owns=list(unit.get("owns") or []),
+            used_by=callers,
+            tags=["hub", unit["id"]],
+        )
+        unit["hubs"] = [hid]
+        hubs.append(
+            {
+                "id": hid,
+                "kind": "hub",
+                "page": rel,
+                "owns": list(unit.get("owns") or []),
+                "group": "hubs",
+            }
+        )
+    return hubs
+
+
+def _has_store(repo: Path) -> bool:
+    for rel in (
+        "prisma/schema.prisma",
+        "schema.prisma",
+        "apps/api/prisma/schema.prisma",
+    ):
+        if (repo / rel).is_file():
+            return True
+    return bool(list(repo.glob("**/migrations/*.sql"))[:1] or list(repo.glob("**/*.xcdatamodeld"))[:1])
+
+
+def _has_ui(repo: Path) -> bool:
+    roots = [repo / "src", repo / "app"]
+    for group in ("apps", "packages"):
+        base = repo / group
+        if base.is_dir():
+            roots.extend(p / "src" for p in base.iterdir() if p.is_dir())
+            roots.append(base)
+    for root in roots:
+        if not root.is_dir():
+            continue
+        if any(root.glob("*.tsx")) or any(root.glob("*.swift")):
+            return True
+    return False
+
+
+def _has_deploy(repo: Path) -> bool:
+    names = (
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+        "Dockerfile",
+    )
+    if any((repo / name).is_file() for name in names):
+        return True
+    return bool(list(repo.glob("**/*.service"))[:1])
+
+
+def _has_tests(repo: Path) -> bool:
+    if (repo / "tests").is_dir() or (repo / "test").is_dir():
+        return True
+    for root in (repo / "src", repo / "apps", repo / "packages"):
+        if not root.is_dir():
+            continue
+        if any(root.glob("test_*.py")) or any(root.glob("*.test.ts")):
+            return True
+    return False
+
+
+def seed_data_model_tables(repo: Path) -> None:
+    path = repo / "docs" / "data-model.md"
+    if not path.is_file():
+        return
+    models: list[str] = []
+    for rel in (
+        "prisma/schema.prisma",
+        "schema.prisma",
+        "apps/api/prisma/schema.prisma",
+    ):
+        cand = repo / rel
+        if cand.is_file():
+            models.extend(_PRISMA_MODEL.findall(cand.read_text(encoding="utf-8")))
+    if not models:
+        return
+    text = path.read_text(encoding="utf-8")
+    added = []
+    for name in models:
+        if f"## {name}" in text:
+            continue
+        added.append(
+            f"\n## {name}\n\n**Owns:** \n**Keys:** \n**Invariant:** \n**Source:** schema.prisma\n"
+        )
+    if not added:
+        return
+    marker = "<!-- body:end -->"
+    if marker in text:
+        text = text.replace(marker, "".join(added) + marker, 1)
+    else:
+        text = text.rstrip() + "".join(added) + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def resolve_page(repo: Path, unit: dict[str, Any]) -> str:
+    uid = str(unit["id"])
+    group = str(unit.get("group") or "packages")
+    for cand in (
+        f"docs/{group}/{uid}.md",
+        f"docs/components/{uid}.md",
+        f"docs/apps/{uid}.md",
+        f"docs/packages/{uid}.md",
+    ):
+        if (repo / cand).is_file():
+            return cand
+    return f"docs/{group}/{uid}.md"
+
+
+def stub_text(unit: dict[str, Any], page: str) -> str:
+    today = datetime.now(timezone.utc).date().isoformat()
+    owns = list(unit["owns"])
+    web = {
+        "id": unit["id"],
+        "kind": "unit",
+        "owns": owns,
+        "uses": list(unit.get("uses") or []),
+        "used_by": list(unit.get("used_by") or []),
+        "surfaces": list(unit.get("surfaces") or []),
+        "hubs": list(unit.get("hubs") or []),
+        "processes": [],
+        "symbols": [],
+        "web_hash": web_hash(owns, list(unit.get("uses") or [])),
+        "web_status": "degraded",
+    }
+    meta = {
+        "title": str(unit["id"]).replace("-", " ").title(),
+        "type": "reference",
+        "status": "stub",
+        "confidence": "low",
+        "created": today,
+        "updated": today,
+        "tags": [unit["id"]],
+        "sources": [],
+        **web,
+    }
+    body = (
+        f"# {meta['title']}\n\n"
+        "<!-- body:start -->\n"
+        "TL;DR: _stub — fill from owns_\n\n"
+        "<!-- fill:purpose -->\n"
+        "<!-- fill:public-api -->\n"
+        "<!-- fill:gotchas -->\n"
+        "<!-- body:end -->\n\n"
+        "<!-- backlinks:start -->\n"
+        "<!-- backlinks:end -->\n"
+    )
+    return dump_page(meta, body)
+
+
+def apply_unit_page(repo: Path, unit: dict[str, Any], *, gn: str = "missing") -> str:
+    page = resolve_page(unit=unit, repo=repo)
+    path = repo / page
+    owns = list(unit["owns"])
+    uses = list(unit.get("uses") or [])
+    web = {
+        "id": unit["id"],
+        "kind": "unit",
+        "owns": owns,
+        "uses": uses,
+        "used_by": list(unit.get("used_by") or []),
+        "surfaces": list(unit.get("surfaces") or []),
+        "hubs": list(unit.get("hubs") or []),
+        "processes": [],
+        "symbols": [],
+        "web_hash": web_hash(owns, uses),
+        "web_status": "ok" if gn == "ok" else "degraded",
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        text = merge_web(path.read_text(encoding="utf-8"), web)
+    else:
+        text = merge_web(stub_text(unit, page), web)
+    path.write_text(text, encoding="utf-8")
+    return page
+
+
+def write_web_yaml(
+    repo: Path,
+    units: list[dict[str, Any]],
+    pages: list[str],
+    *,
+    gn: str = "missing",
+    extra_nodes: list[dict[str, Any]] | None = None,
+    extra_edges: list[dict[str, Any]] | None = None,
+) -> None:
+    if yaml is None:
+        raise SystemExit("PyYAML required")
+    nodes = []
+    edges = []
+    for unit, page in zip(units, pages):
+        nodes.append(
+            {
+                "id": unit["id"],
+                "kind": unit["kind"],
+                "page": page,
+                "owns": unit["owns"],
+            }
+        )
+        for other in unit.get("uses") or []:
+            edges.append({"from": unit["id"], "to": other, "rel": "uses"})
+        for hub in unit.get("hubs") or []:
+            edges.append({"from": unit["id"], "to": hub, "rel": "hub"})
+    nodes.extend(extra_nodes or [])
+    edges.extend(extra_edges or [])
+    data = {
+        "version": 1,
+        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "gitnexus": gn,
+        "nodes": nodes,
+        "edges": edges,
+    }
+    out = repo / "docs" / "web.yaml"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+
+def _tldr(body: str) -> str:
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("TL;DR"):
+            return stripped.replace("TL;DR:", "").strip(" _")
+    return ""
+
+
+def _index_group(rel: str, kind: str) -> str:
+    if rel in {
+        "docs/ARCHITECTURE.md",
+        "docs/gotchas.md",
+        "docs/glossary.md",
+        "docs/patterns.md",
+        "docs/INDEX.md",
+    }:
+        return "foundation"
+    if rel in {"docs/data-model.md", "docs/RUNBOOK.md", "docs/DESIGN.md"}:
+        return "systems"
+    if kind == "hub" or "/hubs/" in rel:
+        return "hubs"
+    if kind == "process":
+        return "processes"
+    return "units"
+
+
+def write_index(
+    repo: Path, pages: list[str], *, deprecated: list[str] | None = None
+) -> None:
+    today = datetime.now(timezone.utc).date().isoformat()
+    groups: dict[str, list[str]] = {
+        "foundation": [],
+        "systems": [],
+        "units": [],
+        "hubs": [],
+        "processes": [],
+    }
+    for rel in pages:
+        href = rel[5:] if rel.startswith("docs/") else rel
+        meta: dict[str, Any] = {}
+        body = ""
+        if (repo / rel).is_file():
+            meta, body = parse_frontmatter((repo / rel).read_text(encoding="utf-8"))
+        title = str(meta.get("title") or href)
+        blurb = _tldr(body)
+        item = f"- [{title}]({href})"
+        if blurb:
+            item += f" — {blurb}"
+        groups[_index_group(rel, str(meta.get("kind") or ""))].append(item)
+    lines = [
+        "---",
+        "title: Docs Index",
+        f"created: {today}",
+        f"updated: {today}",
+        "status: active",
+        "tags: [index, catalog]",
+        "---",
+        "",
+        "# Docs Index",
+        "",
+        "<!-- generated by docs-web -->",
+        "",
+    ]
+    for name in ("foundation", "systems", "units", "hubs", "processes"):
+        items = groups[name]
+        if not items:
+            continue
+        lines.append(f"## {name}")
+        lines.extend(items)
+        lines.append("")
+    if deprecated:
+        lines.append("## deprecated")
+        for rel in deprecated:
+            href = rel[5:] if rel.startswith("docs/") else rel
+            lines.append(f"- [{Path(rel).stem}]({href}) — deprecated; owns gone")
+        lines.append("")
+    (repo / "docs" / "INDEX.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _seed_stub(repo: Path, rel: str, title: str, body: str, **meta: Any) -> None:
+    path = repo / rel
+    if path.is_file():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    today = datetime.now(timezone.utc).date().isoformat()
+    path.write_text(
+        dump_page(
+            {
+                "title": title,
+                "type": "reference",
+                "status": "stub",
+                "confidence": "low",
+                "created": today,
+                "updated": today,
+                "sources": [],
+                **meta,
+            },
+            body,
+        ),
+        encoding="utf-8",
+    )
+
+
+def seed_support(repo: Path) -> None:
+    docs = repo / "docs"
+    docs.mkdir(parents=True, exist_ok=True)
+    log = docs / "log.md"
+    if not log.is_file():
+        log.write_text("# Docs log\n\n<!-- generated; append-only -->\n", encoding="utf-8")
+    _seed_stub(
+        repo,
+        "docs/glossary.md",
+        "Glossary",
+        "# Glossary\n\n<!-- body:start -->\n| Term | Means here | hub / unit | file:line |\n"
+        "|------|------------|------------|-----------|\n<!-- body:end -->\n",
+        kind="store",
+        id="glossary",
+        tags=["glossary"],
+        owns=[],
+    )
+    _seed_stub(
+        repo,
+        "docs/ARCHITECTURE.md",
+        "Architecture",
+        "# Architecture\n\n<!-- body:start -->\nTL;DR: _stub — boundaries_\n<!-- body:end -->\n",
+        id="architecture",
+        kind="unit",
+        owns=[],
+    )
+    _seed_stub(
+        repo,
+        "docs/gotchas.md",
+        "Gotchas",
+        "# Gotchas\n\n<!-- body:start -->\n## Critical\n\n## High\n<!-- body:end -->\n",
+        id="gotchas",
+        type="troubleshooting",
+        tags=["gotchas"],
+    )
+    _seed_stub(
+        repo,
+        "docs/patterns.md",
+        "Patterns",
+        "# Patterns\n\n<!-- body:start -->\n<!-- body:end -->\n",
+        id="patterns",
+        tags=["patterns"],
+    )
+    if _has_store(repo):
+        _seed_stub(
+            repo,
+            "docs/data-model.md",
+            "Data model",
+            "# Data model\n\n<!-- body:start -->\nTL;DR: _stub — tables from schema_\n<!-- body:end -->\n",
+            id="data-model",
+            kind="store",
+        )
+    if _has_ui(repo):
+        _seed_stub(
+            repo,
+            "docs/DESIGN.md",
+            "Design",
+            "# Design\n\n<!-- body:start -->\nTL;DR: _stub — UI tokens / components_\n<!-- body:end -->\n",
+            id="design",
+            kind="hub",
+            tags=["design"],
+        )
+    if _has_deploy(repo):
+        _seed_stub(
+            repo,
+            "docs/RUNBOOK.md",
+            "Runbook",
+            "# Runbook\n\n<!-- body:start -->\nTL;DR: _stub — start / smoke / rollback_\n<!-- body:end -->\n",
+            id="runbook",
+            type="how-to",
+            tags=["runbook"],
+        )
+    if _has_tests(repo):
+        _seed_stub(
+            repo,
+            "docs/TESTING.md",
+            "Testing",
+            "# Testing\n\n<!-- body:start -->\nTL;DR: _stub — how to verify_\n<!-- body:end -->\n",
+            id="testing",
+            type="how-to",
+            tags=["testing"],
+        )
+
+
+def seed_manifest(repo: Path) -> None:
+    path = repo / "docs" / "llm" / "MANIFEST.yaml"
+    if path.is_file():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "version: 1\n"
+        f"project: {repo.name}\n"
+        "refresh:\n"
+        "  cadence: nightly\n"
+        "  last_refresh: null\n"
+        "  owner_role: docs-maintainer\n"
+        "pack:\n"
+        "  always_load:\n"
+        "    - CLAUDE.md\n"
+        "    - AGENTS.md\n"
+        "    - docs/INDEX.md\n"
+        "  on_demand:\n"
+        "    - docs/ARCHITECTURE.md\n"
+        "    - docs/web.yaml\n"
+        "    - docs/packages/*.md\n"
+        "    - docs/apps/*.md\n"
+        "    - docs/hubs/*.md\n"
+        "    - docs/glossary.md\n"
+        "    - docs/patterns.md\n"
+        "    - docs/gotchas.md\n"
+        "    - docs/data-model.md\n"
+        "    - docs/DESIGN.md\n"
+        "    - docs/RUNBOOK.md\n"
+        "    - docs/TESTING.md\n"
+        "    - docs/log.md\n"
+        "archive:\n"
+        "  - wiki/**\n"
+        "  - docs/plans/**\n"
+        "  - docs/compliance/**\n"
+        "  - docs/seo/**\n"
+        "  - TODO/**\n",
+        encoding="utf-8",
+    )
+
+
+def seed_glossary_terms(repo: Path, units: list[dict[str, Any]]) -> None:
+    path = repo / "docs" / "glossary.md"
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    added = []
+    for unit in units:
+        term = str(unit["id"])
+        if f"| {term} |" in text:
+            continue
+        added.append(f"| {term} | | {unit.get('group')}/{term} | |\n")
+    if not added:
+        return
+    marker = "|------|------------|------------|-----------|\n"
+    if marker in text:
+        text = text.replace(marker, marker + "".join(added), 1)
+        path.write_text(text, encoding="utf-8")
+
+
+def append_log(repo: Path, kind: str, subject: str, extra: str = "") -> None:
+    path = repo / "docs" / "log.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file():
+        path.write_text("# Docs log\n\n<!-- generated; append-only -->\n", encoding="utf-8")
+    day = datetime.now().date().isoformat()
+    block = f"\n## [{day}] {kind} | {subject}\n"
+    if extra:
+        block += extra.rstrip() + "\n"
+    path.write_text(path.read_text(encoding="utf-8") + block, encoding="utf-8")
+
+
+_MD_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+
+
+def _module_map_ids(repo: Path) -> set[str]:
+    path = repo / "docs" / "llm" / "MODULE_MAP.yaml"
+    if not path.is_file() or yaml is None:
+        return set()
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001
+        return set()
+    ids: set[str] = set()
+    for row in data.get("modules") or []:
+        if isinstance(row, dict) and row.get("id"):
+            ids.add(str(row["id"]))
+    return ids
+
+
+def lint_repo(repo: Path) -> dict[str, Any]:
+    errors: list[str] = []
+    live_pages: list[str] = []
+    for path in sorted((repo / "docs").rglob("*.md")) if (repo / "docs").is_dir() else []:
+        rel = str(path.relative_to(repo))
+        if any(rel.startswith(p) for p in ARCHIVE_PREFIXES):
+            continue
+        live_pages.append(rel)
+        text = path.read_text(encoding="utf-8")
+        if SECRET_RE.search(text):
+            errors.append(f"secret:{rel}")
+        meta, body = parse_frontmatter(text)
+        if str(meta.get("status") or "") == "active" and _CYRILLIC.search(body):
+            errors.append(f"language:{rel}")
+        for raw in meta.get("owns") or []:
+            glob = str(raw).replace("/**", "").rstrip("/")
+            if glob and not (repo / glob).exists():
+                errors.append(f"owns_missing:{rel}:{glob}")
+        for src in meta.get("sources") or []:
+            item = _norm(str(src).split(":")[0])
+            if item.startswith(("docs/", "wiki/", "PROJECT.md", "CLAUDE.md", "AGENTS.md")):
+                errors.append(f"forbidden_source:{rel}:{item}")
+        for href in _MD_LINK.findall(text):
+            target = href.split("#", 1)[0].split("?", 1)[0].strip()
+            if not target or target.startswith(("http://", "https://", "mailto:")):
+                continue
+            dest = (path.parent / target).resolve()
+            try:
+                dest.relative_to(repo.resolve())
+            except ValueError:
+                continue
+            if not dest.exists():
+                errors.append(f"broken_link:{rel}:{target}")
+    index = repo / "docs" / "INDEX.md"
+    if index.is_file():
+        index_text = index.read_text(encoding="utf-8")
+        for rel in live_pages:
+            if rel in {"docs/INDEX.md", "docs/log.md"}:
+                continue
+            href = rel[5:] if rel.startswith("docs/") else rel
+            if href not in index_text and Path(rel).name not in index_text:
+                errors.append(f"not_in_index:{rel}")
+    web_ids: set[str] = set()
+    web_path = repo / "docs" / "web.yaml"
+    if web_path.is_file() and yaml is not None:
+        try:
+            web = yaml.safe_load(web_path.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            web = {}
+        for node in web.get("nodes") or []:
+            if isinstance(node, dict) and node.get("id"):
+                web_ids.add(str(node["id"]))
+    map_ids = _module_map_ids(repo)
+    if map_ids and web_ids:
+        for uid in sorted(map_ids - web_ids):
+            errors.append(f"module_map_extra:{uid}")
+        for uid in sorted(web_ids - map_ids):
+            errors.append(f"module_map_missing:{uid}")
+    gloss = repo / "docs" / "glossary.md"
+    if gloss.is_file():
+        meta, body = parse_frontmatter(gloss.read_text(encoding="utf-8"))
+        if str(meta.get("status") or "") == "active":
+            for raw in body.splitlines():
+                if raw.startswith("|") and "file:line" not in raw and "------" not in raw:
+                    cells = [c.strip() for c in raw.strip("|").split("|")]
+                    if len(cells) >= 4 and cells[0] and not cells[3]:
+                        errors.append(f"glossary_no_cite:{cells[0]}")
+    incoming: set[str] = set()
+    for rel in live_pages:
+        text = (repo / rel).read_text(encoding="utf-8")
+        for href in _MD_LINK.findall(text):
+            target = href.split("#", 1)[0].strip()
+            if not target or target.startswith(("http://", "https://")):
+                continue
+            dest = ((repo / rel).parent / target).resolve()
+            try:
+                incoming.add(str(dest.relative_to(repo.resolve())))
+            except ValueError:
+                continue
+    for rel in live_pages:
+        if rel in {"docs/INDEX.md", "docs/log.md", "docs/glossary.md"}:
+            continue
+        if rel.startswith(("docs/packages/", "docs/apps/", "docs/components/", "docs/hubs/")):
+            uid = Path(rel).stem
+            if uid not in web_ids and rel not in incoming:
+                errors.append(f"orphan:{rel}")
+    return {"ok": not errors, "errors": errors}
+
+
+def write_llms_txt(repo: Path, pages: list[str]) -> None:
+    name = repo.name
+    lines = [
+        f"# {name}",
+        "",
+        f"> Monorepo/app: {name}. Agent: start at docs/INDEX.md, then one unit page.",
+        "",
+        "## Always",
+        "- [INDEX](docs/INDEX.md): catalog + TL;DR",
+        "- [CLAUDE](CLAUDE.md): never / verify / pointers",
+        "",
+        "## On demand",
+    ]
+    for rel in pages[:24]:
+        href = rel[5:] if rel.startswith("docs/") else rel
+        lines.append(f"- [{href}]({rel})")
+    path = repo / "llms.txt"
+    if path.is_file() and "<!-- generated by docs-web -->" not in path.read_text(encoding="utf-8"):
+        return
+    path.write_text("\n".join(lines) + "\n\n<!-- generated by docs-web -->\n", encoding="utf-8")
+
+
+def write_backlinks(repo: Path, pages: list[str]) -> None:
+    incoming: dict[str, list[str]] = {p: [] for p in pages}
+    for rel in pages:
+        path = repo / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for href in _MD_LINK.findall(text):
+            target = href.split("#", 1)[0].strip()
+            if not target or target.startswith(("http://", "https://")):
+                continue
+            dest = (path.parent / target).resolve()
+            try:
+                dest_rel = str(dest.relative_to(repo.resolve()))
+            except ValueError:
+                continue
+            if dest_rel in incoming and dest_rel != rel:
+                incoming[dest_rel].append(rel)
+    for rel, sources in incoming.items():
+        path = repo / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        start = "<!-- backlinks:start -->"
+        end = "<!-- backlinks:end -->"
+        links = []
+        for src in sources:
+            rel_href = Path(os.path.relpath(src, start=str(Path(rel).parent))).as_posix()
+            links.append(f"- [{src}]({rel_href})\n")
+        block = start + "\n" + "".join(links) + end
+        if start in text and end in text:
+            pre, rest = text.split(start, 1)
+            _old, post = rest.split(end, 1)
+            text = pre + block + post
+        else:
+            text = text.rstrip() + "\n\n" + block + "\n"
+        path.write_text(text, encoding="utf-8")
+
+
+def seed_app_pack(repo: Path, unit: dict[str, Any]) -> None:
+    if str(unit.get("group") or "") != "apps":
+        return
+    app = repo / "apps" / str(unit["id"])
+    if not app.is_dir():
+        return
+    docs = app / "docs"
+    docs.mkdir(parents=True, exist_ok=True)
+    index = docs / "INDEX.md"
+    if not index.is_file():
+        index.write_text(
+            f"# {unit['id']} docs\n\n"
+            "Root catalog: [../../docs/INDEX.md](../../docs/INDEX.md)\n",
+            encoding="utf-8",
+        )
+    for name, title in (("ARCHITECTURE.md", "Architecture"), ("gotchas.md", "Gotchas")):
+        path = docs / name
+        if path.is_file():
+            continue
+        today = datetime.now(timezone.utc).date().isoformat()
+        path.write_text(
+            dump_page(
+                {
+                    "title": f"{unit['id']} {title}",
+                    "type": "reference",
+                    "status": "stub",
+                    "created": today,
+                    "updated": today,
+                    "id": f"{unit['id']}-{name.split('.')[0].lower()}",
+                    "kind": "unit",
+                    "owns": [f"apps/{unit['id']}/**"],
+                },
+                f"# {unit['id']} {title}\n\n<!-- body:start -->\nTL;DR: _stub_\n<!-- body:end -->\n",
+            ),
+            encoding="utf-8",
+        )
+    claude = app / "CLAUDE.md"
+    if not claude.is_file():
+        claude.write_text(
+            f"# {unit['id']}\n\n"
+            f"Local docs: `docs/INDEX.md`. Root: `../../CLAUDE.md`.\n\n"
+            "## Owns\n\n"
+            f"- `apps/{unit['id']}/**`\n\n"
+            "## Pointers\n\n"
+            "- `docs/ARCHITECTURE.md`, `docs/gotchas.md`\n",
+            encoding="utf-8",
+        )
+    local_man = docs / "llm" / "MANIFEST.yaml"
+    if not local_man.is_file():
+        local_man.parent.mkdir(parents=True, exist_ok=True)
+        local_man.write_text(
+            "version: 1\n"
+            f"project: {unit['id']}\n"
+            "pack:\n"
+            "  always_load:\n"
+            f"    - apps/{unit['id']}/docs/INDEX.md\n"
+            "  on_demand:\n"
+            f"    - apps/{unit['id']}/docs/ARCHITECTURE.md\n"
+            f"    - apps/{unit['id']}/docs/gotchas.md\n",
+            encoding="utf-8",
+        )
+
+
+def tombstone_missing(repo: Path, live_ids: set[str]) -> list[str]:
+    """Mark unit pages deprecated when the owned path is gone."""
+    marked: list[str] = []
+    for group in ("packages", "apps", "components"):
+        root = repo / "docs" / group
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob("*.md")):
+            text = path.read_text(encoding="utf-8")
+            meta, body = parse_frontmatter(text)
+            uid = str(meta.get("id") or path.stem)
+            if uid in live_ids:
+                continue
+            kind = str(meta.get("kind") or "unit")
+            if kind != "unit":
+                continue
+            if str(meta.get("status") or "") == "deprecated":
+                continue
+            owns_ok = False
+            for raw in meta.get("owns") or []:
+                glob = str(raw).replace("/**", "").rstrip("/")
+                if glob and (repo / glob).exists():
+                    owns_ok = True
+                    break
+            if owns_ok:
+                continue
+            meta["status"] = "deprecated"
+            path.write_text(dump_page(meta, body), encoding="utf-8")
+            marked.append(str(path.relative_to(repo)))
+    return marked
+
+
+def rebuild(repo: Path) -> dict[str, Any]:
+    repo = repo.resolve()
+    seed_support(repo)
+    seed_manifest(repo)
+    gn = gitnexus_status(repo)
+    units = discover_units(repo)
+    ids = {str(u["id"]) for u in units}
+    for unit in units:
+        unit["uses"] = infer_uses(repo, unit, ids)
+    used_by: dict[str, list[str]] = {uid: [] for uid in ids}
+    for unit in units:
+        for other in unit.get("uses") or []:
+            used_by.setdefault(str(other), []).append(str(unit["id"]))
+    for unit in units:
+        unit["used_by"] = sorted(used_by.get(str(unit["id"])) or [])
+        unit["surfaces"] = infer_surfaces(repo, unit)
+    hubs = seed_hubs(repo, units)
+    pages = [apply_unit_page(repo, unit, gn=gn) for unit in units]
+    for unit in units:
+        seed_app_pack(repo, unit)
+    seed_data_model_tables(repo)
+    deprecated = tombstone_missing(repo, {u["id"] for u in units})
+    if deprecated:
+        append_log(repo, "tombstone", "missing owns", extra="pages: " + ", ".join(deprecated))
+    extra_nodes = [
+        {"id": h["id"], "kind": "hub", "page": h["page"], "owns": h.get("owns") or []}
+        for h in hubs
+    ]
+    write_web_yaml(repo, units, pages, gn=gn, extra_nodes=extra_nodes)
+    seed_glossary_terms(repo, units + hubs)
+    extra = [
+        "docs/glossary.md",
+        "docs/ARCHITECTURE.md",
+        "docs/gotchas.md",
+        "docs/patterns.md",
+        "docs/data-model.md",
+        "docs/DESIGN.md",
+        "docs/RUNBOOK.md",
+        "docs/TESTING.md",
+    ]
+    extra.extend(h["page"] for h in hubs)
+    index_pages = list(pages)
+    for rel in extra:
+        if (repo / rel).is_file() and rel not in index_pages:
+            index_pages.append(rel)
+    write_index(repo, index_pages, deprecated=deprecated)
+    write_llms_txt(repo, index_pages)
+    write_backlinks(repo, [p for p in index_pages if p.endswith(".md")])
+    return {
+        "units": [u["id"] for u in units],
+        "pages": pages,
+        "hubs": [h["id"] for h in hubs],
+        "deprecated": deprecated,
+        "gitnexus": gn,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Deterministic docs web")
+    parser.add_argument("command", nargs="?", default="rebuild", choices=("rebuild", "lint", "log", "daylog"))
+    parser.add_argument("repo", nargs="?", default=".")
+    parser.add_argument("--kind", default="ingest")
+    parser.add_argument("--subject", default="docs-web")
+    parser.add_argument("--extra", default="")
+    args = parser.parse_args(argv)
+    repo = Path(args.repo).expanduser()
+    if not repo.is_dir():
+        print(json.dumps({"status": "error", "reason": f"not a dir: {repo}"}))
+        return 1
+    if args.command == "lint":
+        result = lint_repo(repo)
+        print(json.dumps(result, ensure_ascii=True))
+        return 0 if result["ok"] else 1
+    if args.command == "log":
+        append_log(repo, args.kind, args.subject, args.extra)
+        print(json.dumps({"status": "ok", "path": "docs/log.md"}))
+        return 0
+    if args.command == "daylog":
+        import importlib.machinery
+        import importlib.util
+
+        stale_path = Path(__file__).resolve().parent / "docs-stale"
+        loader = importlib.machinery.SourceFileLoader("docs_stale", str(stale_path))
+        stale = importlib.util.module_from_spec(
+            importlib.util.spec_from_loader(loader.name, loader)
+        )
+        loader.exec_module(stale)
+        since = args.subject if args.subject != "docs-web" else "yesterday"
+        scanned = stale.scan_repo(repo, since)
+        daylog = stale.write_daylog(repo, scanned)
+        print(json.dumps({"status": "ok", "path": str(daylog.relative_to(repo)), **scanned}, ensure_ascii=True))
+        return 0 if scanned.get("status") != "error" else 1
+    result = rebuild(repo)
+    print(json.dumps({"status": "ok", **result}, ensure_ascii=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

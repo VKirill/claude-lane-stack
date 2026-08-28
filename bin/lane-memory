@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""CLI door into SMA-style project memory (see bin/lane_memory.py)."""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+_BIN = Path(__file__).resolve().parent
+if str(_BIN) not in sys.path:
+    sys.path.insert(0, str(_BIN))
+
+import lane_memory as lm  # noqa: E402
+
+
+def _repo(raw: str) -> Path:
+    path = Path(raw).resolve()
+    if not path.is_dir():
+        raise SystemExit(f"error: not a directory: {raw}")
+    if not ((path / ".agents").is_dir() or (path / ".git").is_dir()):
+        raise SystemExit(f"error: not a project repo: {raw}")
+    return path
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="lane-memory")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    def add_repo(p: argparse.ArgumentParser) -> None:
+        p.add_argument("repo", nargs="?", default=".")
+
+    add_repo(sub.add_parser("init"))
+    add_repo(sub.add_parser("enabled"))
+    add_repo(sub.add_parser("lint"))
+    add_repo(sub.add_parser("index"))
+    add_repo(sub.add_parser("core"))
+    add_repo(sub.add_parser("inject"))
+    add_repo(sub.add_parser("settings"))
+    add_repo(sub.add_parser("measure"))
+
+    p_search = sub.add_parser("search")
+    p_search.add_argument("query")
+    p_search.add_argument(
+        "--mode",
+        default="hybrid",
+        choices=("hybrid", "reflex", "preaction", "subagent"),
+    )
+    add_repo(p_search)
+
+    p_ctx = sub.add_parser("context")
+    p_ctx.add_argument("query")
+    p_ctx.add_argument("--budget", type=int, default=0)
+    add_repo(p_ctx)
+
+    p_load = sub.add_parser("load")
+    p_load.add_argument("--tags", required=True)
+    add_repo(p_load)
+
+    p_hist = sub.add_parser("history")
+    p_hist.add_argument("query")
+    add_repo(p_hist)
+
+    p_write = sub.add_parser("write")
+    p_write.add_argument("--apply", required=True)
+    p_write.add_argument("--confirm", required=True)
+    p_write.add_argument("--observe", default="")
+    p_write.add_argument("--yes", action="store_true")
+    add_repo(p_write)
+
+    p_ex = sub.add_parser("explain")
+    p_ex.add_argument("--task", required=True)
+    add_repo(p_ex)
+
+    p_ver = sub.add_parser("verify")
+    p_ver.add_argument("id")
+    add_repo(p_ver)
+
+    p_for = sub.add_parser("forget")
+    p_for.add_argument("id")
+    p_for.add_argument("--expire", action="store_true")
+    p_for.add_argument("--archive", action="store_true")
+    p_for.add_argument("--erase", action="store_true")
+    p_for.add_argument("--yes", action="store_true")
+    add_repo(p_for)
+
+    p_trim = sub.add_parser("trim")
+    p_trim.add_argument("id")
+    add_repo(p_trim)
+
+    p_comp = sub.add_parser("compress")
+    p_comp.add_argument("id")
+    add_repo(p_comp)
+
+    p_nb = sub.add_parser("neighbors")
+    p_nb.add_argument("id")
+    add_repo(p_nb)
+
+    p_ep = sub.add_parser("episode")
+    p_ep.add_argument("--text", default="")
+    p_ep.add_argument("--title", default="")
+    add_repo(p_ep)
+
+    p_exw = sub.add_parser("export-worktree")
+    p_exw.add_argument("--from", dest="worktree", required=True)
+    add_repo(p_exw)
+
+    args = parser.parse_args(argv)
+    repo = _repo(getattr(args, "repo", "."))
+
+    if args.cmd == "init":
+        print(f"init {lm.init_corpus(repo)}")
+        return 0
+    if args.cmd == "enabled":
+        on = lm.enabled(repo)
+        print("true" if on else "false")
+        return 0 if on else 1
+    if args.cmd == "settings":
+        print(json.dumps(lm.settings(repo), ensure_ascii=True, indent=2))
+        return 0
+    if args.cmd == "lint":
+        findings = lm.lint(repo)
+        print("lint ok" if not findings else "\n".join(findings))
+        return 0 if not findings else 1
+    if args.cmd == "index":
+        print(lm.rebuild_index(repo), end="")
+        return 0
+    if args.cmd == "search":
+        hits, degrade = lm.search(repo, args.query, mode=args.mode)
+        if degrade:
+            print(f"degraded: {degrade}", file=sys.stderr)
+        for rec in hits:
+            print(f"{rec.get('id')}\t{rec.get('claim')}")
+        return 0
+    if args.cmd == "context":
+        budget = args.budget or None
+        print(lm.context_pack(repo, args.query, budget=budget), end="")
+        return 0
+    if args.cmd == "load":
+        print("# CORE")
+        for rec in lm.core_records(repo):
+            print(rec.get("_path"))
+        print("# periphery")
+        for rec in lm.load_tags(repo, args.tags.split(",")):
+            print(rec.get("_path"))
+        return 0
+    if args.cmd == "history":
+        print("\n".join(lm.history_search(repo, args.query)))
+        return 0
+    if args.cmd == "core":
+        print(lm.core_text(repo), end="")
+        return 0
+    if args.cmd == "inject":
+        touched = lm.inject_core(repo)
+        print("injected: " + ", ".join(str(p) for p in touched) if touched else "skipped")
+        return 0
+    if args.cmd == "write":
+        dest, log = lm.write_apply(
+            repo,
+            Path(args.apply),
+            yes=args.yes,
+            confirm=Path(args.confirm),
+            observe=args.observe,
+        )
+        print("\n".join(log))
+        print(f"wrote {dest}")
+        return 0
+    if args.cmd == "explain":
+        print("\n".join(lm.explain(repo, args.task)))
+        return 0
+    if args.cmd == "verify":
+        label, code = lm.verify_record(repo, args.id)
+        print(label)
+        return 0 if code == 0 else 1
+    if args.cmd == "forget":
+        mode = "erase" if args.erase else "archive" if args.archive else "expire"
+        print(lm.forget(repo, args.id, mode=mode, yes=args.yes))
+        return 0
+    if args.cmd == "trim":
+        print(lm.trim(repo, args.id))
+        return 0
+    if args.cmd == "compress":
+        print(lm.compress(repo, args.id))
+        return 0
+    if args.cmd == "neighbors":
+        print("\n".join(lm.neighbors(repo, args.id)))
+        return 0
+    if args.cmd == "measure":
+        print(json.dumps(lm.measure(repo), indent=2))
+        return 0
+    if args.cmd == "episode":
+        text = args.text or sys.stdin.read()
+        print(lm.write_episode(repo, text, title=args.title))
+        return 0
+    if args.cmd == "export-worktree":
+        copied = lm.export_worktree(repo, Path(args.worktree).resolve())
+        print("exported: " + ", ".join(str(p) for p in copied) if copied else "nothing")
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

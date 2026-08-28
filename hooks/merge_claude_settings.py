@@ -107,6 +107,7 @@ def merge_statusline(settings: dict[str, Any], statusline_path: Path) -> dict[st
 
 SESSION_MARK_RE = re.compile(r"lane_statusline_session\.py")
 TEAMMATE_IDLE_RE = re.compile(r"teammate_idle_sentinel\.py")
+SESSION_LEDGER_RE = re.compile(r"session_ledger\.py")
 PM_STOP_RE = re.compile(r"pm_stop_sentinel\.py")
 
 
@@ -162,6 +163,13 @@ def merge_session_mark(settings: dict[str, Any], mark_path: Path) -> dict[str, A
     cmd = f"python3 {shlex.quote(str(mark_path.expanduser().resolve()))}"
     for event in ("SessionStart", "SessionEnd"):
         _replace_event_hooks(settings, event, cmd, SESSION_MARK_RE, timeout=2)
+    return settings
+
+
+def merge_subagent_usage(settings: dict[str, Any], ledger_path: Path) -> dict[str, Any]:
+    """SubagentStop → usage ingest (parent Stop already flushes session_ledger)."""
+    cmd = f"python3 {shlex.quote(str(ledger_path.expanduser().resolve()))} usage"
+    _replace_event_hooks(settings, "SubagentStop", cmd, SESSION_LEDGER_RE, timeout=10)
     return settings
 
 
@@ -248,6 +256,8 @@ def merge_pm_stop_sentinel(settings: dict[str, Any], hook_path: Path) -> dict[st
 STACK_ENV_DEFAULTS: dict[str, str] = {
     # Agent teams + tool search (Claude Code 2.1.x capability surface)
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    # Subagents stay on sonnet; PM parent can stay fable
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",
     "ENABLE_TOOL_SEARCH": "true",
     # Generous MCP timeouts for long lane-ctl / lane-exec side tools
     "MCP_TOOL_TIMEOUT": "600000",
@@ -431,6 +441,9 @@ def main() -> int:
             pm_stop = candidate
     if pm_stop is not None and pm_stop.is_file():
         settings = merge_pm_stop_sentinel(settings, pm_stop)
+    ledger = hooks_dir / "session_ledger.py"
+    if ledger.is_file():
+        settings = merge_subagent_usage(settings, ledger)
     write_settings(args.settings, settings)
     return 0
 
