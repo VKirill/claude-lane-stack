@@ -1,0 +1,28 @@
+id: site-scan
+title: Versioned site & page scans
+phase: technical
+status: active
+version: "1.0.0"
+summary: "Fetch site/pages into versioned scan artifacts (meta, analysis, snapshots)."
+depends_on: [core-harness]
+soft_depends_on: [passport-onboard, proxy-fetch, html-markdown]
+provides: [scan.site, scan.page, scan.versions, scan.snapshot_md]
+requires_provides: []
+skills: []
+originals: []
+cli: [seo-scan, seo-html2md]
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/scans/site/<ts>/**"
+    - ".agents/seo/<slug>/scans/pages/<page>/<ts>/**"
+    - ".agents/seo/<slug>/scans/pages/<page>/<ts>/snapshot.md"
+    - ".agents/seo/<slug>/scans/INDEX.md"
+  reads:
+    - ".agents/seo/<slug>/ANAMNESIS.md"
+    - ".agents/seo/<slug>/passport/onboard.json"
+env: []
+agent_triggers: ["просканируй сайт", "rescan", "пересканируй страницу"]
+entrypoints:
+  agent: "seo-scan <slug> --rescan or --page URL"
+  cli: "seo-scan <slug> --url https://…"
+scenarios: [full-site.yaml, single-page.yaml, rescan-after-change.yaml]

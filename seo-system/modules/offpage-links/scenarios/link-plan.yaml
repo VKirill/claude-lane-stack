@@ -1,0 +1,12 @@
+id: link-plan
+module: offpage-links
+title: Strategic link plan
+when: "Need donor strategy without full listicle run"
+mode: any
+steps:
+  - id: plan
+    action: agent
+    run: "evidence-based link activation + nearest seeds → link-plan.md"
+acceptance:
+  - "link-plan.md with risk notes"
+next_modules: []

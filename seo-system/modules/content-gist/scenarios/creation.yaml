@@ -1,0 +1,16 @@
+id: creation
+module: content-gist
+title: New page Creation mode
+when: "New URL / cluster page"
+mode: any
+steps:
+  - id: gist
+    action: agent
+    run: "GIST v3.3 Creation → gist-plan.md + draft.md"
+  - id: quality
+    action: module
+    uses_module: content-quality
+    run: "scenarios/post-gist-pipeline.yaml"
+acceptance:
+  - "gist-plan.md and draft.md exist"
+next_modules: [content-quality]

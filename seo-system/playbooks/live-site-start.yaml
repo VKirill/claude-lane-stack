@@ -1,0 +1,28 @@
+id: live-site-start
+title: Start SEO on a live website
+when: "Client gives a working URL"
+mode: live
+chain:
+  - module: services-data
+    scenario: test-enabled
+    optional: true
+  - module: passport-onboard
+    scenario: live-site
+  - module: site-scan
+    scenario: full-site
+    optional: true
+  - module: discovery-research
+    scenario: new-project
+  - module: intent-semantics
+    scenario: intent-chain
+    optional: true
+  - module: strategy-evidence
+    scenario: qstar-navboost
+  - module: technical-seo
+    scenario: base-audit
+  - module: content-gist
+    scenario: audit
+    optional: true
+notes: |
+  After passport, do not invent metrics. Prefer measurement-analytics if GSC/Metrika connected.
+  Code fixes → dev-orchestrator, not this playbook.

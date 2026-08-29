@@ -1,0 +1,12 @@
+id: meta-step8
+module: content-gist
+title: Title/description Step 8
+when: "Meta only"
+mode: any
+steps:
+  - id: meta
+    action: agent
+    run: "GIST Step 8 only → meta.md"
+acceptance:
+  - "Candidates filtered; final title+description"
+next_modules: []

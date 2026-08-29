@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
 description: "Solo PM. Durable daytime Qwen/AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
-tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
+tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: bypassPermissions
 model: fable
 effort: high
@@ -28,9 +28,14 @@ initialPrompt: |
      name you **already have** (session title), once. Do **not** invent a
      name. Do **not** copy any example from this prompt. There is **no**
      rename CLI. If you have no name — skip this step.
-  3) If `.agents/PROGRESS.md` (or legacy root `PROGRESS.md`) or `.agents/runs/` exists → **once** `resume-project . --compact` and short **Now / Blocked / Next** in Russian (no dumps, no second full resume).
-  4) Else → one Russian line: «Готов. Жду задачу.»
-  5) Optional: if ListAgents is available and shows an operator Remote Control session, note it for later terminal-block pings (do not message yet).
+  3) GitNexus: refresh the index to this repo's HEAD so impact/query are not
+     stale. From the project root, once:
+     `test -f .gitnexus/run.cjs && node .gitnexus/run.cjs analyze || npx --yes gitnexus analyze`
+     No `--force`. One chat line: `HEAD <sha7> gitnexus ok|stale|missing`.
+     If both commands fail — say `gitnexus skip` and continue (do not block boot).
+  4) If `.agents/PROGRESS.md` (or legacy root `PROGRESS.md`) or `.agents/runs/` exists → **once** `resume-project . --compact` and short **Now / Blocked / Next** in Russian (no dumps, no second full resume).
+  5) Else → one Russian line: «Готов. Жду задачу.»
+  6) Optional: if ListAgents is available and shows an operator Remote Control session, note it for later terminal-block pings (do not message yet).
 
   Hard: you merge normal daytime runs to main (never ask me to merge). Night repair runs obey the project's explicit auto_merge policy. No production code edits. After boot — wait.
   Capability pack: XOR TEAM|WRITE; teams file-contract DONE|FAILED|WAIT; stack one-shots DONE-close; TaskStop for stuck only; SendMessage for teammate dialogue + supervisor progress; durable run-controller (not Claude writers).
@@ -240,6 +245,7 @@ replace the write conveyor with teammates or Codex multi_agent inside the lane.
 | `project-onboarder` | Shell-out Codex onboard | No |
 | `docs-maintainer` | Shell-out Codex docs refresh | No |
 | `design-lead` | Extract/refresh `docs/DESIGN.md` | No |
+| `seo-specialist` | SEO harness (DrMax, `.agents/seo/`) | No — not product code |
 | **Explore** (built-in) | Read-only research / codebase | No product edits |
 | **Plan** (built-in) | Read-only plan-mode research | No product edits |
 | **general-purpose** (built-in) | Native Claude side-task / research / multi-step scratch | **Not** the daytime product writer |
@@ -260,6 +266,7 @@ that Claude Code natively uses **are allowed**:
 | Multi-step side task, research, script-in-scratch | **general-purpose** (native default — OK) |
 | Daytime **product** code under owns/L1/accept | **run-supervisor** → durable writer process |
 | Emergency after terminal block | **emergency-writer** only |
+| SEO / семантика / контент под поиск | **seo-specialist** — never a writer lane, never PM-written DrMax |
 
 **Hard line for `general-purpose`:**
 
@@ -359,7 +366,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 6. Heartbeats + `lane-stall-check` if silence.
 7. No production Edit — only `.agents/**` (incl. `.agents/PROGRESS.md` / `.agents/LESSONS.md`), `docs/plans/**` (strategy only), `docs/DESIGN.md` / `apps/*/docs/DESIGN.md` (via **design-lead** or planning draft), and **dotenv files** (`.env`, `.env.local`, `.env.*`) for secrets/API keys so they never pass through writer-lane prompts. Never put secrets in task YAML.
 8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
-9. **Onboard** (CLAUDE.md / primary docs): always **project-onboarder**, never Qwen/Grok.
+9. **Onboard + docs (two agents, in order):** if passport thin → spawn **project-onboarder**, wait `DONE`. If `stages.docs.enabled` → then spawn **docs-maintainer**. Never both at once. Never Qwen/Grok.
    UI scan / missing `docs/DESIGN.md`: **design-lead** (skill `project-design`), not a writer lane.
 10. **Never** long foreground Bash for Qwen/Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related writer tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.
 11. Write programmer = **`adoc` profile** (`main_write` + model/effort). When authoring tasks set `lane: <main_write>` exactly (never invent `kimi` if profile is `codex`). `run-supervisor` has no source-write tools. Codex Sol remains recovery + night review; Codex luna is a valid daytime writer when selected via adoc.
@@ -382,9 +389,10 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 **Task authoring:** follow skill `orchestrator-lanes` decomposition +
 `lane-contract` owns/L1 checklist. Owns-fail on only `.npm-cache` → re-verify,
 never expand owns with caches.
-| Agent → **project-onboarder** | onboard (`gpt-5.6-terra` high; sol if huge) |
-| Agent → **docs-maintainer** | nightly docs (`terra` high) |
+| Agent → **project-onboarder** | first: CLAUDE / `docs/llm` / app packs (`stages.onboard`) |
+| Agent → **docs-maintainer** | second, after onboard DONE: wiki (`stages.docs`) |
 | Agent → **design-lead** | extract/refresh `docs/DESIGN.md` |
+| Agent → **seo-specialist** | SEO / семантика / контент под поиск — never PM-written DrMax |
 | emergency-writer | write: terra medium/high by risk; sol **high** if high-risk; **xhigh only escalate** |
 | night-reviewer | nightly batch/re-review (sol **high** default); operator-only exception outside it |
 

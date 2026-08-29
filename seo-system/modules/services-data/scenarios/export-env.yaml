@@ -1,0 +1,17 @@
+id: export-env
+module: services-data
+title: Export unified env for agents
+when: "After credential changes"
+mode: any
+steps:
+  - id: export
+    action: cli
+    run: "seo-services export"
+    artifact: "~/secrets/seo-tools.env"
+  - id: wire
+    action: cli
+    run: "seo-services project-wire"
+    optional: true
+acceptance:
+  - "seo-tools.env exists mode 600"
+next_modules: []

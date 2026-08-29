@@ -1,0 +1,13 @@
+id: gsc-low-hanging
+module: measurement-analytics
+title: GSC intent low-hanging fruit
+when: "Growth on existing site"
+mode: live
+steps:
+  - id: gsc
+    action: agent
+    run: "GSC searchanalytics; apply evidence-based low-hanging method"
+    artifact: ".agents/seo/<slug>/measurement/gsc-low-hanging.md"
+acceptance:
+  - "Prioritised query/page list with positions/impressions"
+next_modules: [content-gist, technical-seo]

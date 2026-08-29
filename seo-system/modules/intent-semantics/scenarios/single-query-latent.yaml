@@ -1,0 +1,13 @@
+id: single-query-latent
+module: intent-semantics
+title: Latent Intent on one query
+when: "Single phrase / title / H1 ambiguity"
+mode: any
+steps:
+  - id: latent
+    action: agent
+    run: "drmax-latent-intent ORIGINAL.md; human|json|minimal"
+    artifact: ".agents/seo/<slug>/discovery/intent/latent/<query-slug>.md"
+acceptance:
+  - "Latent report without invented SERP"
+next_modules: [content-gist]

@@ -27,6 +27,44 @@ class InstallTest(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertNotIn("blyt-", text, rel)
             self.assertIn("Do **not** invent a", text, rel)
+            self.assertIn("gitnexus analyze", text, rel)
+
+    def test_lane_pm_does_not_resubmit_initial_prompt(self) -> None:
+        text = (ROOT / "bin" / "lane-pm").read_text(encoding="utf-8")
+        self.assertNotIn("extract_boot", text)
+        self.assertNotIn('"$BOOT"', text)
+        self.assertIn('exec claude --agent "$AGENT" --name "$NAME" "$@"', text)
+
+    def test_seo_specialist_pack_is_shipped(self) -> None:
+        agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"
+        self.assertTrue(agent.is_file())
+        body = agent.read_text(encoding="utf-8")
+        self.assertIn("name: seo-specialist", body)
+        self.assertIn("initialPrompt:", body)
+        self.assertIn("seo-drmax-orchestrator", body)
+        link = ROOT / "agents" / "claude" / "seo-specialist.md"
+        self.assertTrue(link.is_symlink() or link.is_file())
+        skills = ROOT / "plugins" / "lane-stack" / "skills"
+        for name in (
+            "seo-drmax-orchestrator",
+            "seo-prompt-engineering-2026",
+            "seo-evidence-based-2026",
+            "seo-copywriting",
+            "ai-detect",
+            "drmax-latent-intent",
+            "drmax-cvd",
+            "drmax-text-humanization",
+            "drmax-lexadapt",
+        ):
+            skill = skills / name / "SKILL.md"
+            self.assertTrue(skill.is_file(), skill)
+        originals = skills / "seo-prompt-engineering-2026" / "references" / "originals"
+        self.assertTrue(originals.is_dir(), originals)
+        life = skills / "seo-project-life" / "SKILL.md"
+        self.assertTrue(life.is_file(), life)
+        self.assertIn("seo-project-life — карта SEO-проекта", life.read_text(encoding="utf-8"))
+        self.assertTrue((ROOT / "seo-system" / "modules" / "passport-onboard" / "module.yaml").is_file())
+        self.assertTrue((ROOT / "docs" / "seo" / "SOLO-SEO-ORCHESTRATION.md").is_file())
 
     def test_acceptance_template_includes_report_digest(self) -> None:
         acceptance = json.loads(
@@ -109,6 +147,9 @@ class InstallTest(unittest.TestCase):
             env["HOME"] = str(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
+            stale_agent = home / ".claude" / "agents" / "seo-specialist.md"
+            stale_agent.parent.mkdir(parents=True)
+            stale_agent.write_text("stale user copy\n", encoding="utf-8")
 
             result = subprocess.run(
                 [str(INSTALL)],
@@ -122,6 +163,29 @@ class InstallTest(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(stale_agent.exists())
+            self.assertTrue(
+                (
+                    home
+                    / ".agents"
+                    / "skills"
+                    / "seo-drmax-orchestrator"
+                    / "SKILL.md"
+                ).is_file()
+            )
+            self.assertTrue(
+                (
+                    home
+                    / ".agents"
+                    / "seo-system"
+                    / "modules"
+                    / "passport-onboard"
+                    / "module.yaml"
+                ).is_file()
+            )
+            self.assertTrue(
+                (home / ".agents" / "skills" / "seo-project-life" / "SKILL.md").is_file()
+            )
             controller = home / ".agents" / "bin" / "run-controller"
             self.assertTrue(controller.is_file())
             self.assertEqual(controller.stat().st_mode & 0o777, 0o755)

@@ -1,0 +1,17 @@
+id: bootstrap
+module: core-harness
+title: Empty repo → harness skeleton
+when: "No .agents/seo yet and only need skeleton (prefer passport-onboard)"
+mode: any
+steps:
+  - id: init
+    action: cli
+    run: "seo-init <slug> --domain <domain>"
+    artifact: ".agents/seo/<slug>/STATUS.md"
+  - id: board
+    action: cli
+    run: "seo-board . && seo-handoff-write ."
+acceptance:
+  - "STATUS.md exists"
+  - "HANDOFF.md exists"
+next_modules: [passport-onboard]

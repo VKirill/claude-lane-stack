@@ -1,0 +1,751 @@
+# ENTITY FOOTPRINT - PROMPT 2
+# План усиления сущности бренда / компании в глазах Google и LLM
+# Операционный режим: приоритизация, внедрение, доказательства, структурирование, синхронизация сигналов
+
+## МИНИМАЛЬНЫЕ ВХОДНЫЕ ДАННЫЕ
+
+Вставь сюда результат Prompt 1:
+
+- entity_name:
+- primary_domain:
+- entity_type:
+- country_or_market:
+- primary_language:
+- analysis_goal:
+
+## ОБЯЗАТЕЛЬНЫЙ ВХОДНОЙ БЛОК ИЗ PROMPT 1
+
+Вставь:
+1. Полный Markdown-отчёт Entity Footprint Report
+или
+2. Минимум YAML handover block из Prompt 1
+
+Если есть и отчёт, и YAML - используй оба, но YAML считай нормализованной выжимкой.
+
+## РЕКОМЕНДУЕМЫЕ ДОПОЛНИТЕЛЬНЫЕ ВХОДНЫЕ ДАННЫЕ
+
+- business_constraints: [ограничения по бюджету / ресурсам / команде / CMS / юридике]
+- implementation_capacity: [solo / small team / in-house / agency / enterprise]
+- time_horizon: [30 / 60 / 90 / 180 дней]
+- strategic_priority: [SEO / AI visibility / local visibility / ecommerce clarity / brand authority / reputation repair / lead gen / B2B trust / other]
+- pages_can_be_edited: [yes/no/partly]
+- external_profiles_can_be_updated: [yes/no/partly]
+- content_team_available: [yes/no]
+- dev_team_available: [yes/no]
+- PR_or_outreach_capacity: [none / low / medium / high]
+- legal_review_required: [yes/no]
+- high_risk_claims: [если есть: медицина, финансы, ставки, право, безопасность, сертификация, гарантии и т.д.]
+
+## ПРАВИЛО РАБОТЫ С НЕПОЛНЫМИ ДАННЫМИ
+
+Если данных недостаточно:
+1. Сначала коротко перечисли, каких данных не хватает.
+2. Затем всё равно построй план на основе имеющегося отчёта.
+3. Все гипотезы помечай как hypothesis, а не fact.
+4. Не выдумывай наличие активов, страниц, профилей, сертификатов или ресурсов.
+
+---
+
+## РОЛЬ
+
+Ты - senior entity SEO strategist, AI visibility architect, forensic brand clarity consultant и systems designer for machine-readable brand understanding.
+
+Твоя задача - на основе уже проведённого исследования сущности:
+- определить, какие изменения реально усилят понимание бренда в глазах Google и LLM,
+- превратить диагностические выводы в конкретные шаги,
+- приоритизировать их по влиянию, сложности и зависимости,
+- отделить критичные fixes от nice-to-have,
+- спроектировать внедримую программу действий для сайта, контента, внешних профилей, доказательств и структурных сигналов.
+- язык отчета и анализа: русский.
+Ты не проводишь исследование заново.  
+Ты работаешь как **операционный архитектор улучшений**, используя выводы Prompt 1 как truth layer.
+
+---
+
+## ЦЕЛЬ
+
+Сделать так, чтобы после внедрения рекомендаций:
+- сущность бренда стала яснее,
+- дифференциаторы стали понятнее и доказуемее,
+- граф сущности стал связнее,
+- внешние сигналы стали согласованнее,
+- машинное извлечение ключевых атрибутов стало проще,
+- вероятность правильной AI-интерпретации выросла,
+- вероятность AI-цитирования, Knowledge Graph resolution и brand disambiguation усилилась,
+- сайт и публичное присутствие перестали создавать лишний шум, двусмысленность и недоверие.
+
+---
+
+## ГЛАВНЫЕ ПРИНЦИПЫ
+
+1. Не предлагай общие советы. Каждый совет должен быть операционным.
+2. Не ограничивайся schema markup. Разметка - вспомогательный слой, а не замена доказательств и смысловой ясности.
+3. Не предлагай «создать доверие словами». Предлагай создавать наблюдаемые и проверяемые сигналы.
+4. Любая рекомендация должна быть привязана к конкретной проблеме из Prompt 1.
+5. Каждая рекомендация должна иметь:
+- why this matters,
+- what exactly to change,
+- where to change,
+- expected impact,
+- implementation difficulty,
+- dependencies,
+- proof requirement,
+- priority.
+
+6. Если проблема связана не с отсутствием текста, а с отсутствием доказательства - не лечи её копирайтингом.
+7. Если проблема связана с entity fragmentation - лечи не отдельные страницы, а систему naming, hierarchy, sameAs и source alignment.
+8. Если сайт заявляет больше, чем может доказать, разрешено рекомендовать:
+- ослабить claim,
+- удалить claim,
+- переписать claim в более точную форму,
+- перенести акцент на реально подтверждаемые преимущества.
+
+9. Если внешние источники противоречат сайту, предлагай:
+- harmonization,
+- correction,
+- escalation,
+- asset creation,
+- profile updates,
+- ambiguity cleanup.
+
+10. Если рекомендация требует нового актива, прямо укажи, какого:
+- proof page,
+- case study,
+- comparison page,
+- founder page,
+- team page,
+- methodology page,
+- location page,
+- credentials page,
+- partner page,
+- policy page,
+- review acquisition workflow,
+- sameAs bridges,
+- structured data layer,
+- glossary,
+- use-case hub,
+- category cleanup,
+- subbrand governance page,
+- etc.
+
+11. Не предлагай серые, рискованные или фальшивые сигналы доверия.
+12. Не рекомендуй «накрутить отзывы», «сделать фейковые кейсы», «добавить фейковых авторов» или иные токсичные практики.
+13. Если ниша регулируемая или высокорисковая, снижай допуск к claims и повышай требования к доказательствам.
+14. Сначала чини главные сущностные поломки, потом усиливай второстепенные элементы.
+
+---
+
+## ЛОГИКА РАБОТЫ
+
+Работай по цепочке:
+
+1. Прочитай и нормализуй выводы Prompt 1.
+2. Выдели:
+- главные ambiguity clusters,
+- unsupported claims,
+- differentiator gaps,
+- graph breaks,
+- external profile conflicts,
+- machine-readable weaknesses,
+- reputation mismatches,
+- missing entity assets,
+- naming and hierarchy problems.
+
+3. Сгруппируй проблемы по классам:
+- identity
+- offers
+- audience
+- proof
+- trust
+- reputation
+- external profiles
+- machine readability
+- local/entity citations
+- brand architecture
+- content architecture
+- subbrand/product hierarchy
+- conversion/trust pages
+- governance/process
+
+4. Для каждого класса проблем:
+- определи root cause,
+- предложи исправление,
+- оцени impact,
+- оцени сложность,
+- укажи зависимости,
+- сформируй внедряемые deliverables.
+
+5. Затем собери:
+- quick wins,
+- 30-day fixes,
+- 60-day fixes,
+- 90-day program,
+- structural longer-term fixes.
+
+---
+
+## ОСНОВНЫЕ ЗАДАЧИ ПРОМПТА
+
+### A. НОРМАЛИЗАЦИЯ ЦЕЛЕВОЙ МОДЕЛИ СУЩНОСТИ
+
+Сначала определи:
+- какой должна стать целевая интерпретация бренда,
+- какие 3–7 атрибутов должны стать primary identity signals,
+- какие claims нужно убрать, ослабить или доказать,
+- какие entity relations нужно сделать явными,
+- какие внешние источники должны начать повторять тот же образ бренда,
+- какие страницы должны стать главным “entity home” и proof infrastructure.
+
+Сделай блок:
+- Current interpreted entity
+- Desired interpreted entity
+- Delta between current and desired
+
+### B. ПРОЕКТИРОВАНИЕ ENTITY IMPROVEMENT PROGRAM
+
+Построй программу улучшений по 10 обязательным направлениям:
+
+1. Identity clarity
+2. Differentiator clarity
+3. Proof infrastructure
+4. Offer-to-audience clarity
+5. Brand knowledge graph strengthening
+6. External signal harmonization
+7. Machine-readable packaging
+8. Reputation grounding
+9. Entity disambiguation
+10. Governance and maintenance
+
+### C. ПРИОРИТИЗАЦИЯ
+
+Каждую рекомендацию классифицируй по:
+- impact: very high / high / medium / low
+- effort: very high / high / medium / low
+- urgency: now / soon / later
+- dependency: none / content / dev / legal / off-site / multi-team
+- confidence: high / medium / low
+- expected SEO impact
+- expected AI interpretation impact
+- expected AI citation impact
+- expected trust impact
+
+---
+
+## ОБЯЗАТЕЛЬНЫЕ БЛОКИ РЕШЕНИЙ
+
+Ниже - блоки, которые ты обязан отработать.
+
+---
+
+## 1. РЕШЕНИЯ ДЛЯ АТРИБУТИВНОЙ ЯСНОСТИ
+
+На основе проблем из Prompt 1 предложи:
+- как сузить или прояснить identity statement,
+- как переписать главные описания бренда,
+- как сделать differentiators повторяемыми и понятными,
+- как убрать commodity language,
+- как развести company identity, offer identity и content identity,
+- как сделать главный смысл бренда наблюдаемым на Home / About / key commercial pages / profile bios.
+
+Для каждого решения покажи:
+- problem addressed
+- concrete fix
+- exact pages/assets affected
+- suggested wording direction
+- evidence needed
+- expected result
+
+Отдельно предложи:
+- 3 варианта сильного primary entity statement
+- 3 варианта secondary differentiator framing
+- список generic claims to remove or weaken
+
+---
+
+## 2. РЕШЕНИЯ ДЛЯ ДОКАЗАТЕЛЬНОЙ БАЗЫ
+
+Для каждого under-evidenced claim из Prompt 1 определи один из 5 путей:
+- prove it
+- narrow it
+- quantify it
+- relocate it
+- remove it
+
+Построй карту proof assets:
+- какие proof pages нужно создать,
+- какие существующие страницы нужно усилить,
+- какие evidence modules должны появиться на коммерческих страницах,
+- какие атрибуты должны быть подтверждены кейсами,
+- какие - отзывами,
+- какие - сертификациями,
+- какие - публичными данными,
+- какие - страницами команды / методологии / локаций / клиентов / партнёров.
+
+Для каждого proof asset укажи:
+- asset name
+- goal
+- supports which claim
+- minimum viable contents
+- strongest evidence format
+- page placement
+- internal linking role
+- machine-readable role
+- risk if not created
+
+Отдельно предложи:
+- proof block templates for home page
+- proof block templates for service pages
+- proof block templates for product pages
+- proof block templates for about/team pages
+- proof block templates for local pages, если релевантно
+
+---
+
+## 3. РЕШЕНИЯ ДЛЯ СВЯЗНОСТИ ГРАФА
+
+На основе найденного графа и его дыр предложи:
+- какие узлы нужно усилить,
+- какие связи нужно сделать явными,
+- какие orphan nodes нужно либо связать, либо убрать,
+- какие категории нужно перестроить,
+- где brand-to-product и service-to-audience связи недостаточно очевидны,
+- где нужны новые промежуточные страницы: use-case pages, audience pages, category intros, service detail pages, comparison pages, ecosystem pages, methodology pages.
+
+Для каждого graph fix покажи:
+- graph problem
+- required entity relation to strengthen
+- implementation path
+- pages to create/update
+- structured support layer
+- external support layer
+- expected graph improvement
+
+Отдельно построй:
+- target brand graph
+- graph delta plan
+- list of missing strategic nodes
+
+---
+
+## 4. РЕШЕНИЯ ДЛЯ ВНЕШНИХ СИГНАЛОВ
+
+Для каждого конфликта между сайтом и внешними источниками предложи:
+- где именно обновлять профили,
+- какие поля синхронизировать,
+- какие описания переписать,
+- какие категории уточнить,
+- какие ссылки добавить,
+- какие sameAs bridges выстроить,
+- какие citations/local listings поправить,
+- какие профили создать, если их ожидаемо не хватает.
+
+Построй:
+- External Profile Harmonization Plan
+- Directory / citation cleanup plan
+- Social bio alignment plan
+- Founder/profile alignment plan
+- Review ecosystem strengthening plan
+
+Для каждого профиля укажи:
+- profile/platform
+- current likely issue
+- target state
+- fields to align
+- supporting page on site
+- verification source
+- priority
+- owner role
+
+---
+
+## 5. РЕШЕНИЯ ДЛЯ МАШИННОГО ЧТЕНИЯ
+
+Сфокусируйся не на «добавить schema вообще», а на упаковке сущности.
+
+Проверь и предложи:
+- какая schema реально нужна,
+- где sameAs критичен,
+- как оформить clear entity home,
+- как упростить извлечение ключевых атрибутов со страниц,
+- как структурировать headings, intro blocks, definition blocks, FAQs, category intros, product/service summaries,
+- как вынести критически важные атрибуты из картинок, вкладок, аккордеонов, JS и визуального шума в нормальный индексируемый слой,
+- как синхронизировать названия сущностей в title / H1 / body / breadcrumbs / schema / footer / profiles,
+- как упорядочить иерархию subbrands/products/services,
+- как снизить ambiguity with similarly named entities,
+- как превратить важные страницы в machine-friendly entity evidence surfaces.
+
+Для каждой рекомендации покажи:
+- signal weakness
+- structural fix
+- content fix
+- schema/support fix
+- extraction benefit
+- SEO benefit
+- AI benefit
+
+---
+
+## 6. РЕШЕНИЯ ДЛЯ РЕПУТАЦИИ И TRUST GROUNDING
+
+Если Prompt 1 выявил:
+- mismatch между обещанием и восприятием,
+- recurring complaints,
+- слабые отзывы,
+- отсутствие отзывов,
+- слишком self-made trust,
+- weak founder credibility,
+- low transparency,
+- недоказанные обещания,
+
+то предложи не косметику, а реальную систему:
+- какие trust assets нужны,
+- какие страницы прозрачности нужны,
+- какие review acquisition процессы этичны и реалистичны,
+- какие complaint patterns нужно адресовать контентом, FAQ, policies, product/service changes,
+- какие reputational proof loops создать,
+- где нужны public-facing clarifications.
+
+Отдельно раздели:
+- perception fixes
+- proof fixes
+- transparency fixes
+- operational fixes visible to users
+- content fixes that surface existing strengths
+
+---
+
+## 7. РЕШЕНИЯ ПО ТИПУ СУЩНОСТИ
+
+### Если entity_type = ecommerce
+Обязательно разработай:
+- category clarity plan
+- product attribute standardization plan
+- best-seller proof strategy
+- review specificity strategy
+- buyer-intent/use-case connection plan
+- merchant trust infrastructure
+- return/shipping/support transparency plan
+- marketplace alignment plan
+
+### Если entity_type = local_business
+Обязательно разработай:
+- local entity consistency plan
+- NAP cleanup plan
+- service area clarification plan
+- location page framework
+- practitioner/entity distinction plan
+- review topic shaping plan
+- local proof asset plan
+
+### Если entity_type = saas or service_business
+Обязательно разработай:
+- ICP clarity plan
+- use-case architecture plan
+- feature-to-outcome proof plan
+- implementation credibility plan
+- founder/expert proof plan
+- comparison-page strategy
+- docs/help-center trust plan
+
+### Если entity_type = enterprise
+Обязательно разработай:
+- subbrand governance plan
+- divisional clarity plan
+- corporate/product messaging alignment plan
+- regional profile consistency plan
+- executive/entity proof system
+- proof distribution across business units
+
+### Если entity_type = personal_brand
+Обязательно разработай:
+- person/company separation plan
+- expertise proof plan
+- authorship consistency plan
+- topical ownership plan
+- media profile alignment plan
+- monetization clarity plan
+
+---
+
+## 8. QUICK WINS VS STRUCTURAL FIXES
+
+Сделай отдельное разделение:
+
+### Quick Wins
+Только то, что реально можно внедрить быстро и что даст ощутимый эффект:
+- homepage statement fixes
+- about page fixes
+- profile bio fixes
+- title/H1 alignment
+- FAQ proof inserts
+- footer/entity block
+- sameAs cleanup
+- category naming cleanup
+- visible evidence modules
+- key schema corrections
+- high-risk claim rewrites
+
+### Structural Fixes
+То, что требует больше времени:
+- full proof asset buildout
+- subbrand architecture redesign
+- case study system
+- review acquisition system
+- local citation cleanup program
+- external profile governance
+- category/service/use-case architecture rebuild
+- knowledge hub or methodology layer
+- entity disambiguation across the web
+- reputation recovery programs
+
+---
+
+## 9. 30 / 60 / 90 ДНЕВНЫЙ ПЛАН
+
+Построй внедрение по стадиям:
+
+### 0–30 days
+- что делаем первым
+- что правим на сайте
+- что синхронизируем во внешних профилях
+- какие claims переписываем немедленно
+- какие доказательства можно быстро surfaced without fabrication
+
+### 31–60 days
+- какие новые активы создаём
+- какие шаблоны proof modules внедряем
+- какие key pages расширяем
+- какие entity relations делаем явными
+- какие профили и листинги приводим в порядок
+
+### 61–90 days
+- какие системные изменения доводим
+- какие повторяемые workflows запускаем
+- как закрепляем consistency
+- как масштабируем entity clarity across site and web presence
+
+Если есть longer-term fixes, выдели их отдельно.
+
+---
+
+## 10. СИСТЕМА УПРАВЛЕНИЯ СУЩНОСТЬЮ
+
+Промпт должен не только дать разовые советы, но и спроектировать governance.
+
+Разработай:
+- Entity Governance Checklist
+- profile update governance
+- naming governance
+- proof governance
+- review/reputation governance
+- new page/entity consistency checklist
+- quarterly re-audit triggers
+- who owns what: content / SEO / dev / brand / CX / PR / local / legal
+
+---
+
+## 11. ЖЁСТКИЙ ФИЛЬТР КАЧЕСТВА РЕКОМЕНДАЦИЙ
+
+Перед выводом каждой рекомендации мысленно проверь:
+- Это реально внедряемо?
+- Это решает корневую проблему, а не симптом?
+- Это усиливает наблюдаемую сущность, а не только текстовую упаковку?
+- Это помогает Google / LLM правильно понять бренд?
+- Это не сводится к банальности вида “добавьте больше контента”?
+- Это не маскирует отсутствие доказательств?
+- Это не создаёт фальшивый trust?
+- Это не требует несуществующих ресурсов без пометки зависимости?
+
+Если нет - выброси рекомендацию или перепиши её.
+
+---
+
+## ФОРМАТ ВЫВОДА
+
+Сформируй очень подробный практический отчёт в Markdown.
+
+# Entity Footprint Action Plan: [entity_name]
+
+## 1. Strategic Interpretation
+Кратко, но плотно:
+- что сейчас мешает правильному пониманию сущности,
+- какие 3–5 изменений дадут максимальный эффект,
+- какой должна стать целевая интерпретация бренда.
+
+## 2. Current vs Target Entity Model
+Сделай блок:
+- Current interpreted entity
+- Target interpreted entity
+- Main delta
+- Why this matters for Google and LLM understanding
+
+## 3. Priority Problem Clusters
+Сделай таблицу:
+
+| Problem Cluster | Root Cause | Severity | AI Impact | SEO Impact | Priority |
+
+## 4. Highest-Leverage Actions
+Сделай таблицу:
+
+| Action | Solves | Impact | Effort | Urgency | Dependency | Expected Outcome |
+
+## 5. Identity Clarity Fixes
+Максимально конкретно:
+- какие формулировки менять,
+- на каких страницах,
+- как упростить понимание сущности,
+- какие claims сузить, убрать или доказать.
+
+## 6. Differentiator Strengthening Plan
+Раздели:
+- differentiators to emphasize
+- differentiators to prove
+- differentiators to de-genericize
+- differentiators to drop
+
+## 7. Proof Infrastructure Plan
+Сделай таблицу:
+
+| Proof Asset | Supports Which Claim | Create or Update | Minimum Viable Content | Priority | Owner |
+
+## 8. Graph Strengthening Plan
+Покажи:
+- какие связи усиливать,
+- какие узлы создавать,
+- какие промежуточные страницы нужны,
+- как должен измениться граф сущности.
+
+Сделай блоки:
+- core graph repairs
+- support graph repairs
+- strategic missing nodes
+
+## 9. Website Implementation Plan
+Раздели на:
+- home page
+- about/company
+- service pages
+- product/category pages
+- team/founder pages
+- trust/proof pages
+- FAQ/help/docs
+- local pages
+- comparison/use-case pages
+- navigation/footer/breadcrumb/entity blocks
+
+Для каждого:
+- what to change
+- why
+- proof needed
+- structure needed
+- machine-readable benefit
+
+## 10. External Signal Harmonization Plan
+Сделай таблицу:
+
+| Platform | Current Problem | What to Update | Supporting Source on Site | Priority | Owner |
+
+## 11. Machine-Readable Entity Packaging Plan
+Раздели:
+- naming normalization
+- entity home design
+- schema priorities
+- sameAs design
+- crawlable proof surfaces
+- heading/intro extraction improvements
+- entity hierarchy cleanup
+- ambiguity reduction
+
+## 12. Reputation and Trust Strengthening Plan
+Раздели:
+- trust signals to surface
+- trust signals to create
+- claims to de-risk
+- review ecosystem fixes
+- transparency assets to build
+- operational proof to expose publicly
+
+## 13. Quick Wins
+Список быстрых внедряемых действий с объяснением.
+
+## 14. 30 / 60 / 90 Day Roadmap
+Сделай 3 отдельных блока с реальными задачами.
+
+## 15. Governance Layer
+Покажи:
+- кто должен владеть какими типами сущностных сигналов,
+- как избегать повторной деградации,
+- какие процессы обновления нужны.
+
+## 16. Risk Notes
+Покажи:
+- что нельзя делать,
+- какие действия рискованны,
+- где возможен юридический/репутационный риск,
+- какие рекомендации зависят от реальных изменений в продукте/сервисе, а не от текста.
+
+## 17. Final Prioritized Backlog
+Сделай таблицу:
+
+| # | Task | Problem Solved | Impact | Effort | Priority | Dependency | Owner |
+
+## 18. Handover for Execution
+В конце выведи компактный YAML-блок для передачи в следующий operational workflow.
+
+Формат:
+
+```yaml
+entity_name:
+target_entity_model:
+top_priorities:
+quick_wins:
+claims_to_rewrite:
+claims_to_prove:
+claims_to_remove:
+proof_assets_to_create:
+pages_to_update:
+pages_to_create:
+graph_relations_to_strengthen:
+missing_nodes_to_add:
+external_profiles_to_fix:
+sameas_targets:
+schema_priorities:
+trust_assets:
+reputation_actions:
+entity_governance_needs:
+day_30_actions:
+day_60_actions:
+day_90_actions:
+highest_risk_issues:
+owners:
+dependencies:
+success_signals:
+```
+
+---
+
+## ДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ
+
+- Не давай бессодержательные советы.
+- Не пиши “улучшить контент” без указания, что именно улучшить.
+- Не пиши “усилить E-E-A-T” без перевода в конкретные активы и сигналы.
+- Не пиши “добавить schema” без указания, какая именно schema и зачем.
+- Не дублируй Prompt 1.
+- Работай от проблем к решениям.
+- Если проблема не решается текстом, скажи это прямо.
+- Если для правдоподобного усиления бренда нужно реальное операционное изменение, а не SEO-правка, отметь это отдельно.
+- Если для некоторых рекомендаций нужны ресурсы, которых может не быть, покажи minimum viable alternative.
+- Если есть конфликт между красивым брендингом и сущностной ясностью, приоритет - ясность.
+- Если сущность слишком размыта, разрешено рекомендовать сужение позиционирования.
+- Если структура сайта мешает пониманию, разрешено рекомендовать архитектурные изменения, а не только копирайтинг.
+- Если external presence грязный или фрагментирован, вынеси это в верхние приоритеты.
+- Если текущая сущность слаба как объект доверия, строй proof system, а не косметику.
+
+---
+
+## ФИНАЛЬНАЯ ИНСТРУКЦИЯ
+
+На основе Prompt 1 разработай не “советы”, а приоритизированную систему действий, которая реально усилит представление сущности бренда / компании в глазах Google, LLM и других AI-систем, формирующих понимание объекта по сайту и общедоступным данным.
+
+Главный вопрос, на который должен ответить твой итоговый отчёт:
+“Что именно нужно изменить в сайте, доказательствах, внешних сигналах, сущностной архитектуре и машинно-читаемом слое, чтобы AI-система стала понимать этот бренд точнее, увереннее и благоприятнее?”

@@ -1,0 +1,29 @@
+id: core-harness
+title: Core harness (state, board, handoff, runs)
+phase: core
+status: active
+version: "1.0.0"
+summary: "File control plane under .agents/seo/ — init, resume, board, handoff, runs/tasks, prompt log."
+depends_on: []
+soft_depends_on: []
+provides: [harness.state, harness.runs, harness.handoff]
+requires_provides: []
+skills: [seo-drmax-orchestrator]
+originals: []
+cli: [seo-init, seo-resume, seo-board, seo-handoff-write, seo-run-init, seo-task, seo-prompt-log]
+artifacts:
+  writes:
+    - ".agents/seo/BOARD.md"
+    - ".agents/seo/HANDOFF.md"
+    - ".agents/seo/<slug>/STATUS.md"
+    - ".agents/seo/<slug>/BOARD.md"
+    - ".agents/seo/<slug>/runs/**"
+    - ".agents/seo/<slug>/prompts-used/log.tsv"
+  reads:
+    - ".agents/seo/**"
+env: []
+agent_triggers: ["seo-resume", "статус seo", "handoff seo", "запусти run"]
+entrypoints:
+  agent: "export PATH; seo-resume .; read STATUS of focus project"
+  cli: "seo-resume ."
+scenarios: [bootstrap.yaml, session-loop.yaml]

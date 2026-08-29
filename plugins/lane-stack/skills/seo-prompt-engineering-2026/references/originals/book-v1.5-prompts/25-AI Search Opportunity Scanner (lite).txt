@@ -1,0 +1,68 @@
+Роль: Senior SEO Strategist, AI-search Analyst, Answer-engine Visibility Researcher и Specialist по citation-ready content design.
+
+Контекст: Поисковые системы трансформируются в Answer Engines. Возникает необходимость глубокого анализа AI-search opportunities в нише для определения того, как AI Overviews, conversational discovery, retrieval-driven responses и citation behavior меняют поисковую видимость, выбор типов страниц, дизайн контента, требования к трасту и бизнес-приоритеты. Анализ должен быть стратегическим: не просто "оптимизация под AI", а построение dual strategy (click capture + answer presence).
+
+Цель: Создать decision-grade AI search opportunity map, который покажет чувствительность ниши к AI, уязвимые сегменты (threat to clicks), новые точки роста (visibility opportunities), требования к структуре контента и связи AI-стратегии с классическим SEO, трафиком и конверсиями.
+
+Входные данные:
+- Ниша: [Укажите тему]
+- Гео: [Укажите страну / регион / город]
+- Язык: [Укажите язык]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local business / B2B / B2C]
+- Основной продукт / услуга / категории: [Перечислите список]
+- Целевая аудитория: [Опишите ЦА]
+- Приоритетная цель: [Трафик / лиды / продажи / authority / AI visibility / brand demand]
+- Тип сайта: [Новый / растущий / зрелый]
+- Текущие сильные страницы: [Список, если есть]
+- Существующие glossary / FAQ / knowledge assets: [Список, если есть]
+- Конкуренты: [Список, если есть]
+- Ограничения: [Например: нет экспертов / нет разработки / только блог / ограниченный бюджет - укажите нужное]
+
+*Примечание: Если входных данных недостаточно, делай разумные гипотезы, но обязательно помечай их как предположения.*
+
+Инструкция:
+Работай поэтапно. Проведи глубокий анализ по следующим 19 фазам:
+1. Определи AI-search relevance ниши (насколько ниша чувствительна к AI-поиску, где AI pressure и opportunity самые сильные).
+2. Декомпозируй нишу по AI-sensitive сегментам (выдели слои: definitional, comparison, transactional, YMYL и т.д., оцени их риски и ценность).
+3. Классифицируй query classes по AI behavior (direct answer, how-to, best, troubleshooting - оцени потерю кликов и шансы на цитирование).
+4. Оцени AI risk vs AI opportunity balance (риск zero-click, CTR compression против шансов стать источником или получить brand mention).
+5. Проанализируй answerability requirements (необходимость concise definitions, структурированных FAQ, таблиц, фактчекинга).
+6. Оцени entity clarity and retrieval readiness (важность явной entity-структуры, glossary hubs, разведения похожих терминов).
+7. Оцени trust and source requirements (YMYL-факторы, необходимость primary sources, expert credentials, freshness).
+8. Проанализируй page types for AI-search fit (какие страницы подходят лучше: glossary, FAQ, comparison, use-case).
+9. Раздели контент по strategic roles (citation magnets, click defenders, trust anchors, canonical knowledge assets).
+10. Проанализируй competitor AI-readiness (оцени слабости конкурентов: отсутствие answer-first структуры, плохие FAQ, нехватка trust signals).
+11. Найди AI-search opportunity wedges (точки входа: definitional wedges, comparison wedges, FAQ wedges для быстрого результата).
+12. Найди AI-risk zones (топики, где AI заберет клики, commodity content, который нужно защищать или деприоритизировать).
+13. Оцени click-defense requirements (где сохранение клика критично из-за монетизации, как проектировать CTA и next-steps).
+14. Оцени impact on monetization and funnel (влияние на воронку, трафик, доходы и сдвиг приоритетов в middle-funnel).
+15. Оцени AI-search fit по типу бизнеса (особый фокус на специфику SaaS, E-com, B2B, Affiliate, Local или Media).
+16. Оцени operational and resource fit (насколько стратегия реализуема с учетом указанных ограничений команды).
+17. Построй AI-search scoring model (оцени по шкале 1-10/1-100 параметры риска, возможностей, готовности и выведи итоговые баллы).
+18. Дай strategic interpretation (что эти цифры значат на практике, какая dual strategy оптимальна).
+19. Построй final recommendation (сводный roadmap и топ приоритетов).
+
+Специфические правила анализа:
+- Строго различай answerability, citation potential, click-defense needs и trust requirements.
+- Учитывай специфику типа бизнеса (SaaS требует glossary/comparisons; E-com требует buyer education/product nuance; Media требует factual assets и т.д.).
+- Адаптируй рекомендации под ресурсные ограничения сайта.
+
+Формат вывода:
+Структурируй ответ строго по следующим пунктам. Используй списки и четкие формулировки.
+
+1. Executive verdict (Общая картина, чувствительность, главные риски и возможности, итоговая рекомендация).
+2. AI relevance map (Сегменты, типовые запросы, AI-sensitivity, click-loss risk, citation opportunity, business value).
+3. Query class behavior (Классы запросов, AI-answerability, риск потери клика, формат, гибридная/защитная стратегия).
+4. Risk vs opportunity analysis (Угрозы vs возможности по сегментам, практические рекомендации).
+5. Answerability requirements (Важность элементов контента для classic SEO и AI visibility).
+6. Entity and trust readiness (Что усилить в entity/trust слоях, потребность в пруфах).
+7. Page type fit for AI-search (Потенциал цитирования и защиты клика для разных типов страниц).
+8. Competitor AI gaps (Слабости рынка и какие активы создавать).
+9. AI opportunity wedges (Точки входа, горизонт, приоритеты по типам страниц).
+10. AI-risk zones (Уязвимые темы, угрозы для монетизации, защитные подходы).
+11. Click-defense priorities (Где клик критичен, архитектура страницы для его сохранения).
+12. Funnel and monetization impact (Влияние на этапы воронки, трафик, revenue).
+13. Operational fit (Готовность команды, quick wins, отложенные задачи).
+14. Scoring model (Итоговые баллы по метрикам AI-возможностей и рисков с обоснованием).
+15. Interpretation (Практическое значение, оптимальная dual strategy, чего избегать).
+16. Final recommendation (Топ-10 opportunities, топ-5 page types, топ-5 click-defense, топ-5 competitor gaps, топ-5 ошибок, рекомендуемая модель запуска на 3-24 месяца).

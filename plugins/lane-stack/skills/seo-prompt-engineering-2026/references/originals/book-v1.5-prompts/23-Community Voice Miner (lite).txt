@@ -1,0 +1,96 @@
+Роль: Senior SEO Strategist, Voice-of-Customer (VoC) Researcher, Community Insight Analyst и Specialist по Conversational Demand Mining.
+
+Контекст: Проведение глубокого анализа community voice в заданной нише для извлечения из обсуждений, отзывов и UGC-площадок реальных формулировок, болей, возражений, вопросов, триггеров и паттернов принятия решений. 
+Подход: Работаем как стратег. Цель — понять реальный язык пользователей, извлечь VoC для SEO и money pages, найти hidden intents и community-driven content gaps, а также адаптировать язык под AI visibility (SGE/LLM-search).
+
+Входные данные:
+- Ниша: [УКАЗАТЬ ТЕМУ]
+- Гео: [УКАЗАТЬ СТРАНУ / РЕГИОН / ГОРОД]
+- Язык: [УКАЗАТЬ ЯЗЫК]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local / B2B / B2C]
+- Основной продукт / услуга / категории: [УКАЗАТЬ СПИСОК]
+- Целевая аудитория: [ОПИСАНИЕ]
+- Приоритетная цель: [трафик / лиды / продажи / conversion uplift / positioning / AI visibility]
+- Тип сайта: [новый / растущий / зрелый]
+- Известные community sources: [Reddit / Quora / форумы / YouTube / отзывы / Telegram и т.д.]
+- Конкуренты: [УКАЗАТЬ СПИСОК ИЛИ "НЕТ"]
+- Уже известные боли / гипотезы: [УКАЗАТЬ СПИСОК ИЛИ "НЕТ"]
+- Ограничения: [УКАЗАТЬ ОГРАНИЧЕНИЯ ИЛИ "НЕТ"]
+
+*Если данных недостаточно, сделай разумные гипотезы, явно помечая их как "Предположение".*
+
+Инструкция:
+Проведи поэтапный анализ и сформируй decision-grade community voice map. Обязательно учитывай специфику ниши (например, для B2B — язык ROI и рисков; для e-commerce — логистику и возвраты; для SaaS — онбординг и интеграции; для YMYL — страхи и доказательства).
+
+Выведи результат строго в следующем формате из 18 блоков:
+
+1. Executive verdict
+- Общая картина community voice в нише:
+- Как звучит аудитория:
+- Какие сигналы самые важные:
+- Главный риск:
+- Главная возможность:
+- Recommended usage:
+- Итоговая рекомендация:
+
+2. Community surface map
+[Для каждой релевантной площадки укажи: Площадка | Насколько релевантна | Какой тип голоса дает | На каком этапе journey полезна | Роль (Primary/Secondary) | Комментарий]
+
+3. Voice signal map
+[Для каждого типа сигнала (боли, страхи, возражения и т.д.) укажи: Тип сигнала | Что показывает | SEO value | Conversion value | Комментарий]
+
+4. Problem language clusters
+[Для каждого кластера: Кластер проблемы | Как это формулируют пользователи | Underlying issue | Насколько recurring | Как использовать в SEO | Комментарий]
+
+5. Desired outcome clusters
+[Для каждого кластера: Outcome | Как звучит в языке аудитории | Какой intent отражает | Где использовать (H1, CTA и т.д.) | Комментарий]
+
+6. Objections and hesitation
+[Для каждого кластера: Objection | Как звучит | Root cause | Stage of journey | Какой page type/block должен закрывать | Комментарий]
+
+7. Decision criteria language
+[Для каждого кластера: Критерий | Как формулируют | Влияние на выбор | Где отражать | Комментарий]
+
+8. Segment differences
+[Для каждого сегмента аудитории (новички, профи, B2B и т.д.): Сегмент | Характер языка | Главные боли | Триггеры | Возражения | Комментарий]
+
+9. Platform differences
+[Для каждой платформы: Платформа | Tone | Доминирующие темы | Полезно для SEO | Полезно для conversion | Комментарий]
+
+10. Recurring questions and FAQ opportunities
+[Для каждого кластера вопросов: Question cluster | Как звучит | Intent | Лучший page type | SEO/conversion/AI value | Комментарий]
+
+11. Myths and language traps
+[Для каждого случая: Myth/misconception | Как выражается | Почему важно | Какой контент нужен | Комментарий]
+
+12. Use-case and context language
+[Для каждого кластера: Use case | Как описывают | Что ищут на самом деле | Лучший page type | Комментарий]
+
+13. Trust and skepticism signals
+[Для каждого кластера: Signal | Как выражается | Что усиливает доверие | Что подрывает доверие | Где учитывать | Комментарий]
+
+14. Community-driven content gaps
+[Для каждой возможности: Gap | Почему существует | Какой asset нужен | Подходит ли новому сайту | Фокус (traffic/leads/retention/AI) | Комментарий]
+
+15. SEO and conversion applications
+[Для каждого инсайта: Insight | Title/H1 angle | FAQ/blocks | CTA tone | Page type | Комментарий]
+
+16. AI-search (SGE/LLM) implications
+- Какие user phrases полезны для conversational search:
+- Какие recurring questions нужно структурировать:
+- Где user wording differs from expert wording:
+- Какие pages нужно адаптировать:
+- Как это помогает AI visibility:
+- Комментарий:
+
+17. Prioritization model
+[Раздели инициативы на: Запускать сразу | В ближайший квартал | После усиления базы | При наличии ресурсов | Не в приоритете.
+Для каждой: Что это | Почему здесь | SEO impact | Conversion impact | Trust impact | Effort | Risk if ignored]
+
+18. Final recommendation
+- 10 самых сильных voice-of-customer insights:
+- 5 pain-point clusters для использования первыми:
+- 5 objection clusters для закрытия на money pages:
+- 5 FAQ / content opportunities из community voice:
+- 5 language mistakes, которых нужно избегать:
+- Рекомендация по модели внедрения: [SEO-first / conversion-first / full-funnel / hybrid]

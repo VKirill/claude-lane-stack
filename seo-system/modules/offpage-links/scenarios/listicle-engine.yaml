@@ -1,0 +1,12 @@
+id: listicle-engine
+module: offpage-links
+title: Full listicle citation engine
+when: "Digital PR / listicle link campaign"
+mode: any
+steps:
+  - id: run
+    action: agent
+    run: "Execute originals 00 through 06 in order; save each stage under offpage/listicle/"
+acceptance:
+  - "Stages 00–06 artifacts present"
+next_modules: []

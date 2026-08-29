@@ -1,0 +1,19 @@
+id: connect-proxy6
+module: proxy-fetch
+title: Connect Proxy6 API key
+when: "Need rotating proxies for scan/SERP"
+mode: any
+steps:
+  - id: set-key
+    action: human
+    run: "seodoc → Providers → Proxy6 → API key → s save → e enable"
+  - id: test
+    action: cli
+    run: "seo-services test proxy6"
+  - id: enable-fetch
+    action: human
+    run: "seodoc → Proxy tab → f if needed so use_proxy=true; S save routing"
+acceptance:
+  - "probe_proxy6 OK (balance + active count)"
+  - "fetch.use_proxy true when desired"
+next_modules: [site-scan, clustering-serp]

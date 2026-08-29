@@ -1,0 +1,29 @@
+id: routing-agents
+title: Per-stage agent / CLI routing
+phase: core
+status: active
+version: "1.0.0"
+summary: "Customize which writer/CLI runs each SEO stage (claude-code, qwen, kimi, codex, cursor, grok, deepseek, gpt). Global default or per-stage; transcription groq|codex; embeddings openai|gemini."
+depends_on: [core-harness]
+soft_depends_on: [services-data]
+provides: [routing.agents, routing.stages, routing.default]
+requires_provides: []
+skills: [seo-drmax-orchestrator]
+originals: []
+cli: [seo-routing, seodoc, seo-dispatch]
+artifacts:
+  writes:
+    - "~/.agents/seo-services/routing.yaml"
+    - ".agents/seo/<slug>/routing.yaml"
+  reads:
+    - "~/.agents/seo-services/routing.yaml"
+env: []
+agent_triggers:
+  - "какой агент на этапе"
+  - "routing"
+  - "смени модель"
+  - "default system"
+entrypoints:
+  agent: "seo-routing resolve <stage>; seo-dispatch … --stage <stage>"
+  cli: "seodoc → Agents tab · seo-routing show|set-stage|set-default"
+scenarios: [configure-global.yaml, resolve-stage.yaml]

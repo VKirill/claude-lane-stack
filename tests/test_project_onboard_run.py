@@ -46,6 +46,36 @@ class ProjectOnboardRun(unittest.TestCase):
             self.assertTrue((art / "prompt.md").is_file(), r.stdout)
             self.assertTrue((art / "dry-run.txt").is_file())
 
+    def test_adoc_fast_sets_depth_fast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "package.json").write_text('{"name":"toy"}\n', encoding="utf-8")
+            agents = repo / ".agents"
+            agents.mkdir()
+            (agents / "routing.profile.yaml").write_text(
+                "pm: claude\n"
+                "profile: full\n"
+                "writer:\n  provider: opencode\n"
+                "stages:\n"
+                "  onboard:\n"
+                "    provider: codex\n"
+                "    model: gpt-5.6-luna\n"
+                "    reasoning_effort: max\n"
+                "    service_tier: fast\n",
+                encoding="utf-8",
+            )
+            r = subprocess.run(
+                [str(BIN), str(repo), "--full", "--seed-only"],
+                cwd=str(ROOT),
+                env=_env(tmp),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + "\n" + r.stderr)
+            self.assertIn("depth: fast", r.stdout)
+            self.assertIn("tier=fast", r.stdout)
+
     def test_seed_only_skips_fill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

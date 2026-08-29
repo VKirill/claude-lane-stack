@@ -1,0 +1,25 @@
+id: example-module
+title: Example module (copy me)
+phase: core
+status: draft
+version: "0.1.0"
+summary: "Short description of what this module does."
+depends_on: []
+soft_depends_on: []
+provides:
+  - example.capability
+requires_provides: []
+skills: []
+originals: []
+cli: []
+artifacts:
+  writes: []
+  reads: []
+env: []
+agent_triggers:
+  - "example trigger phrase"
+entrypoints:
+  agent: "Load MODULE.md, run default scenario."
+  cli: "seo-module run example-module default"
+scenarios:
+  - default.yaml

@@ -1,0 +1,28 @@
+id: intent-semantics
+title: Intent, modifiers, latent intent
+phase: discovery
+status: active
+version: "1.0.0"
+summary: "Demand→Intent Classifier→Query Modifier + Latent Intent Analyst; SERP proof required."
+depends_on: [discovery-research]
+soft_depends_on: [services-data]
+provides: [intent.map, intent.latent, intent.modifiers]
+requires_provides: []
+skills: [seo-prompt-engineering-2026, drmax-latent-intent]
+originals:
+  - "book-v1.5-prompts/03-Search Demand Mapper v3.txt"
+  - "telegram-channel/1374/03-02-Search Intent Classifier v3.txt"
+  - "telegram-channel/1378/03-03-Query Modifier & Language Pattern Extractor.txt"
+  - "drmax-prompt-channel/82/latent_intent_analyst_v2.2.md"
+cli: []
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/discovery/intent/**"
+  reads:
+    - ".agents/seo/<slug>/evidence/serp/**"
+env: [XMLSTOCK_*, XMLRIVER_*, DATAFORSEO_*]
+agent_triggers: ["интент", "latent intent", "кластеризация запросов"]
+entrypoints:
+  agent: "Run published intent chain; never invent stages 3.4–3.7 as DrMax originals"
+  cli: "seo-module scenario intent-semantics intent-chain"
+scenarios: [intent-chain.yaml, single-query-latent.yaml]

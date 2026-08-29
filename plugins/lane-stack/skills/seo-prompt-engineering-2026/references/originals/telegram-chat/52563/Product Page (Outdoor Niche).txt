@@ -1,0 +1,43 @@
+10 новых контент-модулей для E-commerce Product Page (Outdoor Niche)
+
+
+1. Полевое испытание на отказ: Единственный сценарий, ради которого мы создали этот продукт
+Идея: Вместо перечисления характеристик, рассказать историю о самом жестком сценарии, который продукт выдерживает. Это создает эмоциональную связь и доказывает надежность лучше любой спецификации.
+Фрагмент промпта: Включи в описание раздел "Field Torture Test: The One Scenario We Designed This For". Опиши один экстремальный, но реалистичный сценарий использования (например, "Ночная гроза в Скалистых горах") и расскажи, как 2-3 ключевые особенности продукта (проклеенные швы, конструкция каркаса) спасают ситуацию.
+Пример (для палатки): **Field Torture Test: Midnight Thunderstorm in the Rockies.** Imagine this: wind is howling, rain is coming down sideways. The feature you'll thank us for isn't the fancy color. It's the fully taped, bathtub-style floor that keeps a literal river from flowing through your sleeping area, and the DAC aluminum poles that flex under 50 mph gusts but don't snap. We built this for *that* night.
+2. Уравнение Веса и Ценности: Почему эти [X] граммов — лучшая инвестиция в вашем рюкзаке
+Идея: Для туристов вес — это валюта. Вместо того чтобы просто констатировать вес, нужно оправдать каждый грамм через ценность, которую он дает (безопасность, комфорт, экономия времени).
+Фрагмент промпта: Напиши раздел "The Weight vs. Worth Equation: Why These [Weight of Product] Grams Are Your Best Investment". Объясни, как небольшой дополнительный вес продукта предотвращает серьезную проблему или дает несоизмеримо большее преимущество.
+Пример (для титановой кружки): At 110 grams, this mug is 40g heavier than the cheapest aluminum option. Why? Because titanium's strength means you can place it directly in the fire to boil water when your stove fails. Those 40 grams are your insurance policy for a hot meal in a survival situation.
+3. Инженерный компромисс: Что вы получаете, и чем (честно) жертвуете
+Идея: Адаптация нашего принципа для e-commerce. Быть честным о недостатках — лучший способ завоевать доверие опытного покупателя.
+Фрагмент промпта: Создай блок "The Engineer's Compromise: What You Gain, What You Trade". Четко укажи, какое преимущество является ключевым для этого продукта, и какой компромисс был допущен для его достижения.
+Пример (для сверхлегкой куртки): **What You Gain:** Unbelievable packability and a scant 150-gram weight. It disappears in your pack. **What You Trade:** This is not a bushwhacking jacket. The ultralight 10D Pertex fabric is optimized for wind and water resistance, not for abrasion against sharp rocks or branches. Know the mission.
+4. Матрица совместимости: С чем это "дружит" в вашем рюкзаке?
+Идея: Показать продукт как часть системы. Это помогает клиенту визуализировать, как товар впишется в его уже имеющийся набор снаряжения.
+Фрагмент промпта: Сгенерируй раздел "Gear Synergy Checklist". В нем перечисли 3-4 типа другого снаряжения, с которыми этот продукт идеально совместим, и объясни, почему.
+Пример (для системы приготовления пищи): ✅ **Pairs Perfectly With:** MSR IsoPro fuel canisters (for optimal pressure), the GSI Outdoors Essential Spoon (its long handle reaches the bottom of the pot), and Sea to Summit X-Seal & Go containers (the pot's diameter is designed to nest one inside).
+5. Гайд для "хакера": 3 неочевидных способа использования этого продукта
+Идея: Поделиться "инсайдерскими" лайфхаками. Это создает ощущение принадлежности к клубу знатоков и показывает, что вы — практики, а не просто продавцы.
+Фрагмент промпта: Добавь короткий раздел "The Gear Hacker's Guide: 3 Non-Obvious Uses For This Product". Опиши 3 альтернативных применения, о которых не написано в инструкции.
+Пример (для гермомешка): 1. **Camp Pillow:** Fill it with your soft clothes. 2. **Water Bucket:** Use it to haul water to your campsite for filtering. 3. **Washing Machine:** Put in dirty clothes, water, and biodegradable soap, seal it, and shake.
+6. За гранью спецификаций: Тактильные и звуковые ощущения
+Идея: Описать продукт через чувства, которые не передать на фото. Это создает эффект присутствия и говорит о глубоком знании продукта.
+Фрагмент промпта: Напиши врезку "Beyond the Specs: The Feel and Sound". Опиши тактильные ощущения от материалов, звук работы механизмов, и другие сенсорные детали.
+Пример (для складного ножа): What the specs don't tell you is the satisfying *click* the liner lock makes when it engages — a sound that speaks of perfect tolerances. Or the feel of the textured G-10 handle that provides confident grip even when wet.
+7. Жизненный цикл: Гайд по уходу и полевому ремонту
+Идея: Показать, что продукт рассчитан на долгую жизнь и ремонтопригоден. Это снимает страх "одноразовой вещи" и оправдывает высокую цену.
+Фрагмент промпта: Создай блок "Built for the Long Haul: Care & Field Repair Guide". Дай 1-2 совета по уходу и 1 совет по простому ремонту в полевых условиях.
+Пример (для мембранной куртки): **Care:** Re-activate the DWR finish once a season by tumble drying on low heat. **Field Repair:** A small tear from a branch? Don't panic. A simple Tenacious Tape patch applied on a dry surface will hold until you get home.
+8. Контраргумент минималиста: Кому не нужен этот продукт
+Идея: Ультимативная форма "Адвоката Дьявола". Честно сказать, для каких сценариев этот продукт является избыточным. Это парадоксально, но вызывает максимальное доверие.
+Фрагмент промпта: Напиши раздел "The Minimalist's Counterpoint: Who *Doesn't* Need This". Опиши 1-2 сценария, где более простое или дешевое решение будет более оправданным.
+Пример (для GPS-навигатора): Let's be honest. If your adventures are limited to well-marked trails in state parks with reliable cell service, this device is overkill. A good smartphone app like Gaia GPS will suffice. This unit is built for true off-grid navigation where failure is not an option.
+9. Расшифровка жаргона: Что на самом деле означает [сложный термин]?
+Идея: Выступить в роли переводчика с "маркетингового" на "человеческий", объяснив одну ключевую технологию простыми словами.
+Фрагмент промпта: Добавь врезку "Jargon Buster: What Does '[Complex Term]' Actually Mean?". Выбери один сложный термин из характеристик (например, "Hydrostatic Head: 3000mm") и объясни его на практическом примере.
+Пример: You see "Hydrostatic Head: 3000mm" and your eyes glaze over. **Here’s what it means:** Imagine a vertical tube placed on the tent fabric. You could pour water into it up to 3 meters (almost 10 feet!) high before a single drop would press through. It’s a technical way of saying this tent will keep you dry in a biblical downpour.
+10. Региональный сценарий: Испытано в [Регион 1], одобрено для [Регион 2]
+Идея: Показать, что продукт проверен в конкретных, узнаваемых условиях США. Это мощнейший сигнал релевантности и опыта.
+Фрагмент промпта: Создай раздел "Trail-Tested: From the Appalachians to the Sierras". Опиши, как ключевые особенности продукта проявляют себя в двух разных и знаковых для аутдора регионах США.
+Пример (для спального мешка): On the humid **Appalachian Trail**, its synthetic insulation resists moisture and morning condensation. On a dry, cold night in the **Sierra Nevada**, the draft collar and articulated footbox are what keep you warm when temperatures plummet unexpectedly at high altitude.

@@ -1,0 +1,17 @@
+id: growth-existing
+module: discovery-research
+title: Growth points for existing site
+when: "Live site with traffic baseline"
+mode: live
+steps:
+  - id: data
+    action: module
+    uses_module: measurement-analytics
+    run: "scenarios/gsc-low-hanging.yaml"
+    optional: true
+  - id: chain
+    action: agent
+    run: "03,10,14 + white space / SERP; write discovery/"
+acceptance:
+  - "Prioritized opportunity list with evidence"
+next_modules: [technical-seo, content-gist]

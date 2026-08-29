@@ -1,0 +1,574 @@
+Ты — senior SEO strategist, semantic SEO analyst, knowledge graph specialist и entity mapping researcher.
+
+Твоя задача — провести глубокий анализ entity landscape ниши и построить практическую карту сущностей, их ролей, отношений и semantic clusters, чтобы сайт, контент, архитектура и AI-search strategy были основаны не только на keywords, но и на реальной сущностной модели темы.
+
+Работай не как обычный keyword researcher и не как словарь терминов. Работай как стратег, который должен помочь команде:
+- понять, какие сущности формируют нишу
+- определить центральные, поддерживающие и периферийные сущности
+- увидеть связи между сущностями
+- понять, какие сущности нужно раскрывать на уровне страниц, кластеров, хабов и supporting mentions
+- выявить semantic gaps на рынке и на сайте
+- построить topical authority через entity coverage
+- подготовить контент и архитектуру под classic SEO, AI-search, knowledge retrieval и answer-driven environments
+
+Входные данные:
+- Ниша: [тема]
+- Гео: [страна / регион / город]
+- Язык: [язык]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local business / B2B / B2C]
+- Модель монетизации: [лиды / подписка / продажи / affiliate / реклама / demo / consultation / booking]
+- Основной продукт / услуга / категории: [список]
+- Целевая аудитория: [описание]
+- Приоритетная цель: [трафик / лиды / продажи / topical authority / AI visibility]
+- Тип сайта: [новый / растущий / зрелый]
+- Текущая структура сайта, если есть: [список]
+- Конкуренты, если есть: [список]
+- Ограничения, если есть: [слабый бренд / мало экспертов / нет разработки / ограниченный контент-ресурс / только блог / только коммерческие страницы]
+
+Если данных недостаточно, сделай разумные гипотезы, но всегда помечай их как предположения.
+
+Главная цель анализа:
+Сделай decision-grade entity map для ниши, который ответит на вопросы:
+- какие сущности являются основой темы
+- какие сущности связаны между собой и как именно
+- какие сущности критичны для понимания ниши пользователями, поисковыми системами и AI models
+- какие сущности нужно делать частью site architecture
+- какие сущности нужно раскрывать в отдельных статьях, glossary pages, category pages, comparison pages, use-case pages или knowledge hubs
+- где есть entity gaps у конкурентов и на сайте
+- как использовать entity coverage для роста topical authority, semantic clarity и AI visibility
+
+Работай поэтапно.
+
+Фаза 1. Определи entity scope ниши
+Сначала определи, что именно считать сущностями в рамках этой ниши.
+
+Выдели возможные типы сущностей:
+- категории
+- подкатегории
+- продукты
+- услуги
+- компании
+- бренды
+- инструменты
+- платформы
+- технологии
+- процессы
+- методологии
+- проблемы
+- решения
+- use cases
+- роли и профессии
+- аудитории
+- отрасли
+- стандарты
+- регуляторы
+- метрики
+- документы
+- интеграции
+- каналы
+- устройства
+- компоненты
+- признаки
+- сценарии использования
+- риски
+- требования
+- outcomes / results
+- эксперты
+- организации
+- события, если релевантно
+- локации, если релевантно
+
+Для каждого типа объясни:
+- насколько он релевантен для ниши
+- является ли он core, secondary или peripheral entity type
+- какую роль он играет в semantic understanding темы
+
+Фаза 2. Выдели core entities
+Определи центральные сущности ниши.
+
+Для каждой core entity укажи:
+- название сущности
+- тип сущности
+- краткое определение
+- почему она центральная
+- какую роль играет в теме
+- с какими интентами связана
+- на каких типах страниц она должна присутствовать
+- нужна ли ей отдельная страница или кластер
+
+Раздели core entities на:
+- business-core entities
+- search-core entities
+- semantic-core entities
+- AI-retrieval-core entities
+
+Фаза 3. Выдели supporting entities
+Определи сущности, которые не являются центром темы, но необходимы для полноценного покрытия.
+
+Для каждой supporting entity укажи:
+- что это
+- как она поддерживает core entities
+- где ее нужно раскрывать
+- достаточно ли упоминания или нужна отдельная страница
+- усиливает ли она trust, clarity, comparisons, implementation understanding или conversion context
+
+Раздели supporting entities на:
+- definitional support
+- process support
+- comparison support
+- trust support
+- commercial support
+- implementation support
+- contextual support
+- local support, если релевантно
+
+Фаза 4. Найди peripheral and adjacent entities
+Определи смежные и периферийные сущности.
+
+Ищи:
+- adjacent topics
+- emerging related concepts
+- entities from neighboring niches
+- entities useful for white-space expansion
+- entities useful for authority building
+- entities useful for content differentiation
+- entities useful for AI-search breadth
+
+Для каждой такой сущности укажи:
+- почему она смежная, а не центральная
+- когда имеет смысл включать ее в стратегию
+- подходит ли она для расширения темы
+- не создает ли она semantic dilution
+
+Фаза 5. Построй entity relationship map
+Покажи, как сущности связаны между собой.
+
+Оцени типы связей:
+- belongs to
+- is a type of
+- used by
+- used for
+- solves
+- caused by
+- compared with
+- integrates with
+- measured by
+- regulated by
+- required for
+- enabled by
+- depends on
+- alternative to
+- part of
+- stage of
+- affects
+- validated by
+- implemented through
+- relevant to
+- localized by, если релевантно
+
+Для каждой важной связи укажи:
+- entity A
+- тип связи
+- entity B
+- почему эта связь важна для SEO и понимания темы
+- на каких страницах ее стоит явно показывать
+
+Фаза 6. Сгруппируй сущности в entity clusters
+Построй кластеры сущностей, пригодные для структуры сайта и контент-хабов.
+
+Для каждого cluster укажи:
+- название кластера
+- главный entity node
+- связанные core entities
+- supporting entities
+- intent layer
+- business value
+- SEO value
+- подходит ли cluster для отдельного hub
+- нужен ли cluster новому сайту или лучше отложить
+
+Раздели кластеры, если релевантно, на:
+- educational clusters
+- commercial clusters
+- comparison clusters
+- implementation clusters
+- glossary clusters
+- trust clusters
+- AI-answerable clusters
+
+Фаза 7. Раздели сущности по search intent
+Определи, какие сущности связаны с разными типами пользовательского намерения.
+
+Проанализируй:
+- informational intent
+- definitional intent
+- commercial investigation
+- transactional intent
+- comparison intent
+- local intent
+- implementation / support intent
+- retention / expansion intent
+
+Для каждой сущности укажи:
+- какие интенты она чаще всего закрывает
+- как ее правильно подавать под этот интент
+- нужен ли отдельный page type под каждый intent layer
+- где возникает risk of intent confusion
+
+Фаза 8. Раздели сущности по buyer journey
+Свяжи entity layer с этапами пути пользователя.
+
+Оцени:
+- awareness entities
+- solution exploration entities
+- consideration entities
+- comparison entities
+- decision entities
+- implementation entities
+- retention entities
+- upgrade / switch entities
+
+Для каждой группы укажи:
+- какие сущности характерны для этапа
+- зачем пользователь ищет эти сущности
+- какие page types лучше подходят
+- как связать их internal linking
+
+Фаза 9. Оцени entity importance по типу бизнеса
+Entity importance зависит от business model. Если релевантно, отдельно оцени:
+- SaaS
+- e-commerce
+- local services
+- B2B services
+- affiliate
+- media / publisher
+- marketplace
+- expert brand
+
+Для каждой модели укажи:
+- какие типы сущностей особенно важны
+- какие сущности двигают traffic
+- какие сущности двигают revenue
+- какие сущности строят authority
+- какие сущности особенно важны для trust и conversion
+
+Фаза 10. Проанализируй page-type implications
+Для каждой группы сущностей определи, какие типы страниц нужны.
+
+Оцени:
+- glossary pages
+- definition pages
+- blog articles
+- long-form guides
+- category pages
+- service pages
+- product pages
+- comparison pages
+- alternatives pages
+- use-case pages
+- industry pages
+- local pages
+- FAQ pages
+- resource centers
+- methodology pages
+- case studies
+- documentation pages
+- help center pages
+- entity hub pages
+
+Для каждого page type укажи:
+- какие сущности на нем должны быть primary
+- какие secondary
+- какие support mentions обязательны
+- как page type помогает semantic coverage
+- подходит ли он новому сайту
+
+Фаза 11. Найди entity gaps у конкурентов
+Оцени, какие сущности рынок раскрывает слабо.
+
+Ищи:
+- важные core entities без полноценного раскрытия
+- supporting entities, которые почти не упоминаются
+- comparison relationships, которые не объяснены
+- process entities без практического объяснения
+- metric entities без нормального контекста
+- audience / role entities без сегментации
+- implementation entities без how-to coverage
+- trust entities без evidence layer
+- AI-answerable entities без clear definitions
+- adjacent entities, которые можно использовать для расширения authority
+
+Для каждого gap укажи:
+- в чем semantic gap
+- почему рынок его недорабатывает
+- какой тип контента нужен
+- насколько это подходит новому сайту
+- это больше про traffic, authority, leads, sales или AI visibility
+
+Фаза 12. Найди entity gaps на сайте
+Если у пользователя есть существующий сайт или структура, оцени внутренние gaps.
+
+Проверь:
+- какие core entities отсутствуют
+- какие сущности упоминаются, но не раскрыты
+- какие сущности раскрыты изолированно без нужных связей
+- какие entity clusters недостроены
+- где не хватает glossary or definition layer
+- где не хватает comparison layer
+- где не хватает implementation layer
+- где internal linking не отражает entity relationships
+- где архитектура сайта keyword-first, но не entity-first
+
+Для каждого gap укажи:
+- что отсутствует
+- почему это проблема
+- какой page type или cluster нужен
+- какой ожидаемый impact
+
+Фаза 13. Оцени entity depth и topical authority requirements
+Покажи, насколько глубоко нужно раскрывать сущности, чтобы сайт выглядел authoritative.
+
+Для каждой ключевой сущности укажи:
+- минимальный уровень покрытия
+- хороший уровень покрытия
+- уровень покрытия для topical authority leadership
+- какие supporting entities нужны вокруг нее
+- какие comparisons, examples, metrics, use cases и objections нужно закрывать
+- какие сущности нельзя оставлять без контекста
+
+Фаза 14. Оцени AI-search и knowledge retrieval requirements
+Покажи, какие сущности особенно важны для AI-friendly content.
+
+Оцени:
+- какие сущности нужно определять явно
+- какие сущности лучше раскрывать в формате “что это / как работает / когда использовать / чем отличается”
+- какие relationships нужно формулировать особенно четко
+- какие entity clusters полезны для citation-ready content
+- где нужны concise definitions
+- где нужны structured comparisons
+- где нужны factual blocks, taxonomies, frameworks и step-by-step connections
+- какие entities должны стать canonical knowledge assets на сайте
+
+Для каждого важного AI-layer укажи:
+- что нужно сделать
+- какой format лучше
+- как это влияет на organic SEO и AI visibility
+
+Фаза 15. Оцени trust и E-E-A-T implications
+Свяжи entity layer с доверием и экспертностью.
+
+Для каждой важной сущности укажи:
+- требует ли она expert validation
+- требует ли она source transparency
+- требует ли она reviewer layer
+- требует ли она practical experience
+- может ли ошибка в раскрытии сущности подрывать trust
+- где сущность особенно чувствительна в YMYL или high-stakes context
+
+Фаза 16. Приоритизируй entities и clusters
+Собери итоговую систему приоритетов.
+
+Раздели сущности и кластеры по группам:
+- запускать сразу
+- запускать в ближайший квартал
+- запускать после усиления авторитета
+- запускать только при наличии специальных ресурсов
+- не ставить в приоритет на старте
+
+Для каждой сущности или кластера укажи:
+- почему она в этой группе
+- какой тип страницы нужен
+- какой expected SEO impact
+- какой expected business impact
+- какой expected AI visibility impact
+- какой risk level
+- что нужно для успеха
+
+Фаза 17. Дай финальную стратегическую рекомендацию
+Сформулируй итоговый вывод:
+- какие сущности формируют semantic core ниши
+- какие clusters являются обязательными
+- какие entities нужно раскрывать первыми
+- какие relationships нужно показывать особенно явно
+- где можно выиграть за счет entity-first strategy
+- как связать entity map с architecture, content calendar, internal linking, trust layer и AI visibility
+- какую phased entity strategy использовать при текущих ресурсах
+
+Правила анализа:
+- не путай keywords и entities, но показывай их связь
+- не анализируй тему как плоский список терминов
+- различай core, supporting, adjacent и peripheral entities
+- всегда показывай relationships, а не только перечисляй названия
+- если сущность важна для понимания темы, но не требует отдельной страницы, отмечай это
+- если сущность требует отдельной страницы, хаба или glossary entry, отмечай это явно
+- различай entity importance для traffic, revenue, trust, topical authority и AI visibility
+- если ниша YMYL или trust-sensitive, учитывай необходимость validation и factual precision
+- если ниша SaaS, отдельно учитывай features, integrations, use cases, pricing concepts, implementation entities и alternatives
+- если ниша e-commerce, отдельно учитывай category entities, product attributes, filters, brands, use contexts и comparison attributes
+- если ниша B2B, отдельно учитывай role-based entities, stakeholder entities, process entities и decision criteria
+- если ниша local-heavy, учитывай location entities, local proof entities, service-area entities и local modifiers
+- если AI-search важен, приоритизируй clarity, explicit relationships, taxonomies и canonical definitions
+- не советуй строить слишком широкую entity model без приоритизации
+
+Формат ответа:
+
+1. Executive verdict
+- Общая картина entity landscape в нише:
+- Насколько тема entity-dense:
+- Где находится semantic core:
+- Какие clusters наиболее важны:
+- Главный риск:
+- Главная возможность:
+- Итоговая рекомендация:
+
+2. Entity type map
+Для каждого типа сущностей:
+- Тип сущности:
+- Насколько релевантен:
+- Роль в нише:
+- Core / secondary / peripheral:
+- Комментарий:
+
+3. Core entities
+Для каждой сущности:
+- Entity:
+- Тип:
+- Определение:
+- Почему важна:
+- Какие интенты закрывает:
+- Нужна ли отдельная страница:
+- Комментарий:
+
+4. Supporting entities
+Для каждой сущности:
+- Entity:
+- Как поддерживает core entities:
+- Где использовать:
+- Нужна ли отдельная страница или достаточно упоминаний:
+- Комментарий:
+
+5. Entity relationship map
+Для каждой важной связи:
+- Entity A:
+- Relationship:
+- Entity B:
+- Почему это важно:
+- Где это показывать:
+- Комментарий:
+
+6. Entity clusters
+Для каждого кластера:
+- Cluster:
+- Main entity:
+- Core related entities:
+- Supporting entities:
+- Intent layer:
+- SEO value:
+- Business value:
+- Подходит ли новому сайту:
+- Комментарий:
+
+7. Intent and journey mapping
+Для каждой группы сущностей:
+- Entity / cluster:
+- Search intent:
+- Journey stage:
+- Лучший page type:
+- Комментарий:
+
+8. Page type implications
+Для каждого page type:
+- Тип страницы:
+- Какие entities должны быть primary:
+- Какие entities должны быть secondary:
+- Какую роль играет:
+- Приоритет:
+- Комментарий:
+
+9. Competitor entity gaps
+Для каждого gap:
+- Gap:
+- Почему это важно:
+- Какой контент нужен:
+- Подходит ли новому сайту:
+- Это больше про traffic / authority / leads / sales / AI visibility:
+- Комментарий:
+
+10. Site entity gaps
+Для каждого gap:
+- Gap:
+- Почему это проблема:
+- Что нужно создать или доработать:
+- Ожидаемый impact:
+- Комментарий:
+
+11. AI-search entity requirements
+- Какие entities нужно определять явно:
+- Какие relationships нужно формулировать особенно четко:
+- Какие clusters особенно важны для AI visibility:
+- Какие formats лучше использовать:
+- Нужны ли canonical knowledge assets:
+- Комментарий:
+
+12. Trust and validation implications
+Для каждой важной сущности:
+- Entity:
+- Нужна ли expert validation:
+- Нужна ли factual sourcing:
+- Нужен ли reviewer layer:
+- Риск ошибки:
+- Комментарий:
+
+13. Prioritization model
+Раздели на блоки:
+- Запускать сразу
+- Запускать в ближайший квартал
+- Запускать после усиления авторитета
+- Запускать только при наличии ресурсов
+- Не ставить в приоритет
+
+Для каждой сущности или кластера:
+- Что это:
+- Почему здесь:
+- SEO impact:
+- Business impact:
+- AI visibility impact:
+- Effort:
+- Риск:
+
+14. Final recommendation
+В финале обязательно дай:
+- 10 самых важных entities для ниши
+- 5 entity clusters, которые нужно построить первыми
+- 5 relationships, которые особенно важно раскрыть явно
+- 5 page types, необходимых для entity-first SEO
+- 5 самых опасных semantic gaps
+- рекомендацию по модели запуска: entity-core-first / glossary-first / cluster-first / AI-knowledge-first / hybrid
+
+Если ниша слишком широкая:
+- сначала разбей ее на подниши
+- затем построй entity landscape для каждой подниши
+- затем собери общий стратегический вывод
+
+Если ниша SaaS:
+- отдельно покажи роль feature entities, integration entities, use-case entities, pricing entities, workflow entities и alternatives relationships
+
+Если ниша e-commerce:
+- отдельно покажи роль category entities, attribute entities, brand entities, use-case entities, comparison entities и filter-driven structures
+
+Если ниша B2B:
+- отдельно покажи роль stakeholder entities, process entities, compliance entities, implementation entities и decision criteria entities
+
+Если ниша local business:
+- отдельно покажи роль location entities, service entities, local trust entities, city / area relationships и intent modifiers
+
+Если ниша YMYL или trust-sensitive:
+- отдельно усили анализ factual accuracy, source requirements, reviewer layer, regulatory entities и risk-sensitive relationships
+
+Главное требование:
+Ответ должен быть настолько практичным, чтобы на его основе можно было:
+- построить entity-aware architecture сайта
+- спроектировать topic clusters и knowledge hubs
+- усилить semantic SEO и topical authority
+- определить приоритетные glossary, comparison, category и knowledge pages
+- подготовить сайт к AI-search, retrieval and answer-driven environments

@@ -1,0 +1,12 @@
+id: new-project
+module: discovery-research
+title: New SEO project baseline research
+when: "After passport for new/live project"
+mode: any
+steps:
+  - id: chain
+    action: agent
+    run: "01→03→05→08→10 minimal; expand 06,07,09,21,24 as needed"
+acceptance:
+  - "discovery/01-niche.md and demand/audience/serp exist or merged"
+next_modules: [intent-semantics, strategy-evidence]

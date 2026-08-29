@@ -1,0 +1,21 @@
+id: rescan-after-change
+title: Rescan after page or site changes
+when: "Deploy/content update needs new analysis versions"
+mode: live
+chain:
+  - module: site-scan
+    scenario: rescan-after-change
+  - module: site-scan
+    scenario: single-page
+    optional: true
+  - module: content-gist
+    scenario: audit
+    optional: true
+  - module: content-quality
+    scenario: post-gist-pipeline
+    optional: true
+  - module: technical-seo
+    scenario: indexation-check
+    optional: true
+notes: |
+  Always keep previous scan versions. Diff LATEST vs previous for critical URLs.

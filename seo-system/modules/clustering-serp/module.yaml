@@ -1,0 +1,30 @@
+id: clustering-serp
+title: SERP harvest + clustering temperatures
+phase: discovery
+status: active
+version: "1.0.0"
+summary: "Cluster queries via xmlstock|xmlriver SERP (Yandex/Google TOP-10/20/30). Persist SERP dumps under evidence/serp/; change LLM clustering temperature without re-fetch."
+depends_on: [core-harness, services-data]
+soft_depends_on: [proxy-fetch, routing-agents, intent-semantics]
+provides: [serp.dumps, clustering.config, clustering.temperature]
+requires_provides: []
+skills: [xmlstock, mutagen, seo-prompt-engineering-2026]
+originals: []
+cli: [seo-serp-save, seo-routing, seodoc]
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/evidence/serp/<engine-topN-ts>/**"
+    - ".agents/seo/<slug>/evidence/serp/LATEST"
+    - "~/.agents/seo-services/routing.yaml"
+  reads:
+    - ".agents/seo/<slug>/discovery/**"
+env: [XMLSTOCK_*, XMLRIVER_*]
+agent_triggers:
+  - "кластеризация"
+  - "serp dump"
+  - "температура кластеризации"
+  - "xmlstock serp"
+entrypoints:
+  agent: "seo-serp-save <slug> --query …; then LLM cluster with routing.clustering.temperature"
+  cli: "seodoc → Cluster tab; seo-routing set-cluster --temperature 0.3"
+scenarios: [fetch-serp.yaml, retune-temperature.yaml]

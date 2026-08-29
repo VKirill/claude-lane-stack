@@ -62,11 +62,13 @@ Artifacts: `phase1-layout.md`, `phase2-maps.md`, … `phase5-critique.md`.
 
 ## Run
 
+Passport only. After `DONE`, the parent spawns **docs-maintainer** if `stages.docs.enabled`. Do not run wiki yourself.
+
 1. Instructions: `~/.agents/codex/instructions/onboard.md`  
 2. Schemas + checks (MUST):  
-   `~/.claude/skills/project-onboard/references/PACK-SCHEMAS.md`  
-   `~/.claude/skills/project-onboard/references/VALIDATION.md`  
-   `~/.claude/skills/project-onboard/references/design-md-standard.md` (Google `@google/design.md`)  
+   `~/.agents/skills/project-onboard/references/PACK-SCHEMAS.md`  
+   `~/.agents/skills/project-onboard/references/VALIDATION.md`  
+   `~/.agents/skills/project-onboard/references/design-md-standard.md` (Google `@google/design.md`)  
 3. Seed + detect:
 
 ```bash

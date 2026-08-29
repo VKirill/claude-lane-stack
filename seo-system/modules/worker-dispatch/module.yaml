@@ -1,0 +1,24 @@
+id: worker-dispatch
+title: Worker dispatch (Claude/CLI models)
+phase: core
+status: active
+version: "1.0.0"
+summary: "Package tasks for grok/qwen/kimi/deepseek/claude with original prompts attached."
+depends_on: [core-harness]
+soft_depends_on: []
+provides: [dispatch.package]
+requires_provides: []
+skills: [seo-drmax-orchestrator]
+originals: []
+cli: [seo-dispatch, seo-task, seo-run-init]
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/runs/<run>/artifacts/<id>/dispatch.md"
+  reads:
+    - ".agents/seo/<slug>/runs/<run>/tasks/*.yaml"
+env: []
+agent_triggers: ["делегируй", "dispatch", "отправь на grok"]
+entrypoints:
+  agent: "seo-dispatch … with absolute original path"
+  cli: "seo-dispatch <slug> <run> <id> --original /abs --output path --executor grok"
+scenarios: [package-task.yaml]

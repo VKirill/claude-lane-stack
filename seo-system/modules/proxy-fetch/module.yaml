@@ -1,0 +1,29 @@
+id: proxy-fetch
+title: Proxy6 pool for fetch & SERP
+phase: data
+status: active
+version: "1.0.0"
+summary: "px6.net / proxy6 API key only in seodoc; getproxy pool used by seo-scan, SERP fetch, and any HTML download that benefits from rotation."
+depends_on: [core-harness, services-data]
+soft_depends_on: [routing-agents]
+provides: [proxy.pool, proxy.fetch]
+requires_provides: []
+skills: [proxy6]
+originals: []
+cli: [seodoc, seo-services]
+artifacts:
+  writes:
+    - "~/secrets/proxy6.env"
+    - "~/.agents/seo-services/proxy6-pool.json"
+  reads:
+    - "~/.agents/seo-services/routing.yaml"
+env: [PROXY6_API_KEY, PROXY6_USE_FOR_FETCH]
+agent_triggers:
+  - "прокси"
+  - "proxy6"
+  - "px6"
+  - "pull proxies"
+entrypoints:
+  agent: "If fetch blocked / geo needed: ensure proxy6 configured; routing.fetch.use_proxy=true"
+  cli: "seodoc → Proxy tab · r refresh pool · t test"
+scenarios: [connect-proxy6.yaml, refresh-pool.yaml]

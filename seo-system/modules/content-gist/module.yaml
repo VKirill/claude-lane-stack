@@ -1,0 +1,29 @@
+id: content-gist
+title: GIST content logic
+phase: content
+status: active
+version: "1.0.0"
+summary: "GIST v3.3 creation/audit/competitive/meta — non-replaceable page design."
+depends_on: [intent-semantics]
+soft_depends_on: [site-scan, strategy-evidence]
+provides: [content.gist_plan, content.draft_structure]
+requires_provides: []
+skills: [seo-prompt-engineering-2026, seo-copywriting]
+originals:
+  - "gist-v3.3/GIST Content Logic Skill-v-3-3.md"
+  - "drmax-prompt-channel/71/GIST Content Logic Skill-v-3-3.md"
+cli: [seo-prompt-log]
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/content/pages/<page>/gist-plan.md"
+    - ".agents/seo/<slug>/content/pages/<page>/draft.md"
+    - ".agents/seo/<slug>/content/pages/<page>/meta.md"
+  reads:
+    - ".agents/seo/<slug>/scans/pages/**"
+    - ".agents/seo/<slug>/discovery/intent/**"
+env: []
+agent_triggers: ["GIST", "написать страницу", "переписать страницу"]
+entrypoints:
+  agent: "Choose GIST mode; open v3.3 original 1:1"
+  cli: "seo-module scenario content-gist creation"
+scenarios: [creation.yaml, audit.yaml, competitive.yaml, meta-step8.yaml]

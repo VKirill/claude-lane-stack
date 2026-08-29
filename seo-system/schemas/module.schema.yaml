@@ -1,0 +1,58 @@
+# Contract for every SEO system module under modules/<id>/
+# Add a module = copy template + register in registry.yaml. No core code change required
+# unless the module introduces a new CLI binary.
+
+version: 1
+required_files:
+  - module.yaml      # machine manifest
+  - MODULE.md        # human/agent protocol
+  - scenarios/       # at least one *.yaml scenario
+
+module_yaml_fields:
+  id: string                    # unique, equals directory name
+  title: string
+  phase:                        # primary STATUS.phase this module serves
+    - passport | discovery | strategy | technical | content | offpage | measure | core | data
+  status: active | draft | deprecated
+  version: semver-like string
+  summary: string
+  depends_on: list[module_id]   # hard prerequisites
+  soft_depends_on: list[module_id]
+  provides: list[string]        # capability tags other modules can require
+  requires_provides: list[string]
+  skills: list[string]          # ~/.agents/skills names or paths
+  originals: list[string]       # paths under seo-prompt-engineering-2026/references/originals
+  cli: list[string]             # binaries in ~/.agents/bin
+  artifacts:
+    writes: list[glob under .agents/seo/<slug>/]
+    reads: list[glob]
+  env: list[string]             # env vars / seo-services provider ids
+  agent_triggers: list[string]  # phrases that should load this module
+  entrypoints:
+    agent: string               # what agent does first
+    cli: string                 # primary command example
+  scenarios: list[filename]     # under scenarios/
+
+scenario_yaml_fields:
+  id: string
+  module: module_id
+  title: string
+  when: string
+  mode: live | greenfield | any
+  steps:
+    - id: string
+      action: cli | agent | human | module
+      run: string               # command or instruction
+      uses_module: module_id?   # if action=module
+      artifact: string?
+      optional: bool
+  acceptance: list[string]
+  next_modules: list[module_id]
+
+playbook_yaml_fields:
+  id: string
+  title: string
+  when: string
+  mode: live | greenfield | any
+  chain: list[{module, scenario}]
+  notes: string

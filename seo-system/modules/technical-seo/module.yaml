@@ -1,0 +1,24 @@
+id: technical-seo
+title: Technical SEO (clutter, index, CWV)
+phase: technical
+status: active
+version: "1.0.0"
+summary: "robots/canonical/clutter/indexing/CWV-NavBoost from evidence-based + scans."
+depends_on: [site-scan]
+soft_depends_on: [measurement-analytics, services-data]
+provides: [tech.audit, tech.fixes]
+requires_provides: [scan.site]
+skills: [seo-evidence-based-2026]
+originals: []
+cli: []
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/technical/**"
+  reads:
+    - ".agents/seo/<slug>/scans/**"
+env: [YANDEX_OAUTH_TOKEN, GSC_*]
+agent_triggers: ["технический аудит", "robots", "canonical", "CWV"]
+entrypoints:
+  agent: "Use latest site scan + Webmaster/GSC; write technical/audit.md + fixes.yaml"
+  cli: "seo-module scenario technical-seo base-audit"
+scenarios: [base-audit.yaml, indexation-check.yaml]

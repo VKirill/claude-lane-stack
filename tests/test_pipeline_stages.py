@@ -190,9 +190,11 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(s["onboard"]["model"], "gpt-5.6-sol")
         self.assertEqual(s["onboard"]["reasoning_effort"], "xhigh")
         self.assertEqual(s["onboard"]["service_tier"], "fast")
+        self.assertEqual(s["onboard"]["depth"], "fast")
         yaml_text = "\n".join(stages_to_yaml_lines(s))
         self.assertIn("onboard:", yaml_text)
         self.assertIn("service_tier: fast", yaml_text)
+        self.assertIn("depth: fast", yaml_text)
         # Non-codex/cursor: tier forced to standard and omitted from yaml
         s2 = normalize_stages(
             {"onboard": {"provider": "qwen", "service_tier": "fast"}},
@@ -314,6 +316,7 @@ class PipelineStagesTest(unittest.TestCase):
             self.assertEqual(resolved["provider"], "codex")
             self.assertEqual(resolved["model"], "gpt-5.6-sol")
             self.assertEqual(resolved["service_tier"], "fast")
+            self.assertEqual(resolved["depth"], "fast")
 
     def test_structural_critique_flags_empty_owns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

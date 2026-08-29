@@ -1,0 +1,7 @@
+interface:
+  display_name: "DrMax SEO Knowledge"
+  short_description: "Оригинальные промпты и методики DrMax"
+  default_prompt: "Use $seo-prompt-engineering-2026 to select and apply the correct DrMax SEO workflow for this task."
+
+policy:
+  allow_implicit_invocation: true

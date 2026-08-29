@@ -1,0 +1,13 @@
+id: niche-entry
+module: discovery-research
+title: Should we enter the niche?
+when: "Greenfield / new niche decision"
+mode: any
+steps:
+  - id: chain
+    action: agent
+    run: "Originals 01→02→03→21→22 (+10,17,19,25 if needed); write discovery/*.md"
+acceptance:
+  - "discovery has niche + opportunity + demand + difficulty notes"
+  - "Each prompt logged"
+next_modules: [strategy-evidence]

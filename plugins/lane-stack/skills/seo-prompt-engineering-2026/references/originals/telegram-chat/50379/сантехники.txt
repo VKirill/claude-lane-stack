@@ -1,0 +1,45 @@
+Adjustable Wrench # Crescent Wrench # Shifter
+Apprentice Plumber # Cub # Greenhorn # Helper
+Backflow Preventer # BFP
+Ball Valve # Quarter-Turn
+Blackwater # Sewage # Soil Pipe Waste
+Blowtorch # Propane Torch # Sweat Stick # Torch
+Channel-Lock Pliers # Channels # Grips # Tongue-and-Groove Pliers
+Cleanout Plug # CO # Sewer Access
+Clogged Drain # Blockage # Stoppage
+Copper Pipe # Copper # Type L # Type M
+Dielectric Union # Insulating Union
+Difficult Job # A Bear # A Beast # A Nightmare
+Drain Auger # Drain Snake # Eel # Plumber's Snake # Roto-Rooter
+Easy Job # Cakewalk # Gravy # Gravy Train
+Escutcheon Plate # Beauty Ring # Flange # Trim Plate # Wall Plate
+Faucet # Spigot # Tap
+Fernco Coupling # Rubber Boot # Rubber Coupling
+Fitting # Fitting
+Flexible Water Connector # Flex Line # Supply Line
+Galvanized Pipe # Galvi # Zinc Pipe
+Gate Valve # Full-Port Valve
+Greywater # Sink Waste # Wash Water
+Hacksaw # Sawzall (if electric)
+Main Sewer Line # The Main # Main Stack
+Master Plumber # Boss # Old Head # The Man
+Pipe Dope # Goop # Juice # Pipe Gunk # Thread Sealant
+Pipe Wrench # Monkey Wrench # Stillson
+PEX Pipe # Plastic Pipe # PEX
+Plunger # Forcer Cup # Plumber's Friend # Plumber's Helper
+Plumbing System (of a house) # Guts # The Innards
+Pressure-Reducing Valve # PRV
+PVC Pipe # Plastic # Schedule 40 # White Pipe
+Saddle Valve # Vampire Valve
+SharkBite Fitting # Push-to-Connect # Push Fitting # Sharky
+Shutoff Valve # Angle Stop # Stop # Stop Valve
+Soldering # Sweating # Sweating a Joint
+Sump Pump # De-watering Pump # Pit Pump
+Teflon Tape # Plumber's Tape # PTFE Tape # Tape
+Toilet # Can # Crapper # Commode # John # Loo # Porcelain God # Throne
+Toilet Fill Valve # Ballcock
+Toilet Flange # Closet Flange
+Toilet Flapper # Damper # Flapper Valve
+Toilet Wax Ring # Doughnut # Wax Gasket # Wax Seal
+Trap (P-Trap, S-Trap) # J-Bend # Stink Trap # Trap
+Water Heater # Boiler (colloquially) # Hot Water Tank # Tank # Heater

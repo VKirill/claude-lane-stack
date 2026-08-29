@@ -1,0 +1,58 @@
+Attack # Bridge the gap # Jump # Make a move
+Beater Bicycle # Clunker # Jalopy # Pub bike
+Bicycle # Bike # Rig # Ride # Sled # Steed
+Bicycle Components # Groupset # Gruppo
+Bicycle Mechanic # Spanner # Wrench
+Bicycle Motocross # BMX
+Brake Levers # Brakes # Levers
+Cadence # RPM # Spin
+Cassette # Block # Cluster
+Chainrings # Rings
+Clipless Pedals # Clips
+Crash # Bail # Eat it # Go down # Stack it # Wipeout
+Cycling Cap # Casquette
+Cycling Jersey # Jersey # Top
+Cycling Kit # Kit # Lycra # Spandex
+Cycling Shorts # Bibs # Chamois # Knicks
+Cyclist # Rider # Wheeler
+Cyclocross Bicycle # CX Bike
+Derailleur # Mech
+Descend fast # Bomb # Shred
+Drafting # Sitting in # Sucking wheel # Wheelsucking
+Drivetrain # Drivé
+Drop bar extensions # Bar ends # Horns
+Dropped from the group # Blown # Off the back # Popped
+Enthusiastic cyclist # Bike geek # Gearhead # Weenie
+Exhaustion # Bonk # Crack # Hit the wall
+Face Plant # Endo # OTB (Over The Bars)
+Fixed-Gear Bicycle # Fixie
+Frame # Frameset
+Full-Suspension Mountain Bike # Dually # Full-sus # Full-squish
+Getting mud on your back # Rookie stripe # Skunk stripe
+Handlebars # Bars
+Hardtail Mountain Bike # Hardtail
+Helmet # Brain bucket # Lid
+High gear # Big dog # Big ring
+King of the Mountain # KOM
+Last rider in a group # Lantern rouge
+Low gear # Bailout gear # Granny gear # Spinning
+Main group of riders # Bunch # Pack # Peloton
+Mountain Bike # MTB # Mountain pig
+Mountain Bike Trail # Dirt # Singletrack # Trail
+Novice Rider # Fred # Newbie # Noob
+Pedal hard # Drop the hammer # Grind # Mash # On the rivet
+Queen of the Mountain # QOM
+Road Bicycle # Racer # Roadie
+Saddle # Perch # Seat # Throne
+Series of short steep hills # Rollers
+Single-Speed Bicycle # SS # Singlespeed
+Skilled descender # Gravity pig
+Steep Hill # Kicker # Ramp # Wall
+Strong Rider # Diesel # Engine
+Suspension Fork # Fork # Squish
+Tires # Rubber # Skins
+Trackstand # Stand
+Water Bottle # Bidon
+Water Bottle Cage # Cage
+Wheelie # Manual # Pop a wheelie
+Wheels # Hoops # Rims

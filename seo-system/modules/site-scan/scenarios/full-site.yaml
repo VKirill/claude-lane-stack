@@ -1,0 +1,14 @@
+id: full-site
+module: site-scan
+title: Full site discovery scan
+when: "Onboard live or periodic full check"
+mode: live
+steps:
+  - id: scan
+    action: cli
+    run: "seo-scan <slug> --url <url> --max-pages 40"
+    artifact: ".agents/seo/<slug>/scans/site/<ts>/summary.md"
+acceptance:
+  - "manifest.json + urls.tsv exist"
+  - "INDEX.md updated"
+next_modules: [technical-seo, content-gist]

@@ -1,0 +1,13 @@
+id: refresh-pool
+module: proxy-fetch
+title: Refresh active proxy pool
+when: "Pool stale or after buy/prolong in dashboard"
+mode: any
+steps:
+  - id: refresh
+    action: human
+    run: "seodoc → Proxy → r (getproxy refresh)"
+acceptance:
+  - "proxy6-pool.json updated"
+  - "list of ip:port visible in TUI"
+next_modules: []

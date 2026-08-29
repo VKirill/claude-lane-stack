@@ -1,0 +1,18 @@
+id: one-article
+title: Produce one SEO article/page
+when: "Single cluster/page delivery"
+mode: any
+chain:
+  - module: intent-semantics
+    scenario: single-query-latent
+  - module: intent-semantics
+    scenario: intent-chain
+    optional: true
+  - module: content-gist
+    scenario: creation
+  - module: content-quality
+    scenario: post-gist-pipeline
+  - module: content-gist
+    scenario: meta-step8
+notes: |
+  SERP evidence required before final page job claim.

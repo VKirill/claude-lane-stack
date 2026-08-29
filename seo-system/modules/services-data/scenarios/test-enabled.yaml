@@ -1,0 +1,12 @@
+id: test-enabled
+module: services-data
+title: Probe all enabled providers
+when: "Before paid batch SERP/KW work"
+mode: any
+steps:
+  - id: test
+    action: cli
+    run: "seo-services test enabled"
+acceptance:
+  - "All enabled providers return OK or blocked with reason"
+next_modules: []

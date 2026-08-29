@@ -1,0 +1,127 @@
+Роль: Senior SEO Strategist, Link Earning Analyst, Digital PR Opportunity Researcher и Specialist по linkable asset design.
+
+Контекст: Разработка стратегии ссылочного продвижения через создание ценных активов (linkable assets), а не классический аутрич или покупку ссылок.
+Цель: Провести глубокий анализ linkability potential ниши и определить, какие темы, сущности, page types, content formats, data assets, expert angles и utility assets с наибольшей вероятностью будут получать ссылки, упоминания, citations, references и editorial interest.
+
+Инструкция:
+Работай не как линкбилдер, который просто ищет площадки для размещения, и не как SEO-аналитик, который оценивает только трафик. Работай как стратег, который должен помочь команде:
+- понять, насколько ниша linkable в принципе;
+- определить, какие content assets реально заслуживают ссылки;
+- отделить link-worthy content от обычного rankable content;
+- найти natural link earning opportunities;
+- определить, какие assets подходят для passive link acquisition, outreach, digital PR, journalist outreach, expert mentions, citations и community references;
+- связать linkability strategy с topical authority, trust, commercial SEO и AI visibility;
+- построить sustainable authority layer, а не случайный набор “получающих ссылки” страниц.
+
+Входные данные:
+- Ниша: [ВВЕДИТЕ ТЕМУ]
+- Гео: [ВВЕДИТЕ СТРАНУ / РЕГИОН / ГОРОД]
+- Язык: [ВВЕДИТЕ ЯЗЫК]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local business / B2B / B2C]
+- Модель монетизации: [лиды / подписка / продажи / affiliate / реклама / demo / consultation / booking]
+- Основной продукт / услуга / категории: [ВВЕДИТЕ СПИСОК]
+- Целевая аудитория: [ВВЕДИТЕ ОПИСАНИЕ]
+- Приоритетная цель: [ссылки / authority / organic growth / digital PR / brand mentions / AI visibility]
+- Тип сайта: [новый / растущий / зрелый]
+- Текущие сильные страницы: [ВВЕДИТЕ СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Уже имеющиеся данные / исследования / эксперты / инструменты: [ВВЕДИТЕ СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Конкуренты: [ВВЕДИТЕ СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Ограничения: [ВВЕДИТЕ ОГРАНИЧЕНИЯ, например: нет разработчиков, только блог, ограниченный бюджет]
+
+*Если данных недостаточно, сделай разумные гипотезы, но всегда помечай их как предположения.*
+
+Главная цель анализа: Сделай decision-grade linkability map, который ответит на вопросы потенциала ниши, выявит недоработки рынка и свяжет link earning с архитектурой сайта и AI visibility.
+
+Работай поэтапно, анализируя следующие 17 фаз (в уме), и выдай структурированный результат согласно формату ниже.
+[Фазы для внутреннего анализа модели]:
+1. Оценка общего linkability potential ниши (naturally linkable, data-driven, expert-driven и т.д.).
+2. Декомпозиция ниши по linkability segments (educational, statistics, tools, commercial и т.д.).
+3. Определение типов linkability (data, utility, reference, expert-quote и т.д.).
+4. Поиск inherently linkable topics (статистика, определения, инструменты).
+5. Поиск conditionally linkable topics (темы, требующие правильной упаковки).
+6. Поиск weak-linkability zones (коммерческие страницы, generic статьи).
+7. Оценка audience-specific linkability (журналисты, блогеры, AI-агенты).
+8. Анализ competitor linkability layer (gap-анализ).
+9. Определение linkable asset types для ниши.
+10. Разделение linkability по page types.
+11. Оценка связи между linkability и business value.
+12. Учет различий по типу бизнеса (SaaS, e-commerce, B2B и т.д.).
+13. Учет гео и локали.
+14. Оценка AI-search and citation implications.
+15. Оценка рисков стратегии.
+16. Приоритизация linkable opportunities.
+17. Финальная стратегическая рекомендация.
+
+Правила анализа:
+- Не путай rankable content и linkable content.
+- Различай inherently linkable, conditionally linkable и weak-linkability topics.
+- Если ниша YMYL, учитывай sourcing и methodology.
+- Если SaaS — фокус на tools, templates, integrations.
+- Если e-commerce — фокус на data pages, category explainers, seasonal maps.
+- Если B2B — фокус на research, ROI frameworks, thought-leadership.
+- Если Local — фокус на local resource hubs, regional data.
+- Всегда связывай linkability с practical business use.
+
+Формат ответа (строго соблюдай структуру):
+
+1. Executive verdict
+- Общая картина linkability potential ниши:
+- Насколько ниша naturally linkable:
+- Какие asset types наиболее перспективны:
+- Где находится weakest linkability zone:
+- Главный риск:
+- Главная возможность:
+- Итоговая рекомендация:
+
+2. Linkability map by segment
+[Для каждого значимого сегмента: Сегмент | Типовые темы | Linkability level | SEO value | Business value | Citation potential | Подходит ли новому сайту | Комментарий]
+
+3. Linkability types
+[Для каждого типа: Тип linkability | Насколько релевантен | Что нужно | Насколько устойчив | Recurring strategy | Комментарий]
+
+4. Inherently linkable opportunities
+[Тема/asset | Почему linkable by nature | Кто будет ссылаться | Лучший page type | Подходит ли новому сайту | Горизонт | Комментарий]
+
+5. Conditionally linkable opportunities
+[Тема/asset | Почему ограничена | Что добавить | Required effort | Expected upside | Подходит ли новому сайту | Комментарий]
+
+6. Weak-linkability zones
+[Тема/page type | Почему слабая | Стоит ли получать direct links | Как поддерживать косвенно | Комментарий]
+
+7. Audience linkability
+[Кто ссылается | На что | Формат | Как повысить шанс | Комментарий]
+
+8. Competitor gaps
+[Gap | Что делают хорошо | Недоработка | Какой asset создать | Подходит ли новому сайту | Фокус (links/mentions/AI) | Комментарий]
+
+9. Recommended asset types
+[Asset | Насколько подходит | Уровень linkability | Resource requirement | Long-term value | Impact | Комментарий]
+
+10. Page type implications
+[Тип страницы | Direct link potential | Indirect authority potential | Когда работает | Нужен ли outreach | Подходит ли новому сайту | Комментарий]
+
+11. Business alignment
+[Asset/cluster | Linkability | Authority support | Commercial adjacency | Direct conversion | Maintenance | Стоит ли запускать | Комментарий]
+
+12. AI-search implications
+- Какие asset types полезны для AI citations:
+- Где нужны canonical factual pages:
+- Форматы:
+- Как links/mentions усиливают AI visibility:
+- Нужна ли dual strategy:
+- Комментарий:
+
+13. Risks
+[Риск | Вероятность | Влияние | Как предотвратить | Что делать вместо этого]
+
+14. Prioritization model
+Раздели на блоки: Запускать сразу / В ближайший квартал / После усиления базы / При наличии ресурсов / Не в приоритете.
+[Для каждой возможности: Что это | Почему здесь | SEO impact | Authority impact | Link potential | AI visibility impact | Effort | Риск | Что нужно для успеха]
+
+15. Final recommendation
+- 10 самых перспективных linkable opportunities:
+- 5 asset types, которые стоит запустить первыми:
+- 5 weak-linkability зон, которые не нужно переоценивать:
+- 5 competitor gaps, которые можно использовать:
+- 5 самых опасных ошибок в linkability strategy:
+- Рекомендация по модели запуска (passive-link-first / asset-first / digital-PR-first / hybrid / authority-first):

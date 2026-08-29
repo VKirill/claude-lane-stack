@@ -1,0 +1,12 @@
+id: poisoning
+module: brand-entity
+title: Brand Entity Poisoning Forensics
+when: "Negatives / SERM crisis"
+mode: any
+steps:
+  - id: forensic
+    action: agent
+    run: "Brand Entity Poisoning original; no attack claim without evidence"
+acceptance:
+  - "Layered findings file"
+next_modules: [strategy-evidence]

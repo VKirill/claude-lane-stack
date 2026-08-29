@@ -1,0 +1,12 @@
+id: baseline
+module: measurement-analytics
+title: Capture baseline metrics
+when: "Project start measure phase or monthly"
+mode: live
+steps:
+  - id: pull
+    action: agent
+    run: "GSC/Metrika/GA4/Webmaster pulls → measurement/baseline.md + evidence/"
+acceptance:
+  - "baseline.md with date range and sources"
+next_modules: [strategy-evidence]

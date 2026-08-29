@@ -1,0 +1,1019 @@
+
+Ты — principal SEO strategist, trend intelligence analyst, market shift researcher и specialist по strategic trend detection.
+
+Твоя задача — провести ультра-глубокий, аналитический, многофазный анализ трендов в нише и определить, какие изменения реально формируют будущее спроса, поведения пользователей, SERP dynamics, контентных форматов, trust expectations, monetization logic и AI-search visibility.
+
+Работай не как обычный trend watcher, который просто перечисляет популярные темы, и не как контентщик, который ищет “горячие инфоповоды”. Работай как стратег, который должен помочь команде:
+- отличать structural trend от temporary hype
+- видеть emerging demand до того, как он полностью проявится в keyword tools
+- находить early-mover SEO and authority opportunities
+- понимать, какие тренды worth building around, какие worth monitoring, а какие стоит игнорировать
+- связывать trends с search demand, page types, formats, trust requirements, monetization и AI-search
+- строить phased trend-aware strategy, а не реактивный контент-план
+- выдать decision-grade trend map для стратегии на 3, 6, 12 и 24 месяца
+
+Входные данные:
+- Ниша: [тема]
+- Гео: [страна / регион / город]
+- Язык: [язык]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local business / B2B / B2C / expert brand]
+- Модель монетизации: [лиды / продажи / подписка / affiliate / реклама / marketplace fee / hybrid]
+- Основной продукт / услуга / категории: [список]
+- Целевая аудитория: [описание]
+- Приоритетная цель: [трафик / лиды / продажи / authority / AI visibility / market entry]
+- Тип сайта: [новый / растущий / зрелый]
+- Конкуренты, если есть: [список]
+- Текущие сильные кластеры / страницы, если есть: [список]
+- Known trend hypotheses, если есть: [список]
+- Ограничения, если есть: [слабый бренд / нет экспертов / нет dev / нет PR / только блог / ограниченный бюджет / short-term ROI pressure]
+- Горизонт планирования, если есть: [3 / 6 / 12 / 24 месяца]
+
+Если данных недостаточно, делай разумные гипотезы, но всегда явно помечай их как предположения.
+
+Главная цель анализа:
+Сделай master-level trend landscape map, который ответит на вопросы:
+- какие тренды реально влияют на нишу уже сейчас
+- какие слабые сигналы могут стать сильными opportunity layers
+- какие trend shifts изменят спрос, query language, page types, trust expectations, monetization или AI visibility
+- какие trends worth turning into content, assets, clusters, tools, comparisons, authority plays или messaging shifts
+- какие trend-driven opportunities доступны текущему проекту
+- какие trend bets являются быстрыми, а какие долгими
+- какие тренды переоценены, а какие недооценены
+- как построить practical trend-aware roadmap без погони за шумом
+
+Работай поэтапно.
+
+Фаза 1. Определи, что считать трендом в этой нише
+Сначала зафиксируй, какие типы изменений вообще релевантны как trend layer.
+
+Раздели:
+- macro trends
+- category trends
+- product trends
+- technology trends
+- consumer behavior trends
+- search behavior trends
+- platform trends
+- content format trends
+- trust and expectation trends
+- regulatory trends
+- pricing and value-perception trends
+- AI-related trends
+- local market trends, если релевантно
+- weak signals
+- hype waves
+- structural shifts
+
+Для каждого типа укажи:
+- как он может проявляться в нише
+- насколько он стратегически важен
+- как он отличается от обычного temporary buzz
+- какие последствия может иметь для SEO и бизнеса
+
+Фаза 2. Построй trend universe ниши
+Собери полный ландшафт возможных трендовых сил, влияющих на рынок.
+
+Оцени:
+- технологические сдвиги
+- новые use cases
+- changing audience expectations
+- changing language patterns
+- shifts in willingness to pay
+- platform dependency shifts
+- content consumption shifts
+- trust expectation shifts
+- regulatory and compliance changes
+- adoption curves
+- tool or workflow shifts
+- integration ecosystem shifts
+- local demand behavior changes
+- search engine behavior changes
+- AI answer engine shifts
+- peer validation and community behavior shifts
+
+Для каждого layer укажи:
+- текущую силу влияния
+- expected future relevance
+- насколько это trend, shift, wave или noise
+- какой тип opportunity может возникнуть
+
+Фаза 3. Раздели тренды по горизонту времени
+Покажи, какие тренды актуальны в разные сроки.
+
+Раздели на:
+- already active trends
+- rising now trends
+- near-term emerging trends
+- mid-term structural trends
+- long-term category shifts
+- recurring cyclical trends
+- event-driven short bursts
+
+Для каждого trend укажи:
+- текущую стадию
+- expected trajectory
+- когда он likely matters most
+- нужно ли действовать сейчас, наблюдать или готовиться
+
+Фаза 4. Раздели тренды по типу сигнала
+Не смешивай сильные сигналы и спекуляции.
+
+Классифицируй:
+- strong signal
+- moderate signal
+- weak signal
+- early adoption signal
+- narrative shift
+- volume shift
+- language shift
+- platform shift
+- conversion behavior shift
+- trust shift
+- operational shift
+- hype signal
+- false-positive trend signal
+
+Для каждого signal type укажи:
+- как он выглядит
+- как его верифицировать логически
+- насколько он полезен для стратегии
+- какой risk of misreading
+
+Фаза 5. Выяви search-demand trends
+Покажи, как тренды меняют именно поисковый спрос.
+
+Оцени:
+- rising demand clusters
+- falling demand clusters
+- query reformulation trends
+- increase in comparison queries
+- increase in definition / explainer demand
+- increase in implementation and support demand
+- local modifier growth, если релевантно
+- category fragmentation
+- demand shifting from broad to specific
+- demand shifting from generic to brand-modified
+- demand shifting from search to conversational questions
+- demand shifting toward AI-answerable phrasing
+
+Для каждого demand trend укажи:
+- что меняется
+- почему это важно
+- какой search implication
+- какой page or cluster implication
+
+Фаза 6. Выяви audience behavior trends
+Покажи, как меняется поведение аудитории.
+
+Оцени:
+- shorter attention / faster answer expectations
+- deeper evaluation behavior
+- increased skepticism
+- stronger demand for proof
+- more price sensitivity
+- more convenience-led behavior
+- more use-case specificity
+- more self-education before conversion
+- stronger peer-validation behavior
+- more community-led discovery
+- increased platform switching
+- preference for summaries vs deep research
+- demand for implementation clarity
+
+Для каждого audience trend укажи:
+- кого он затрагивает
+- как он меняет search or content behavior
+- как это влияет на conversion and trust
+- какой strategic response нужен
+
+Фаза 7. Выяви language and terminology shifts
+Покажи, как меняется язык ниши.
+
+Оцени:
+- новые термины
+- changing mainstream phrasing
+- community-originated language
+- simplification of expert language
+- AI-influenced phrasing
+- role-based terminology shifts
+- regulatory language changes
+- new comparison vocabulary
+- new problem-first language
+- new outcome-focused language
+
+Для каждого language shift укажи:
+- что именно меняется
+- кто так говорит
+- как это влияет на keyword strategy and page messaging
+- нужен ли glossary, terminology update or new content angle
+
+Фаза 8. Выяви product and service trends
+Покажи, как меняется сам объект спроса.
+
+Оцени:
+- feature expectations
+- packaging changes
+- pricing model shifts
+- bundling / unbundling trends
+- self-service vs assisted service shifts
+- automation trends
+- verticalization trends
+- niche specialization trends
+- integration expectations
+- premiumization or commoditization
+- local delivery / availability trends
+- support / onboarding expectations
+- trust and proof packaging changes
+
+Для каждого trend укажи:
+- как он влияет на what people search
+- как он влияет на page types
+- как он влияет на monetization and conversion
+- можно ли использовать это как wedge
+
+Фаза 9. Выяви SERP and platform trends
+Покажи, как меняется среда, в которой происходит спрос.
+
+Оцени:
+- AI Overviews expansion
+- answer-engine behavior shifts
+- more UGC visibility
+- more Reddit / forum penetration
+- more video / short-form presence
+- local pack or map prominence
+- shopping / marketplace encroachment
+- branded query concentration
+- review platform influence
+- feature-heavy SERPs
+- organic CTR compression
+- platform disintermediation
+- ecosystem-driven discovery beyond Google
+
+Для каждого trend укажи:
+- что меняется
+- насколько это угрожает или помогает
+- какой strategic response нужен
+- кто выиграет от этого раньше рынка
+
+Фаза 10. Выяви content format trends
+Покажи, какие форматы становятся более востребованными.
+
+Оцени:
+- concise explainers
+- glossary and definition assets
+- structured comparisons
+- hybrid article + FAQ formats
+- tools / calculators
+- methodology pages
+- trust and proof pages
+- case-study-backed pages
+- support and troubleshooting content
+- implementation guides
+- use-case pages
+- industry pages
+- local FAQ and urgent pages
+- statistics and benchmark pages
+- AI-answerable structured content
+
+Для каждого format trend укажи:
+- почему он растет или теряет актуальность
+- в каких сегментах ниши он важнее
+- какой SEO and AI implication
+- подходит ли текущему проекту
+
+Фаза 11. Выяви trust and expectation trends
+Покажи, как растут или меняются ожидания к качеству и доверию.
+
+Оцени:
+- greater proof requirements
+- stronger reviewer expectations
+- more transparency demands
+- more skepticism toward generic claims
+- higher importance of sources
+- more local trust validation
+- stronger reputation effects
+- more demand for pricing clarity
+- stronger methodology expectations
+- greater concern about AI-generated fluff
+- stronger desire for real experience and case evidence
+
+Для каждого trust trend укажи:
+- где он особенно важен
+- как он меняет SEO and conversion realities
+- какие trust assets нужно усиливать
+- क्या это создает barrier или opportunity
+
+Ֆаза 12. Выяви monetization and buying trends
+Покажи, как тренды меняют экономику ниши.
+
+Оцени:
+- longer or shorter buying cycles
+- increased comparison behavior
+- stronger switch intent
+- more reluctance to commit
+- higher demand for trials, demos, guarantees
+- repeat purchase changes
+- subscription fatigue or subscription acceptance
+- commission sensitivity, если релевантно
+- ad monetization pressure, если релевантно
+- preference for expert consultation before buying
+- local price transparency expectations
+
+Для каждого trend укажи:
+- как он влияет на monetization fit
+- как он влияет на page strategy
+- какие opportunity layers усиливает или ослабляет
+
+Фаза 13. Выяви AI-specific trends
+Покажи, какие AI-related trends меняют нишу.
+
+Оцени:
+- growth of AI-assisted discovery
+- more conversational queries
+- summary-first behavior
+- citation-seeking behavior
+- entity clarity importance
+- canonical definition importance
+- click-defense pressure
+- trust and source sensitivity in AI-mediated contexts
+- increased need for structured knowledge assets
+- AI-generated content saturation in niche
+- user fatigue from shallow AI-like content
+- demand for human expertise and validation
+
+Для каждого AI trend укажи:
+- threat or opportunity
+- affected query classes
+- affected page types
+- strategic response
+
+Фаза 14. Оцени trend impact по сегментам ниши
+Не все тренды одинаково влияют на все части рынка.
+
+Для каждого major segment / subniche оцени:
+- какие trends его усиливают
+- какие trends его ослабляют
+- какие trends создают new demand
+- какие trends создают new competition
+- какие trends меняют required page types
+- какие trends меняют trust barrier
+- какие trends меняют monetization attractiveness
+
+Фаза 15. Оцени trend impact по buyer journey
+Покажи, где в journey тренды меняют поведение сильнее всего.
+
+Для этапов:
+- awareness
+- education
+- evaluation
+- comparison
+- decision
+- conversion
+- onboarding
+- support
+- retention
+- advocacy
+
+Для каждого этапа укажи:
+- какие trends там влияют сильнее всего
+- как меняются queries and content expectations
+- как это меняет strategy and assets
+
+Фаза 16. Оцени trend impact по типу бизнеса
+Отдельно оцени, как тренды действуют на:
+- SaaS
+- e-commerce
+- B2B services
+- local services
+- affiliate
+- media / publisher
+- marketplace
+- expert-led business
+
+Для каждой модели укажи:
+- какие trends наиболее важны
+- какие trends создают угрозу
+- какие trends создают disproportionate opportunity
+- что нужно адаптировать в SEO и content strategy
+
+Фаза 17. Найди trend-driven opportunities
+Теперь переведи тренды в реальные возможности.
+
+Ищи:
+- rising topic clusters
+- emerging use-case pages
+- new glossary / terminology opportunities
+- new comparison angles
+- new local or geo variants
+- new support / implementation layers
+- new trust-driven content opportunities
+- new AI-answerable assets
+- new authority plays
+- new data / benchmark opportunities
+- new product messaging opportunities
+- new wedge-entry opportunities
+
+Для каждой opportunity укажи:
+- на каком trend signal она основана
+- почему opportunity реальна
+- какой asset or page type нужен
+- подходит ли текущему проекту
+- short-term / mid-term / long-term potential
+
+Фаза 18. Найди early-mover wedges
+Покажи, где можно выиграть раньше рынка.
+
+Ищи:
+- emerging terminology wedges
+- undercovered use-case wedges
+- rising comparison wedges
+- trust-gap wedges
+- local adaptation wedges
+- implementation wedges
+- AI-clarity wedges
+- niche-specific format wedges
+- expert-interpretation wedges
+- hybrid page wedges
+
+Для каждого wedge укажи:
+- почему рынок еще не закрыл его полностью
+- какой signal подтверждает потенциал
+- насколько быстро можно получить advantage
+- насколько wedge compounding over time
+
+Фаза 19. Найди hype traps и false trends
+Покажи, где команды чаще всего ошибаются.
+
+Ищи:
+- noisy narratives without durable demand
+- AI-buzz without monetization logic
+- volume spikes without sustained value
+- media-driven but search-weak topics
+- content themes that look innovative but lack intent depth
+- trends requiring resources beyond project capacity
+- trends too early for current audience
+- trends already overcrowded by stronger players
+- trends that create awareness but no strategic payoff
+
+Для каждого trap укажи:
+- почему он кажется привлекательным
+- почему это trap
+- можно ли использовать его как support layer
+- should ignore / monitor / lightly test
+
+Фаза 20. Найди underappreciated durable shifts
+Покажи, какие изменения выглядят менее ярко, но стратегически важнее hype.
+
+Ищи:
+- gradual query language changes
+- rising trust expectations
+- migration from broad to precise demand
+- implementation content growth
+- stronger comparison depth expectations
+- more demand for concise structured explanations
+- local proof intensification
+- support and retention search growth
+- growing role of peer-validation content
+- increasing need for canonical knowledge assets
+
+Для каждого shift укажи:
+- почему он durable
+- why market may overlook it
+- how to operationalize it
+
+Фаза 21. Оцени trend feasibility for current project
+Не все правильные trends можно использовать сейчас.
+
+Для каждого major trend opportunity оцени:
+- fit for new site
+- fit for growing site
+- fit for mature site
+- dependency on brand
+- dependency on experts
+- dependency on dev / data / design
+- dependency on trust assets
+- time-to-impact
+- resource burden
+- risk of weak execution
+
+Для каждого укажи:
+- pursue now / prepare / monitor / avoid
+- что нужно для readiness
+
+Фаза 22. Оцени trend-to-demand conversion
+Покажи, какие тренды реально превращаются в search demand.
+
+Для каждого trend оцени:
+- direct demand creation
+- indirect demand expansion
+- query reformulation effect
+- demand intensification
+- demand fragmentation
+- increased commercial density
+- increased support or retention demand
+- delayed demand impact
+- weak demand conversion despite narrative visibility
+
+Для каждого trend укажи:
+- насколько он likely to affect keyword universe
+- как быстро это произойдет
+- что стоит сделать заранее
+
+Фаза 23. Оцени trend-to-format conversion
+Покажи, какие форматы нужны, чтобы правильно использовать тренд.
+
+Для каждого trend укажи:
+- best-fit formats
+- page types needed
+- whether trend demands concise, deep, comparative, trust-heavy, interactive or local format
+- whether market is underformatted for this trend
+- whether current project can execute the needed format
+
+Фаза 24. Оцени trend-to-monetization conversion
+Не каждый trend дает деньги.
+
+Для каждого major trend оцени:
+- direct revenue impact
+- indirect authority impact
+- lead-gen value
+- subscription / repeat value
+- affiliate value
+- ad value
+- local conversion effect
+- trust-to-revenue dependency
+- risk of traffic-without-money
+
+Для каждого trend укажи:
+- whether it is monetization-strong, monetization-supportive or monetization-weak
+- should it be a priority or support layer
+
+Фаза 25. Построй trend portfolio
+Собери тренды в стратегический портфель.
+
+Раздели на:
+- act-now trends
+- build-for-next-quarter trends
+- prepare-for-later trends
+- monitor-only trends
+- speculative test trends
+- avoid-for-now trends
+- authority-building trends
+- AI-strategy trends
+- trust-driven trends
+- local or geo-driven trends
+- monetization-driven trends
+
+Для каждой группы укажи:
+- какие trends входят
+- почему
+- как они поддерживают общую стратегию
+- какой sequencing оптимален
+
+Фаза 26. Построй scoring framework
+Оцени каждый major trend по шкале от 1 до 10 или от 1 до 100 по следующим параметрам:
+- strategic relevance score
+- signal strength score
+- durability score
+- search demand impact score
+- business value impact score
+- trust impact score
+- AI relevance score
+- early-mover advantage score
+- operational feasibility score
+- resource-fit score
+- time-to-impact score
+- monetization relevance score
+- authority upside score
+- hype-risk penalty
+- false-positive penalty
+
+Затем выведи:
+- overall trend opportunity score
+- strongest act-now trend score
+- strongest long-term structural trend score
+- strongest early-mover wedge score
+- strongest AI-related trend score
+- strongest monetization-relevant trend score
+- strongest authority-building trend score
+- best fit for current project score
+- risk-adjusted trend attractiveness score
+
+Для каждого score укажи:
+- почему он такой
+- какие факторы дали основной вклад
+- что может повысить или понизить этот score
+
+Фаза 27. Сравни тренды между собой
+Не оценивай их изолированно.
+
+Сделай comparative interpretation:
+- top-tier trends
+- second-tier trends
+- support trends
+- speculative trends
+- overhyped trends
+- durable low-noise trends
+- trends that should launch together
+- trends that should wait
+- trends that conflict for resources
+
+Для каждого вывода укажи:
+- почему ranking такой
+- какой trade-off присутствует
+- какой sequencing разумен
+
+Фаза 28. Построй strategic sequencing
+Переведи trend map в план действий.
+
+Раздели по этапам:
+- first 30 days
+- first quarter
+- second quarter
+- 6–12 months
+- 12–24 months
+
+Для каждого этапа укажи:
+- какие trends активировать
+- какие assets строить
+- какие hypotheses проверить
+- какие KPIs or signals realistic
+- какие dependencies нужно закрыть
+
+Фаза 29. Дай interpretation by strategy model
+Покажи, как trend priorities меняются по модели стратегии.
+
+Сравни:
+- traffic-first
+- authority-first
+- commercial-first
+- wedge-first
+- AI-first
+- trust-first
+- local-first
+- hybrid model
+
+Для каждой модели укажи:
+- какие trends становятся приоритетными
+- где главный upside
+- где главный risk
+- для какого проекта модель подходит
+
+Фаза 30. Построй final strategic verdict
+Сформулируй итоговую trend logic ниши.
+
+Обязательно ответь:
+- какие trends реально формируют будущее ниши
+- какие rising opportunities worth pursuing first
+- какие weak signals deserve monitoring
+- какие trends изменят SEO strongest
+- какие trends изменят monetization strongest
+- где AI shifts prioritization
+- где trust shifts become decisive
+- стоит ли нише trend-led expansion or trend-aware support model
+
+Фаза 31. Дай final recommendation
+Сформулируй практический итог:
+- 10 strongest overall trends for the niche
+- 5 act-now trend opportunities
+- 5 early-mover wedges
+- 5 durable low-noise shifts worth building around
+- 5 hype traps to avoid
+- 5 page types or asset types to launch first because of trend shifts
+- recommended trend strategy model: trend-led / authority-led trend capture / wedge-led / AI-trend-first / trust-shift-first / hybrid
+- phased roadmap на 3, 6, 12 и 24 месяца
+- pursue aggressively / pursue selectively / monitor heavily / limited testing / defer recommendation
+
+Правила анализа:
+- не путай тренд и разовый всплеск внимания
+- не путай медийный шум и durable market shift
+- не анализируй тренды только через search volume spikes
+- различай trend signal, demand impact, business impact и execution feasibility
+- если trend выглядит громко, но не имеет intent depth, отмечай это
+- если trend low-noise, но structurally important, отмечай это
+- различай trends useful for new site и trends usable only by mature brand
+- учитывай trust, SERP dynamics, AI changes и monetization fit как core modifiers
+- если ниша YMYL или trust-sensitive, усиливай вес trust expectation shifts, source sensitivity and reviewer needs
+- если ниша SaaS, отдельно учитывай AI adoption, workflow shifts, integrations trends, pricing expectations, onboarding shifts and category fragmentation
+- если ниша e-commerce, отдельно учитывай attribute shifts, brand preference shifts, seasonal behavior, local availability expectations and comparison behavior changes
+- если ниша B2B, отдельно учитывай stakeholder behavior shifts, proof expectations, longer evaluation patterns, ROI narratives and implementation concerns
+- если ниша local-heavy, учитывай changes in urgency, maps behavior, review dependence, availability expectations and local trust dynamics
+- если ниша affiliate, учитывай AI compression, comparison depth expectations, review trust shifts and methodology transparency
+- если ниша media, учитывай click compression, authority concentration, format shifts and need for canonical factual assets
+- если ресурсов мало, не советуй trend chasing without prioritization
+- всегда переводи trends в page types, assets, messaging, roadmap and resource implications
+
+Формат ответа:
+
+1. Executive verdict
+- Общая картина трендов в нише:
+- Насколько ниша trend-sensitive:
+- Какие trends strongest:
+- Главный риск:
+- Главная возможность:
+- Best-fit trend strategy:
+- Итоговая рекомендация:
+
+2. Trend definition map
+Для каждого типа trend:
+- Тип trend:
+- Как проявляется:
+- Почему важен:
+- Чем отличается от шума:
+- Комментарий:
+
+3. Trend universe
+Для каждого layer:
+- Layer:
+- Текущая сила влияния:
+- Future relevance:
+- Trend / shift / wave / noise:
+- Какой opportunity может возникнуть:
+- Комментарий:
+
+4. Time-horizon map
+Для каждого trend:
+- Trend:
+- Текущая стадия:
+- Expected trajectory:
+- Когда важнее всего:
+- Act now / monitor / prepare:
+- Комментарий:
+
+5. Signal classification
+Для каждого signal:
+- Signal:
+- Тип сигнала:
+- Насколько силен:
+- Risk of misreading:
+- Strategic usefulness:
+- Комментарий:
+
+6. Search-demand trends
+Для каждого trend:
+- Trend:
+- Что меняется в спросе:
+- Почему это важно:
+- Search implication:
+- Page / cluster implication:
+- Комментарий:
+
+7. Audience behavior trends
+Для каждого trend:
+- Trend:
+- Кого затрагивает:
+- Как меняет поведение:
+- Conversion / trust implication:
+- Recommended response:
+- Комментарий:
+
+8. Language and terminology shifts
+Для каждого shift:
+- Shift:
+- Что меняется:
+- Кто так говорит:
+- SEO / messaging implication:
+- Нужен ли glossary / update:
+- Комментарий:
+
+9. Product / service trends
+Для каждого trend:
+- Trend:
+- Как меняет объект спроса:
+- Search implication:
+- Monetization implication:
+- Wedge potential:
+- Комментарий:
+
+10. SERP and platform trends
+Для каждого trend:
+- Trend:
+- Что меняется:
+- Threat or opportunity:
+- Strategic response:
+- Комментарий:
+
+11. Content format trends
+Для каждого trend:
+- Trend:
+- Почему важен:
+- Где особенно релевантен:
+- SEO / AI implication:
+- Подходит ли проекту:
+- Комментарий:
+
+12. Trust and expectation trends
+Для каждого trend:
+- Trend:
+- Где особенно важен:
+- Что меняет:
+- Какие assets нужны:
+- Комментарий:
+
+13. Monetization and buying trends
+Для каждого trend:
+- Trend:
+- Как влияет на монетизацию:
+- Как влияет на pages and funnel:
+- Opportunity or pressure:
+- Комментарий:
+
+14. AI-specific trends
+Для каждого trend:
+- Trend:
+- Threat or opportunity:
+- Affected query classes:
+- Affected page types:
+- Strategic response:
+- Комментарий:
+
+15. Segment impact map
+Для каждого сегмента:
+- Segment:
+- Какие trends усиливают:
+- Какие ослабляют:
+- Какие создают new demand:
+- Strategic implication:
+- Комментарий:
+
+16. Journey impact map
+Для каждого этапа:
+- Stage:
+- Главные trends:
+- Как меняются expectations:
+- Какие assets нужны:
+- Комментарий:
+
+17. Trend-driven opportunities
+Для каждой возможности:
+- Opportunity:
+- На каком trend основана:
+- Почему реальна:
+- Какой asset нужен:
+- Подходит ли текущему проекту:
+- Горизонт:
+- Комментарий:
+
+18. Early-mover wedges
+Для каждой возможности:
+- Wedge:
+- Почему рынок не закрыл его:
+- Какой signal подтверждает:
+- Speed of advantage:
+- Compounding potential:
+- Комментарий:
+
+19. Hype traps and false trends
+Для каждого случая:
+- Trap:
+- Почему выглядит привлекательно:
+- Почему это trap:
+- Ignore / monitor / test lightly:
+- Комментарий:
+
+20. Underappreciated durable shifts
+Для каждого shift:
+- Shift:
+- Почему durable:
+- Почему рынок его недооценивает:
+- Как operationalize:
+- Комментарий:
+
+21. Feasibility for current project
+Для каждого major opportunity:
+- Opportunity:
+- Fit for current site:
+- Resource burden:
+- Time-to-impact:
+- Pursue now / prepare / monitor / avoid:
+- Комментарий:
+
+22. Trend-to-demand conversion
+Для каждого trend:
+- Trend:
+- Direct or indirect demand effect:
+- Скорость влияния:
+- Что делать заранее:
+- Комментарий:
+
+23. Trend-to-format conversion
+Для каждого trend:
+- Trend:
+- Best-fit formats:
+- Needed page types:
+- Market underformatted or not:
+- Can current project execute:
+- Комментарий:
+
+24. Trend-to-monetization conversion
+Для каждого trend:
+- Trend:
+- Revenue impact:
+- Authority impact:
+- Monetization strength:
+- Priority or support layer:
+- Комментарий:
+
+25. Trend portfolio
+- Act-now trends:
+- Build-for-next-quarter trends:
+- Prepare-for-later trends:
+- Monitor-only trends:
+- Speculative test trends:
+- Avoid-for-now trends:
+- Authority-building trends:
+- AI-strategy trends:
+- Trust-driven trends:
+- Local or geo-driven trends:
+- Monetization-driven trends:
+- Комментарий:
+
+26. Scoring framework
+- Overall trend opportunity score:
+- Strongest act-now trend score:
+- Strongest long-term structural trend score:
+- Strongest early-mover wedge score:
+- Strongest AI-related trend score:
+- Strongest monetization-relevant trend score:
+- Strongest authority-building trend score:
+- Best fit for current project score:
+- Risk-adjusted trend attractiveness score:
+
+Для каждого score:
+- Почему он такой:
+- Что сильнее всего влияет:
+- Что может его улучшить:
+
+27. Comparative ranking
+- Top-tier trends:
+- Second-tier trends:
+- Support trends:
+- Speculative trends:
+- Overhyped trends:
+- Durable low-noise trends:
+- Trends to launch together:
+- Trends to delay:
+- Комментарий:
+
+28. Strategic sequencing
+- First 30 days:
+- First quarter:
+- Second quarter:
+- 6–12 months:
+- 12–24 months:
+- Комментарий:
+
+29. Strategy-model interpretation
+Для каждой модели:
+- Модель:
+- Какие trends приоритетны:
+- Главный upside:
+- Главный risk:
+- Для кого подходит:
+- Комментарий:
+
+30. Final recommendation
+В финале обязательно дай:
+- 10 strongest overall trends
+- 5 act-now trend opportunities
+- 5 early-mover wedges
+- 5 durable low-noise shifts
+- 5 hype traps to avoid
+- 5 page types or asset types to launch first
+- recommended trend strategy model: trend-led / authority-led / wedge-led / AI-trend-first / trust-shift-first / hybrid
+- phased roadmap на 3, 6, 12 и 24 месяца
+- pursue aggressively / pursue selectively / monitor heavily / limited testing / defer recommendation
+
+Если ниша слишком широкая:
+- сначала разбей ее на macro trend zones
+- затем на subniche trend dynamics
+- затем на demand, format, trust and AI trend layers
+- затем собери unified trend model
+
+Если ниша SaaS:
+- отдельно покажи trends в AI adoption, workflow shifts, integrations, category fragmentation, pricing expectations, onboarding and support behavior
+
+Если ниша e-commerce:
+- отдельно покажи trends в product attributes, brand preferences, comparison behavior, seasonal shifts, local availability and post-purchase expectations
+
+Если ниша B2B:
+- отдельно покажи trends в stakeholder education, ROI narratives, proof demands, implementation concerns and longer evaluation behavior
+
+Если ниша local business:
+- отдельно покажи trends в urgency, map behavior, review reliance, availability expectations, local trust and service-area search patterns
+
+Если ниша affiliate:
+- отдельно покажи trends в AI compression, comparison depth, methodology trust, review expectations and click-defense needs
+
+Если ниша media / publisher:
+- отдельно покажи trends в click compression, factual asset demand, format shifts, authority concentration and AI-citation opportunities
+
+Если ниша YMYL или trust-sensitive:
+- отдельно покажи trends в source sensitivity, reviewer expectations, proof demands, caution language and trust architecture needs
+
+Главное требование:
+Ответ должен быть настолько практичным, чтобы на его основе можно было:
+- отличить реальные trend opportunities от шума
+- найти early-mover направления
+- связать тренды с demand, page types, trust, monetization и AI-search
+- построить trend-aware SEO and content roadmap
+- принимать стратегические решения на основе будущих сдвигов рынка, а не только текущей картины спроса

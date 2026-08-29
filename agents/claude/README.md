@@ -17,6 +17,7 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `docs-maintainer` | Docs | INIT + nightly living docs/ | Codex Luna max fast |
 | `memory-maintainer` | Memory | Opt-in fact corpus | Codex (adoc `stages.memory`) |
 | `design-lead` | Design | Extract/refresh `docs/DESIGN.md` | Claude |
+| `seo-specialist` | SEO | DrMax harness, `.agents/seo/`, `seo-*` CLI | Claude |
 
 ## Compatibility aliases (deprecated)
 
@@ -54,6 +55,7 @@ onboard        → Agent(project-onboarder)
 docs           → Agent(docs-maintainer)
 memory         → Agent(memory-maintainer)
 design         → Agent(design-lead)
+seo            → Agent(seo-specialist)
 ```
 
 See also: `docs/PLATFORM-CAPABILITIES.md`, `docs/ROUTING.md`.

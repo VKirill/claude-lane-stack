@@ -1,0 +1,12 @@
+id: detect-only
+module: content-quality
+title: LinguaForensic pass only
+when: "User asks AI-detect / роботность"
+mode: any
+steps:
+  - id: detect
+    action: agent
+    run: "ai-detect ORIGINAL v3.9.4"
+acceptance:
+  - "Probabilistic report; not authorship proof"
+next_modules: []

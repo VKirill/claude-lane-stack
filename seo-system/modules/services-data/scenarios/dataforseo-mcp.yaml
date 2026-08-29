@@ -1,0 +1,23 @@
+id: dataforseo-mcp
+module: services-data
+title: Connect DataForSEO + verify official MCP
+when: "Need DataForSEO via native MCP tools in Claude"
+mode: any
+steps:
+  - id: tui
+    action: cli
+    run: "seodoc  # or: seo-services set dataforseo DATAFORSEO_LOGIN=… DATAFORSEO_PASSWORD=…"
+  - id: enable
+    action: cli
+    run: "seo-services enable dataforseo && seo-services test dataforseo"
+  - id: export
+    action: cli
+    run: "seo-services export"
+  - id: mcp
+    action: agent
+    run: "Ensure MCP server `dataforseo` is in ~/.claude.json (seo-dataforseo-mcp). Restart Claude session. Call any DataForSEO MCP tool smoke-test."
+acceptance:
+  - "~/secrets/dataforseo.env has LOGIN/USERNAME + PASSWORD"
+  - "seo-services test dataforseo OK"
+  - "MCP dataforseo available after session restart"
+next_modules: [discovery-research, measurement-analytics, content-gist]

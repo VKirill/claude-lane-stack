@@ -1,0 +1,15 @@
+id: footprint
+module: brand-entity
+title: Entity Footprint 1→2
+when: "Brand entity unclear in Google/LLM"
+mode: any
+steps:
+  - id: p1
+    action: agent
+    run: "ENTITY FOOTPRINT PROMPT 1"
+  - id: p2
+    action: agent
+    run: "ENTITY FOOTPRINT PROMPT 2"
+acceptance:
+  - "offpage/entity-footprint/ report"
+next_modules: []

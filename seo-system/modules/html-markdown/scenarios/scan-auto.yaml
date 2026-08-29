@@ -1,0 +1,15 @@
+id: scan-auto
+module: html-markdown
+title: snapshot.md from seo-scan
+when: "After page/site scan"
+mode: live
+steps:
+  - id: scan
+    action: cli
+    run: "seo-scan <slug> --page <url>"
+  - id: check
+    action: agent
+    run: "Confirm scans/pages/<slug>/<ts>/snapshot.md exists; use it in next agent step"
+acceptance:
+  - "snapshot.md present alongside snapshot.html"
+next_modules: [technical-seo, content-gist]

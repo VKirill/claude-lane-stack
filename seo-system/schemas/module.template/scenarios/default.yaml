@@ -1,0 +1,17 @@
+id: default
+module: example-module
+title: Default path
+when: "Module selected without a more specific scenario"
+mode: any
+steps:
+  - id: read
+    action: agent
+    run: "Read MODULE.md and confirm inputs exist"
+  - id: work
+    action: agent
+    run: "Execute module purpose; write artifacts"
+    artifact: ".agents/seo/<slug>/…"
+acceptance:
+  - "Artifact exists"
+  - "prompts-used/log.tsv updated if a DrMax original was run"
+next_modules: []

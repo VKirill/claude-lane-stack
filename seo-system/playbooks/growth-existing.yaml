@@ -1,0 +1,20 @@
+id: growth-existing
+title: Growth on an existing site
+when: "Site has search data; need wins"
+mode: live
+chain:
+  - module: measurement-analytics
+    scenario: gsc-low-hanging
+  - module: discovery-research
+    scenario: growth-existing
+  - module: technical-seo
+    scenario: base-audit
+  - module: content-gist
+    scenario: audit
+  - module: content-quality
+    scenario: post-gist-pipeline
+  - module: offpage-links
+    scenario: link-plan
+    optional: true
+notes: |
+  Prioritise pages with impressions but weak CTR/position before new content scale.

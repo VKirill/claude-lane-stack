@@ -1,0 +1,19 @@
+id: greenfield-start
+title: Start SEO before the site exists
+when: "Brand/niche known, no production URL"
+mode: greenfield
+chain:
+  - module: passport-onboard
+    scenario: greenfield
+  - module: discovery-research
+    scenario: niche-entry
+  - module: intent-semantics
+    scenario: intent-chain
+  - module: strategy-evidence
+    scenario: qstar-navboost
+  - module: strategy-evidence
+    scenario: cocoon-design
+  - module: content-gist
+    scenario: creation
+notes: |
+  No fake live traffic. After launch, switch to live-site-start measurement + scan.

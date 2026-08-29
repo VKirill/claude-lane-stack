@@ -1,0 +1,12 @@
+id: spam-scaled-check
+module: content-quality
+title: Scaled/spam audit
+when: "Programmatic or bulk content"
+mode: any
+steps:
+  - id: spam
+    action: agent
+    run: "Assessor Spam original on sample set"
+acceptance:
+  - "Go/no-go for scale documented"
+next_modules: []

@@ -1,0 +1,20 @@
+id: validate-passport
+module: passport-onboard
+title: Validator & Normalizer pass
+when: "Raw collector or messy brief exists"
+mode: any
+steps:
+  - id: validator
+    action: agent
+    run: "Run Project Data Validator & Normalizer original on passport/raw-collector.md"
+    artifact: ".agents/seo/<slug>/passport/validated.md"
+  - id: merge
+    action: agent
+    run: "Merge confirmed fields into ANAMNESIS.md; keep facts vs hypotheses"
+  - id: log
+    action: cli
+    run: "seo-prompt-log <slug> --system 'Validator' --path '…/Project Data Validator & Normalizer.txt' --phase passport --artifact passport/validated.md"
+acceptance:
+  - "validated.md separates facts/hypotheses/gaps"
+  - "ANAMNESIS updated"
+next_modules: [discovery-research]

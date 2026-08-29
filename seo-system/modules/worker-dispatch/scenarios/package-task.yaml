@@ -1,0 +1,23 @@
+id: package-task
+module: worker-dispatch
+title: Build worker package for one task
+when: "Bulk or mid-tier model execution"
+mode: any
+steps:
+  - id: run
+    action: cli
+    run: "seo-run-init <slug> <run> --title '…' --phase content"
+    optional: true
+  - id: task
+    action: cli
+    run: "seo-task <slug> <run> add --title '…' --original /abs --output path --executor grok"
+  - id: dispatch
+    action: cli
+    run: "seo-dispatch <slug> <run> <id> --original /abs --output path --executor grok"
+  - id: accept
+    action: cli
+    run: "seo-task <slug> <run> accept <id>"
+    optional: true
+acceptance:
+  - "dispatch.md exists for task"
+next_modules: []

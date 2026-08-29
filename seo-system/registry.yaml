@@ -1,0 +1,28 @@
+# SEO system module registry — single index for agents and CLI.
+# Add module: create modules/<id>/ per schemas/module.schema.yaml, then append here.
+
+version: 1
+root: ~/.agents/seo-system
+docs:
+  methodology: ~/.agents/docs/seo/METHODOLOGY-END-TO-END.md
+  orchestration: ~/.agents/docs/seo/SOLO-SEO-ORCHESTRATION.md
+  services: ~/.agents/docs/seo/SEO-SERVICES-TUI.md
+  system: ~/.agents/docs/seo/DRMAX-SYSTEM-2026.md
+
+# Load order for validation / default boot summary (deps first)
+# Inline lists — simple YAML loader (no nested block lists under maps).
+modules: [core-harness, services-data, routing-agents, proxy-fetch, html-markdown, passport-onboard, site-scan, discovery-research, intent-semantics, clustering-serp, strategy-evidence, technical-seo, content-gist, content-quality, brand-entity, offpage-links, measurement-analytics, worker-dispatch]
+
+playbooks: [live-site-start, greenfield-start, rescan-after-change, one-article, growth-existing]
+
+# Phase → modules map (STATUS.phase)
+phases:
+  core: [core-harness, routing-agents, worker-dispatch]
+  data: [services-data, proxy-fetch]
+  passport: [passport-onboard]
+  discovery: [discovery-research, intent-semantics, clustering-serp]
+  strategy: [strategy-evidence]
+  technical: [site-scan, html-markdown, technical-seo]
+  content: [content-gist, content-quality]
+  offpage: [brand-entity, offpage-links]
+  measure: [measurement-analytics]

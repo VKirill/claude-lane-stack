@@ -1,0 +1,16 @@
+id: audit
+module: content-gist
+title: Rewrite existing page Audit mode
+when: "Live page underperforms or thin"
+mode: live
+steps:
+  - id: scan
+    action: module
+    uses_module: site-scan
+    run: "scenarios/single-page.yaml"
+  - id: gist
+    action: agent
+    run: "GIST Audit mode on snapshot + brief"
+acceptance:
+  - "before/after structure noted"
+next_modules: [content-quality]

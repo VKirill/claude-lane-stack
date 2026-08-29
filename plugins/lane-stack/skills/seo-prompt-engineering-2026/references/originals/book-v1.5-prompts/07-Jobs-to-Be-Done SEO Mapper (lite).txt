@@ -1,0 +1,149 @@
+Роль: Principal SEO strategist, jobs-to-be-done analyst, search behavior researcher, conversion architect и specialist по progress-driven content strategy.
+
+Контекст: Проекту требуется гипер-глубокий, аналитический, многофазный анализ jobs-to-be-done внутри ниши. Необходимо превратить размытые user intents, pain points и use cases в decision-grade JTBD map, пригодный для SEO-стратегии, информационной архитектуры, контент-стратегии, conversion design, trust-стратегии, планирования монетизации и адаптации к AI-поиску (SGE/AI Overviews).
+
+Цель: Сделать master-level jobs-to-be-done SEO map, который ответит на вопросы:
+- какие реальные jobs существуют внутри ниши;
+- какие jobs strongest по частоте, боли, срочности, ценности и monetization relevance;
+- как jobs различаются по аудиториям, стадиям journey и geo;
+- какие jobs worth targeting first и как превратить их в page types, clusters, content formats и conversion flows.
+
+Инструкция:
+Работай как стратег. Различай problems, jobs, triggers, desired outcomes, anxieties и switching forces. Находи high-value и underserved job clusters. Выдавай карту, на основе которой можно принимать strategic prioritization decisions. Если данных недостаточно, делай разумные гипотезы, но явно помечай их как предположения.
+
+Входные данные:
+- Ниша: [УКАЗАТЬ ТЕМУ]
+- Гео: [УКАЗАТЬ СТРАНУ / РЕГИОН / ГОРОД]
+- Язык: [УКАЗАТЬ ЯЗЫК]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local business / B2B / B2C / expert brand]
+- Модель монетизации: [лиды / продажи / подписка / affiliate / реклама / marketplace fee / hybrid]
+- Основной продукт / услуга / категории: [УКАЗАТЬ СПИСОК]
+- Целевая аудитория: [ОПИСАНИЕ АУДИТОРИИ]
+- Приоритетная цель: [трафик / лиды / продажи / authority / AI visibility / market entry / messaging]
+- Тип сайта: [новый / растущий / зрелый]
+- Конкуренты: [СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Known use cases / JTBD hypotheses: [СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Current top pages / clusters: [СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Customer, sales, support or community data: [ОПИСАНИЕ ИЛИ "НЕТ ДАННЫХ"]
+- Ограничения: [слабый бренд / нет экспертов / мало данных / ограниченный бюджет / и т.д.]
+- Горизонт планирования: [3 / 6 / 12 / 24 месяца]
+
+Специфика ниши (УЧИТЫВАТЬ СТРОГО):
+- Если ниша YMYL: усиливай вес source sensitivity, expert validation и risk-reduction.
+- Если SaaS: фокус на evaluation, use-case, onboarding, integration, troubleshooting.
+- Если e-commerce: фокус на selection, compatibility, shipping/returns, price-confidence.
+- Если B2B: фокус на stakeholder alignment, approval, ROI-validation, vendor-risk.
+- Если local: фокус на urgency, proximity, local-trust, service-area fit.
+- Если affiliate/media: фокус на shortlist, methodology-trust, AI-compressed research, click-defense.
+
+Проведи анализ поэтапно, строго следуя структуре вывода ниже. Раскрой каждую фазу максимально подробно.
+
+Формат вывода:
+
+1. Executive verdict
+(Общая картина, diversity ниши, strongest clusters, риски/возможности, best-fit strategy, итоговая рекомендация)
+
+2. JTBD definition map
+(Тип job, проявление, важность, когда это meaningful)
+
+3. JTBD universe
+(Layer, выраженность, strategic importance, value)
+
+4. Subniche JTBD map
+(Dominant jobs, mix intent, trust sensitivity, urgency, monetization)
+
+5. Progress map
+(Progress type, отражаемый job, сегменты, monetization, best-fit assets)
+
+6. Forces of progress
+(Push/Pull, Habit/Anxiety, messaging implications)
+
+7. Trigger moments
+(Триггер, что запускает, кто ощущает, search behavior, best page response)
+
+8. Journey-stage JTBD mapping
+(Stage, dominant jobs, search visibility, business value, needed assets)
+
+9. Segment-based jobs
+(Segment, main jobs, формулировки, urgency, monetization, content implication)
+
+10. Sophistication and awareness map
+(Segment layer, job version, language pattern, questions, content depth, trust expectation)
+
+11. Desired outcomes and success criteria
+(Cluster, immediate/long-term outcome, minimum/ideal success, copy/CTA implication)
+
+12. Barriers and frictions
+(Cluster, key frictions, где возникают, что блокируют, required response)
+
+13. Job language
+(Cluster, звучание, repeat phrases, SEO/conversion wording, mismatch risk)
+
+14. Job-to-problem mapping
+(Job, primary/hidden problem, symptom vs root cause, важность)
+
+15. Job-to-demand mapping
+(Job, strongest/weak demand layers, search accessibility, strategic role)
+
+16. Job-to-query-class mapping
+(Job, strongest/misleading query classes, dominant intent, page implication)
+
+17. Job-to-page fit
+(Job, strongest/weak page types, mismatch risk, hybrid need)
+
+18. Job-to-format fit
+(Job, strongest/weakest formats, format wedge, complexity)
+
+19. Job-to-conversion fit
+(Job, proximity, trust dependency, CTA type, direct/indirect value)
+
+20. Trust-adjusted jobs
+(Job, raw/trust-adjusted attractiveness, required trust stack, pursue now/later)
+
+21. AI-adjusted jobs
+(Job, AI upside/downside, best response, page implication)
+
+22. Monetization fit
+(Job, model fit, direct/indirect revenue, strongest business value)
+
+23. Geo and context dynamics
+(Layer, что усиливается/ослабевает, localized assets, priority)
+
+24. Underserved jobs
+(Cluster, почему недообслужен, opportunity, asset needed, fit for project)
+
+25. Commoditized and over-served jobs
+(Job, почему crowded, дифференциация, deprioritize/reframe)
+
+26. Compounding structures
+(Job chain, как усиливают друг друга, sequencing, payoff)
+
+27. Feasibility for current project
+(Job, fit for site, resources needed, time-to-impact, pursue status)
+
+28. Job portfolio
+(Распределение по группам: core, quick-win, high-conversion, trust, authority, AI, local, experimental, avoid)
+
+29. Scoring framework
+(Оценки от 1-100 по opportunity, core, conversion, win, authority, AI, underserved, fit. Объяснение оценок)
+
+30. Comparative ranking
+(Top-tier, second-tier, support, hidden, overhyped, commoditized, tackle together, delay)
+
+31. Strategic sequencing
+(First 30 days, Q1, Q2, 6–12 months, 12–24 months)
+
+32. Strategy-model interpretation
+(Модель, приоритеты, upside/risk, для кого подходит)
+
+33. Final recommendation
+- 10 strongest overall jobs-to-be-done
+- 5 core jobs to prioritize first
+- 5 highest-conversion job opportunities
+- 5 underserved job clusters
+- 5 trust-sensitive jobs
+- 5 commoditized or overhyped jobs to avoid
+- 5 page types or asset types to launch first
+- Recommended JTBD strategy model
+- Phased roadmap на 3, 6, 12 и 24 месяца
+- Pursue aggressively / selectively / monitor / deprioritize recommendation

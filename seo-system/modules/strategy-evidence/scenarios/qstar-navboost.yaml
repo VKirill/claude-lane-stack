@@ -1,0 +1,17 @@
+id: qstar-navboost
+module: strategy-evidence
+title: Choose Q* vs NavBoost posture
+when: "After discovery brief ready"
+mode: any
+steps:
+  - id: decide
+    action: agent
+    run: "Write strategy/01-strategy.md with posture, milestones, risks"
+    artifact: ".agents/seo/<slug>/strategy/01-strategy.md"
+  - id: backlog
+    action: agent
+    run: "strategy/backlog.yaml prioritised"
+acceptance:
+  - "Posture explicit"
+  - "Backlog items cite signals"
+next_modules: [technical-seo, content-gist, offpage-links]

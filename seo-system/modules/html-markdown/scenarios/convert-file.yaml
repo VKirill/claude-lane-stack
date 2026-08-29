@@ -1,0 +1,12 @@
+id: convert-file
+module: html-markdown
+title: Convert one HTML file to markdown
+when: "Arbitrary HTML dump needs agent-readable form"
+mode: any
+steps:
+  - id: convert
+    action: cli
+    run: "seo-html2md <file.html> -o <file.md>"
+acceptance:
+  - "output .md exists and is smaller / cleaner than source"
+next_modules: []

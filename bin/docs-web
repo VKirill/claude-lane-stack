@@ -53,6 +53,33 @@ def _norm(path: str) -> str:
     return str(path or "").strip().lstrip("./")
 
 
+def _nested_claude_stub(app_id: str) -> str:
+    for cand in (
+        Path.home() / ".agents" / "templates" / "nested-CLAUDE.md",
+        Path(__file__).resolve().parents[1] / "templates" / "nested-CLAUDE.md",
+    ):
+        if cand.is_file():
+            return cand.read_text(encoding="utf-8").replace("REPLACE_ME", app_id)
+    return (
+        f"# {app_id}\n\n"
+        f"Local docs: `docs/INDEX.md`. Root: `../../CLAUDE.md`.\n\n"
+        "## What\n\n"
+        "_stub — one sentence runtime role from the entrypoint_\n\n"
+        "## Owns\n\n"
+        f"- `apps/{app_id}/**`\n\n"
+        "## Never / Always\n\n"
+        "- **Never** _stub — local boundary with `file:line`_\n"
+        "- **Always** _stub — local boundary with `file:line`_\n\n"
+        "## Verify\n\n"
+        "```bash\n"
+        f"# stub — scoped test for apps/{app_id}\n"
+        "```\n\n"
+        "## Pointers\n\n"
+        "- Local docs: `docs/INDEX.md`, `docs/ARCHITECTURE.md`, `docs/gotchas.md`, `docs/FLOWS.md`\n"
+        "- Root: `../../CLAUDE.md`\n"
+    )
+
+
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     match = _FM.match(text)
     if not match:
@@ -206,7 +233,10 @@ def infer_surfaces(repo: Path, unit: dict[str, Any]) -> list[dict[str, str]]:
         if not path.is_file() or path.suffix not in {".ts", ".js", ".py", ".go"}:
             continue
         rel = str(path.relative_to(repo))
-        if any(part in {"node_modules", "dist", "vendor", ".git"} for part in path.parts):
+        if any(
+            part in {"node_modules", "dist", "vendor", ".git", ".next", "coverage", "build", ".turbo"}
+            for part in path.parts
+        ):
             continue
         name = path.name.lower()
         if "route" in name or "/app/api/" in rel or "/handlers/" in rel:
@@ -739,13 +769,41 @@ def _module_map_ids(repo: Path) -> set[str]:
     return ids
 
 
+def _docs_stale():
+    import importlib.machinery
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "docs-stale"
+    loader = importlib.machinery.SourceFileLoader("docs_stale", str(path))
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def iter_wiki_md(repo: Path) -> list[Path]:
+    roots = [repo / "docs"]
+    apps = repo / "apps"
+    if apps.is_dir():
+        roots.extend(sorted(apps.glob("*/docs")))
+    out: list[Path] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*.md")):
+            rel = str(path.relative_to(repo))
+            if any(rel.startswith(p) for p in ARCHIVE_PREFIXES):
+                continue
+            out.append(path)
+    out.extend(sorted(repo.glob("apps/*/CLAUDE.md")))
+    return out
+
+
 def lint_repo(repo: Path) -> dict[str, Any]:
     errors: list[str] = []
     live_pages: list[str] = []
-    for path in sorted((repo / "docs").rglob("*.md")) if (repo / "docs").is_dir() else []:
+    stale = _docs_stale()
+    for path in iter_wiki_md(repo):
         rel = str(path.relative_to(repo))
-        if any(rel.startswith(p) for p in ARCHIVE_PREFIXES):
-            continue
         live_pages.append(rel)
         text = path.read_text(encoding="utf-8")
         if SECRET_RE.search(text):
@@ -772,11 +830,18 @@ def lint_repo(repo: Path) -> dict[str, Any]:
                 continue
             if not dest.exists():
                 errors.append(f"broken_link:{rel}:{target}")
+        if "llm" not in path.parts:
+            for reason in stale.thin_reasons(path, repo):
+                errors.append(f"thin:{rel}:{reason}")
+            for problem in stale.cite_line_problems(repo, stale.page_body(text), limit=4):
+                errors.append(f"cite_oob:{rel}:{problem}")
     index = repo / "docs" / "INDEX.md"
     if index.is_file():
         index_text = index.read_text(encoding="utf-8")
         for rel in live_pages:
             if rel in {"docs/INDEX.md", "docs/log.md"}:
+                continue
+            if rel.startswith("apps/") and "/docs/" in rel:
                 continue
             href = rel[5:] if rel.startswith("docs/") else rel
             if href not in index_text and Path(rel).name not in index_text:
@@ -904,7 +969,11 @@ def seed_app_pack(repo: Path, unit: dict[str, Any]) -> None:
             "Root catalog: [../../docs/INDEX.md](../../docs/INDEX.md)\n",
             encoding="utf-8",
         )
-    for name, title in (("ARCHITECTURE.md", "Architecture"), ("gotchas.md", "Gotchas")):
+    for name, title in (
+        ("ARCHITECTURE.md", "Architecture"),
+        ("gotchas.md", "Gotchas"),
+        ("FLOWS.md", "Flows"),
+    ):
         path = docs / name
         if path.is_file():
             continue
@@ -927,15 +996,7 @@ def seed_app_pack(repo: Path, unit: dict[str, Any]) -> None:
         )
     claude = app / "CLAUDE.md"
     if not claude.is_file():
-        claude.write_text(
-            f"# {unit['id']}\n\n"
-            f"Local docs: `docs/INDEX.md`. Root: `../../CLAUDE.md`.\n\n"
-            "## Owns\n\n"
-            f"- `apps/{unit['id']}/**`\n\n"
-            "## Pointers\n\n"
-            "- `docs/ARCHITECTURE.md`, `docs/gotchas.md`\n",
-            encoding="utf-8",
-        )
+        claude.write_text(_nested_claude_stub(str(unit["id"])), encoding="utf-8")
     local_man = docs / "llm" / "MANIFEST.yaml"
     if not local_man.is_file():
         local_man.parent.mkdir(parents=True, exist_ok=True)
@@ -947,7 +1008,8 @@ def seed_app_pack(repo: Path, unit: dict[str, Any]) -> None:
             f"    - apps/{unit['id']}/docs/INDEX.md\n"
             "  on_demand:\n"
             f"    - apps/{unit['id']}/docs/ARCHITECTURE.md\n"
-            f"    - apps/{unit['id']}/docs/gotchas.md\n",
+            f"    - apps/{unit['id']}/docs/gotchas.md\n"
+            f"    - apps/{unit['id']}/docs/FLOWS.md\n",
             encoding="utf-8",
         )
 

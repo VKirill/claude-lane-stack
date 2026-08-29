@@ -69,7 +69,7 @@ STAGE_FIELD_CRITIQUE = ("enabled", "mode", "provider", "model", "effort")
 STAGE_FIELD_WRITE = ("provider", "model", "effort")  # enabled always on
 STAGE_FIELD_NIGHT = ("enabled", "provider", "model", "effort")
 STAGE_FIELD_SPEC = ("enabled", "when", "provider", "model", "effort")
-STAGE_FIELD_ONBOARD = ("provider", "model", "effort", "fast")  # fast: codex/cursor
+STAGE_FIELD_ONBOARD = ("provider", "model", "effort", "fast", "depth")  # fast→tier+depth
 STAGE_FIELD_MEMORY = (
     "enabled",
     "maintain",
@@ -1335,7 +1335,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             fields = (
                 STAGE_FIELD_ONBOARD
                 if _supports_fast(prov)
-                else ("provider", "model", "effort")
+                else ("provider", "model", "effort", "depth")
             )
         elif stage_id == "memory":
             prov = str((state.stages.get("memory") or {}).get("provider") or "codex")
@@ -1428,6 +1428,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
         if field == "fast":
             tier = str(block.get("service_tier") or "standard").strip().lower()
             return _t(state, "on") if tier == "fast" else _t(state, "off")
+        if field == "depth":
+            return str(block.get("depth") or "auto")
         if field == "model":
             prov = str(block.get("provider") or "")
             if prov == "structural":
@@ -1654,6 +1656,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
             else:
                 cur = str(block.get("service_tier") or "standard").strip().lower()
                 block["service_tier"] = "standard" if cur == "fast" else "fast"
+                if sid == "onboard":
+                    block["depth"] = (
+                        "fast" if block["service_tier"] == "fast" else "deep"
+                    )
                 state.message = _t(
                     state,
                     "msg_stage_fast",
@@ -1661,6 +1667,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
                     if block["service_tier"] == "fast"
                     else _t(state, "off"),
                 )
+        elif field == "depth":
+            cur = str(block.get("depth") or "deep").strip().lower()
+            block["depth"] = "deep" if cur == "fast" else "fast"
+            state.message = _t(state, "msg_stage_depth", value=block["depth"])
         elif field in {"maintain", "inject"}:
             block[field] = not bool(block.get(field, True))
             state.message = _t(
@@ -1804,12 +1814,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 )
             elif sid == "onboard":
                 tier = str(block.get("service_tier") or "standard")
+                depth = str(block.get("depth") or "")
+                if not depth and _supports_fast(prov) and tier == "fast":
+                    depth = "fast"
                 fast_bit = (
                     f" · fast"
                     if _supports_fast(prov) and tier == "fast"
                     else ""
                 )
-                detail = f"{_loc_provider(prov)} · {model} · {effort}{fast_bit}"
+                depth_bit = f" · {depth}" if depth else ""
+                detail = f"{_loc_provider(prov)} · {model} · {effort}{fast_bit}{depth_bit}"
             else:
                 detail = (
                     f"{_loc_on(enabled)} · "
@@ -2385,12 +2399,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return
         if not maintain:
             return
-        runner = Path.home() / ".agents" / "bin" / "docs-maintain-project"
+        runner = Path.home() / ".agents" / "bin" / "docs-init-chain"
         if not runner.is_file():
-            runner = Path(__file__).resolve().parent / "docs-maintain-project"
+            runner = Path(__file__).resolve().parent / "docs-init-chain"
         try:
             listed = subprocess.run(
-                ["pgrep", "-f", f"docs-maintain-project {repo}"],
+                ["pgrep", "-f", f"(docs-init-chain|docs-maintain-project|project-onboard) {repo}"],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -2399,19 +2413,6 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 return
         except OSError:
             pass
-        docs_root = repo / "docs"
-        has_stub = False
-        if docs_root.is_dir():
-            for path in docs_root.rglob("*.md"):
-                try:
-                    head = path.read_text(encoding="utf-8")[:400]
-                except OSError:
-                    continue
-                if "status: stub" in head:
-                    has_stub = True
-                    break
-        if not has_stub:
-            return
         log = Path.home() / ".agents" / "logs" / "docs-init.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ)

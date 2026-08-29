@@ -37,6 +37,7 @@ project-onboard — первичная карта репо (CLAUDE.md + LLM-pack
 После
 - RU-саммари: поверхности, модули, тесты, DESIGN?, RUNBOOK?
 - has_ui → docs/DESIGN.md (Google)
+- docs включены + паспорт тонкий → сначала этот скилл / project-onboarder, потом docs-maintainer
 - weekly refresh: docs-maintainer, не этот скилл
 ```
 
@@ -99,10 +100,10 @@ Deep monorepo (≥2 apps) uses this **two-pass pipeline**. Toy/single-app stays 
 
 ## MUST (PM)
 
-1. Prefer: `project-onboard "$PROJECT_CWD"` (or spawn `project-onboarder`).  
-2. Writer reads skill `references/`.  
-3. After: RU summary — surfaces, modules, tests, DESIGN?, RUNBOOK?, validation.  
-4. Weekly: `ONBOARD_REFRESH=weekly` → docs-maintainer.
+1. Passport thin: spawn **project-onboarder** (or `project-onboard`). Wait `DONE`.
+2. If `stages.docs.enabled`: then spawn **docs-maintainer**. Never both at once.
+3. Writer reads skill `references/`.
+4. After: RU summary — surfaces, modules, tests, DESIGN?, RUNBOOK?, validation.
 
 ## After checklist
 

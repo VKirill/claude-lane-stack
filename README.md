@@ -286,7 +286,7 @@ agents-doctor --apply .     # or: adoc
 
 ```bash
 lane-pm                     # boot + session name <agent>-<folder>-DD-MM-YYYY
-# `claude --agent dev-orchestrator` alone often skips initialPrompt
+# Claude Code 2.1+ auto-submits the agent initialPrompt
 ```
 
 | In chat | When |

@@ -131,9 +131,21 @@ STALE_BIN="${HOME}/.agents/bin/docs-stale"
 [[ -x "$STALE_BIN" ]] || STALE_BIN="$(dirname "$0")/docs-stale"
 
 echo "PROJECT=$REPO SINCE=$SINCE MODE_ARG=${MODE_ARG:-}"
+
+if [[ "${MODE_ARG:-}" != "lint" ]]; then
+  pass_rc=0
+  "$STALE_BIN" "$REPO" --passport-gaps > /tmp/lane-docs-passport.json || pass_rc=$?
+  if [[ "$pass_rc" -eq 0 ]]; then
+    echo "BLOCKED: passport incomplete — run project-onboard first, then this runner"
+    python3 -c "import json; print('GAPS', ' '.join(json.load(open('/tmp/lane-docs-passport.json')).get('gaps') or []))" || true
+    exit 2
+  fi
+fi
+
 "$WEB_BIN" rebuild "$REPO" || echo "WARN: docs-web failed" >&2
 
-LINT_JSON="$("$WEB_BIN" lint "$REPO")" || true
+LINT_FILE=$(mktemp -t docs-lint.XXXXXX)
+"$WEB_BIN" lint "$REPO" > "$LINT_FILE" || true
 WEEKDAY="$(date +%u)"
 
 dispatch_luna() {
@@ -141,47 +153,48 @@ dispatch_luna() {
   local spec extra
   spec=$(mktemp -t docs-maintain.XXXXXX)
   extra=$(mktemp -t docs-maintain-pages.XXXXXX)
-  python3 - "$REPO" "$STALE_JSON" "$LINT_JSON" "$extra" <<'PY'
+  python3 - "$REPO" "$STALE_FILE" "$LINT_FILE" "$extra" <<'PY'
 import json
 import sys
 from pathlib import Path
 
+def _load(raw: str) -> dict:
+    path = Path(raw)
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8") or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+    try:
+        data = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
 repo = Path(sys.argv[1])
-stale = {}
-lint = {}
-try:
-    stale = json.loads(sys.argv[2] or "{}")
-except json.JSONDecodeError:
-    stale = {}
-try:
-    lint = json.loads(sys.argv[3] or "{}")
-except json.JSONDecodeError:
-    lint = {}
+stale = _load(sys.argv[2])
+lint = _load(sys.argv[3])
 pages = list(stale.get("stale_docs") or [])
 for err in lint.get("errors") or []:
-    rel = str(err).split(":", 1)[-1] if ":" in str(err) else ""
-    if rel.startswith("docs/") and rel not in pages:
-        pages.append(rel.split(":")[0] if ":" in rel else rel)
-# lint errors look like "secret:docs/leak.md" — page is after first colon
-fixed = []
-for err in lint.get("errors") or []:
     parts = str(err).split(":")
-    if len(parts) >= 2 and parts[1].startswith("docs/"):
+    if len(parts) >= 2 and (parts[1].startswith("docs/") or parts[1].startswith("apps/")):
         cand = parts[1]
         if cand not in pages:
             pages.append(cand)
-        if cand not in fixed:
-            fixed.append(cand)
 out = Path(sys.argv[4])
 chunks = []
-for rel in pages[:12]:
+picked = pages[:40]
+for rel in picked:
     path = repo / rel
     if not path.is_file():
         continue
-    text = path.read_text(encoding="utf-8")[:6000]
+    text = path.read_text(encoding="utf-8")
+    if len(text) > 40000:
+        text = text[:40000] + "\n…(truncated)\n"
     chunks.append(f"### FILE {rel}\n{text}\n")
 out.write_text("\n".join(chunks), encoding="utf-8")
-print(json.dumps({"pages": pages[:12], "daylog": stale.get("daylog") or ""}))
+print(json.dumps({"pages": picked, "daylog": stale.get("daylog") or ""}))
 PY
   ART="$REPO/.agents/session-log"
   mkdir -p "$ART"
@@ -190,6 +203,23 @@ PY
   FINAL=$(mktemp -t docs-maintain-out.XXXXXX)
   INSTR="${HOME}/.agents/codex/instructions/docs-maintain.md"
   [[ -f "$INSTR" ]] || INSTR="$(dirname "$0")/../agents/codex/instructions/docs-maintain.md"
+  META=$(mktemp -t docs-maintain-meta.XXXXXX)
+  python3 - "$STALE_FILE" > "$META" <<'PY'
+import json
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+data = {}
+if p.is_file():
+    try:
+        data = json.loads(p.read_text(encoding="utf-8") or "{}")
+    except json.JSONDecodeError:
+        data = {}
+if not isinstance(data, dict):
+    data = {}
+print("STALE_DOCS=" + json.dumps(data.get("stale_docs") or [], ensure_ascii=False))
+print("DAYLOG=" + str(data.get("daylog") or ""))
+PY
   {
     cat "$INSTR"
     echo ""
@@ -197,13 +227,15 @@ PY
     echo "SINCE=$SINCE"
     echo "MODE=$mode"
     echo "Do not commit or push. Do not edit web: keys. English body. No secrets."
-    if [[ -n "${STALE_JSON:-}" ]]; then
-      echo "STALE_JSON=$STALE_JSON"
+    echo "STALE_FILE=$STALE_FILE"
+    echo "Fill every path in STALE_DOCS. Do not skip while that list is non-empty."
+    echo "Do not skip a page because status is already active. Thin/active is unfinished."
+    echo "Do not mark status: active until the completeness floor in the instructions is met."
+    echo "Every file:line must exist in the file (wc -l). Invented line numbers fail."
+    cat "$META"
+    if [[ "$mode" == "lint" || "$WEEKDAY" == "7" ]]; then
+      echo "LINT_FILE=$LINT_FILE"
     fi
-    if [[ -n "${LINT_JSON:-}" ]] && { [[ "$mode" == "lint" ]] || [[ "$WEEKDAY" == "7" ]]; }; then
-      echo "LINT_JSON=$LINT_JSON"
-    fi
-    echo "DAYLOG=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1] or "{}").get("daylog") or "")' "$STALE_JSON" 2>/dev/null || true)"
     echo ""
     echo "## Page texts"
     cat "$extra"
@@ -227,7 +259,6 @@ PY
   fi
 
   CODEX_CMD=(
-    timeout 1800
     codex exec
     --ignore-user-config
     --model "${MODEL}"
@@ -243,7 +274,15 @@ PY
   else
     CODEX_CMD+=(--disable fast_mode)
   fi
-  "${CODEX_CMD[@]}" - < "$spec" || true
+  LANE_EXEC="${HOME}/.agents/bin/lane-exec"
+  [[ -x "$LANE_EXEC" ]] || LANE_EXEC="$(dirname "$0")/lane-exec"
+  if [[ -x "$LANE_EXEC" ]]; then
+    echo "docs-luna: idle=${DOCS_IDLE:-1200}s max=${DOCS_TIMEOUT:-0}s (0=no wall cap)"
+    "$LANE_EXEC" --idle "${DOCS_IDLE:-1200}" --max "${DOCS_TIMEOUT:-0}" --label docs-luna -- \
+      "${CODEX_CMD[@]}" - < "$spec" || true
+  else
+    "${CODEX_CMD[@]}" - < "$spec" || true
+  fi
 
   {
     echo "# DOCS maintain $DAY"
@@ -259,16 +298,18 @@ PY
 }
 
 if [[ "${MODE_ARG:-}" == "lint" ]]; then
-  STALE_JSON="{}"
+  STALE_FILE=$(mktemp -t docs-stale-out.XXXXXX)
+  printf '%s\n' '{}' > "$STALE_FILE"
   dispatch_luna lint
   "$WEB_BIN" log "$REPO" --kind lint --subject weekly --extra "model: ${MODEL}" || true
   exit 0
 fi
 
+STALE_FILE=$(mktemp -t docs-stale-out.XXXXXX)
 stale_rc=0
-STALE_JSON="$("$STALE_BIN" "$REPO" --since "$SINCE" --page-cap "$PAGE_CAP" --write-daylog)" || stale_rc=$?
+"$STALE_BIN" "$REPO" --since "$SINCE" --page-cap "$PAGE_CAP" --write-daylog > "$STALE_FILE" || stale_rc=$?
 if [[ "$stale_rc" -eq 2 ]]; then
-  echo "SKIP: $STALE_JSON"
+  echo "SKIP: no stale pages"
   "$WEB_BIN" log "$REPO" --kind skip --subject "$SINCE" --extra "reason: no stale pages" || true
   if [[ "$WEEKDAY" == "7" ]]; then
     dispatch_luna lint
@@ -277,17 +318,29 @@ if [[ "$stale_rc" -eq 2 ]]; then
 fi
 if [[ "$stale_rc" -ne 0 ]]; then
   echo "WARN: docs-stale failed ($stale_rc)" >&2
-  STALE_JSON=""
+  printf '%s\n' '{}' > "$STALE_FILE"
 fi
 
-echo "STALE=$STALE_JSON"
+python3 - "$STALE_FILE" <<'PY'
+import json, sys
+from pathlib import Path
+d = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8") or "{}")
+pages = d.get("stale_docs") or []
+print(f"STALE status={d.get('status')} pages={len(pages)} changed={len(d.get('changed') or [])}")
+print("PAGES " + " ".join(pages[:40]))
+PY
 echo "Recent:"
 git log --since="$SINCE" --oneline -10 || true
 
-MODE="night"
-if echo "$STALE_JSON" | grep -q '"stub": true'; then
-  MODE="init"
-fi
+MODE="$(python3 - "$STALE_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+d = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8") or "{}")
+hits = d.get("hits") or []
+print("init" if any(isinstance(h, dict) and (h.get("stub") or h.get("thin")) for h in hits) else "night")
+PY
+)"
 
 dispatch_luna "$MODE"
 "$WEB_BIN" lint "$REPO" || true

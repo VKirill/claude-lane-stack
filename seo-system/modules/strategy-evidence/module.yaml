@@ -1,0 +1,25 @@
+id: strategy-evidence
+title: Evidence-based strategy & cocoons
+phase: strategy
+status: active
+version: "1.0.0"
+summary: "Q* vs NavBoost, semantic cocoons, prioritised backlog from leak signals."
+depends_on: [passport-onboard, discovery-research]
+soft_depends_on: [intent-semantics, technical-seo]
+provides: [strategy.doc, strategy.cocoons, strategy.backlog]
+requires_provides: [passport.anamnesis]
+skills: [seo-evidence-based-2026, seo-drmax-orchestrator]
+originals: []
+cli: []
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/strategy/**"
+  reads:
+    - ".agents/seo/<slug>/discovery/**"
+    - ".agents/seo/<slug>/ANAMNESIS.md"
+env: []
+agent_triggers: ["стратегия", "кокон", "Q*", "NavBoost"]
+entrypoints:
+  agent: "Load seo-evidence-based-2026; write strategy/01-strategy.md + backlog.yaml"
+  cli: "seo-module scenario strategy-evidence qstar-navboost"
+scenarios: [qstar-navboost.yaml, cocoon-design.yaml, titan-os.yaml]

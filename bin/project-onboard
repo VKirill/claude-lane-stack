@@ -271,15 +271,8 @@ else
   echo "    scenario: $SCENARIO (auto, score=$DETECTED_SCORE — $DETECTED_REASONS)"
 fi
 
-# Depth: full → deep by default; minimal → fast by default (override with --deep/--fast)
-if [[ -n "$DEPTH_OVERRIDE" ]]; then
-  DEPTH="$DEPTH_OVERRIDE"
-elif [[ "$SCENARIO" == "full" ]]; then
-  DEPTH="deep"
-else
-  DEPTH="fast"
-fi
-echo "    depth: $DEPTH"
+# Depth decided after adoc read (CLI/env still win). Placeholder until then.
+DEPTH=""
 
 # UI / site signal → seed docs/DESIGN.md
 HAS_UI=0
@@ -327,6 +320,7 @@ ONBOARD_PROVIDER="${ONBOARD_PROVIDER:-}"
 ONBOARD_MODEL="${CODEX_MODEL:-${ONBOARD_MODEL:-}}"
 ONBOARD_EFFORT="${CODEX_REASONING:-${ONBOARD_EFFORT:-}}"
 ONBOARD_SERVICE_TIER="${ONBOARD_SERVICE_TIER:-}"
+ADOC_DEPTH=""
 _profile="$REPO/.agents/routing.profile.yaml"
 if [[ -f "$_profile" ]]; then
   # ponytail: awk scan of stages.onboard; ceiling = nested YAML quirks → use resolve_onboard
@@ -344,19 +338,33 @@ if [[ -f "$_profile" ]]; then
         model) [[ -z "$ONBOARD_MODEL" ]] && ONBOARD_MODEL="$_v" ;;
         reasoning_effort|effort) [[ -z "$ONBOARD_EFFORT" ]] && ONBOARD_EFFORT="$_v" ;;
         service_tier) [[ -z "$ONBOARD_SERVICE_TIER" ]] && ONBOARD_SERVICE_TIER="$_v" ;;
+        depth) [[ -z "$ADOC_DEPTH" ]] && ADOC_DEPTH="$_v" ;;
       esac
     fi
   done < "$_profile"
 fi
-# Depth-based defaults when adoc has no onboard block yet.
 if [[ -z "$ONBOARD_PROVIDER" ]]; then ONBOARD_PROVIDER="codex"; fi
+if [[ -z "$ONBOARD_SERVICE_TIER" ]]; then ONBOARD_SERVICE_TIER="standard"; fi
+# Depth: CLI/env > adoc depth > adoc Fast (service_tier) > scenario default
+if [[ -n "$DEPTH_OVERRIDE" ]]; then
+  DEPTH="$DEPTH_OVERRIDE"
+elif [[ "$ADOC_DEPTH" == "fast" || "$ADOC_DEPTH" == "deep" ]]; then
+  DEPTH="$ADOC_DEPTH"
+elif [[ "$ONBOARD_SERVICE_TIER" == "fast" ]]; then
+  DEPTH="fast"
+elif [[ "$SCENARIO" == "full" ]]; then
+  DEPTH="deep"
+else
+  DEPTH="fast"
+fi
+echo "    depth: $DEPTH"
+# Depth-based defaults when adoc has no onboard model/effort yet.
 if [[ -z "$ONBOARD_MODEL" ]]; then
   if [[ "$DEPTH" == "deep" ]]; then ONBOARD_MODEL="gpt-5.6-sol"; else ONBOARD_MODEL="gpt-5.6-terra"; fi
 fi
 if [[ -z "$ONBOARD_EFFORT" ]]; then
   if [[ "$DEPTH" == "deep" ]]; then ONBOARD_EFFORT="high"; else ONBOARD_EFFORT="medium"; fi
 fi
-if [[ -z "$ONBOARD_SERVICE_TIER" ]]; then ONBOARD_SERVICE_TIER="standard"; fi
 echo "    agent: $ONBOARD_PROVIDER model=$ONBOARD_MODEL effort=$ONBOARD_EFFORT tier=$ONBOARD_SERVICE_TIER"
 
 mkdir -p "$REPO/.agents"
@@ -912,12 +920,16 @@ run_onboard_fill() {
   local log="$art/codex-exec.log"
   local instr="${HOME}/.agents/codex/instructions/onboard.md"
   [[ -f "$instr" ]] || instr="/home/ubuntu/tools/claude-lane-stack/agents/codex/instructions/onboard.md"
-  local schemas="${HOME}/.claude/skills/project-onboard/references/PACK-SCHEMAS.md"
-  local validation="${HOME}/.claude/skills/project-onboard/references/VALIDATION.md"
-  local design_std="${HOME}/.claude/skills/project-onboard/references/design-md-standard.md"
-  local timeout_s=1200
-  [[ "$DEPTH" == "deep" ]] && timeout_s=3600
+  local ref_dir="${HOME}/.agents/skills/project-onboard/references"
+  [[ -d "$ref_dir" ]] || ref_dir="${HOME}/.claude/skills/project-onboard/references"
+  [[ -d "$ref_dir" ]] || ref_dir="$(cd "$(dirname "$0")/../skills/project-onboard/references" 2>/dev/null && pwd)"
+  local schemas="${ref_dir}/PACK-SCHEMAS.md"
+  local validation="${ref_dir}/VALIDATION.md"
+  local design_std="${ref_dir}/design-md-standard.md"
+  # Wall cap only if ONBOARD_TIMEOUT>0. Else lane-exec: writing/CPU resets idle.
+  local timeout_s=0
   [[ -n "${ONBOARD_TIMEOUT:-}" ]] && timeout_s="$ONBOARD_TIMEOUT"
+  local idle_s="${ONBOARD_IDLE:-1200}"
 
   if [[ ! -f "$instr" ]]; then
     echo "ERROR: missing onboard instructions: $instr" >&2
@@ -1027,7 +1039,7 @@ English only. End with: DONE $art/report.md   or   FAILED <reason>
 EOF
   fi
 
-  echo "==> fill: provider=$ONBOARD_PROVIDER model=$ONBOARD_MODEL effort=$ONBOARD_EFFORT tier=$ONBOARD_SERVICE_TIER timeout=${timeout_s}s"
+  echo "==> fill: provider=$ONBOARD_PROVIDER model=$ONBOARD_MODEL effort=$ONBOARD_EFFORT tier=$ONBOARD_SERVICE_TIER idle=${idle_s}s max=${timeout_s:-0}s"
   echo "    pipeline: $([[ "$two_pass" -eq 1 ]] && echo "two-pass (root → app-packs)" || echo "single-pass")"
   echo "    apps_for_packs=$apps_n"
   echo "    prompt=$prompt"
@@ -1039,6 +1051,18 @@ EOF
     echo "$ONBOARD_PROVIDER $ONBOARD_MODEL $ONBOARD_EFFORT $ONBOARD_SERVICE_TIER" > "$art/dry-run.txt"
     return 0
   fi
+
+  _limit() {
+    local exec="${HOME}/.agents/bin/lane-exec"
+    [[ -x "$exec" ]] || exec="$(dirname "$0")/lane-exec"
+    [[ -x "$exec" ]] || exec="/home/ubuntu/tools/claude-lane-stack/bin/lane-exec"
+    if [[ ! -x "$exec" ]]; then
+      echo "WARN: lane-exec missing; running without idle watchdog" >&2
+      "$@"
+      return $?
+    fi
+    "$exec" --idle "${idle_s}" --max "${timeout_s:-0}" --label onboard -- "$@"
+  }
 
   _onboard_tui_bin() {
     local c
@@ -1070,15 +1094,15 @@ EOF
       echo "    UI: split-pane TUI (ONBOARD_PLAIN=1 for raw stream)"
       if [[ -n "$stdin_file" ]]; then
         if command -v stdbuf >/dev/null 2>&1; then
-          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" <"$stdin_file" >>"$log" 2>&1 &
+          _limit stdbuf -oL -eL "${wcmd[@]}" <"$stdin_file" >>"$log" 2>&1 &
         else
-          timeout "$timeout_s" "${wcmd[@]}" <"$stdin_file" >>"$log" 2>&1 &
+          _limit "${wcmd[@]}" <"$stdin_file" >>"$log" 2>&1 &
         fi
       else
         if command -v stdbuf >/dev/null 2>&1; then
-          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" >>"$log" 2>&1 &
+          _limit stdbuf -oL -eL "${wcmd[@]}" >>"$log" 2>&1 &
         else
-          timeout "$timeout_s" "${wcmd[@]}" >>"$log" 2>&1 &
+          _limit "${wcmd[@]}" >>"$log" 2>&1 &
         fi
       fi
       local wpid=$!
@@ -1110,15 +1134,15 @@ EOF
       hb=$!
       if [[ -n "$stdin_file" ]]; then
         if command -v stdbuf >/dev/null 2>&1; then
-          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" <"$stdin_file" 2>&1 | tee -a "$log"
+          _limit stdbuf -oL -eL "${wcmd[@]}" <"$stdin_file" 2>&1 | tee -a "$log"
         else
-          timeout "$timeout_s" "${wcmd[@]}" <"$stdin_file" 2>&1 | tee -a "$log"
+          _limit "${wcmd[@]}" <"$stdin_file" 2>&1 | tee -a "$log"
         fi
       else
         if command -v stdbuf >/dev/null 2>&1; then
-          timeout "$timeout_s" stdbuf -oL -eL "${wcmd[@]}" 2>&1 | tee -a "$log"
+          _limit stdbuf -oL -eL "${wcmd[@]}" 2>&1 | tee -a "$log"
         else
-          timeout "$timeout_s" "${wcmd[@]}" 2>&1 | tee -a "$log"
+          _limit "${wcmd[@]}" 2>&1 | tee -a "$log"
         fi
       fi
       local rc=${PIPESTATUS[0]}

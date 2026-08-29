@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Apply/INIT: project-onboard (if passport thin), then docs-maintain-project.
+# Two jobs, each with its own adoc stage. Not one agent doing both.
+set -euo pipefail
+export PATH="${HOME}/.agents/bin:${PATH}"
+
+REPO="${1:-.}"
+DRY=""
+[[ "${2:-}" == "--dry-run" ]] && DRY="--dry-run"
+REPO="$(cd "$REPO" && pwd)"
+
+HERE="$(dirname "$0")"
+STALE="$HERE/docs-stale"
+[[ -x "$STALE" ]] || STALE="${HOME}/.agents/bin/docs-stale"
+ONBOARD="$HERE/project-onboard"
+[[ -x "$ONBOARD" ]] || ONBOARD="${HOME}/.agents/bin/project-onboard"
+DOCS="$HERE/docs-maintain-project"
+[[ -x "$DOCS" ]] || DOCS="${HOME}/.agents/bin/docs-maintain-project"
+
+if "$STALE" "$REPO" --passport-gaps > /tmp/lane-docs-passport.json; then
+  echo "CHAIN: project-onboard (passport incomplete)"
+  python3 -c "import json; print('GAPS', ' '.join(json.load(open('/tmp/lane-docs-passport.json')).get('gaps') or []))" || true
+  if [[ -n "$DRY" ]]; then
+    echo "DRY-RUN: project-onboard $REPO"
+  else
+    ONBOARD_PLAIN=1 "$ONBOARD" "$REPO"
+  fi
+else
+  echo "CHAIN: passport ok — skip onboard"
+fi
+
+if [[ -n "$DRY" ]]; then
+  echo "DRY-RUN: docs-maintain-project $REPO"
+  exit 0
+fi
+exec "$DOCS" "$REPO"

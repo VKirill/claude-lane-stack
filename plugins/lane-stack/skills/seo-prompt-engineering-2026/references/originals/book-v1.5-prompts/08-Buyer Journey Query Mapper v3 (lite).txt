@@ -1,0 +1,342 @@
+Роль: Principal SEO strategist, buyer journey analyst, search behavior researcher, conversion path architect и specialist по full-funnel query mapping.
+
+Контекст: Создание decision-grade journey query map на основе предоставленных входных данных о бизнесе и нише. Работа ведется на стыке SEO, информационной архитектуры, UX, маркетинговой психологии и адаптации к AI-поиску (SGE/LLM-search).
+
+Цель: Провести гипер-глубокий, многофазный анализ поисковых запросов по стадиям buyer journey внутри ниши. Превратить набор тем, интентов и keyword clusters в стратегический roadmap для SEO-архитектуры, контент-секвенсирования, internal linking и монетизации. 
+
+Входные данные:
+- Ниша: [ВВЕДИТЕ ДАННЫЕ]
+- Гео: [ВВЕДИТЕ ДАННЫЕ]
+- Язык: [ВВЕДИТЕ ДАННЫЕ]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / B2B / B2C / expert brand]
+- Модель монетизации: [лиды / продажи / подписка / affiliate / реклама / hybrid]
+- Основной продукт / услуга / категории: [ВВЕДИТЕ ДАННЫЕ]
+- Целевая аудитория: [ВВЕДИТЕ ДАННЫЕ]
+- Приоритетная цель: [трафик / лиды / продажи / authority / AI visibility / market entry]
+- Тип сайта: [новый / растущий / зрелый]
+- Конкуренты (если есть): [ВВЕДИТЕ ДАННЫЕ]
+- Известные сегменты аудитории / JTBD / гипотезы (если есть): [ВВЕДИТЕ ДАННЫЕ]
+- Текущие разделы сайта / ключевые страницы (если есть): [ВВЕДИТЕ ДАННЫЕ]
+- Данные клиентов, продаж, CRM, отзывов (если есть): [ВВЕДИТЕ ДАННЫЕ]
+- Ограничения: [слабый бренд / нет экспертов / ограниченный бюджет / etc.]
+- Горизонт планирования: [3 / 6 / 12 / 24 месяца]
+
+Если данных недостаточно, делай разумные гипотезы, но всегда явно помечай их как предположения.
+
+Правила анализа:
+1. Работай как стратег: выстраивай journey-led SEO architecture, а не просто topic clusters. Различай query patterns по awareness, evaluation, decision, onboarding, support, retention.
+2. Не путай buyer journey stage и intent label.
+3. Не анализируй путь пользователя как строго линейный; учитывай bridge queries, gaps, retention-opportunities.
+4. Оценивай feasibility (возможность реализации): различай стадии для новых сайтов и стадии, требующие сильного бренда/траста.
+5. Учитывай модификаторы: trust, AI behavior, internal linking, page-fit.
+6. Специфика ниш:
+   - YMYL: усиливай вес source validation, expert-confirmation, reassurance.
+   - SaaS: выделяй category education, alternatives, pricing, onboarding, integrations.
+   - E-commerce: выделяй attribute evaluation, comparison, shipping/returns, repeat-purchase.
+   - B2B: выделяй stakeholder education, internal buy-in, ROI validation, vendor evaluation.
+   - Local: учитывай urgency compression, local trust, booking stages.
+   - Affiliate: учитывай shortlist creation, comparison depth, click-defense.
+
+Инструкция для модели:
+Проведи анализ поэтапно и выведи результат строго в запрошенном формате из 32 блоков. 
+
+Формат вывода:
+
+1. Executive verdict
+- Общая картина buyer journey query landscape:
+- Насколько ниша journey-complex:
+- Какие stage-query clusters strongest:
+- Главный риск:
+- Главная возможность:
+- Best-fit journey strategy:
+- Итоговая рекомендация:
+
+2. Journey definition map
+Для каждого типа stage (от latent need до advocacy, исключая нерелевантные):
+- Тип stage:
+- Как проявляется:
+- Почему важен:
+- Какой query behavior возникает:
+- Комментарий:
+
+3. Journey universe
+Для каждого journey pattern (linear, non-linear, local, repeat, etc.):
+- Pattern:
+- Насколько распространен:
+- Strategic importance:
+- Какие query clusters отражают:
+- Нужен ли dedicated architecture response:
+- Комментарий:
+
+4. Query landscape by stages
+Для каждого query layer:
+- Query layer:
+- Dominant stage:
+- Secondary stages:
+- Business relevance:
+- Best page implications:
+- Комментарий:
+
+5. Intent shifts
+Для каждого stage:
+- Stage:
+- Dominant intent:
+- Secondary intents:
+- Intent clarity:
+- Mismatch risk:
+- Комментарий:
+
+6. Language shifts across journey
+Для каждого stage:
+- Stage:
+- Как звучит язык:
+- Repeating wording patterns:
+- SEO-useful phrasing:
+- Conversion-useful phrasing:
+- Комментарий:
+
+7. Stage-specific user goals
+Для каждого stage:
+- Stage:
+- Primary goal:
+- Secondary goals:
+- Decision readiness:
+- Content implication:
+- Conversion implication:
+- Комментарий:
+
+8. Fears, objections and anxieties
+Для каждого stage:
+- Stage:
+- Dominant anxieties:
+- Revealing query patterns:
+- Needed proof or page element:
+- Blocked transition:
+- Комментарий:
+
+9. Stage-to-JTBD mapping
+Для каждого stage:
+- Stage:
+- Dominant jobs:
+- Emerging jobs:
+- Completed jobs:
+- Best supporting page types:
+- Комментарий:
+
+10. Stage-to-problem mapping
+Для каждого stage:
+- Stage:
+- Dominant problem state:
+- Symptom vs root-cause clarity:
+- Monetization relevance:
+- Messaging implication:
+- Комментарий:
+
+11. Segment-stage map
+Для каждой комбинации (segment + stage):
+- Segment:
+- Stage:
+- Как journey differs:
+- Unique query behavior:
+- Needed assets:
+- Комментарий:
+
+12. Stage-specific search behavior
+Для каждого stage:
+- Stage:
+- Dominant search mode:
+- Typical query structure:
+- Specificity:
+- Commercial proximity:
+- AI sensitivity:
+- Комментарий:
+
+13. Stage-specific query classes
+Для каждого stage:
+- Stage:
+- Strongest query classes:
+- Weak or misleading query classes:
+- Page implications:
+- Conversion implications:
+- Комментарий:
+
+14. Bridge queries
+Для каждого bridge type:
+- Bridge:
+- Какие queries выполняют роль моста:
+- Почему это strategic:
+- Какой asset нужен:
+- Internal linking implication:
+- Комментарий:
+
+15. Dead ends and gaps
+Для каждого gap:
+- Gap:
+- Где пользователь застревает:
+- Почему:
+- Missing asset:
+- Business cost:
+- Комментарий:
+
+16. Stage-specific page-type fit
+Для каждого stage:
+- Stage:
+- Strongest page types:
+- Weak page types:
+- Mismatch risk:
+- Hybrid need:
+- Комментарий:
+
+17. Stage-specific format fit
+Для каждого stage:
+- Stage:
+- Strongest formats:
+- Weakest formats:
+- Format wedge:
+- Operational implications:
+- Комментарий:
+
+18. Trust requirements
+Для каждого stage:
+- Stage:
+- Trust threshold:
+- Required proof assets:
+- Weak-brand viability:
+- Trust sensitivity:
+- Комментарий:
+
+19. Conversion mechanics
+Для каждого stage:
+- Stage:
+- Best CTA type:
+- Direct vs indirect conversion role:
+- Strongest next step:
+- What not to force:
+- Комментарий:
+
+20. AI-search dynamics
+Для каждого stage:
+- Stage:
+- AI upside:
+- AI downside:
+- Best strategy:
+- Content design implication:
+- Комментарий:
+
+21. Monetization value by stage
+Для каждого stage:
+- Stage:
+- Traffic value:
+- Revenue value:
+- Retention value:
+- Strategic importance:
+- Комментарий:
+
+22. Geo and context differences
+Для каждого layer (если релевантно):
+- Geo / context layer:
+- Какие stages усиливаются:
+- Какие stages сокращаются:
+- Needed localized assets:
+- Priority:
+- Комментарий:
+
+23. Underserved journey stages
+Для каждого cluster:
+- Stage cluster:
+- Почему рынок недообслуживает:
+- Почему это opportunity:
+- Какой asset нужен:
+- Fit for current project:
+- Комментарий:
+
+24. Over-served and commoditized stages
+Для каждого случая:
+- Stage:
+- Почему crowded:
+- Можно ли дифференцироваться:
+- Deprioritize / reframe / support-only:
+- Комментарий:
+
+25. Compounding structures
+Для каждой связки:
+- Stage chain:
+- Как stages усиливают друг друга:
+- Sequencing:
+- Cumulative payoff:
+- Комментарий:
+
+26. Feasibility for current project
+Для каждого major stage:
+- Stage:
+- Fit for current site:
+- Required resources:
+- Time-to-impact:
+- Pursue now / prepare / monitor / avoid:
+- Комментарий:
+
+27. Journey portfolio
+- Core stages to own:
+- Quick-win journey layers:
+- High-conversion stages:
+- Trust-building stages:
+- Authority-building stages:
+- AI-visibility stages:
+- Local-priority stages:
+- Support and retention stages:
+- Experimental journey opportunities:
+- Defer-for-later stages:
+- Avoid / low-fit stages:
+- Комментарий:
+
+28. Scoring framework (Оценка от 1 до 100)
+- Overall buyer journey opportunity score:
+- Strongest core stage score:
+- Strongest high-conversion stage score:
+- Strongest quick-win stage score:
+- Strongest authority-building stage score:
+- Strongest AI-adjusted stage score:
+- Strongest underserved stage score:
+- Best fit for current project score:
+- Risk-adjusted journey attractiveness score:
+(Добавь обоснование для каждого скора: почему он такой, что влияет, как улучшить).
+
+29. Comparative ranking
+- Top-tier stages:
+- Second-tier stages:
+- Support-only stages:
+- Hidden but strategic stages:
+- Overhyped stages:
+- Commoditized stages:
+- Stages to tackle together:
+- Stages to delay:
+- Комментарий:
+
+30. Strategic sequencing
+- First 30 days:
+- First quarter:
+- Second quarter:
+- 6–12 months:
+- 12–24 months:
+- Комментарий:
+
+31. Strategy-model interpretation
+Для каждой модели (traffic-first, commercial-first, trust-first и т.д.):
+- Модель:
+- Какие stages приоритетны:
+- Главный upside:
+- Главный risk:
+- Для кого подходит:
+- Комментарий:
+
+32. Final recommendation
+- 10 strongest overall journey-query opportunities:
+- 5 core stages to prioritize first:
+- 5 highest-conversion stage opportunities:
+- 5 underserved journey gaps:
+- 5 trust-sensitive stages requiring stronger proof or expertise:
+- 5 commoditized or overhyped stages to avoid overvaluing:
+- 5 page types or asset types to launch first because of journey structure:
+- Recommended journey strategy model: 
+- Phased roadmap на 3, 6, 12 и 24 месяца:
+- Pursue aggressively / selectively / monitor / deprioritize recommendation:

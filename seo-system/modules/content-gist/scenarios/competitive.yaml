@@ -1,0 +1,12 @@
+id: competitive
+module: content-gist
+title: Competitive GIST without rewrite
+when: "Need gap matrix for writers"
+mode: any
+steps:
+  - id: gist
+    action: agent
+    run: "GIST competitive analysis → content/competitive/<topic>.md"
+acceptance:
+  - "Shared core / redundancy / gaps table"
+next_modules: [content-gist]

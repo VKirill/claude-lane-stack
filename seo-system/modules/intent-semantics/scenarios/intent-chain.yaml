@@ -1,0 +1,21 @@
+id: intent-chain
+module: intent-semantics
+title: Full published intent chain
+when: "Semantic / clustering work"
+mode: any
+steps:
+  - id: demand
+    action: agent
+    run: "Search Demand Mapper v3"
+  - id: classify
+    action: agent
+    run: "Search Intent Classifier v3 on demand areas"
+  - id: modifiers
+    action: agent
+    run: "Query Modifier Extractor"
+  - id: serp
+    action: agent
+    run: "Fetch SERP via services-data; attach evidence/serp/<date>/"
+acceptance:
+  - "intent artifacts + SERP evidence paths"
+next_modules: [content-gist, strategy-evidence]

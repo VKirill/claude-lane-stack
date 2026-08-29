@@ -1,0 +1,23 @@
+id: greenfield
+module: passport-onboard
+title: Onboard pre-launch project
+when: "No live site yet"
+mode: greenfield
+steps:
+  - id: onboard
+    action: cli
+    run: "seo-onboard greenfield --slug <slug> --brand <b> --niche <n> --geo <g>"
+  - id: brief
+    action: human
+    run: "Collect client brief gaps listed in passport/00-onboard-brief.md"
+  - id: collector_shape
+    action: agent
+    run: "Shape brief into Collector card fields without inventing facts"
+  - id: validate
+    action: module
+    uses_module: passport-onboard
+    run: "scenarios/validate-passport.yaml"
+acceptance:
+  - "ANAMNESIS mode=greenfield"
+  - "Gaps explicit"
+next_modules: [discovery-research, strategy-evidence]

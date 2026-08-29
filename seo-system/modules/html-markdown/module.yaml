@@ -1,0 +1,28 @@
+id: html-markdown
+title: Deterministic HTML → Markdown
+phase: technical
+status: active
+version: "1.0.0"
+summary: "Convert any HTML to compact markdown (html2text or pure fallback) so agents read fewer tokens. Auto on seo-scan → snapshot.md."
+depends_on: [core-harness]
+soft_depends_on: [site-scan]
+provides: [convert.html2md, scan.snapshot_md]
+requires_provides: []
+skills: []
+originals: []
+cli: [seo-html2md, seo-scan]
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/scans/pages/<page>/<ts>/snapshot.md"
+  reads:
+    - "*.html"
+env: []
+agent_triggers:
+  - "html в markdown"
+  - "snapshot.md"
+  - "сжать html"
+  - "html2md"
+entrypoints:
+  agent: "Prefer snapshot.md over snapshot.html; run seo-html2md on arbitrary HTML"
+  cli: "seo-html2md page.html -o page.md"
+scenarios: [convert-file.yaml, scan-auto.yaml]

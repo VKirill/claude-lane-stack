@@ -1,0 +1,19 @@
+id: connect-provider
+module: services-data
+title: Connect one provider
+when: "Human has new API credentials"
+mode: any
+steps:
+  - id: set
+    action: cli
+    run: "seo-services set <provider_id> KEY=VALUE …"
+  - id: enable
+    action: cli
+    run: "seo-services enable <provider_id>"
+  - id: test
+    action: cli
+    run: "seo-services test <provider_id>"
+acceptance:
+  - "status shows configured=yes"
+  - "test OK or documented failure"
+next_modules: []

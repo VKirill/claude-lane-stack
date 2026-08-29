@@ -1,0 +1,19 @@
+id: session-loop
+module: core-harness
+title: Session open → work → handoff
+when: "Every seo-specialist session"
+mode: any
+steps:
+  - id: resume
+    action: cli
+    run: "seo-resume ."
+  - id: work
+    action: agent
+    run: "Execute focus Next via other modules"
+  - id: close
+    action: cli
+    run: "seo-board . && seo-handoff-write ."
+acceptance:
+  - "STATUS.next updated"
+  - "HANDOFF regenerated"
+next_modules: []

@@ -1,0 +1,12 @@
+id: competitors-block2
+module: discovery-research
+title: Competitive bonus chain (strict order)
+when: "Need competitor-informed strategy"
+mode: any
+steps:
+  - id: chain
+    action: agent
+    run: "Landscape→Deconstructor→Weakness→SERP Gap→Strategy Builder; clean handoff each step"
+acceptance:
+  - "Five-stage artifacts or one consolidated discovery/competitors.md with stage provenance"
+next_modules: [strategy-evidence]

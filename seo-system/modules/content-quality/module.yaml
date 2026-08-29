@@ -1,0 +1,33 @@
+id: content-quality
+title: CVD, humanization, AI-detect, assessors
+phase: content
+status: active
+version: "1.0.0"
+summary: "Post-GIST quality gates: replaceability, editorial, detector, QRG assessors."
+depends_on: [content-gist]
+soft_depends_on: []
+provides: [content.cvd, content.humanized, content.detect, content.assessor]
+requires_provides: [content.gist_plan]
+skills: [drmax-cvd, drmax-text-humanization, ai-detect, drmax-lexadapt, seo-prompt-engineering-2026]
+originals:
+  - "drmax-prompt-channel/77/CVD_skill_v2.3.md"
+  - "drmax-prompt-channel/79/TEXT-HUMANIZATION-by-DrMax-v-1-6-1-RUNTIME-FINAL.md"
+  - "drmax-prompt-channel/83/AI-detect-v-3-9-4-full.md"
+  - "drmax-prompt-channel/4/Asessor-MC-Quality-Audit-lite.txt"
+  - "drmax-prompt-channel/5/Asessor-MC-Quality-Audit-full.txt"
+  - "drmax-prompt-channel/6/Asessor-Spam-Scaled-Content-Audit.txt"
+cli: []
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/content/pages/<page>/cvd.md"
+    - ".agents/seo/<slug>/content/pages/<page>/humanized.md"
+    - ".agents/seo/<slug>/content/pages/<page>/detect.md"
+    - ".agents/seo/<slug>/content/pages/<page>/assessor.md"
+  reads:
+    - ".agents/seo/<slug>/content/pages/<page>/draft.md"
+env: []
+agent_triggers: ["CVD", "humanization", "ai-detect", "асессор"]
+entrypoints:
+  agent: "post-gist-pipeline scenario"
+  cli: "seo-module scenario content-quality post-gist-pipeline"
+scenarios: [post-gist-pipeline.yaml, spam-scaled-check.yaml, detect-only.yaml]

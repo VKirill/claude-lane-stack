@@ -1,0 +1,25 @@
+id: discovery-research
+title: DrMax research systems 01–25
+phase: discovery
+status: active
+version: "1.0.0"
+summary: "Selective analytical prompts from book v1.5 + competitive bonus block."
+depends_on: [passport-onboard]
+soft_depends_on: [services-data, intent-semantics]
+provides: [discovery.niche, discovery.demand, discovery.audience, discovery.competitors]
+requires_provides: [passport.anamnesis]
+skills: [seo-prompt-engineering-2026]
+originals:
+  - "book-v1.5-prompts/"
+cli: [seo-prompt-log]
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/discovery/**"
+  reads:
+    - ".agents/seo/<slug>/ANAMNESIS.md"
+env: [MUTAGEN_API_KEY, XMLSTOCK_*, DATAFORSEO_*]
+agent_triggers: ["исследование ниши", "discovery", "спрос", "аудитория"]
+entrypoints:
+  agent: "Pick minimal chain from activation-matrix / usage matrix; open originals 1:1"
+  cli: "seo-module scenario discovery-research niche-entry"
+scenarios: [niche-entry.yaml, new-project.yaml, growth-existing.yaml, competitors-block2.yaml]

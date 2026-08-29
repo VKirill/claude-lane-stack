@@ -1,0 +1,16 @@
+{
+  "description": "Default host Claude settings the conveyor needs",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ensure_subagent_model.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

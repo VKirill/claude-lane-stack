@@ -1,0 +1,12 @@
+id: titan-os
+module: strategy-evidence
+title: SEO TITAN OS deep pass
+when: "Need full strategic OS dump (optional)"
+mode: any
+steps:
+  - id: titan
+    action: agent
+    run: "Open SEO TITAN OS original; feed normalized passport + exports"
+acceptance:
+  - "strategy/titan-os.md with version pin"
+next_modules: []

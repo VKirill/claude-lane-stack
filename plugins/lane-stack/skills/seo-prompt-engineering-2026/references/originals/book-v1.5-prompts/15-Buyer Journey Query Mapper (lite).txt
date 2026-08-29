@@ -1,0 +1,82 @@
+Роль: Senior SEO Strategist, Full-Funnel Search Analyst и Specialist по Buyer Journey Mapping.
+Контекст: Разработка глубокой SEO-стратегии на основе пути покупателя. Необходимо отойти от классического (и устаревшего) деления только на TOFU/MOFU/BOFU и спроектировать сложную архитектуру интентов, контента и переходов.
+Цель: Построить карту запросов, интентов, тем, page types, CTA и логики переходов между этапами, чтобы SEO покрывало весь путь пользователя: от осознания проблемы до покупки и удержания.
+
+Входные данные проекта:
+- Ниша: [УКАЗАТЬ ТЕМУ]
+- Гео: [УКАЗАТЬ СТРАНУ / РЕГИОН / ГОРОД]
+- Язык: [УКАЗАТЬ ЯЗЫК]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local business / B2B / B2C]
+- Модель монетизации: [лиды / подписка / продажи / affiliate / demo / consultation / booking / trial]
+- Основной продукт / услуга / категории: [УКАЗАТЬ СПИСОК]
+- Целевая аудитория: [УКАЗАТЬ ОПИСАНИЕ]
+- Приоритетная цель: [трафик / лиды / продажи / демо / бронирования / pipeline / AI visibility]
+- Тип сайта: [новый / растущий / зрелый]
+- Основные сегменты аудитории: [УКАЗАТЬ, ЕСЛИ ЕСТЬ]
+- Конверсионные действия: [форма / trial / demo / корзина / звонок / консультация / бронирование]
+- Конкуренты: [УКАЗАТЬ, ЕСЛИ ЕСТЬ]
+- Ограничения проекта: [УКАЗАТЬ: слабый бренд / мало ссылок / нет экспертов / только блог / нет product pages / и т.д.]
+
+Инструкция для модели:
+Если входных данных недостаточно, сделай разумные гипотезы, основываясь на лучших практиках для указанного "Типа бизнеса", но обязательно помечай их как [Предположение]. Проведи анализ поэтапно, выполнив 15 фаз исследования.
+
+Фаза 1. Определение Journey Model
+Оцени применимость и распиши этапы для данной ниши: problem awareness → solution awareness → consideration → comparison/evaluation → decision → purchase/conversion → onboarding/implementation → retention/support → expansion/upgrade/cross-sell → advocacy/referral. 
+Для каждого этапа укажи: состояние пользователя, цель, важность для SEO, важность для бизнеса, доступность для нового сайта.
+
+Фаза 2. Декомпозиция ниши по Journey-сегментам
+Выдели кластеры спроса: problem-focused, educational, definitional, solution exploration, use-case, comparison, alternatives, vendor evaluation, pricing, trust/proof, transactional, implementation, support, renewal.
+Для каждого кластера укажи: типовые запросы, интент, этап journey, SEO и Business value, вероятность перехода дальше.
+
+Фаза 3. Query Map по этапам
+Определи, как формулируются запросы на каждом этапе (вопросы, маркеры, широта, problem/solution-first, коммерческий интент, модификаторы новичков/про экспертов, маркеры срочности). Укажи ожидаемый next step пользователя.
+
+Фаза 4. Интенты внутри этапов (Intent Layering)
+Определи смешение интентов (informational, commercial investigation, transactional, local, comparison, trust-validation, implementation, support). Укажи доминирующий интент, точки misunderstanding intent и требования к page type.
+
+Фаза 5. Эволюция языка (Language Shift)
+Покажи изменение лексики по мере движения по воронке: от problem language к vendor-specific и decision language. Как меняется specificity, уверенность, когда появляются pricing/urgency модификаторы.
+
+Фаза 6. Карта Page Types
+Определи оптимальные типы страниц для каждого этапа (глоссарии, лонгриды, use-cases, product pages, comparison, versus, alternatives, pricing, case studies, support и т.д.). Укажи, что они решают (трафик/прогрев/конверсия) и нужен ли им supporting content layer.
+
+Фаза 7. Карта переходов (Transitions)
+Проанализируй связки между этапами. Что запускает переход, какие вопросы возникают, какие страницы и CTA нужны, где требуется internal linking bridge, где высок риск drop-off.
+
+Фаза 8. Поиск Journey Gaps
+Выяви слабо покрытые зоны в нише (например, перекос в awareness без decision support, отсутствие pricing explanation или trust-building pages). Оцени потенциальный business impact от их закрытия.
+
+Фаза 9 и 10. Специфика сегментов и бизнес-модели
+Учти разницу путей для новичков/экспертов, B2B/B2C, enterprise/SMB. Адаптируй воронку под модель (для SaaS — alternatives/use-cases; для E-com — buying guides/reviews; для Local — near-me/proof; для B2B — stakeholder proof/long consideration).
+
+Фаза 11. Приоритеты по Business Impact
+Оцени каждый кластер по: traffic potential, revenue potential, conversion proximity, trust requirement, difficulty. Выведи Priority Score.
+
+Фаза 12. Internal Linking & Content Flow
+Спроектируй логику связей. Откуда и куда вести пользователя, какие анкоры использовать, где нужны hub links, next-step modules, related problem modules.
+
+Фаза 13. Учет AI-Search и Modern SERP
+Оцени влияние AI Overviews. Какие этапы уязвимы, где нужна строгая структура данных, где concise summaries двигают по воронке, где нужна dual visibility (organic + AI-discovery).
+
+Фаза 14. Оценка рисков
+Опиши риски journey-based стратегии (перекос в TOFU, BOFU без support layer, CTA mismatch). Укажи вероятность, влияние и методы предотвращения.
+
+Фаза 15. Финальная рекомендация
+Сформулируй итоговую модель запуска и стратегию архитектуры.
+
+ФОРМАТ ВЫВОДА (Строго следуй этой структуре):
+
+1. Executive verdict (Общая картина, важные этапы, SEO vs Revenue leverage, главный риск, главная возможность, итоговая рекомендация).
+2. Journey model (Этап, состояние, цели, значимость, комментарий).
+3. Query map by stage (Этап, запросы, формулировки, интент, реальная потребность, next step).
+4. Intent layering (Этап, смешение интентов, риски mismatch, нужный page type).
+5. Language shift by journey stage (Этап, характер языка, маркеры).
+6. Page types by journey stage (Этап, лучшие page types, что решают, нужен ли support layer).
+7. Transition map (Переход, триггеры, вопросы, страницы, CTA, internal bridge).
+8. Journey gaps (Этап, суть пробела, бизнес-влияние, решение).
+9. Segment differences (Сегмент, особенности journey, риски потери).
+10. Priority clusters (Кластер, потенциал, сложность, priority score, роль).
+11. Internal linking and flow recommendations (Связки, анкоры, CTA, trust blocks).
+12. AI-search implications (Влияние AI, уязвимости, структура).
+13. Risks (Риск, вероятность, влияние, предотвращение).
+14. Final recommendation (Топ-5 важных этапов, Топ-5 кластеров, Топ-5 форматов для старта, Топ-5 gaps, Топ-5 ошибок, Рекомендация по модели запуска).

@@ -1,0 +1,14 @@
+id: single-page
+module: site-scan
+title: One URL versioned analysis
+when: "Page changed or targeted audit"
+mode: live
+steps:
+  - id: scan
+    action: cli
+    run: "seo-scan <slug> --page <url>"
+    artifact: ".agents/seo/<slug>/scans/pages/<page-slug>/<ts>/analysis.md"
+acceptance:
+  - "New timestamp directory created"
+  - "LATEST pointer updated"
+next_modules: [content-gist, content-quality]

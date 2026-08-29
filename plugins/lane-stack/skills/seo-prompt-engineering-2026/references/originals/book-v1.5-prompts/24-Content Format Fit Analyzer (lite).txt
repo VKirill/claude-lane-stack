@@ -1,0 +1,70 @@
+Роль: Senior SEO Strategist, Content Design Analyst, SERP Format Researcher и Specialist по format-intent fit.
+Контекст: Разработка decision-grade content format fit map для определения того, какие форматы контента лучше всего подходят нише, интентам, SERP reality, buyer journey, audience expectations и business goals.
+
+Инструкция:
+Твоя задача — провести глубокий анализ и помочь команде выбрать не просто темы, а правильные content formats для каждой задачи. Работай как стратег: пойми структурный фит, выяви format mismatches рынка, свяжи форматы с монетизацией и ресурсами. 
+
+Входные данные:
+- Ниша: [УКАЖИТЕ ТЕМУ]
+- Гео: [УКАЖИТЕ СТРАНУ / РЕГИОН / ГОРОД]
+- Язык: [УКАЖИТЕ ЯЗЫК]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / marketplace / local business / B2B / B2C]
+- Основной продукт / услуга / категории: [УКАЖИТЕ СПИСОК]
+- Целевая аудитория: [УКАЖИТЕ ОПИСАНИЕ]
+- Приоритетная цель: [трафик / лиды / продажи / topical authority / links / AI visibility]
+- Тип сайта: [новый / растущий / зрелый]
+- Существующие форматы на сайте: [УКАЖИТЕ СПИСОК ИЛИ "Нет"]
+- Конкуренты: [УКАЖИТЕ СПИСОК ИЛИ "Нет данных"]
+- Ограничения: [УКАЖИТЕ ОГРАНИЧЕНИЯ: например, только блог, нет разработки, нет видео-команды]
+
+Если данных недостаточно, сделай разумные гипотезы, но всегда помечай их как предположения.
+
+Работай поэтапно через 19 фаз анализа:
+
+Фаза 1. Определи format landscape ниши (оцени релевантность форматов от blog articles и hubs до tools, calculators и AI-answerable blocks).
+Фаза 2. Раздели форматы по типам намерения (informational, commercial, local, support и т.д.).
+Фаза 3. Проанализируй format fit по buyer journey (от awareness до retention/expansion).
+Фаза 4. Оцени SERP-format alignment (dominant formats в выдаче, room for alternatives).
+Фаза 5. Найди format mismatches у рынка (где конкуренты используют неидеальный формат).
+Фаза 6. Найди format mismatches на сайте (внутренние format gaps на основе вводных).
+Фаза 7. Оцени format fit по типу бизнеса (SaaS, e-com, local и т.д.).
+Фаза 8. Оцени format fit по audience segments (новички, эксперты, B2B, urgent-need).
+Фаза 9. Оцени format fit по business goals (traffic, leads, trust, AI visibility).
+Фаза 10. Проанализируй scalability and operational fit (насколько формат реалистичен для команды).
+Фаза 11. Оцени trust and E-E-A-T dependence by format.
+Фаза 12. Оцени linkability and authority value by format.
+Фаза 13. Оцени AI-search and answerability fit.
+Фаза 14. Найди format opportunities and wedges (low-competition format wedges).
+Фаза 15. Найди low-fit formats and waste zones (форматы, которых стоит избегать).
+Фаза 16. Построй recommended content mix.
+Фаза 17. Построй scoring model (оцени фит по шкале 1-100 по разным параметрам).
+Фаза 18. Дай strategic interpretation (практические шаги).
+Фаза 19. Построй final recommendation.
+
+Правила анализа:
+- Не путай тему и формат.
+- Различай rankable formats, conversion formats, authority formats.
+- Учитывай специфику введенного типа бизнеса (SaaS, E-com, B2B, Local, Affiliate).
+- Приоритизируй AI-friendly форматы, если AI visibility важна.
+- Все выводы должны быть production-ready (практически применимы).
+
+Формат вывода:
+Структурируй ответ строго по 19 пунктам. 
+
+1. Executive verdict (Общая картина, strongest fit, mismatches, риски, возможности, итоговая рекомендация).
+2. Format landscape (Формат, релевантность, роль, resource intensity).
+3. Intent-to-format map (Интент, лучшие форматы, риск mismatch).
+4. Journey-stage format fit (Этап, форматы, влияние на продвижение по воронке).
+5. SERP-format alignment (Сегмент, dominant format, открытость альтернативам).
+6. Market format mismatches (Где рынок ошибается, opportunity level).
+7. Site format gaps (Что не так, impact, срочность).
+8. Audience and business-model fit (Сегмент, сильные/слабые форматы).
+9. Goal-based format fit (Формат, ценность для трафика/конверсий/траста/AI).
+10. Operational fit (Реалистичность, scalability, maintenance).
+11. Trust and authority implications (Trust sensitivity, нужны ли proof assets).
+12. Format wedges (Wedge, почему работает, горизонт результата).
+13. Low-fit formats (Почему кажется привлекательным, почему fit слабый).
+14. Recommended content mix (Core ranking, conversion, trust, AI-supporting, experimental).
+15. Scoring model (Overall fit, best conversion, best new-site, overrated).
+16. Interpretation (Что запускать первыми, где нужен redesign).
+17. Final recommendation (Топ-10 форматов, 5 для старта, 5 wedges, 5 low-fit, 5 ошибок, модель запуска).

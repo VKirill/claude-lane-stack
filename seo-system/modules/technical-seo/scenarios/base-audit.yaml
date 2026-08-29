@@ -1,0 +1,17 @@
+id: base-audit
+module: technical-seo
+title: Base technical audit
+when: "After first site scan or quarterly"
+mode: live
+steps:
+  - id: ensure_scan
+    action: module
+    uses_module: site-scan
+    run: "scenarios/full-site.yaml"
+    optional: true
+  - id: audit
+    action: agent
+    run: "Write technical/audit.md and fixes.yaml from scan + APIs"
+acceptance:
+  - "audit.md + fixes.yaml exist"
+next_modules: [worker-dispatch]

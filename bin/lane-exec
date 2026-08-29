@@ -40,7 +40,7 @@ def main() -> int:
         "--max",
         type=int,
         default=5400,
-        help="absolute max wall seconds (default 5400 = 90m)",
+        help="absolute max wall seconds (default 5400 = 90m). 0 = no wall cap; only idle kills.",
     )
     ap.add_argument(
         "--heartbeat",
@@ -91,7 +91,8 @@ def main() -> int:
 
     # allow short idle for tests; production implementers use 600–900
     idle_s = max(5, int(args.idle))
-    max_s = max(int(args.max), idle_s + 5)
+    # 0 = keep running while stdout/CPU/heartbeat move; idle still kills a hang
+    max_s = 0 if int(args.max) <= 0 else max(int(args.max), idle_s + 5)
     hb_path = Path(args.heartbeat) if args.heartbeat else None
     log_path = Path(args.log) if args.log else None
     event_path = Path(args.event_log) if args.event_log else None
@@ -162,7 +163,10 @@ def main() -> int:
     # "foreign activity" for idle reset (we already reset on real activity).
     self_hb_write = False
 
-    log_line(f"start pid={proc.pid} idle={idle_s}s max={max_s}s cmd={' '.join(cmd[:6])}...")
+    log_line(
+        f"start pid={proc.pid} idle={idle_s}s max={'none' if max_s <= 0 else str(max_s) + 's'} "
+        f"cmd={' '.join(cmd[:6])}..."
+    )
     emit_event("start", pid=proc.pid)
 
     def write_heartbeat(note: str = "lane-exec activity") -> None:
@@ -218,8 +222,8 @@ def main() -> int:
             elapsed = now - start
             idle_for = now - last_activity
 
-            # absolute max
-            if elapsed >= max_s:
+            # absolute max (skipped when --max 0)
+            if max_s > 0 and elapsed >= max_s:
                 log_line(f"MAX timeout {max_s}s — killing process group")
                 emit_event("timeout", pid=proc.pid, reason="max")
                 kill_tree(signal.SIGTERM)
@@ -229,7 +233,7 @@ def main() -> int:
                 break
 
             # grace notice
-            if not grace_logged and elapsed >= 0.8 * max_s:
+            if max_s > 0 and not grace_logged and elapsed >= 0.8 * max_s:
                 log_line(f"GRACE: {elapsed:.0f}s / max {max_s}s still running")
                 grace_logged = True
 

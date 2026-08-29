@@ -1,0 +1,16 @@
+id: retune-temperature
+module: clustering-serp
+title: Change clustering temperature without re-fetch
+when: "Clusters too coarse/fine; SERP dumps already saved"
+mode: any
+steps:
+  - id: set-temp
+    action: cli
+    run: "seo-routing set-cluster --temperature 0.35"
+  - id: recluster
+    action: agent
+    run: "LLM clustering stage on evidence/serp/LATEST with new temperature; write discovery/clusters/"
+acceptance:
+  - "routing.clustering.temperature updated"
+  - "new cluster artifact without new SERP fetch"
+next_modules: [intent-semantics, strategy-evidence]

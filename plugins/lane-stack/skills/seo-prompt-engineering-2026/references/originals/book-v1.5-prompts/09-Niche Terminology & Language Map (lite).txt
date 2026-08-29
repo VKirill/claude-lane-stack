@@ -1,0 +1,168 @@
+Роль: Principal SEO Strategist, Search Language Analyst, Terminology Researcher, Voice-of-Market Interpreter и специалист по Strategic Language Mapping.
+
+Контекст: Требуется провести гипер-глубокий, аналитический, многофазный анализ терминологии и языка внутри заданной ниши. Цель — превратить разрозненные слова, синонимы, category labels, modifiers и user phrasing в decision-grade language map, пригодный для SEO-стратегии, контентной архитектуры, messaging, trust design, entity building и адаптации под AI-поиск (SGE / LLM-search).
+
+Инструкция:
+Работай не как обычный keyword researcher (который просто парсит частотность) и не как копирайтер (делающий tone-of-voice). Работай как стратег. Твоя задача:
+- Понять, каким языком реально описываются проблемы, решения и outcomes.
+- Различать expert, beginner, buyer, support, trust и AI-style language.
+- Видеть terminology conflicts, ambiguity, jargon barriers и language shifts.
+- Выявлять vocabulary mismatch между брендом и рынком.
+- Выдать карту языка для принятия практических решений по неймингу, кластеризации и конверсии.
+
+Входные данные:
+- Ниша: [ВВЕДИТЕ ТЕМУ]
+- Гео: [ВВЕДИТЕ СТРАНУ / РЕГИОН / ГОРОД]
+- Язык: [ВВЕДИТЕ ЯЗЫК]
+- Тип бизнеса: [SaaS / e-commerce / услуги / affiliate / media / B2B / B2C и т.д.]
+- Модель монетизации: [лиды / продажи / подписка / реклама / hybrid и т.д.]
+- Основной продукт / услуга: [СПИСОК]
+- Целевая аудитория: [ОПИСАНИЕ]
+- Приоритетная цель: [трафик / лиды / продажи / authority / AI visibility и т.д.]
+- Тип сайта: [новый / растущий / зрелый]
+- Конкуренты: [СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Известные брендовые термины (internal naming): [СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Текущая структура сайта / разделы: [СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Данные из CRM / Support / Reviews: [СПИСОК ИЛИ "НЕТ ДАННЫХ"]
+- Ограничения: [слабый бренд / нет экспертов / малый бюджет и т.д.]
+- Горизонт планирования: [3 / 6 / 12 / 24 месяца]
+
+*Примечание: Если данных недостаточно, делай разумные гипотезы, но явно помечай их как «[Гипотеза]».*
+
+Условия и правила анализа:
+1. Не путай термин и keyword variant. Не путай language layer и query list.
+2. Делай risk-adjusted interpretation (если термин популярен, но ambiguous — отмечай это).
+3. Учитывай trust, entity clarity, AI behavior, ambiguity и page-fit как ключевые модификаторы.
+4. Специфика ниш:
+   - Для YMYL: усиливай вес trust language, caution wording, source validation.
+   - Для SaaS: учитывай use-case language, integrations, onboarding wording, admin vs user vocabulary.
+   - Для e-commerce: учитывай fit/compatibility wording, trust language, shipping/return.
+   - Для B2B: учитывай ROI language, stakeholder vocabulary, procurement terminology.
+   - Для Local: учитывай urgency, proximity terms, service-area language.
+5. Переводи инсайты в конкретные page types, naming systems и execution priorities.
+
+Формат вывода (Структура отчета):
+Выполни анализ строго по следующим 34 фазам, сохраняя нумерацию и структуру списков.
+
+1. Executive verdict
+- Общая картина terminology and language landscape:
+- Насколько ниша language-complex:
+- Какие terminology clusters strongest:
+- Главный риск:
+- Главная возможность:
+- Best-fit language strategy:
+- Итоговая рекомендация:
+
+2. Terminology definition map
+Раздели и опиши типы языка (category, product, problem, symptom, solution, expert, beginner, buyer, support, trust, comparison, implementation, outcome, AI-conversational).
+(Для каждого укажи: Тип layer | Как проявляется | Почему важен | Чем отличается | Комментарий)
+
+3. Terminology universe
+Оцени ландшафт (official labels, user-generated, jargon, abbreviations, etc.).
+(Для каждого укажи: Layer | Насколько распространен | Strategic importance | Роль (core/secondary) | Opportunity/risk | Комментарий)
+
+4. Subniche language map
+(Для каждой подниши: Dominant terminology | Simplified vs technical | Ambiguity level | Monetization relevance | Комментарий)
+
+5. Segment-based language map
+Оцени язык для beginners, experts, B2B/B2C, urgent users, etc.
+(Для каждого сегмента: Как называет проблему | Как называет решение | Понятные terms | Confusing terms | SEO/conversion implication | Комментарий)
+
+6. Journey-based language map
+(Для каждого этапа воронки: Dominant language patterns | Specificity level | Trust language needs | Page implication | Комментарий)
+
+7. Intent-based terminology map
+(Для каждого intent: Strongest terms | Ambiguous terms | Conversion relevance | Best page implication | Комментарий)
+
+8. Synonym clusters
+(Для каждого концепта: Exact synonyms | Near-synonyms | False synonym risk | Segment/geo preference | Комментарий)
+
+9. Ambiguity and conflicts
+Где слова значат разное для разных людей.
+(Для каждой зоны: В чем конфликт | SEO/UX risk | Needed asset | Safer wording | Комментарий)
+
+10. Jargon barriers
+(Для каждого барьера: Кого отталкивает | Business cost | How to simplify | Where needed | Комментарий)
+
+11. Beginner vs expert language
+(Для каждого топика: Beginner phrasing | Intermediate phrasing | Expert phrasing | Buyer phrasing | Needed translation layer | Комментарий)
+
+12. Problem language
+(Для каждого кластера проблем: Strongest phrases | Repeating patterns | SEO/Conversion-useful wording | Risky wording | Комментарий)
+
+13. Solution language
+(Для каждого кластера решений: Strongest terminology | Beginner/Expert wording | Commercial/Page naming implication | Комментарий)
+
+14. Commercial language
+(Для каждого слоя: Strongest phrases | Trust/Conversion implication | CTA wording | Комментарий)
+
+15. Trust and proof language
+(Для каждого слоя: Strongest terms | Где особенно важен | Page-type implication | Misuse risk | Комментарий)
+
+16. Implementation and support language
+(Для каждого слоя: Strongest terms | Stage relevance | SEO/support implication | Dedicated assets needed? | Комментарий)
+
+17. Sophistication and awareness shifts
+(Для каждого слоя: Как меняется vocabulary | Какие terms допустимы позже | Где misunderstanding likely | Funnel implication | Комментарий)
+
+18. Geo and multilingual terminology (если применимо)
+(Для каждого слоя: Что меняется | Что стабильно | Localization implication | Priority | Комментарий)
+
+19. Terminology shifts over time
+(Для каждого слоя: Current status | Future relevance | SEO risk/opportunity | Adopt/explain/monitor/avoid | Комментарий)
+
+20. AI-search language patterns
+(Для каждого слоя: AI opportunity | AI risk | Best response | Header/FAQ implication | Комментарий)
+
+21. Brand-language mismatch
+(Для каждого концепта: Brand wording | Market wording | Severity of mismatch | Replace/blend/translate | Комментарий)
+
+22. Terminology-to-demand mapping
+(Для каждого кластера: Strongest/Weak demand layer | Ambiguity risk | Strategic role | Комментарий)
+
+23. Terminology-to-page fit
+(Для каждого кластера: Strongest/Weak page types | Mismatch risk | Hybrid need | Комментарий)
+
+24. Terminology-to-entity fit
+(Для каждого слоя: Entity importance | Structured content/AI visibility implication | Canonical page ownership | Комментарий)
+
+25. Underserved terminology opportunities
+(Для каждой возможности: Почему рынок недорабатывает | Почему это opportunity | Какой asset нужен | Fit for project | Комментарий)
+
+26. Commoditized and risky terminology zones
+(Для каждого случая: Почему risky/crowded | Можно ли дифференцироваться | Action (replace/reframe/avoid) | Комментарий)
+
+27. Compounding language structures
+(Для каждой связки: Как layers усиливают друг друга | Sequencing | Cumulative payoff | Комментарий)
+
+28. Feasibility for current project
+(Для каждого кластера: Fit for site | Required resources | Time-to-impact | Action (pursue now/prepare/monitor/avoid) | Комментарий)
+
+29. Language portfolio
+Распредели терминологию по корзинам: Core, Quick-win, High-conversion, Trust-building, Authority-building, AI-visibility, Local, Support, Experimental, Defer, Avoid.
+
+30. Scoring framework
+Оцени возможности по шкале 1-100.
+(Выведи: Overall score, Core score, Conversion score, Quick-win score и т.д., и обоснуй: Почему такой | Что влияет | Как улучшить)
+
+31. Comparative ranking
+(Выведи: Top-tier, Second-tier, Support-only, Hidden opportunities, Risky/Commoditized, Clusters to launch together/delay | Комментарий)
+
+32. Strategic sequencing
+Распредели по этапам: First 30 days, 1-й квартал, 2-й квартал, 6–12 месяцев, 12–24 месяца.
+
+33. Strategy-model interpretation
+(Для моделей traffic-first / commercial-first / trust-first / wedge-first / AI-first: Какие layers приоритетны | Upside | Risk | Для кого подходит | Комментарий)
+
+34. Final recommendation
+Сформулируй практический итог:
+- 10 strongest overall terminology and language opportunities
+- 5 core terminology layers to prioritize first
+- 5 highest-conversion language opportunities
+- 5 underserved terminology gaps
+- 5 trust-sensitive terminology zones
+- 5 commoditized, ambiguous or risky terms to avoid
+- 5 page types or asset types to launch first
+- Recommended language strategy model (language-led / commercial-first / etc.)
+- Phased roadmap на 3, 6, 12 и 24 месяца
+- Final verdict: pursue aggressively / selectively / monitor / deprioritize.

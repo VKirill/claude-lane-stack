@@ -121,6 +121,56 @@ class DocsWebTest(unittest.TestCase):
             lint = docs_web.lint_repo(repo)
             self.assertTrue(any(e.startswith("language:") for e in lint["errors"]))
 
+    def test_infer_surfaces_skips_next(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            app = repo / "apps" / "web"
+            route = app / "app" / "api" / "health" / "route.ts"
+            junk = app / ".next" / "server" / "app" / "api" / "health" / "route.js"
+            route.parent.mkdir(parents=True)
+            junk.parent.mkdir(parents=True)
+            route.write_text("export const GET = true\n", encoding="utf-8")
+            junk.write_text("module.exports = {}\n", encoding="utf-8")
+            surfaces = docs_web.infer_surfaces(
+                repo, {"id": "web", "owns": ["apps/web/**"]}
+            )
+            ats = [row["at"] for row in surfaces]
+            self.assertTrue(any("route.ts" in at for at in ats))
+            self.assertFalse(any(".next" in at for at in ats))
+
+    def test_lint_thin_and_app_pack_flows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            pkg = repo / "packages" / "auth"
+            pkg.mkdir(parents=True)
+            (pkg / "package.json").write_text('{"name":"auth"}\n', encoding="utf-8")
+            (pkg / "src").mkdir()
+            (pkg / "src" / "index.ts").write_text("export const x = 1\n", encoding="utf-8")
+            app = repo / "apps" / "web"
+            app.mkdir(parents=True)
+            (app / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+            (app / "src").mkdir()
+            (app / "src" / "index.ts").write_text("export const w = 1\n", encoding="utf-8")
+            docs_web.rebuild(repo)
+            self.assertTrue((app / "docs" / "FLOWS.md").is_file())
+            claude = (app / "CLAUDE.md").read_text(encoding="utf-8")
+            self.assertIn("## What", claude)
+            self.assertIn("## Never", claude)
+            self.assertIn("## Verify", claude)
+            self.assertNotEqual(claude.strip(), "# web")
+            page = repo / "docs" / "packages" / "auth.md"
+            text = page.read_text(encoding="utf-8")
+            page.write_text(
+                text.replace("status: stub", "status: active").replace(
+                    "TL;DR: _stub — fill from owns_",
+                    "TL;DR: short active blurb (packages/auth/src/index.ts:99)",
+                ),
+                encoding="utf-8",
+            )
+            lint = docs_web.lint_repo(repo)
+            self.assertTrue(any(e.startswith("thin:docs/packages/auth.md") for e in lint["errors"]))
+            self.assertTrue(any("cite_oob:docs/packages/auth.md" in e for e in lint["errors"]))
+
     def test_tombstone_and_secret_lint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

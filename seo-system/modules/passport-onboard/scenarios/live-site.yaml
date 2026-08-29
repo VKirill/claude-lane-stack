@@ -1,0 +1,23 @@
+id: live-site
+module: passport-onboard
+title: Onboard existing website
+when: "Client has a working URL"
+mode: live
+steps:
+  - id: onboard
+    action: cli
+    run: "seo-onboard live --slug <slug> --url <url> --brand <b> --niche <n> --max-pages 30"
+    artifact: ".agents/seo/<slug>/ANAMNESIS.md"
+  - id: collector
+    action: agent
+    run: "Execute Universal Project Data Collector v2 on URL; write passport/raw-collector.md"
+    artifact: ".agents/seo/<slug>/passport/raw-collector.md"
+  - id: validate
+    action: module
+    uses_module: passport-onboard
+    run: "scenarios/validate-passport.yaml"
+acceptance:
+  - "ANAMNESIS.md exists with mode=live"
+  - "raw-collector.md exists"
+  - "validated.md exists after validate scenario"
+next_modules: [discovery-research, technical-seo]

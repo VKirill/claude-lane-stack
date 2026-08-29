@@ -312,6 +312,15 @@ def _effort_from_block(block: dict[str, Any], default: str) -> str:
     return default
 
 
+def _onboard_depth_from_block(block: dict[str, Any], provider: str, tier: str) -> str | None:
+    raw = str(block.get("depth") or "").strip().lower()
+    if raw in {"fast", "deep"}:
+        return raw
+    if provider in SERVICE_TIER_STAGE_PROVIDERS and tier == "fast":
+        return "fast"
+    return None
+
+
 def _normalize_service_tier(block: dict[str, Any], provider: str) -> str:
     raw = block.get("service_tier")
     if raw is None and "fast_mode" in block:
@@ -439,6 +448,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
         else DEFAULT_MODELS.get(o_provider, DEFAULT_ONBOARD_MODEL)
     )
     o_tier = _normalize_service_tier(onboard, o_provider)
+    o_depth = _onboard_depth_from_block(onboard, o_provider, o_tier)
     base["onboard"] = {
         "provider": o_provider,
         "model": str(onboard.get("model") or o_default_model).strip(),
@@ -446,6 +456,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
             onboard, DEFAULT_ONBOARD_EFFORTS.get(o_provider, DEFAULT_ONBOARD_EFFORT)
         ),
         "service_tier": o_tier,
+        **({"depth": o_depth} if o_depth else {}),
         **(
             _opencode_agent(onboard, default=default_opencode_agent("onboard"))
             if o_provider == "opencode"
@@ -724,6 +735,7 @@ def resolve_onboard(start: Path) -> dict[str, Any]:
             block.get("reasoning_effort") or DEFAULT_ONBOARD_EFFORT
         ),
         "service_tier": str(block.get("service_tier") or "standard"),
+        "depth": str(block.get("depth") or ""),
         "stages": stages,
         "profile_path": profile.get("_path"),
     }

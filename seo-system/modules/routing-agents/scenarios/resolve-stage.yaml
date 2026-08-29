@@ -1,0 +1,15 @@
+id: resolve-stage
+module: routing-agents
+title: Resolve executor for a pipeline stage
+when: "Before seo-dispatch or bulk CLI workers"
+mode: any
+steps:
+  - id: resolve
+    action: cli
+    run: "seo-routing resolve <stage> [--project .agents/seo/<slug>]"
+  - id: dispatch
+    action: cli
+    run: "seo-dispatch <slug> <run> <task> --stage <stage> --original <path> --output <path>"
+acceptance:
+  - "DISPATCH package lists executor from routing"
+next_modules: [worker-dispatch]

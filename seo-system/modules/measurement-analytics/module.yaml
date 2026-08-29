@@ -1,0 +1,24 @@
+id: measurement-analytics
+title: Measurement (GSC, Metrika, GA4, Webmaster)
+phase: measure
+status: active
+version: "1.0.0"
+summary: "Pull and interpret search/behaviour data; low-hanging fruit; baselines."
+depends_on: [services-data]
+soft_depends_on: [passport-onboard]
+provides: [measure.gsc, measure.metrica, measure.baseline]
+requires_provides: [data.google, data.yandex]
+skills: [google-search-console, ga4-data-api, yandex-metrica, yandex-webmaster, seo-evidence-based-2026]
+originals: []
+cli: [seo-services]
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/measurement/**"
+    - ".agents/seo/<slug>/evidence/**"
+  reads: []
+env: [GSC_*, GA4_*, YANDEX_*]
+agent_triggers: ["GSC", "метрика", "позиции", "low-hanging"]
+entrypoints:
+  agent: "source seo-tools.env; query APIs; write measurement/"
+  cli: "seo-module scenario measurement-analytics baseline"
+scenarios: [baseline.yaml, gsc-low-hanging.yaml]

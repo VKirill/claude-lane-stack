@@ -1,0 +1,23 @@
+id: post-gist-pipeline
+module: content-quality
+title: Standard post-GIST gates
+when: "Draft ready"
+mode: any
+steps:
+  - id: cvd
+    action: agent
+    run: "drmax-cvd on draft → cvd.md"
+  - id: humanize
+    action: agent
+    run: "drmax-text-humanization → humanized.md"
+  - id: detect
+    action: agent
+    run: "ai-detect v3.9.4 if YMYL/risk → detect.md"
+    optional: true
+  - id: assessor
+    action: agent
+    run: "Assessor MC lite or full → assessor.md"
+    optional: true
+acceptance:
+  - "cvd.md + humanized.md exist"
+next_modules: []

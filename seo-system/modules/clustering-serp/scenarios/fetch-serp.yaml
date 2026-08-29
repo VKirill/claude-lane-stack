@@ -1,0 +1,19 @@
+id: fetch-serp
+module: clustering-serp
+title: Fetch and save SERP dumps
+when: "Have query list for clustering"
+mode: any
+steps:
+  - id: configure
+    action: cli
+    run: "seo-routing set-cluster --provider xmlstock --engine yandex --top 10"
+  - id: ensure-provider
+    action: cli
+    run: "seo-services test xmlstock   # or xmlriver"
+  - id: fetch
+    action: cli
+    run: "seo-serp-save <slug> --queries-file discovery/queries.txt"
+acceptance:
+  - "evidence/serp/*/manifest.json exists"
+  - "LATEST pointer updated"
+next_modules: [intent-semantics, routing-agents]

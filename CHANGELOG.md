@@ -1,3 +1,15 @@
+## 1.20.0 — 2026-08-29
+
+### Changed
+- **`seo-specialist` is a first-class plugin agent** with the DrMax skills it
+  actually runs (`seo-drmax-orchestrator`, prompt corpus, evidence-based,
+  copy, ai-detect, CVD / latent-intent / humanization / LexAdapt). Host
+  `seo-*` CLI + seodoc stay in seo-orchestration. `cc` / `lane-pm` no longer
+  re-send `initialPrompt` (Claude Code 2.1+ already does).
+- **`seo-system` + `seo-project-life`.** Module catalog installs to
+  `~/.agents/seo-system` (`seo-module list`). Skill maps `.agents/seo/` vs
+  the host catalog — not a second methodology.
+
 ## 1.19.0 — 2026-08-29
 
 ### Changed

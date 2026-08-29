@@ -1,0 +1,19 @@
+id: configure-global
+module: routing-agents
+title: Set global default + stage agents
+when: "First install or cost/quality retune"
+mode: any
+steps:
+  - id: open-tui
+    action: human
+    run: "seodoc → Agents tab: pick default_system and per-stage systems; S save"
+  - id: or-cli
+    action: cli
+    run: "seo-routing set-default claude-code && seo-routing set-stage intent_analysis deepseek-flash"
+  - id: verify
+    action: cli
+    run: "seo-routing show && seo-routing resolve intent_analysis"
+acceptance:
+  - "~/.agents/seo-services/routing.yaml exists"
+  - "resolve returns system for stage"
+next_modules: [worker-dispatch]

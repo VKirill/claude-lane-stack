@@ -79,6 +79,10 @@ done
 # board, docs, hooks, templates
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/board/" "$DEST/board/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/docs/" "$DEST/docs/"
+if [[ -d "$STACK_ROOT/seo-system" ]]; then
+  mkdir -p "$DEST/seo-system"
+  rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/seo-system/" "$DEST/seo-system/"
+fi
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/hooks/" "$DEST/hooks/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/templates/" "$DEST/templates/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/schemas/" "$DEST/schemas/"

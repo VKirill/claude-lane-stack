@@ -86,8 +86,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "docs_fields_h2": "  Settings\n",
         "docs_info_h2": "\n  How it works\n",
         "docs_info": (
-            "  1. Enabled + Apply = docs-web skeleton now, Luna INIT in background\n"
-            "     if stubs exist. Writers do not update docs in feature lanes.\n"
+            "  1. Enabled + Apply = docs-web skeleton now. Background: Luna\n"
+            "     onboard (CLAUDE.md / app packs) then wiki INIT. No feature docs.\n"
             "  2. At Hour: docs-web → daylog → docs-stale → Luna on stale_docs.\n"
             "     stub always stale, filled first. No commit.\n"
             "  3. Living tree is docs/. wiki/ / TODO/ / docs/plans/ are archive.\n"
@@ -117,6 +117,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sfield_model": "Model",
         "sfield_effort": "Effort",
         "sfield_fast": "Fast mode",
+        "sfield_depth": "Onboard depth",
         "sfield_agent": "Agent",
         "sfield_when": "When",
         "sfield_maintain": "Maintain",
@@ -291,6 +292,7 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "info_onboard_note": (
             "  Onboard model is Stages → Onboard (not Coder).\n"
+            "  Fast on Onboard = Codex service_tier + depth=fast (passport, not forensic).\n"
             "  Coder is only the daytime writer.\n"
         ),
         "msg_boot": "Left menu · click or ^← · ? help",
@@ -327,6 +329,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_effort": "Stage effort → {effort}",
         "msg_stage_fast": "Onboard Fast mode → {value}",
         "msg_stage_fast_na": "Fast mode only for Codex/Cursor onboard",
+        "msg_stage_depth": "Onboard depth → {value}",
         "msg_stage_write_fixed": "Write stage is always on (pick provider/model)",
         "msg_stage_flag": "{field} → {on}",
         "msg_stage_audience": "Memory audience → {audience}",
@@ -457,8 +460,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "docs_fields_h2": "  Настройки\n",
         "docs_info_h2": "\n  Как работает\n",
         "docs_info": (
-            "  1. Enabled + Apply = скелет docs-web сразу, Luna INIT в фоне\n"
-            "     если есть stub. Writer в фича-lane docs не трогает.\n"
+            "  1. Enabled + Apply = скелет docs-web сразу. Фон: Luna сначала\n"
+            "     онбордит паспорт (CLAUDE.md / apps/*), потом wiki INIT.\n"
             "  2. В Час: docs-web → daylog → docs-stale → Luna по stale_docs.\n"
             "     stub всегда stale, fill первым. Без commit.\n"
             "  3. Живое дерево — docs/. wiki/ / TODO/ / docs/plans/ — архив.\n"
@@ -488,6 +491,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sfield_model": "Модель",
         "sfield_effort": "Effort",
         "sfield_fast": "Fast mode",
+        "sfield_depth": "Глубина онборда",
         "sfield_agent": "Агент",
         "sfield_when": "Когда",
         "sfield_maintain": "Фон",
@@ -662,6 +666,7 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "info_onboard_note": (
             "  Модель онбординга — Этапы → Онбординг (не Кодер).\n"
+            "  Fast на Онбординге = service_tier Codex + depth=fast (паспорт, не forensic).\n"
             "  Кодер — только дневной писатель.\n"
         ),
         "msg_boot": "Меню слева · клик или ^← · ? справка",
@@ -698,6 +703,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_effort": "Effort этапа → {effort}",
         "msg_stage_fast": "Onboard Fast mode → {value}",
         "msg_stage_fast_na": "Fast mode только для Codex/Cursor онбординга",
+        "msg_stage_depth": "Глубина онборда → {value}",
         "msg_stage_write_fixed": "Этап «Код» всегда включён (меняйте провайдер/модель)",
         "msg_stage_flag": "{field} → {on}",
         "msg_stage_audience": "Аудитория памяти → {audience}",

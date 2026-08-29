@@ -288,7 +288,7 @@ agents-doctor --apply .     # или: adoc
 
 ```bash
 lane-pm                     # бут + имя сессии <agent>-<folder>-ДД-ММ-ГГГГ
-# голый `claude --agent dev-orchestrator` часто не шлёт initialPrompt
+# Claude Code 2.1+ сам шлёт initialPrompt агента
 ```
 
 | В чате | Когда |

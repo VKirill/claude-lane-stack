@@ -24,16 +24,17 @@ docs-maintain — живые docs/. Не фичи.
 
 Запуск
 - adoc → Документация → Enabled → Apply
-  (скелет сразу, Luna в фоне если есть stub)
+  (паспорт тонкий → project-onboard, потом wiki)
+- docs-init-chain /path/to/repo
 - docs-maintain-project /path/to/repo
 - docs-maintain-project /path/to/repo lint
 - docs-maintain-all --if-hour
-- агент: docs-maintainer (Codex luna max fast)
+- агент: сначала project-onboarder, потом docs-maintainer
 
 Как работает
-1) docs-web: шапки / stubs / web.yaml / INDEX. Без LLM.
-2) docs-stale: owns ∪ цитаты ∪ stub всегда. page_cap: сначала stub.
-3) Luna только stale_docs. INIT если stub. Не коммитит.
+1) Паспорт тонкий — отдельный агент project-onboarder. Wiki не стартует раньше.
+2) docs-web: шапки / stubs / web.yaml / INDEX. Без LLM.
+3) docs-stale: owns ∪ цитаты ∪ stub/thin. Luna wiki INIT/night. Не коммитит.
    Отчёт: .agents/session-log/DOCS-YYYY-MM-DD.md
    Daylog: .agents/session-log/DOCS-DAY-YYYY-MM-DD.md
 ```
@@ -56,7 +57,7 @@ docs-maintain-all --if-hour
 
 ## Rules
 
-- First enable: `docs-web` seeds stubs, Luna fills every stub/stale page.
+- First enable: `docs-init-chain` = project-onboard then wiki. Wiki runner refuses a thin passport.
 - Night: yesterday git ∩ owns + leftover stubs. Empty → no LLM.
 - Archive (`wiki/`, `TODO/`, `docs/plans/`) is never written.
 - No feature code. No commit.

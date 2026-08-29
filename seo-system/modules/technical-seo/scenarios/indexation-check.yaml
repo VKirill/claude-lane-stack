@@ -1,0 +1,15 @@
+id: indexation-check
+module: technical-seo
+title: Indexation diagnostics
+when: "Pages not in index or drop suspected"
+mode: live
+steps:
+  - id: apis
+    action: agent
+    run: "GSC URL inspection / Yandex Webmaster host diagnostics"
+  - id: report
+    action: agent
+    run: "technical/indexation.md"
+acceptance:
+  - "Per-URL status with evidence"
+next_modules: []

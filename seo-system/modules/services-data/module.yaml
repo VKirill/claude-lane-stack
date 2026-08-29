@@ -1,0 +1,29 @@
+id: services-data
+title: Data providers registry (TUI)
+phase: data
+status: active
+version: "1.0.0"
+summary: "Connect/test xmlstock, xmlriver, mutagen, DataForSEO, Proxy6, Yandex OAuth/Webmaster/Metrika, GSC, GA4."
+depends_on: [core-harness]
+soft_depends_on: []
+provides: [data.serp, data.keywords, data.yandex, data.google, data.dataforseo, data.proxy6]
+requires_provides: []
+skills: [mutagen, xmlstock, proxy6, yandex-webmaster, yandex-metrica, google-search-console, ga4-data-api]
+originals: []
+cli: [seodoc, seo-services, seo-dataforseo-mcp, seo-routing, seo-serp-save]
+artifacts:
+  writes:
+    - "~/.agents/seo-services/providers.yaml"
+    - "~/.agents/seo-services/last_test.json"
+    - "~/.agents/seo-services/routing.yaml"
+    - "~/secrets/seo-*.env"
+    - "~/secrets/proxy6.env"
+    - "~/secrets/seo-tools.env"
+    - ".agents/seo/services.yaml"
+  reads: []
+env: [XMLSTOCK_*, XMLRIVER_*, MUTAGEN_API_KEY, DATAFORSEO_*, PROXY6_API_KEY, YANDEX_*, GSC_*, GA4_*]
+agent_triggers: ["подключи mutagen", "seo-services", "dataforseo", "нет ключей api"]
+entrypoints:
+  agent: "seo-services status; if missing, instruct human to run sseo"
+  cli: "seodoc"
+scenarios: [connect-provider.yaml, test-enabled.yaml, export-env.yaml, dataforseo-mcp.yaml]

@@ -1,0 +1,16 @@
+id: rescan-after-change
+module: site-scan
+title: Rescan after content/tech deploy
+when: "Human reports site/page updates"
+mode: live
+steps:
+  - id: rescan
+    action: cli
+    run: "seo-scan <slug> --rescan"
+  - id: compare
+    action: agent
+    run: "Diff new meta.json vs previous LATEST-1 for critical URLs"
+acceptance:
+  - "New site version exists"
+  - "ANAMNESIS last_scan noted if structure changed"
+next_modules: [measurement-analytics]

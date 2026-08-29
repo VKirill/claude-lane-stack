@@ -1,0 +1,31 @@
+id: offpage-links
+title: Off-page & listicle citation
+phase: offpage
+status: active
+version: "1.0.0"
+summary: "Listicle Citation Engine 00–06 + link plan from evidence-based link building."
+depends_on: [strategy-evidence]
+soft_depends_on: [content-gist, brand-entity]
+provides: [offpage.listicle, offpage.link_plan]
+requires_provides: []
+skills: [seo-prompt-engineering-2026, seo-evidence-based-2026]
+originals:
+  - "drmax-prompt-channel/46/listicle-citation-engine-00-project-intake.txt"
+  - "drmax-prompt-channel/45/listicle-citation-engine-01-listicle-discovery.txt"
+  - "drmax-prompt-channel/44/listicle-citation-engine-02-editorial-target-audit.txt"
+  - "drmax-prompt-channel/43/listicle-citation-engine-03-ai-citation-fit-audit.txt"
+  - "drmax-prompt-channel/42/listicle-citation-engine-04-gap-angle-mining.txt"
+  - "drmax-prompt-channel/41/listicle-citation-engine-05-outreach-draft-generator.txt"
+  - "drmax-prompt-channel/40/listicle-citation-engine-06-outreach-quality-gate.txt"
+cli: []
+artifacts:
+  writes:
+    - ".agents/seo/<slug>/offpage/listicle/**"
+    - ".agents/seo/<slug>/offpage/link-plan.md"
+  reads: []
+env: []
+agent_triggers: ["линкбилдинг", "listicle", "outreach"]
+entrypoints:
+  agent: "Listicle engine 00→06 strict order"
+  cli: "seo-module scenario offpage-links listicle-engine"
+scenarios: [listicle-engine.yaml, link-plan.yaml]

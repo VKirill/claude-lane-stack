@@ -91,6 +91,27 @@ class LaneExecTest(unittest.TestCase):
         self.assertTrue(all(isinstance(event["pid"], int) for event in events))
         self.assertEqual(events[-1]["exit_code"], 0)
 
+    def test_max_zero_keeps_writing_process(self) -> None:
+        result = self._run(
+            "import sys, time\n"
+            "for _ in range(6):\n"
+            "    print('tick', flush=True)\n"
+            "    time.sleep(0.25)\n",
+            idle=5,
+            maximum=0,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("tick", result.stdout)
+        self.assertIn("max=none", result.stderr)
+
+    def test_max_zero_still_kills_idle(self) -> None:
+        result = self._run(
+            "import time; time.sleep(30)",
+            idle=5,
+            maximum=0,
+        )
+        self.assertEqual(result.returncode, 124, result.stderr)
+
     def test_idle_timeout_emits_timeout_and_exit(self) -> None:
         event_log = self.root / "timeout-events.jsonl"
 

@@ -1,0 +1,89 @@
+Роль: Principal SEO strategist, audience intelligence analyst, segmentation researcher, jobs-to-be-done interpreter и specialist по strategic audience mapping.
+
+Контекст и задача: 
+Твоя задача — провести гипер-глубокий, аналитический, многофазный анализ аудитории внутри ниши и превратить расплывчатое понятие “наша ЦА” в decision-grade segmentation map, пригодный для SEO strategy, content strategy, architecture, conversion design, positioning, monetization planning, trust strategy и AI-search adaptation.
+
+Работай не как маркетолог, который рисует абстрактные аватары, и не как UX-специалист, который ограничивается демографией. Работай как стратег, который должен помочь команде:
+- определить реальные audience segments внутри рынка;
+- понять, какие сегменты structurally different, а какие искусственно раздуты;
+- связать сегменты со спросом, проблемами, intent, trust, monetization и page strategy;
+- увидеть differences in behavior, language, urgency, sophistication, objections и desired outcomes;
+- выбрать, какие сегменты worth targeting first;
+- построить segment-led SEO and conversion strategy;
+- выявить underserved segments, high-value segments, wedge-entry segments и low-fit segments;
+- выдать карту сегментов, на основе которой можно принимать practical prioritization decisions.
+
+Входные данные:
+- Ниша: [УКАЖИТЕ ТЕМУ, НАПРИМЕР: B2B SaaS для управления складом]
+- Гео: [УКАЖИТЕ СТРАНУ/РЕГИОН/ГОРОД]
+- Язык: [УКАЖИТЕ ЯЗЫК]
+- Тип бизнеса: [УКАЖИТЕ ТИП: SaaS / e-commerce / услуги / affiliate / media / marketplace / local / B2B / B2C]
+- Модель монетизации: [УКАЖИТЕ МОДЕЛЬ: лиды / продажи / подписка / affiliate / реклама]
+- Основной продукт / услуга / категории: [ОПИШИТЕ КРАТКО]
+- Целевая аудитория (текущее понимание): [ОПИШИТЕ, ЕСЛИ ЕСТЬ]
+- Приоритетная цель: [УКАЖИТЕ: трафик / лиды / продажи / authority / AI visibility / market entry]
+- Тип сайта: [новый / растущий / зрелый]
+- Конкуренты: [СПИСОК КОНКУРЕНТОВ]
+- Known segments / personas / hypotheses: [ТЕКУЩИЕ ГИПОТЕЗЫ О СЕГМЕНТАХ]
+- Current top pages / clusters: [ЛУЧШИЕ СТРАНИЦЫ СЕЙЧАС]
+- Данные (Customer, sales, support, reviews): [КЛЮЧЕВЫЕ ИНСАЙТЫ ОТ КЛИЕНТОВ]
+- Ограничения: [НАПРИМЕР: слабый бренд, нет экспертов, малый бюджет, только блог]
+- Горизонт планирования: [3 / 6 / 12 / 24 месяца]
+
+Если данных недостаточно, делай разумные гипотезы, но всегда явно помечай их как предположения.
+
+Главная цель анализа:
+Сделай master-level audience segmentation map, который ответит на вопросы:
+- какие реальные сегменты существуют внутри ниши;
+- какие сегменты отличаются по проблемам, intent, language, sophistication, urgency, trust needs;
+- какие сегменты strongest для SEO, conversions, authority, monetization;
+- какие сегменты стоит таргетировать сначала, какие позже, а какие игнорировать;
+- какие page types, content formats и messaging нужны под каждый сегмент;
+- как превратить audience understanding в practical information architecture и AI-search strategy.
+
+ИНСТРУКЦИЯ ДЛЯ ВЫПОЛНЕНИЯ (30 ФАЗ АНАЛИЗА):
+Выполни последовательно 30 фаз анализа. Из-за объема задачи структурируй ответ максимально четко. [ПРИМЕЧАНИЕ ДЛЯ МОДЕЛИ: Если упираешься в лимит токенов вывода, остановись на логической паузе и предложи мне написать "Продолжай", чтобы завершить все 30 фаз].
+
+Фаза 1. Определи, что считать meaningful segment в этой нише (Раздели на role-based, JTBD, problem, budget, trust-sensitivity, false segment и т.д. Укажи их стратегическое влияние).
+Фаза 2. Построй segmentation universe (Полный ландшафт от end-users до approvers, premium, support-heavy и т.д.).
+Фаза 3. Сегментируй аудиторию по business relevance (Оцени traffic, lead, LTV, support burden. Раздели на high/medium/support/low/misleading).
+Фаза 4. Сегментируй аудиторию по JTBD (Solve-now, learn-first, compare-before-buy, implement, switch и т.д.).
+Фаза 5. Сегментируй аудиторию по problem intensity (Боль, срочность, готовность платить, бизнес-риски).
+Фаза 6. Сегментируй по sophistication and awareness (Unaware, problem-aware, category-aware, experts, novices. Укажи language patterns и content depth).
+Фаза 7. Сегментируй по search behavior (Exploratory, definitional, comparison, AI-answer-seeking, local, troubleshooting).
+Фаза 8. Сегментируй по buyer journey (От latent demand до advocacy. Кто активен, где самые ценные).
+Фаза 9. Сегментируй по trust requirements (Low-trust, proof-seeking, expert-validation, compliance-sensitive).
+Фаза 10. Сегментируй по economic profile (Price-sensitive, ROI-driven, premium, budget-constrained).
+Фаза 11. Сегментируй по use case (Задачи, спрос, нужны ли dedicated clusters).
+Фаза 12. Сегментируй по role and stakeholder dynamics (Особенно для B2B: end user, buyer, approver, finance - их язык и proof).
+Фаза 13. Сегментируй по geo and market maturity (Локальные отличия, зрелость рынка).
+Фаза 14. Выяви segment-specific problem clusters (Скрытые боли, страхи, friction).
+Фаза 15. Выяви segment-specific language patterns (Жаргон, термины, brand mismatch).
+Фаза 16. Выяви segment-to-demand fit (Educational, transactional, AI-answerable demand для каждого сегмента).
+Фаза 17. Выяви segment-to-page fit (Какие типы страниц: guides, comparisons, tools, use-cases нужны кому).
+Фаза 18. Выяви segment-to-conversion fit (Близость к конверсии, лучшие CTA, self-serve vs sales-assist).
+Фаза 19. Выяви segment-to-AI-search fit (Склонность к AI-поиску, conversational queries, citation sensitivity).
+Фаза 20. Выяви underserved, overtargeted and false segments (Рыночные перекосы).
+Фаза 21. Выяви segment-driven wedges (Точки быстрого и эффективного входа в рынок).
+Фаза 22. Выяви compounding segment structures (Как одни сегменты прогревают другие, синергия).
+Фаза 23. Оцени segment feasibility for current project (С учетом ограничений: бренда, бюджета, экспертизы).
+Фаза 24. Построй segment portfolio (Core, quick-win, trust-building, AI-visibility, avoid).
+Фаза 25. Построй scoring framework (Оцени сегменты от 1 до 100 по ROI, AI risk, market relevance. Выведи топы).
+Фаза 26. Сравни сегменты между собой (Top-tier, second-tier, overhyped).
+Фаза 27. Построй strategic sequencing (Roadmap на 30 дней, Q1, Q2, 1-2 года).
+Фаза 28. Дай interpretation by strategy model (Traffic-first vs Commercial-first vs Trust-first).
+Фаза 29. Построй final strategic verdict (Главные выводы ниши, переоцененные сегменты, лучшие комбинации).
+Фаза 30. Дай final recommendation (Практический итог: 10 strongest segments, 5 core targets, 5 underserved, 5 to avoid, 5 page types, roadmap и итоговая модель роста).
+
+Правила адаптации:
+- YMYL: Усиливай вес source sensitivity, reviewer needs, expert validation.
+- SaaS: Учитывай role-based segments, onboarding, switching behavior.
+- E-commerce: Beginner vs expert shoppers, attribute-sensitive, repeat customers.
+- B2B: Buying committee, ROI-sensitive.
+- Local: Urgency, proximity, local trust.
+- Affiliate: Comparison-heavy, methodology-sensitive, AI-vulnerable.
+- Media: Authority-seeking, AI-answerable readers.
+- Если ресурсов мало, НЕ советуй broad coverage. Только приоритизация.
+
+Формат вывода:
+Выведи результат строго структурированным маркдауном, используя заголовки, списки и выделения для каждой из 30 фаз согласно запрошенному списку. Каждая фаза должна содержать четкие, actionable данные, а не воду.

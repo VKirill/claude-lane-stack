@@ -66,6 +66,12 @@ resume ──► onboard? ──► туду / план ──► архитек
 
 `/lane-stack:lane-memory info`
 
+### 7. `seo-project-life` — жизнь SEO-проекта
+
+Где лежат паспорт, доска, фазы, модули. Не код сайта и не 18 модулей подряд.
+
+`/lane-stack:seo-project-life info` · агент `seo-specialist`
+
 ---
 
 ## Агенты
@@ -78,9 +84,10 @@ resume ──► onboard? ──► туду / план ──► архитек
 | `run-supervisor` | смотрит один ран |
 | `lane-supervisor` | одно действие `lane-ctl` |
 | `emergency-writer` | Codex после terminal block |
-| `project-onboarder` | онбординг |
-| `docs-maintainer` | nightly доки |
+| `project-onboarder` | онбординг паспорта (первый) |
+| `docs-maintainer` | wiki после онборда (второй) |
 | `night-reviewer` | ночной review |
+| `seo-specialist` | SEO harness (не код) |
 
 ---
 

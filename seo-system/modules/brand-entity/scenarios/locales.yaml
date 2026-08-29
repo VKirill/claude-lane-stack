@@ -1,0 +1,12 @@
+id: locales
+module: brand-entity
+title: Market-scoped locale differentiation
+when: "Multi-locale site"
+mode: any
+steps:
+  - id: diff
+    action: agent
+    run: "Ultimate Market-Scoped Differentiation original"
+acceptance:
+  - "Per-locale differentiators list"
+next_modules: [content-gist]
