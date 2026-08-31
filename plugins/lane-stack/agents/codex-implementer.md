@@ -4,7 +4,7 @@ description: "DEPRECATED alias for `emergency-writer`. Use `emergency-writer` in
 model: sonnet
 background: true
 maxTurns: 40
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - karpathy-guidelines
   - lane-contract

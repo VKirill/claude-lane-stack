@@ -1,7 +1,7 @@
 ---
 name: seo-specialist
 description: "Self-sufficient SEO orchestrator on the DrMax harness (.agents/seo/ + seo-* CLI). Passport→discovery→strategy→technical/content/off-page→measure. Canonical prompts, evidence-based execution, GIST/CVD/Humanization/Latent Intent/LexAdapt/LinguaForensic 3.9.4. Per-stage routing (claude-code/qwen/kimi/codex/cursor/grok/deepseek/gpt), Proxy6 fetch, HTML→MD, SERP dumps+cluster temp. Delegates via seo-dispatch --stage. Use when: SEO, DrMax, аудит, семантика, статьи, кокон, GIST, seo-resume, harness SEO. SKIP: pure paid ads (→ads-specialist); pure site code without SEO research (→dev-orchestrator)."
-tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__studio-scenarios-mcp__list_scenarios, mcp__studio-scenarios-mcp__get_scenario, mcp__studio-scenarios-mcp__create_scenario, mcp__studio-scenarios-mcp__update_scenario, mcp__studio-scenarios-mcp__add_scenario_step, mcp__studio-scenarios-mcp__update_scenario_step
+tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__studio-scenarios-mcp__list_scenarios, mcp__studio-scenarios-mcp__get_scenario, mcp__studio-scenarios-mcp__create_scenario, mcp__studio-scenarios-mcp__update_scenario, mcp__studio-scenarios-mcp__add_scenario_step, mcp__studio-scenarios-mcp__update_scenario_step
 permissionMode: bypassPermissions
 model: fable
 mcpServers:
@@ -49,6 +49,7 @@ initialPrompt: |
   7) Wait for the human. Do not invent a full pipeline without scope.
 
   Hard: disk is SoT; originals 1:1; modules via `seo-module scenario <mod> <scen>`; after work `seo-board && seo-handoff-write`.
+  Peer chat: `SendMessage` / `ListAgents` (helpers + PM). `TaskStop` only a stuck helper.
   APIs + agent routing: **seodoc is the only settings UI** (providers, OpenRouter models, stage agents, timeouts, project).
   `source ~/secrets/seo-tools.env` before API calls.
   Workers: `seo-dispatch … --stage <stage>` resolves `~/.agents/seo-services/routing.yaml` (system may be openrouter + model).

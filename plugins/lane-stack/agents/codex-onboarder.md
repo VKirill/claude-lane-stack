@@ -4,7 +4,7 @@ description: "DEPRECATED alias for `project-onboarder`. Use `project-onboarder` 
 model: sonnet
 background: true
 maxTurns: 30
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - project-onboard
   - project-docs

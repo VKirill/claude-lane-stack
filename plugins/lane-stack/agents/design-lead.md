@@ -3,7 +3,7 @@ name: design-lead
 description: "Extract or refresh full docs/DESIGN.md packs (root + every UI app). Google format. No feature code."
 model: sonnet
 background: true
-tools: Bash, Read, Write, Edit, Grep, Glob
+tools: Bash, Read, Write, Edit, Grep, Glob, SendMessage, ListAgents
 skills:
   - ui-ux-pro-max
   - project-design

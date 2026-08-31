@@ -3,7 +3,7 @@ name: memory-maintainer
 description: "Opt-in SMA fact-corpus refresh (shell-out to adoc stages.memory). Drafts only via lane-memory write. No feature code."
 model: sonnet
 background: true
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - lane-memory
   - project-life

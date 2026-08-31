@@ -90,6 +90,9 @@ class InstallTest(unittest.TestCase):
         self.assertIn("name: seo-specialist", body)
         self.assertIn("initialPrompt:", body)
         self.assertIn("seo-drmax-orchestrator", body)
+        self.assertIn("SendMessage", body)
+        self.assertIn("ListAgents", body)
+        self.assertIn("TaskStop", body)
         link = ROOT / "agents" / "claude" / "seo-specialist.md"
         self.assertTrue(link.is_symlink() or link.is_file())
         skills = ROOT / "plugins" / "lane-stack" / "skills"
@@ -113,6 +116,26 @@ class InstallTest(unittest.TestCase):
         self.assertIn("seo-project-life — карта SEO-проекта", life.read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "seo-system" / "modules" / "passport-onboard" / "module.yaml").is_file())
         self.assertTrue((ROOT / "docs" / "seo" / "SOLO-SEO-ORCHESTRATION.md").is_file())
+
+
+    def test_plugin_agents_whitelist_sendmessage(self) -> None:
+        missing: list[str] = []
+        for path in sorted((ROOT / "plugins" / "lane-stack" / "agents").glob("*.md")):
+            line = next(
+                (
+                    raw
+                    for raw in path.read_text(encoding="utf-8").splitlines()
+                    if raw.startswith("tools:")
+                ),
+                "",
+            )
+            if not line:
+                missing.append(f"{path.name}: no tools")
+                continue
+            for tool in ("SendMessage", "ListAgents"):
+                if tool not in line:
+                    missing.append(f"{path.name}: missing {tool}")
+        self.assertEqual(missing, [])
 
     def test_acceptance_template_includes_report_digest(self) -> None:
         acceptance = json.loads(

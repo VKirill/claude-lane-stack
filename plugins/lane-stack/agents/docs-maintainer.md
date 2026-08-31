@@ -4,7 +4,7 @@ description: "Living wiki after onboard. If passport is thin, FAILED — parent 
 model: sonnet
 background: true
 maxTurns: 25
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - docs-maintain
   - project-life

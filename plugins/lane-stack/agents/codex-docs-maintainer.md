@@ -4,7 +4,7 @@ description: "DEPRECATED alias for `docs-maintainer`. Use `docs-maintainer` in n
 model: sonnet
 background: true
 maxTurns: 25
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - docs-maintain
   - project-life

@@ -4,7 +4,7 @@ description: "Night/branch review gate (shell-out to Codex Sol). Read-only. Not 
 model: sonnet
 background: true
 maxTurns: 25
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - lane-contract
   - review-craft

@@ -4,7 +4,7 @@ description: "Read-only one-action writer lane diagnostic and recovery operator.
 model: sonnet
 background: true
 maxTurns: 6
-tools: Read, Grep, Glob, Bash(lane-ctl start:*), Bash(lane-ctl status:*), Bash(lane-ctl tail:*), Bash(lane-ctl events:*), Bash(lane-ctl cancel:*), Bash(lane-ctl retry:*), Bash(lane-ctl fallback:*), Bash(lane-ctl verify:*), Bash(lane-ctl accept:*)
+tools: Read, Grep, Glob, Bash(lane-ctl start:*), Bash(lane-ctl status:*), Bash(lane-ctl tail:*), Bash(lane-ctl events:*), Bash(lane-ctl cancel:*), Bash(lane-ctl retry:*), Bash(lane-ctl fallback:*), Bash(lane-ctl verify:*), Bash(lane-ctl accept:*), SendMessage, ListAgents
 skills:
   - lane-contract
 ---

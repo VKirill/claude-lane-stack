@@ -4,7 +4,7 @@ description: "Project onboard (shell-out to Codex). Multi-phase LLM-first passpo
 model: sonnet
 background: true
 maxTurns: 40
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - project-onboard
   - project-docs

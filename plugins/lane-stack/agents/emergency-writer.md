@@ -4,7 +4,7 @@ description: "Emergency write lane after terminal block (shell-out to Codex Terr
 model: sonnet
 background: true
 maxTurns: 40
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, SendMessage, ListAgents
 skills:
   - karpathy-guidelines
   - lane-contract
