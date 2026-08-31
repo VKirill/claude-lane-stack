@@ -2,6 +2,7 @@
 name: project-onboard
 description: Primary project onboarding for Claude Lane Stack. Diátaxis-classified LLM pack (MODULE_MAP, API_SURFACE, TEST_INDEX, TAXONOMY, RUNBOOK, Google DESIGN.md). Schemas + validation in references/. Weekly docs-maintainer. Use when: info, справка, lane-stack:project-onboard info, /project-onboard, онбординг, init project, bootstrap CLAUDE.md, deep onboard, wiki→llm docs.
 argument-hint: "[info]"
+user-invocable: false
 ---
 
 # Project onboard (Claude Lane Stack)

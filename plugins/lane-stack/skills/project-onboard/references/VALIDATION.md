@@ -5,7 +5,13 @@ Deep Phase 5 must run these and record `VALIDATION: pass|fail`.
 ## Automated / shell
 
 ```bash
-! grep -R "REPLACE_ME" llms.txt docs/llm CLAUDE.md AGENTS.md 2>/dev/null | grep -v DESIGN.md | grep -v 'description: REPLACE'
+set -euo pipefail
+leftovers=$(grep -R "REPLACE_ME" llms.txt docs/llm CLAUDE.md AGENTS.md 2>/dev/null | grep -v DESIGN.md | grep -v 'description: REPLACE' || true)
+if [ -n "$leftovers" ]; then
+  echo "FAIL REPLACE_ME leftovers:"
+  echo "$leftovers"
+  exit 1
+fi
 
 python3 - <<'PY'
 import re
@@ -124,6 +130,24 @@ for name in app_packs_ok:
                 )
 print("thin_packs", thin_packs)
 print("catchall_packs", catchall_packs)
+flows = Path("docs/llm/FLOWS.md")
+assert flows.is_file(), "docs/llm/FLOWS.md missing"
+ft = flows.read_text(encoding="utf-8", errors="replace")
+assert "REPLACE_ME" not in ft, (
+    "docs/llm/FLOWS.md still has REPLACE_ME — write the SoT file, not only phase3-flows.md"
+)
+flow_cites = ft.count("path:") + len(re.findall(r":\d+", ft))
+assert flow_cites >= 6, f"docs/llm/FLOWS.md too thin cites={flow_cites}"
+for name in app_packs_ok:
+    t = (Path("apps") / name / "CLAUDE.md").read_text(encoding="utf-8", errors="replace")
+    if "## What" not in t or "## Verify" not in t or (
+        "## Never" not in t and "## Always" not in t
+    ):
+        raise AssertionError(
+            f"stub apps/{name}/CLAUDE.md — need What + Never/Always + Verify"
+        )
+    if not re.search(r":\d+", t):
+        raise AssertionError(f"apps/{name}/CLAUDE.md missing file:line evidence")
 assert not catchall_packs, (
     "per-app API_SURFACE still uses catch-all ids — split providers/families: "
     + ", ".join(catchall_packs)
@@ -256,4 +280,6 @@ PY
 - Local app pack that only pastes root ARCHITECTURE (must be scoped)  
 - Thin local ARCHITECTURE/FLOWS/GOTCHAS or catch-all-only local API_SURFACE  
 - `api`/`worker` local surfaces ≪ root projection for that app  
+- `docs/llm/FLOWS.md` still `REPLACE_ME` or missing `path:line` (phase3 artifact is not SoT)  
+- `apps/*/CLAUDE.md` is Owns+Pointers only (no What / Never / Verify / file:line)  
 

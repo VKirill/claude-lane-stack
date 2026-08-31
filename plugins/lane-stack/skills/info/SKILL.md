@@ -2,6 +2,7 @@
 name: info
 description: Lane-stack work-process cheat sheet. Catalog of resume, onboard, architect a new app, design, docs. Use when user says info, справка, lane-stack:info, /lane-stack:info, что умеет стек, как запускать.
 argument-hint: "[info]"
+user-invocable: false
 ---
 
 # lane-stack info
@@ -32,7 +33,7 @@ resume ──► onboard? ──► туду / план ──► архитек
 
 Нужен в новой сессии на уже живом репо. Собирает коротко: что сейчас, что застряло, какой следующий шаг. Не пишет код и не открывает ран.
 
-`/resume-project` · `/lane-stack:resume-project info`
+`/lane-stack:resume-project` · `/resume-project` · шпаргалка: `/lane-stack:resume-project info`
 
 ### 2. `project-onboard` — первичная карта репо
 
@@ -71,6 +72,16 @@ resume ──► onboard? ──► туду / план ──► архитек
 Где лежат паспорт, доска, фазы, модули. Не код сайта и не 18 модулей подряд.
 
 `/lane-stack:seo-project-life info` · агент `seo-specialist`
+
+### 8. `copy-project-life` — копирайт сайта
+
+Не SEO-ключи. Файлы: `.agents/copy/` — `ANAMNESIS.md`, `audience.md`, `buyer-personas/p1.md`, `voice.md`, `pages/<slug>.md`.
+
+Первый полный анализ (нет папки или пустой оффер): скилл **сам ведёт опрос** пачками по 2–3 вопроса — оффер → ЦА → персона/доказательства (`first-interview.md`). Ответы сразу в шаблоны. «не знаю» = `unknown`. Без оффера H1 не пишет.
+
+Повторно: audience → headlines → ux.
+
+`/lane-stack:copy-project-life` · `/lane-stack:site-copy-audience` · `/lane-stack:site-copy-headlines` · `/lane-stack:site-copy-ux` · шпаргалка: `/lane-stack:copy-project-life info`
 
 ---
 

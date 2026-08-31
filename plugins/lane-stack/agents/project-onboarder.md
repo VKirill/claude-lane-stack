@@ -110,8 +110,11 @@ fi
 - Phase artifacts (deep) + `report.md`  
 - `docs/llm/MODULE_MAP.yaml` with real modules (deep)  
 - CLAUDE.md not a stub; AGENTS.md pointer only  
-- Phase4b: each `apps/*` walked → local `CLAUDE.md` + `docs/` (APP_PACKS in report)  
+- `docs/llm/FLOWS.md` filled (no `REPLACE_ME`); phase3 artifact is not enough  
+- Phase4b: each `apps/*` walked → local passport `CLAUDE.md` (What / Never / Verify) + `docs/`  
+- After writing root `CLAUDE.md` / `AGENTS.md`: `lane-memory inject "$PROJECT_CWD"` if memory is enabled  
 
 ## Completion
 
+`DONE` only if `docs-stale "$PROJECT_CWD" --passport-gaps` exits 2 (no gaps) and `docs/llm/FLOWS.md` has no `REPLACE_ME`.  
 Last line: `DONE <path-to-report-or-CLAUDE.md>` or `FAILED <reason>`, then **stop**.

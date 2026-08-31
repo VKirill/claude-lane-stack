@@ -775,7 +775,7 @@ def last_episode(repo: Path) -> Path | None:
 
 
 def inject_core(repo: Path) -> list[Path]:
-    if not settings(repo)["inject"]:
+    if not enabled(repo) or not settings(repo)["inject"]:
         return []
     block = f"{CORE_MARK_START}\n{core_text(repo).rstrip()}\n{CORE_MARK_END}\n"
     touched: list[Path] = []
@@ -1216,6 +1216,9 @@ def write_apply(
         log.append(f"12 lifecycle: superseded {old_id}")
     rebuild_index(repo)
     log.append("9 index: MEMORY.md + sqlite rebuilt")
+    injected = inject_core(repo)
+    if injected:
+        log.append("9b inject: " + ", ".join(str(p) for p in injected))
     log.append(
         f"10 measure: records={len(list(iter_record_paths(repo)))} "
         f"core_bytes={len(core_text(repo).encode())}"
@@ -1270,6 +1273,7 @@ def forget(repo: Path, rec_id: str, *, mode: str, yes: bool) -> Path:
             raise ValueError("erase requires --yes")
         path.unlink()
         rebuild_index(repo)
+        inject_core(repo)
         leftover = _erase_traces(repo, rec_id)
         if leftover:
             raise ValueError(f"erase leftover: {', '.join(leftover)}")
@@ -1281,6 +1285,7 @@ def forget(repo: Path, rec_id: str, *, mode: str, yes: bool) -> Path:
     rec["status"] = {"expire": "expired", "archive": "archived"}[mode]
     path.write_text(_dump_record(rec, body), encoding="utf-8")
     rebuild_index(repo)
+    inject_core(repo)
     return path
 
 
@@ -1293,6 +1298,7 @@ def trim(repo: Path, rec_id: str) -> Path:
     rec["context_priority"] = "on-demand"
     path.write_text(_dump_record(rec, body), encoding="utf-8")
     rebuild_index(repo)
+    inject_core(repo)
     return path
 
 
@@ -1489,6 +1495,7 @@ def init_corpus(repo: Path) -> Path:
     if not template.is_file():
         template.write_text(DRAFT_TEMPLATE, encoding="utf-8")
     rebuild_index(repo)
+    inject_core(repo)
     return root
 
 

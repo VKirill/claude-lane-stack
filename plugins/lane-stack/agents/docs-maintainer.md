@@ -40,4 +40,5 @@ Report → `.agents/session-log/DOCS-YYYY-MM-DD.md`.
 
 ## Completion (mandatory)
 
+`DONE` only if passport-gaps is empty (`docs-stale --passport-gaps` exits 2). Wiki fill while `apps/*/CLAUDE.md` is a stub is `FAILED`.  
 Last line: `DONE <report-path>` or `FAILED <reason>`, then **stop**.

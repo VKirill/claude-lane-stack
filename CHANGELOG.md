@@ -1,3 +1,21 @@
+## 1.21.0 — 2026-08-31
+
+### Added
+- **Site copy pack** (not SEO): `copy-project-life` + `site-copy-audience` /
+  `headlines` / `ux`. Disk SoT `.agents/copy/` from skill templates
+  (anamnesis, audience, buyer persona, voice, page brief). First full
+  analysis runs `first-interview.md` in 2–3-question batches. Catalog:
+  `/lane-stack:info` item 8.
+
+### Changed
+- **Slash `/lane-stack:resume-project` runs the CLI**, not the cheat sheet.
+  Skills that share a command name are `user-invocable: false`.
+- **lane-memory CORE restamp:** `agents-doctor --apply`, `lane-memory write`,
+  and onboard (including Luna rewrite / failed VALIDATION) inject
+  `<!-- lane-memory:core -->` again.
+- **Onboard VALIDATION** stays `set -euo pipefail`; FLOWS is SoT; refuse
+  `complete` on stubs.
+
 ## 1.20.0 — 2026-08-29
 
 ### Changed

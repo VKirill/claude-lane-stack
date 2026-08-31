@@ -912,7 +912,15 @@ echo "  LLM pack: docs/llm/{INDEX,TAXONOMY,MODULE_MAP,API_SURFACE,TEST_INDEX,MAN
 [[ "$HAS_UI" -eq 1 ]] && echo "  DESIGN.md seeded (UI)"
 [[ "$HAS_DEPLOY" -eq 1 ]] && echo "  RUNBOOK.md seeded (deploy)"
 
+_inject_memory() {
+  if command -v lane-memory >/dev/null 2>&1 && lane-memory enabled "$REPO" >/dev/null 2>&1; then
+    echo "==> lane-memory inject (restore CORE after CLAUDE.md rewrite)"
+    lane-memory inject "$REPO" || true
+  fi
+}
+
 run_onboard_fill() {
+  trap '_inject_memory' RETURN
   local art="$REPO/.agents/runs/_onboard/artifacts/001"
   mkdir -p "$art"
   local prompt="$art/prompt.md"
@@ -1207,6 +1215,7 @@ EOF
 
   local rc=0
   _onboard_provider_once "$prompt_root" "root-pack" || rc=$?
+  _inject_memory
   if [[ $rc -ne 0 ]]; then
     echo "ERROR: onboard root pass failed (exit $rc). See $log" >&2
     return "$rc"
@@ -1225,6 +1234,7 @@ EOF
     echo "" >>"$log"
     echo "===== PHASE4B PASS =====" >>"$log"
     _onboard_provider_once "$prompt_apps" "phase4b-app-packs" || rc=$?
+    _inject_memory
     if [[ $rc -ne 0 ]]; then
       echo "ERROR: onboard phase4b pass failed (exit $rc). See $log" >&2
       return "$rc"
@@ -1260,6 +1270,14 @@ PY
       return "$vrc"
     fi
     echo "    VALIDATION gate ok → $val_log"
+  fi
+
+  if command -v docs-stale >/dev/null 2>&1; then
+    if docs-stale "$REPO" --passport-gaps >"$art/passport-gaps.json"; then
+      echo "ERROR: passport still thin after fill. See $art/passport-gaps.json" >&2
+      cat "$art/passport-gaps.json" >&2 || true
+      return 1
+    fi
   fi
 
   if [[ -f "$art/report.md" ]]; then

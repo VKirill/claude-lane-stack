@@ -30,3 +30,10 @@ class DocsInitChainTest(unittest.TestCase):
             self.assertIn("DRY-RUN: project-onboard", result.stdout)
             self.assertIn("DRY-RUN: docs-maintain-project", result.stdout)
             self.assertNotIn("docs-maintain-project failed", result.stdout)
+
+    def test_onboard_injects_memory_even_on_failed_pass(self) -> None:
+        text = (ROOT / "bin" / "project-onboard").read_text(encoding="utf-8")
+        self.assertIn("trap '_inject_memory' RETURN", text)
+        root = text.find('_onboard_provider_once "$prompt_root"')
+        self.assertGreater(root, 0)
+        self.assertGreater(text.find("_inject_memory", root), root)

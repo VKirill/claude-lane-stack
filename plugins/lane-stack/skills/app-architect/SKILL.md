@@ -2,6 +2,7 @@
 name: app-architect
 description: "Owner-facing architect for a new app or service. Plain-language chat; living plan artifacts on disk. Use when user says архитектор, новое приложение, новый сервис, спроектируем, как устроить продукт, app-architect, lane-stack:app-architect, info, справка. Not a run. Not onboard."
 argument-hint: "[info]"
+user-invocable: false
 ---
 
 # App architect

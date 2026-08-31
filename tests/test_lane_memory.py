@@ -281,6 +281,47 @@ x
         self.assertIn("id: your-fact-id", template)
         self.assertIn("claim:", template)
 
+    def test_write_apply_injects_core_into_claude_md(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / ".agents").mkdir()
+        (tmp / ".agents" / "PROGRESS.md").write_text("now\n", encoding="utf-8")
+        (tmp / "CLAUDE.md").write_text("# App\n", encoding="utf-8")
+        (tmp / ".agents" / "routing.profile.yaml").write_text(
+            "stages:\n  memory:\n    enabled: true\n    inject: true\n",
+            encoding="utf-8",
+        )
+        lm.init_corpus(tmp)
+        (tmp / "CLAUDE.md").write_text("# App rewritten without marker\n", encoding="utf-8")
+        draft = tmp / ".agents" / "memory" / "drafts" / "one.md"
+        draft.write_text(DRAFT, encoding="utf-8")
+        dest = tmp / ".agents" / "memory" / "always-read-progress.md"
+        _dest, log = lm.write_apply(tmp, draft, yes=True, confirm=dest)
+        self.assertTrue(any("inject:" in line for line in log))
+        self.assertIn(
+            "<!-- lane-memory:core -->",
+            (tmp / "CLAUDE.md").read_text(encoding="utf-8"),
+        )
+        self.assertIn("always-read-progress", (tmp / "CLAUDE.md").read_text(encoding="utf-8"))
+
+    def test_init_injects_empty_core_into_claude_md(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / ".agents").mkdir()
+        (tmp / "CLAUDE.md").write_text("# App\n", encoding="utf-8")
+        (tmp / "AGENTS.md").write_text("# Agents\n", encoding="utf-8")
+        (tmp / ".agents" / "routing.profile.yaml").write_text(
+            "stages:\n  memory:\n    enabled: true\n    inject: true\n",
+            encoding="utf-8",
+        )
+        lm.init_corpus(tmp)
+        claude = (tmp / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- lane-memory:core -->", claude)
+        self.assertIn("_no always-on shared facts_", claude)
+        self.assertIn("<!-- /lane-memory:core -->", claude)
+        self.assertIn(
+            "<!-- lane-memory:core -->",
+            (tmp / "AGENTS.md").read_text(encoding="utf-8"),
+        )
+
     def test_maintain_script_gives_codex_sessions_and_write(self) -> None:
         script = (ROOT / "bin" / "memory-maintain-project").read_text(encoding="utf-8")
         instr = (

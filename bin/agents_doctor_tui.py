@@ -2384,6 +2384,26 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state, "msg_lang", name=LANG_LABEL.get(state.lang, state.lang)
         )
 
+    def _kick_memory_init(repo: Path) -> None:
+        mem = Path.home() / ".agents" / "bin" / "lane-memory"
+        if not mem.is_file():
+            mem = Path(__file__).resolve().parent / "lane-memory"
+        try:
+            subprocess.run(
+                [str(mem), "init", str(repo)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [str(mem), "inject", str(repo)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return
+
     def _kick_docs_init(repo: Path, maintain: bool) -> None:
         web = Path.home() / ".agents" / "bin" / "docs-web"
         if not web.is_file():
@@ -2532,6 +2552,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
             except OSError:
                 pass
             _kick_docs_init(Path(state.repo), bool(docs_block.get("maintain", True)))
+        mem_block = state.stages.get("memory") or {}
+        if mem_block.get("enabled"):
+            _kick_memory_init(Path(state.repo))
         state.message = _t(state, "msg_saved")
         pc = state.stages.get("plan_critique") or {}
         result = {

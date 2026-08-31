@@ -102,7 +102,9 @@ Artifact: `MODULES_READ:` (≥8 non-toy), `APPS_COVERED: n/m`, `SURFACES_COUNT:`
 
 ### Phase 3 — Flows (`phase3-flows.md`)
 
-Trace 3–7 critical flows with `path:line` → `docs/llm/FLOWS.md` + short ARCHITECTURE Data Flow.
+Trace 3–7 critical flows with `path:line` → **`docs/llm/FLOWS.md` (SoT)** + short ARCHITECTURE Data Flow.
+
+Writing `$ARTIFACT_DIR/phase3-flows.md` without replacing `REPLACE_ME` in `docs/llm/FLOWS.md` is a **fail**. Host VALIDATION reads the SoT file only.
 
 Must include when code exists:
 - money/generation path (debit → enqueue → worker → refund/complete)  
@@ -138,6 +140,7 @@ For each `apps/*/package.json` with real source:
 
 1. Explore **that app only** (entrypoints, route/handler tree, scripts).  
 2. Create/update **filled** pack (`CLAUDE.md` + `docs/{INDEX,ARCHITECTURE,GOTCHAS}` + `docs/llm/{API_SURFACE.yaml,FLOWS.md}`).  
+   `CLAUDE.md` with only Owns + Pointers is a **stub**. Need `## What`, `## Never`/`## Always` with `file:line`, `## Verify` (real command). Host fails `complete` otherwise.  
 3. **Project** root `docs/llm/API_SURFACE.yaml` rows with `path` under `apps/<name>/` into the local surface file; split webhooks per provider; expand HTTP into real families (not one `HTTP /v1/*`).  
 4. FLOWS: ≥2 numbered local flows with `path:line` (composition / webhook / SSE / queue / BFF as applicable).  
 5. ARCHITECTURE + GOTCHAS must be actionable (tables, owns/does-not-own, ≥3 gotchas when runtime is non-trivial).  
@@ -162,6 +165,10 @@ Follow skill `project-onboard/references/VALIDATION.md` (shell + table). Set `AR
 - [ ] API_SURFACE: webhooks split; auth unknown ≤40%; ids resolve  
 - [ ] TEST_INDEX has real commands when scripts/CI exist  
 - [ ] TAXONOMY in sync; no tutorial entries required  
+- [ ] `docs/llm/FLOWS.md` has no `REPLACE_ME` (≥3 flows, `path:line`)  
+- [ ] every `apps/*/CLAUDE.md` is a passport (What + Never/Always + Verify + `file:line`)  
+- [ ] After writing root `CLAUDE.md` / `AGENTS.md`: `lane-memory inject .` if `lane-memory enabled .`  
+      Host also injects after every model pass and on function return — do not skip the SoT write.  
 - [ ] FLOWS steps real; notification flow complete when applicable  
 - [ ] MANIFEST always_load lean (no MODULE_MAP/DOC_LAYOUT)  
 - [ ] decisions.md has 3–5 ADRs or GAPS  
@@ -176,6 +183,8 @@ Follow skill `project-onboard/references/VALIDATION.md` (shell + table). Set `AR
 - [ ] phase4b-app-packs.md artifact present (deep monorepo)  
 
 Artifact: `WIKI_MISMATCHES:`, `VALIDATION: pass|fail`, `GAPS:`, `STATUS:`.
+
+Refuse `STATUS: complete` if host VALIDATION would fail, `docs/llm/FLOWS.md` still has `REPLACE_ME`, any `apps/*/CLAUDE.md` is Owns+Pointers only, or `docs-stale . --passport-gaps` prints `"needed": true`. Use `partial`.
 
 ### Report
 

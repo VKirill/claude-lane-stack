@@ -465,6 +465,70 @@ class AgentsDoctorTest(unittest.TestCase):
                 "bubblewrap probe failed",
             )
 
+    def test_apply_fills_missing_docs_without_resetting_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            for name in ("claude", "grok", "codex", "bwrap"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+            agents = repo / ".agents"
+            agents.mkdir()
+            (agents / "routing.profile.yaml").write_text(
+                "\n".join(
+                    [
+                        "lanes:",
+                        "  main_write: grok",
+                        "writer:",
+                        "  provider: grok",
+                        "  model: grok-4.5",
+                        "stages:",
+                        "  memory:",
+                        "    enabled: true",
+                        "    provider: codex",
+                        "    model: gpt-5.6-luna",
+                        "notes:",
+                        "  - []",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            result = subprocess.run(
+                [str(DOCTOR), "--apply", "--writer-provider", "grok", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            profile = (agents / "routing.profile.yaml").read_text(encoding="utf-8")
+            self.assertIn("  docs:", profile)
+            self.assertRegex(
+                profile, r"(?m)^  memory:\n(?:    .*\n)*    enabled: true"
+            )
+            (repo / "CLAUDE.md").write_text("# App\n", encoding="utf-8")
+            result2 = subprocess.run(
+                [str(DOCTOR), "--apply", "--writer-provider", "grok", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result2.returncode, 0, result2.stderr)
+            self.assertIn(
+                "<!-- lane-memory:core -->",
+                (repo / "CLAUDE.md").read_text(encoding="utf-8"),
+            )
+
 
 class DoctorTuiCatalogTest(unittest.TestCase):
     def test_grok_46_is_selectable(self) -> None:
@@ -617,57 +681,6 @@ class DoctorTuiCatalogTest(unittest.TestCase):
             text = profile.read_text(encoding="utf-8")
             self.assertIn("docs:", text)
             self.assertRegex(text, r"(?m)^  memory:\n(?:    .*\n)*    enabled: true")
-
-    def test_apply_fills_missing_docs_without_resetting_memory(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            fake_bin = root / "bin"
-            repo = root / "repo"
-            fake_bin.mkdir()
-            repo.mkdir()
-            for name in ("claude", "grok", "codex", "bwrap"):
-                executable = fake_bin / name
-                executable.write_text(
-                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
-                )
-                executable.chmod(0o755)
-            agents = repo / ".agents"
-            agents.mkdir()
-            (agents / "routing.profile.yaml").write_text(
-                "\n".join(
-                    [
-                        "lanes:",
-                        "  main_write: grok",
-                        "writer:",
-                        "  provider: grok",
-                        "  model: grok-4.5",
-                        "stages:",
-                        "  memory:",
-                        "    enabled: true",
-                        "    provider: codex",
-                        "    model: gpt-5.6-luna",
-                        "notes:",
-                        "  - []",
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            env = os.environ.copy()
-            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
-            result = subprocess.run(
-                [str(DOCTOR), "--apply", "--writer-provider", "grok", str(repo)],
-                text=True,
-                capture_output=True,
-                env=env,
-                check=False,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            profile = (agents / "routing.profile.yaml").read_text(encoding="utf-8")
-            self.assertIn("  docs:", profile)
-            self.assertRegex(
-                profile, r"(?m)^  memory:\n(?:    .*\n)*    enabled: true"
-            )
 
     def test_adoc_prefers_source_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

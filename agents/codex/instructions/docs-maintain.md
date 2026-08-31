@@ -10,7 +10,9 @@ One page per pass. Do not create neighbor pages. Missing target → `(planned)`.
 
 Archive off limits: `wiki/`, `TODO/`, `docs/plans/`, `docs/compliance/`, `docs/seo/`. No feature code.
 
-`sources:` = files you actually opened. Code paths only. Never `docs/**`, `wiki/**`, `PROJECT.md`, `CLAUDE.md`. `confidence: high` only if `len(sources) ≥ 15`. After a **complete** fill: `status: active`. If the page is still below the floor, leave `status: stub`.
+`sources:` = files you actually opened. Code paths only. Never `docs/**`, `wiki/**`, `PROJECT.md`, `CLAUDE.md`. Never `.next/`, `dist/`, `node_modules/`. `confidence: high` only if `len(sources) ≥ 15`. After a **complete** fill: `status: active`. If the page is still below the floor, leave `status: stub`. `status: active` below the floor is a lie.
+
+INIT is **PARTIAL** while `docs-stale` still lists stub/thin pages you touched. Do not write `DONE` if those remain, unless `page_cap` stopped the pass.
 
 ---
 

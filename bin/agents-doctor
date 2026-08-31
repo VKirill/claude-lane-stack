@@ -714,6 +714,20 @@ def write_outputs(
         json.dumps(caps, indent=2) + "\n", encoding="utf-8"
     )
     (agents / "routing.profile.yaml").write_text("\n".join(lines), encoding="utf-8")
+    mem = (
+        normalized_stages.get("memory")
+        if isinstance(normalized_stages.get("memory"), dict)
+        else {}
+    )
+    if mem.get("enabled"):
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import lane_memory as lm  # noqa: WPS433
+
+            lm.init_corpus(repo)
+        except Exception as exc:  # noqa: BLE001
+            if not quiet:
+                print(f"WARN: lane-memory init/inject skipped: {exc}")
     if not quiet:
         print(f"Wrote {agents / 'capabilities.json'}")
         print(f"Wrote {agents / 'routing.profile.yaml'}")

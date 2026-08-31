@@ -35,6 +35,54 @@ class InstallTest(unittest.TestCase):
         self.assertNotIn('"$BOOT"', text)
         self.assertIn('exec claude --agent "$AGENT" --name "$NAME" "$@"', text)
 
+    def test_lane_stack_resume_command_runs_cli(self) -> None:
+        cmd = (
+            ROOT / "plugins" / "lane-stack" / "commands" / "resume-project.md"
+        ).read_text(encoding="utf-8")
+        skill = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "resume-project" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("resume-project \"$(pwd)\" --compact", cmd)
+        self.assertIn("Do not explain the skill", cmd)
+        self.assertIn("user-invocable: false", skill)
+        self.assertLess(skill.find("## MUST"), skill.find("## Info"))
+
+    def test_site_copy_skills_are_shipped(self) -> None:
+        skills = ROOT / "plugins" / "lane-stack" / "skills"
+        for name in (
+            "copy-project-life",
+            "site-copy-audience",
+            "site-copy-headlines",
+            "site-copy-ux",
+        ):
+            text = (skills / name / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn(f"name: {name}", text)
+            self.assertIn("## NEVER", text)
+        info = (skills / "info" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("copy-project-life", info)
+        self.assertIn("опрос", info)
+        self.assertIn("first-interview.md", info)
+        refs = skills / "copy-project-life" / "references"
+        for name in (
+            "ANAMNESIS.template.md",
+            "audience.template.md",
+            "buyer-persona.template.md",
+            "voice.template.md",
+            "page-brief.template.md",
+            "awareness-levels.md",
+            "headline-types.md",
+            "first-interview.md",
+        ):
+            self.assertTrue((refs / name).is_file(), name)
+
+    def test_plugin_commands_hide_same_named_skills(self) -> None:
+        commands = ROOT / "plugins" / "lane-stack" / "commands"
+        skills = ROOT / "plugins" / "lane-stack" / "skills"
+        for path in sorted(commands.glob("*.md")):
+            skill = skills / path.stem / "SKILL.md"
+            self.assertTrue(skill.is_file(), skill)
+            self.assertIn("user-invocable: false", skill.read_text(encoding="utf-8"))
+
     def test_seo_specialist_pack_is_shipped(self) -> None:
         agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"
         self.assertTrue(agent.is_file())
