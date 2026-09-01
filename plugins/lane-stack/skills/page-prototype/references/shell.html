@@ -4,76 +4,110 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>[SLUG] — prototype</title>
-  <style>
-    :root { font: 15px/1.4 ui-sans-serif, system-ui, sans-serif; color: #222; background: #f4f4f4; }
-    * { box-sizing: border-box; }
-    body { margin: 0; }
-    .page { max-width: 960px; margin: 0 auto; padding: 16px; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; }
-    .row > * { flex: 1 1 200px; }
-    .box { border: 1px solid #999; background: #eee; padding: 12px; }
-    .img { min-height: 120px; display: grid; place-items: center; color: #666; background: #ddd; }
-    .chip { display: inline-block; font: 11px/1 monospace; color: #fff; background: #555; padding: 2px 6px; margin-bottom: 8px; }
-    h1, h2, p { margin: 0 0 8px; font-weight: 600; }
-    p, li { font-weight: 400; }
-    .muted { color: #555; }
-    .cta { display: inline-block; border: 2px solid #222; padding: 8px 16px; text-decoration: none; color: #222; background: #fff; font-weight: 700; }
-    .cta.ghost { border-style: dashed; font-weight: 400; }
-    header.box, footer.box { background: #e4e4e4; }
-    nav a { color: #222; margin-right: 12px; }
-    .note { border: 1px dashed #b8860b; background: #fff8c5; color: #333; padding: 8px; margin: 8px 0; font-size: 13px; }
-    .note::before { content: "NOTE "; font: 11px/1 monospace; color: #886600; }
-    ul { margin: 0; padding-left: 18px; }
-  </style>
+  <!-- site/<slug>/ → ../../_kit/ · app/<app>/<slug>/ → ../../../_kit/ · flows/<flow>/ → ../../_kit/ -->
+  <link rel="stylesheet" href="../../_kit/proto.css">
 </head>
 <body>
-  <div class="page">
+  <div class="page stack">
     <header class="box">
       <span class="chip">HEADER</span>
-      <nav>
+      <button type="button" class="proto-btn ghost" data-proto-menu-btn="[data-proto-menu]">Menu</button>
+      <nav data-proto-menu>
         <a href="./index.html">[Logo]</a>
         <a href="#">[Nav 1]</a>
         <a href="#">[Nav 2]</a>
       </nav>
-      <aside class="note">Trunk test: site name + you-are-here.</aside>
+      <aside class="note">Trunk test: site name + you-are-here. Menu collapses on narrow view.</aside>
     </header>
 
-    <section class="box" style="margin-top:12px">
+    <section class="box">
       <span class="chip">HERO</span>
       <h1>[H1]</h1>
       <p class="muted">[Subhead / first sentence]</p>
-      <p><a class="cta" href="#ask">[Primary CTA]</a></p>
-      <aside class="note">Awareness level from the brief. One H1. One primary CTA.</aside>
+      <p>
+        <a class="cta" href="#ask">[Primary CTA]</a>
+        <button type="button" class="cta ghost" data-proto-open="proto-modal">[Open modal]</button>
+      </p>
+      <aside class="note">Awareness from the brief. One H1. One primary CTA.</aside>
     </section>
 
-    <div class="row" style="margin-top:12px">
-      <section class="box">
-        <span class="chip">PROOF</span>
-        <h2>[Proof heading]</h2>
-        <ul>
-          <li>[Fact 1]</li>
-          <li>[Fact 2]</li>
-        </ul>
-      </section>
-      <div class="box img" role="img" aria-label="[Image label]">
-        <span><span class="chip">IMAGE</span><br>[Photo / screenshot]</span>
+    <section class="box" data-proto-slider>
+      <span class="chip">SLIDER</span>
+      <div class="proto-slider">
+        <div class="proto-slider-track">
+          <div class="img">[Slide 1 — photo]</div>
+          <div class="img">[Slide 2 — photo]</div>
+          <div class="img">[Slide 3 — photo]</div>
+        </div>
       </div>
+      <div class="proto-slider-nav">
+        <button type="button" class="proto-btn ghost" data-proto-prev>Prev</button>
+        <div class="proto-dots"></div>
+        <button type="button" class="proto-btn ghost" data-proto-next>Next</button>
+      </div>
+    </section>
+
+    <div class="row">
+      <section class="box">
+        <span class="chip">TABS</span>
+        <div class="proto-tabs" data-proto-tabs>
+          <div role="tablist">
+            <button type="button" role="tab" aria-selected="true">[Tab 1]</button>
+            <button type="button" role="tab" aria-selected="false">[Tab 2]</button>
+          </div>
+          <div role="tabpanel" class="is-on">[Panel 1]</div>
+          <div role="tabpanel">[Panel 2]</div>
+        </div>
+      </section>
+      <section class="box">
+        <span class="chip">ACCORDION</span>
+        <div class="proto-acc" data-proto-acc>
+          <div class="proto-acc-item is-on">
+            <button type="button">[Q1]</button>
+            <div class="proto-acc-body">[A1]</div>
+          </div>
+          <div class="proto-acc-item">
+            <button type="button">[Q2]</button>
+            <div class="proto-acc-body">[A2]</div>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <section class="box" id="ask" style="margin-top:12px">
+    <section class="box proto-toggle">
+      <span class="chip">TOGGLE</span>
+      <button type="button" class="proto-btn ghost" data-proto-toggle aria-expanded="false">[Show details]</button>
+      <div data-proto-panel>
+        <p class="muted">[Hidden until toggle]</p>
+      </div>
+    </section>
+
+    <section class="box" id="ask">
       <span class="chip">FORM</span>
       <h2>[Form heading]</h2>
       <p class="muted">[Field] — [hint]</p>
       <p class="muted">[Field] — [hint]</p>
-      <p><a class="cta" href="#">[Submit = verb + object]</a>
-         <a class="cta ghost" href="#">[Secondary]</a></p>
-      <aside class="note">Button = verb + object. Secondary is optional and weaker.</aside>
+      <p>
+        <a class="cta" href="#">[Submit = verb + object]</a>
+        <a class="cta ghost" href="#">[Secondary]</a>
+      </p>
     </section>
 
-    <footer class="box" style="margin-top:12px">
+    <footer class="box">
       <span class="chip">FOOTER</span>
       <p class="muted">[Legal / contacts]</p>
     </footer>
   </div>
+
+  <div class="proto-modal" id="proto-modal">
+    <div class="box">
+      <span class="chip">MODAL</span>
+      <h2>[Dialog]</h2>
+      <p class="muted">[Short ask]</p>
+      <button type="button" class="cta" data-proto-close>[Close]</button>
+    </div>
+  </div>
+
+  <script src="../../_kit/proto.js"></script>
 </body>
 </html>

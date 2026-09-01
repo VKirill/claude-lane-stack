@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.22.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.23.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -97,7 +97,7 @@
 | `site-copy-audience` | Анамнез, ЦА, персоны, голос |
 | `site-copy-headlines` | H1 и поток страницы |
 | `site-copy-ux` | Кнопки, формы, подписи |
-| `page-prototype` | Серый HTML: `site/` · `app/<имя>/` · `flows/` под `.agents/prototypes/` |
+| `page-prototype` | Серый HTML + kit + превью 24ч (`publish.py`, тот же URL при правке) |
 
 **Цепочка**
 
@@ -192,7 +192,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.22.0
+cd claude-lane-stack && git checkout v1.23.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```

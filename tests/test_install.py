@@ -112,10 +112,33 @@ class InstallTest(unittest.TestCase):
         self.assertIn("app/<app>/<slug>/index.html", proto)
         self.assertIn("flows/<flow>/", proto)
         self.assertIn("shell.html", proto)
+        self.assertIn("_kit/proto.css", proto)
+        self.assertIn("data-proto-slider", proto)
+        self.assertIn("publish.py", proto)
+        self.assertIn("--bundle", proto)
+        self.assertIn("html.vechkasov.pro", proto)
+        pub = (skills / "page-prototype" / "references" / "publish.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"files"', pub)
+        self.assertIn("--bundle", pub)
+        self.assertIn(".host.json", pub)
+        self.assertIn("force_new", pub)
+        self.assertNotIn("No JavaScript", proto)
+        self.assertTrue(
+            (skills / "page-prototype" / "references" / "publish.py").is_file()
+        )
         self.assertTrue((skills / "page-prototype" / "references" / "shell.html").is_file())
+        self.assertTrue((skills / "page-prototype" / "references" / "kit" / "proto.css").is_file())
+        self.assertTrue((skills / "page-prototype" / "references" / "kit" / "proto.js").is_file())
         self.assertTrue(
             (skills / "page-prototype" / "references" / "INDEX.template.md").is_file()
         )
+        shell = (skills / "page-prototype" / "references" / "shell.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("_kit/proto.css", shell)
+        self.assertIn("data-proto-slider", shell)
 
     def test_plugin_commands_hide_same_named_skills(self) -> None:
         commands = ROOT / "plugins" / "lane-stack" / "commands"

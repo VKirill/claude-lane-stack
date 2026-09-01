@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f0f1a">
+  <title>html.vechkasov.pro — HTML / CSS / JS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --panel: #1a1a2e;
+      --line: #2a2a40;
+      --ink: #e8e8f0;
+      --mute: #8888aa;
+      --green: #04AA6D;
+      --green-dim: #037a4e;
+      --nav: #12121f;
+    }
+    body.light {
+      --bg: #f4f4f8;
+      --panel: #fff;
+      --line: #d8d8e4;
+      --ink: #1a1a2e;
+      --mute: #6a6a88;
+      --nav: #ececf4;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.4 Inter, system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 16px;
+      background: var(--nav);
+      border-bottom: 1px solid var(--line);
+      flex-wrap: wrap;
+    }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+    .brand svg { display: block; }
+    .div { width: 1px; height: 22px; background: var(--line); }
+    .toggles { display: flex; gap: 14px; flex-wrap: wrap; }
+    .tog { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 12px; }
+    .sw { position: relative; width: 36px; height: 20px; }
+    .sw input { opacity: 0; width: 0; height: 0; }
+    .sw i {
+      position: absolute; inset: 0; background: #2a2a40; border-radius: 20px; cursor: pointer;
+    }
+    .sw i::after {
+      content: ""; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px;
+      background: #fff; border-radius: 50%; transition: 160ms;
+    }
+    .sw input:checked + i { background: var(--green); }
+    .sw input:checked + i::after { transform: translateX(16px); }
+    .acts { display: flex; gap: 8px; margin-left: auto; }
+    button {
+      font: 500 13px/1 Inter, system-ui, sans-serif;
+      border: 0; border-radius: 8px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 12px;
+    }
+    .run { background: var(--green); color: #fff; }
+    .run:hover { background: var(--green-dim); }
+    .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    .ghost:hover { border-color: var(--green); }
+    .hint { font: 11px/1 JetBrains Mono, ui-monospace, monospace; opacity: .65; }
+    .work { flex: 1; display: flex; min-height: 0; }
+    .work.stack { flex-direction: column; }
+    .col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .editor { border-right: 1px solid var(--line); }
+    .work.stack .editor { border-right: 0; border-bottom: 1px solid var(--line); }
+    .split .editor { display: grid; grid-template-rows: 1fr 1fr 1fr; }
+    .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--line); }
+    .split .tabs { display: none; }
+    .tab {
+      background: none; color: var(--mute); border-radius: 0;
+      border-bottom: 2px solid transparent; padding: 10px 14px;
+    }
+    .tab.on { color: var(--ink); border-bottom-color: var(--green); }
+    .panel { display: none; flex: 1; min-height: 0; flex-direction: column; }
+    .panel.on, .split .panel { display: flex; }
+    .ph {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line);
+      font-size: 12px; color: var(--mute);
+    }
+    .badge { color: var(--green); font-weight: 600; margin-right: 8px; }
+    .panel .CodeMirror {
+      flex: 1; height: auto; min-height: 0;
+      background: var(--bg); color: var(--ink);
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 13px; line-height: 1.5;
+    }
+    .CodeMirror-gutters { background: var(--panel); border-right: 1px solid var(--line); color: var(--mute); }
+    .CodeMirror-linenumber { color: var(--mute); }
+    .CodeMirror-cursor { border-left: 2px solid var(--ink); }
+    .CodeMirror-selected { background: #2a3a5a; }
+    body.light .CodeMirror-selected { background: #c8d4f0; }
+    .cm-header, .cm-tag { color: var(--green); }
+    .cm-attribute { color: #82aaff; }
+    .cm-string, .cm-string-2 { color: #e6c07b; }
+    .cm-comment { color: var(--mute); }
+    .cm-keyword { color: #c792ea; }
+    .cm-number, .cm-atom { color: #f78c6c; }
+    .cm-property, .cm-def { color: #61afef; }
+    .cm-variable, .cm-variable-2 { color: var(--ink); }
+    .cm-operator { color: #56b6c2; }
+    .cm-meta, .cm-qualifier { color: #e6c07b; }
+    .cm-builtin, .cm-type { color: #e06c75; }
+    .stage { flex: 1; position: relative; min-height: 0; background: #fff; }
+    .stage iframe {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      border: 0; background: #fff;
+    }
+    .stage iframe.is-back { visibility: hidden; pointer-events: none; }
+    .status {
+      display: flex; justify-content: space-between; padding: 6px 14px;
+      border-top: 1px solid var(--line); color: var(--mute); font-size: 12px;
+    }
+    .status a { color: var(--green); }
+    .toast {
+      position: fixed; right: 16px; bottom: 16px; background: var(--panel);
+      border: 1px solid var(--line); padding: 10px 14px; border-radius: 8px;
+      display: none; max-width: 28rem;
+    }
+    .toast.on { display: block; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="brand" aria-label="html.vechkasov.pro">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M8 6L3 12L8 18" stroke="#04AA6D" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M16 6L21 12L16 18" stroke="#04AA6D" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M14 4L10 20" stroke="#04AA6D" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      html.vechkasov.pro
+    </div>
+    <div class="div"></div>
+    <div class="toggles">
+      <label class="tog">Live Preview <span class="sw"><input type="checkbox" id="live" checked><i></i></span></label>
+      <label class="tog">Split Editor <span class="sw"><input type="checkbox" id="split"><i></i></span></label>
+      <label class="tog">Снизу <span class="sw"><input type="checkbox" id="stack"><i></i></span></label>
+      <label class="tog">Светлая <span class="sw"><input type="checkbox" id="theme"><i></i></span></label>
+    </div>
+    <div class="acts">
+      <button class="run" id="run" type="button">▶ Run <span class="hint">Alt+R</span></button>
+      <button class="ghost" id="save" type="button">Save <span class="hint">Alt+S</span></button>
+      <button class="ghost" id="clr" type="button">Clear <span class="hint">Alt+C</span></button>
+      <button class="ghost" id="pub" type="button">Publish 24ч</button>
+    </div>
+  </nav>
+
+  <div class="work" id="work">
+    <div class="col editor" id="editor">
+      <div class="tabs" id="tabs">
+        <button type="button" class="tab on" data-tab="html">HTML</button>
+        <button type="button" class="tab" data-tab="css">CSS</button>
+        <button type="button" class="tab" data-tab="js">JS</button>
+      </div>
+      <div class="panel on" data-panel="html">
+        <div class="ph"><span><span class="badge">HTML</span>index.html</span></div>
+        <textarea id="html" spellcheck="false">&lt;!DOCTYPE html&gt;
+&lt;html lang="ru"&gt;
+&lt;head&gt;
+  &lt;meta charset="utf-8"&gt;
+  &lt;title&gt;Preview&lt;/title&gt;
+  &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;h1&gt;html.vechkasov.pro&lt;/h1&gt;
+  &lt;p&gt;HTML / CSS / JS на 24 часа. Run — превью. Publish — ссылка.&lt;/p&gt;
+  &lt;script src="script.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</textarea>
+      </div>
+      <div class="panel" data-panel="css">
+        <div class="ph"><span><span class="badge">CSS</span>style.css</span></div>
+        <textarea id="css" spellcheck="false">body {
+  background: #0f0f1a;
+  color: #e8e8f0;
+  font-family: Inter, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+}
+h1 { color: #04AA6D; margin-bottom: 8px; }
+p { color: #8888aa; }</textarea>
+      </div>
+      <div class="panel" data-panel="js">
+        <div class="ph"><span><span class="badge">JS</span>script.js</span></div>
+        <textarea id="js" spellcheck="false">console.log("preview");</textarea>
+      </div>
+    </div>
+    <div class="col">
+      <div class="ph"><span><span class="badge">PREVIEW</span>iframe</span></div>
+      <div class="stage">
+        <iframe id="view" title="Preview" sandbox="allow-scripts"></iframe>
+        <iframe id="view2" title="Preview" sandbox="allow-scripts" class="is-back"></iframe>
+      </div>
+    </div>
+  </div>
+  <div class="status">
+    <span>Alt+R Run · Alt+S Save · Alt+C Clear · Tab Indent · Shift+Tab Outdent</span>
+    <span id="out"></span>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/xml/xml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/css/css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/htmlmixed/htmlmixed.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let front = $("view"), back = $("view2"), gen = 0, liveT = 0;
+    let lastH = "", lastJ = "";
+    const cmOpt = {
+      lineNumbers: true, indentUnit: 2, tabSize: 2,
+      extraKeys: { Tab: "indentMore", "Shift-Tab": "indentLess" },
+    };
+    const edHtml = CodeMirror.fromTextArea($("html"), Object.assign({}, cmOpt, { mode: "htmlmixed" }));
+    const edCss = CodeMirror.fromTextArea($("css"), Object.assign({}, cmOpt, { mode: "css" }));
+    const edJs = CodeMirror.fromTextArea($("js"), Object.assign({}, cmOpt, { mode: "javascript" }));
+    const eds = [edHtml, edCss, edJs];
+    const html = { get value() { return edHtml.getValue(); }, set value(v) { edHtml.setValue(v); } };
+    const css = { get value() { return edCss.getValue(); }, set value(v) { edCss.setValue(v); } };
+    const js = { get value() { return edJs.getValue(); }, set value(v) { edJs.setValue(v); } };
+
+    function doc() {
+      const h = html.value;
+      const inject = `<style id="live-css">${css.value}</style><script>${js.value}<\/script>`;
+      if (/<\/body>/i.test(h)) return h.replace(/<\/body>/i, inject + "</body>");
+      return h + inject;
+    }
+    function paintCss() {
+      const idoc = front.contentDocument;
+      const st = idoc && idoc.getElementById("live-css");
+      if (!st) return false;
+      st.textContent = css.value;
+      return true;
+    }
+    function run() {
+      clearTimeout(liveT);
+      const htmlStr = doc();
+      lastH = html.value;
+      lastJ = js.value;
+      const n = ++gen;
+      back.onload = () => {
+        if (n !== gen) return;
+        front.classList.add("is-back");
+        back.classList.remove("is-back");
+        const t = front;
+        front = back;
+        back = t;
+      };
+      back.srcdoc = htmlStr;
+    }
+    function liveSoon() {
+      if (!$("live").checked) return;
+      if (html.value === lastH && js.value === lastJ && paintCss()) return;
+      clearTimeout(liveT);
+      liveT = setTimeout(run, 240);
+    }
+    function toast(t) {
+      const el = $("toast");
+      el.textContent = t;
+      el.classList.add("on");
+      setTimeout(() => el.classList.remove("on"), 4000);
+    }
+    function save() {
+      const blob = new Blob([doc()], { type: "text/html;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "index.html";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("Скачан index.html");
+    }
+    function clearAll() {
+      html.value = "";
+      css.value = "";
+      js.value = "";
+      run();
+    }
+    $("run").onclick = run;
+    $("save").onclick = save;
+    $("clr").onclick = clearAll;
+    $("live").onchange = () => { if ($("live").checked) run(); };
+    eds.forEach((ed) => ed.on("change", liveSoon));
+    function refreshEds() { requestAnimationFrame(() => eds.forEach((ed) => ed.refresh())); }
+    document.querySelectorAll(".tab").forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b === btn));
+        document.querySelectorAll(".panel").forEach((p) => {
+          p.classList.toggle("on", p.dataset.panel === btn.dataset.tab);
+        });
+        refreshEds();
+      };
+    });
+    $("split").onchange = () => { $("editor").classList.toggle("split", $("split").checked); refreshEds(); };
+    $("stack").onchange = () => { $("work").classList.toggle("stack", $("stack").checked); refreshEds(); };
+    $("theme").onchange = () => document.body.classList.toggle("light", $("theme").checked);
+    document.addEventListener("keydown", (e) => {
+      if (!e.altKey) return;
+      if (e.code === "KeyR") { e.preventDefault(); run(); }
+      if (e.code === "KeyS") { e.preventDefault(); save(); }
+      if (e.code === "KeyC") { e.preventDefault(); clearAll(); }
+    });
+    $("pub").onclick = async () => {
+      const files = { "index.html": html.value };
+      if (css.value.trim()) files["style.css"] = css.value;
+      if (js.value.trim()) files["script.js"] = js.value;
+      $("pub").disabled = true;
+      try {
+        const r = await fetch("/api/pages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.status);
+        $("out").innerHTML = `<a href="${j.url}" target="_blank" rel="noopener">${j.url}</a> · 24ч`;
+        toast("Опубликовано на 24 часа");
+      } catch (err) {
+        toast(String(err.message || err));
+      } finally {
+        $("pub").disabled = false;
+      }
+    };
+    addEventListener("resize", refreshEds);
+    run();
+    refreshEds();
+  </script>
+</body>
+</html>

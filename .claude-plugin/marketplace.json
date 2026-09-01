@@ -1,7 +1,7 @@
 {
   "name": "claude-lane-stack",
   "description": "Claude Lane Stack — solo PM conveyor (Claude Code + CLI writers).",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "owner": {
     "name": "VKirill",
     "url": "https://github.com/VKirill/claude-lane-stack"
@@ -11,7 +11,7 @@
       "name": "lane-stack",
       "source": "./plugins/lane-stack",
       "description": "PM agents, slash commands, and Claude-only playbooks for the lane conveyor.",
-      "version": "1.22.0",
+      "version": "1.23.0",
       "author": {
         "name": "VKirill",
         "url": "https://github.com/VKirill/claude-lane-stack"

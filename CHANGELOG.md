@@ -1,3 +1,13 @@
+## 1.23.0 — 2026-09-01
+
+### Added
+- **`page-prototype` kit + publish:** `references/kit/proto.css` / `proto.js`,
+  `publish.py` (`--one` / `--bundle` / `--new`). Same page folder reuses the
+  24h URL via `.host.json` + `POST /api/pages` `id`. New folder → new URL.
+- **html-host** (`apps/html-host`): 24h preview at html.vechkasov.pro.
+  Dark HTML/CSS/JS editor, CodeMirror, live preview without flicker,
+  update-in-place API.
+
 ## 1.22.0 — 2026-09-01
 
 ### Added
