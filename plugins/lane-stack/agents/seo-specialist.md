@@ -28,13 +28,17 @@ skills:
   - drmax-cvd
   - drmax-text-humanization
   - drmax-lexadapt
+  - google
+  - yandex
+  - seo-tools
   - mutagen
   - xmlstock
   - proxy6
   - yandex-webmaster
   - yandex-metrica
+  - yandex-direct
   - google-search-console
-  - ga4-data-api
+  - google-analytics
   - google-cloud-auth
   - page-prototype
   - ru-text
@@ -246,7 +250,7 @@ Skills document HOW; you call via Bash/curl. Secrets: `~/secrets/<service>.env`.
 | Index RU | `yandex-webmaster` |
 | Behaviour RU | `yandex-metrica` |
 | Google Search | `google-search-console` |
-| GA4 | `ga4-data-api` |
+| GA4 | `google-analytics` |
 
 No dated SERP → hypothesis only.
 

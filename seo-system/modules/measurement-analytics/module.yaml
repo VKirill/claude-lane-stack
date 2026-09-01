@@ -8,7 +8,7 @@ depends_on: [services-data]
 soft_depends_on: [passport-onboard]
 provides: [measure.gsc, measure.metrica, measure.baseline]
 requires_provides: [data.google, data.yandex]
-skills: [google-search-console, ga4-data-api, yandex-metrica, yandex-webmaster, seo-evidence-based-2026]
+skills: [google, google-search-console, google-analytics, yandex, yandex-metrica, yandex-webmaster, seo-evidence-based-2026]
 originals: []
 cli: [seo-services]
 artifacts:

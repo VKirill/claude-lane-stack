@@ -248,17 +248,30 @@ class InstallTest(unittest.TestCase):
             "drmax-cvd",
             "drmax-text-humanization",
             "drmax-lexadapt",
-            "mutagen",
-            "xmlstock",
             "proxy6",
-            "yandex-webmaster",
-            "yandex-metrica",
-            "google-search-console",
-            "ga4-data-api",
-            "google-cloud-auth",
             "page-prototype",
         ):
             skill = skills / name / "SKILL.md"
+            self.assertTrue(skill.is_file(), skill)
+            self.assertIn(f"name: {name}", skill.read_text(encoding="utf-8"))
+        for rel, name in (
+            ("google/SKILL.md", "google"),
+            ("google/google-ads/SKILL.md", "google-ads"),
+            ("google/google-analytics/SKILL.md", "google-analytics"),
+            ("google/google-cloud-auth/SKILL.md", "google-cloud-auth"),
+            ("google/google-search-console/SKILL.md", "google-search-console"),
+            ("google/google-tag-manager/SKILL.md", "google-tag-manager"),
+            ("yandex/SKILL.md", "yandex"),
+            ("yandex/yandex-cloud/SKILL.md", "yandex-cloud"),
+            ("yandex/yandex-direct/SKILL.md", "yandex-direct"),
+            ("yandex/yandex-direct-creatives/SKILL.md", "yandex-direct-creatives"),
+            ("yandex/yandex-metrica/SKILL.md", "yandex-metrica"),
+            ("yandex/yandex-webmaster/SKILL.md", "yandex-webmaster"),
+            ("seo-tools/SKILL.md", "seo-tools"),
+            ("seo-tools/mutagen/SKILL.md", "mutagen"),
+            ("seo-tools/xmlstock/SKILL.md", "xmlstock"),
+        ):
+            skill = skills / rel
             self.assertTrue(skill.is_file(), skill)
             self.assertIn(f"name: {name}", skill.read_text(encoding="utf-8"))
         originals = skills / "seo-prompt-engineering-2026" / "references" / "originals"

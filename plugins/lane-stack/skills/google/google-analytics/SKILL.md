@@ -1,5 +1,5 @@
 ---
-name: ga4-data-api
+name: google-analytics
 description: "[RU: ga4, гугл аналитика, аналитика 4] GA4 Data API v1beta — service account or OAuth. properties/{id}:runReport with dimensions, metrics, dateRanges, FilterExpression DSL (EXACT/CONTAINS/REGEXP, inList, numeric, between, and/or/not), orderBys, limit/offset. runRealtimeReport (30 min), runPivotReport, cohortSpec, batchRunReports (5-in-1). Admin API v1beta for customDimensions + conversionEvents. Token quotas per property and project. SKIP: Universal Analytics v3 sunset 2024-07 (→universal-analytics); Yandex.Metrika (→yandex-metrica); Search Console (→google-search-console); GTM (→google-tag-manager); BigQuery export (→bigquery); Cloud auth (→google-cloud-auth)."
 stacks:
   - google-analytics

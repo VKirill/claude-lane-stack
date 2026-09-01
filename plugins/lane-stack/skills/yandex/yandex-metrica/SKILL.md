@@ -1,6 +1,6 @@
 ---
 name: yandex-metrica
-description: "[RU: яндекс метрика, метрика api, logs api, цели метрики] Yandex.Metrika API via api-metrika.yandex.net with OAuth 2.0. Reporting API v1 (/stat/v1/data, /bytime, /drilldown, /comparison) with ym:s:/ym:pv:/ym:u: namespaces, filter DSL, attribution models; Logs API raw hits/visits lifecycle created→processed→cleaned, 10 GB/counter; Management API for counters/goals/filters CRUD. Quotas: 5000 req/day per user_login, 30 req/s per IP (10 for Logs), 3 parallel, 200 req/5min. Use when: яндекс метрика, metrika api, /stat/v1/data, logs api, raw hits export, ym:s:visits, counter_id, attribution, цели метрики. SKIP: Webmaster (→yandex-webmaster); Direct ads (→yandex-direct); GA4 (→ga4-data-api); AppMetrica (→appmetrica); CRM (→amocrm/bitrix24)."
+description: "[RU: яндекс метрика, метрика api, logs api, цели метрики] Yandex.Metrika API via api-metrika.yandex.net with OAuth 2.0. Reporting API v1 (/stat/v1/data, /bytime, /drilldown, /comparison) with ym:s:/ym:pv:/ym:u: namespaces, filter DSL, attribution models; Logs API raw hits/visits lifecycle created→processed→cleaned, 10 GB/counter; Management API for counters/goals/filters CRUD. Quotas: 5000 req/day per user_login, 30 req/s per IP (10 for Logs), 3 parallel, 200 req/5min. Use when: яндекс метрика, metrika api, /stat/v1/data, logs api, raw hits export, ym:s:visits, counter_id, attribution, цели метрики. SKIP: Webmaster (→yandex-webmaster); Direct ads (→yandex-direct); GA4 (→google-analytics); AppMetrica (→appmetrica); CRM (→amocrm/bitrix24)."
 stacks:
   - yandex-metrica
   - ru-analytics
@@ -54,7 +54,7 @@ Loaded automatically when its description matches the active task. Read only the
 
 - Search Console-style queries / index / sitemap — that is **not** Metrika. Use `yandex-webmaster` (cascade marker)
 - Yandex.Direct ad campaign stats (impressions, clicks, CPC, CTR) — separate API. Use `yandex-direct` (cascade marker)
-- Google Analytics 4 — different platform and API. Use `ga4-data-api` (cascade marker)
+- Google Analytics 4 — different platform and API. Use `google-analytics` (cascade marker)
 - AppMetrica (mobile app analytics on appmetrica.yandex.com) — separate API. Use `appmetrica` (cascade marker)
 - Placing the JS tag on a page or configuring goals via JS — that is tag-manager / frontend work, not API
 - Downstream processing of collected data (ETL, ClickHouse, dashboards) — that belongs to `clickhouse` / `polars` / `pandas` / `postgresql`
@@ -242,7 +242,7 @@ Ready-made templates: `httpx.AsyncClient` with OAuth, token-bucket for 30 req/s,
 
 - `yandex-webmaster` — search queries / indexation (cascade marker)
 - `yandex-direct` — Yandex.Direct ad-campaign stats (cascade marker)
-- `ga4-data-api` — Google Analytics 4 (cascade marker)
+- `google-analytics` — Google Analytics 4 (cascade marker)
 - `appmetrica` — mobile-app analytics (cascade marker)
 - `httpx`, `nodejs` — HTTP transport for your own client
 - `postgresql`, `redis` — `request_id` persistence, daily counter, response cache
@@ -282,7 +282,7 @@ Ready-made templates: `httpx.AsyncClient` with OAuth, token-bucket for 30 req/s,
 
 ## See also
 
-- `yandex-webmaster`, `yandex-direct`, `ga4-data-api`, `appmetrica` — adjacent RU/EN analytics platforms
+- `yandex-webmaster`, `yandex-direct`, `google-analytics`, `appmetrica` — adjacent RU/EN analytics platforms
 - `clickhouse` — recommended sink for Logs API raw hits
 - `httpx`, `nodejs` — HTTP client
 - `postgresql`, `redis` — persistence

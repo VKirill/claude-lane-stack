@@ -1,6 +1,6 @@
 ---
 name: google-cloud-auth
-description: "[RU: oauth google, авторизация гугл, service account, sa key, refresh token, invalid_grant, adc, google cloud auth] Google auth for all Google APIs — OAuth 2.0, Service Account JWT, ADC. Use when: auth setup, invalid_grant, SA key, refresh token, PKCE, gcloud ADC. SKIP: GA4 (→ga4-data-api); GSC (→google-search-console); GTM (→google-tag-manager)."
+description: "[RU: oauth google, авторизация гугл, service account, sa key, refresh token, invalid_grant, adc, google cloud auth] Google auth for all Google APIs — OAuth 2.0, Service Account JWT, ADC. Use when: auth setup, invalid_grant, SA key, refresh token, PKCE, gcloud ADC. SKIP: GA4 (→google-analytics); GSC (→google-search-console); GTM (→google-tag-manager)."
 stacks:
   - google-cloud-auth
   - oauth2
@@ -50,7 +50,7 @@ Loaded automatically when its description matches the active task. This is the s
 
 ## Do not use this skill when
 
-- You need to make GA4 Data API calls — auth is covered in context; load `ga4-data-api` for request shape, quotas, and FilterExpression DSL
+- You need to make GA4 Data API calls — auth is covered in context; load `google-analytics` for request shape, quotas, and FilterExpression DSL
 - You need to query Google Search Console data — load `google-search-console` for dimensions, filters, and URL Inspection
 - You need GTM container / tag management — load `google-tag-manager` for resource hierarchy and CRUD operations
 - You need Yandex OAuth (Yandex Metrika, Direct, Webmaster) — different provider; load `yandex-metrica`, `yandex-direct`, or `yandex-webmaster`
@@ -123,7 +123,7 @@ Google API auth errors follow a predictable taxonomy. **401 Unauthorized** means
 
 ## Related Skills
 
-- `ga4-data-api` — GA4 Data API reporting (auth bootstrap is covered there; load this skill for request shape, quotas, FilterExpression)
+- `google-analytics` — GA4 Data API reporting (auth bootstrap is covered there; load this skill for request shape, quotas, FilterExpression)
 - `google-search-console` — GSC search analytics, URL Inspection, Sitemaps (depends on this skill for credential setup)
 - `google-tag-manager` — GTM container / tag management (depends on this skill for credential bootstrap)
 - `yandex-metrica` — Russian analytics analogue; separate Yandex OAuth, not Google OAuth

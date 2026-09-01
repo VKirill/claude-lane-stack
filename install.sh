@@ -63,11 +63,12 @@ mkdir -p "$CODEX"
 # playbook out of that catalog. Claude Code still gets a ~/.claude/skills link.
 PM_ONLY_SKILLS="orchestrator-lanes orchestrator-workflow info app-architect"
 # User-kept copies (do not wipe on install; they override the plugin).
-KEEP_CLAUDE_SKILLS="project-life"
+# Cloud (~/.claude/skills) owns google/ yandex/ seo-tools trees; do not rm them.
+KEEP_CLAUDE_SKILLS="project-life google yandex seo-tools"
 # User-owned skills in ~/.agents/skills: canonical on this host, never
 # overwritten by install (repo copy is the distribution snapshot).
 KEEP_AGENTS_SKILLS="project-life"
-STALE_SKILLS="agent-todos project-memory"
+STALE_SKILLS="agent-todos project-memory ga4-data-api google-cloud-auth google-search-console yandex-metrica yandex-webmaster mutagen xmlstock"
 
 # bins
 for executable in "$STACK_ROOT"/bin/*; do

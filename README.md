@@ -145,14 +145,10 @@
 | `drmax-latent-intent` | Скрытый интент одной фразы |
 | `drmax-text-humanization` | Редактура после GIST, не обход детекторов |
 | `drmax-lexadapt` | Упростить под CEFR / ТРКИ |
-| `mutagen` | Частотность Wordstat, конкуренция |
-| `xmlstock` | Живой SERP Яндекс / Google |
+| `seo-tools/` | Роутер: `mutagen` (Wordstat), `xmlstock` (живой SERP) |
 | `proxy6` | Пул прокси для fetch / SERP |
-| `yandex-webmaster` | Запросы и индекс своего сайта |
-| `yandex-metrica` | Трафик и цели |
-| `google-search-console` | GSC searchanalytics / URL Inspection |
-| `ga4-data-api` | GA4 Data API |
-| `google-cloud-auth` | OAuth / service account для GSC и GA4 |
+| `yandex/` | Роутер: Cloud, Direct, креативы, Метрика, Вебмастер |
+| `google/` | Роутер: Ads, Analytics, GSC, GTM, Cloud auth |
 
 Агент: `seo-specialist`. Код сайта — не сюда. Ключи API — `~/secrets/*.env`, не в плагине.
 

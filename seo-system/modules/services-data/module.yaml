@@ -8,7 +8,7 @@ depends_on: [core-harness]
 soft_depends_on: []
 provides: [data.serp, data.keywords, data.yandex, data.google, data.dataforseo, data.proxy6]
 requires_provides: []
-skills: [mutagen, xmlstock, proxy6, yandex-webmaster, yandex-metrica, google-search-console, ga4-data-api]
+skills: [seo-tools, mutagen, xmlstock, proxy6, yandex, yandex-webmaster, yandex-metrica, google, google-search-console, google-analytics]
 originals: []
 cli: [seodoc, seo-services, seo-dataforseo-mcp, seo-routing, seo-serp-save]
 artifacts:
