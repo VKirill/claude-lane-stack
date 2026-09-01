@@ -1,3 +1,18 @@
+## 1.22.0 — 2026-09-01
+
+### Added
+- **`page-prototype`:** gray Axure-like HTML wireframes. Skill only.
+  Tree: `site/<slug>/`, `app/<app>/<slug>/`, `flows/<flow>/` under
+  `.agents/prototypes/`. On `copy-lead`, `seo-specialist`,
+  `dev-orchestrator`. Not Vue, not DESIGN.md.
+- **SEO API skills in the plugin:** `mutagen`, `xmlstock`, `proxy6`,
+  `yandex-webmaster`, `yandex-metrica`, `google-search-console`,
+  `ga4-data-api`, `google-cloud-auth`. Methodology was already shipped;
+  these are the paid-API playbooks `seo-specialist` lists. Keys stay in
+  `~/secrets/*.env`. Host `seo-*` CLI is still not in the plugin.
+- **`tavily` + `copy-research`:** cited web search and copy-lead helper
+  recipes. Optional output style `copywriter` (session-only).
+
 ## 1.21.0 — 2026-08-31
 
 ### Added

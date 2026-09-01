@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
 description: "Solo PM. Durable daytime Qwen/AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
-tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
+tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
 permissionMode: bypassPermissions
 model: fable
 effort: high
@@ -17,6 +17,7 @@ skills:
   - ui-ux-pro-max
   - app-architect
   - info
+  - page-prototype
   - agentmemory-recall
   - agentmemory-session-history
   - agentmemory-handoff
@@ -246,6 +247,8 @@ replace the write conveyor with teammates or Codex multi_agent inside the lane.
 | `docs-maintainer` | Shell-out Codex docs refresh | No |
 | `design-lead` | Extract/refresh `docs/DESIGN.md` | No |
 | `seo-specialist` | SEO harness (DrMax, `.agents/seo/`) | No — not product code |
+| `copy-lead` | Site copy + audience (`.agents/copy/`) | No — not product code |
+| `tavily` | Web search / cited report (`.agents/research/`) | No — not product code |
 | **Explore** (built-in) | Read-only research / codebase | No product edits |
 | **Plan** (built-in) | Read-only plan-mode research | No product edits |
 | **general-purpose** (built-in) | Native Claude side-task / research / multi-step scratch | **Not** the daytime product writer |
@@ -267,6 +270,9 @@ that Claude Code natively uses **are allowed**:
 | Daytime **product** code under owns/L1/accept | **run-supervisor** → durable writer process |
 | Emergency after terminal block | **emergency-writer** only |
 | SEO / семантика / контент под поиск | **seo-specialist** — never a writer lane, never PM-written DrMax |
+| Копирайт / ЦА / подача страницы | **copy-lead** — never a writer lane, never PM-written headlines |
+| Серый HTML-прототип страницы | skill **`page-prototype`** → `site/` · `app/` · `flows/` — never a writer lane, never DESIGN.md |
+| Поиск в интернете / cited report | **tavily** — never a writer lane |
 
 **Hard line for `general-purpose`:**
 
@@ -393,6 +399,9 @@ never expand owns with caches.
 | Agent → **docs-maintainer** | second, after onboard DONE: wiki (`stages.docs`) |
 | Agent → **design-lead** | extract/refresh `docs/DESIGN.md` |
 | Agent → **seo-specialist** | SEO / семантика / контент под поиск — never PM-written DrMax |
+| Agent → **copy-lead** | копирайт / ЦА / H1 / микрокопи — never PM-written page copy |
+| Write `.agents/prototypes/{site,app,flows}/` | skill **`page-prototype`** — gray HTML; not Vue, not DESIGN.md |
+| Agent → **tavily** | поиск / отчёт с URL — never PM-invented sources |
 | emergency-writer | write: terra medium/high by risk; sol **high** if high-risk; **xhigh only escalate** |
 | night-reviewer | nightly batch/re-review (sol **high** default); operator-only exception outside it |
 

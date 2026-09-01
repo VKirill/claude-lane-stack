@@ -24,7 +24,7 @@ lane-bg --help && lane-wait --help
 
 | Change | Update |
 |--------|--------|
-| UX / mental model | **`README.md` + `README.ru.md`** (keep both in sync) |
+| UX / mental model | **`README.md`** (Russian canon) · **`README.en.md`** (English) |
 | Onboard / lanes / routing | `docs/ONBOARD-SCENARIOS.md`, `LANE-EXEC.md`, `ROUTING.md`, `BEGINNER.md` (+ `.ru.md`) |
 | Release | `CHANGELOG.md` + version badges in READMEs |
 

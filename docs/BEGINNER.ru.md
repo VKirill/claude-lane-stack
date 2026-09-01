@@ -321,7 +321,7 @@ lifecycle events, затем независимо проверяются в от
 
 | Хотите | Читайте |
 |--------|---------|
-| Главная страница с общей картиной | [README](./README.ru.md) |
+| Главная страница с общей картиной | [README](../README.md) |
 | Правила соло-оркестрации (почему вы не мержите) | [SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md) |
 | Что внутри карточки задачи | [FILE-CONTRACT.md](FILE-CONTRACT.md) |
 | Кто пишет и кто ревьюит | [ROUTING.md](ROUTING.md) |

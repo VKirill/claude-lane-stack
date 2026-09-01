@@ -1,424 +1,280 @@
-<div align="center">
-
-<img src="docs/images/00-banner.jpg" alt="Claude Lane Stack" width="100%" />
-
-<br/>
-
 # Claude Lane Stack
 
-### A small AI coding factory for one person
+**v1.22.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
-**One human. One AI project manager. Real CLI coding agents on a durable conveyor.**  
-Talk to Claude Code — it runs Codex / Qwen / Grok / Kimi / AGY, checks work, **merges to `main`**, reviews at night.
+Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
-<p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.21.0"><img src="https://img.shields.io/badge/version-v1.21.0-orange?style=for-the-badge" alt="version" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
-  <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
-  <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
-  <a href="https://t.me/pomogay_marketing"><img src="https://img.shields.io/badge/Telegram-channel-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram" /></a>
-</p>
+Говорите с Claude Code — он гоняет Codex / Qwen / Grok / Kimi / AGY / Cursor / OpenCode, проверяет работу, **мержит в `main`**, ночью делает независимое ревью.
 
-<p>
-  <a href="README.ru.md"><strong>🇷🇺 Русский</strong></a>
-  &nbsp;·&nbsp;
-  <a href="docs/BEGINNER.md"><strong>🐣 Beginner guide</strong></a>
-  &nbsp;·&nbsp;
-  <a href="CHANGELOG.md"><strong>Changelog</strong></a>
-  &nbsp;·&nbsp;
-  <a href="https://github.com/VKirill/claude-lane-stack/stargazers"><strong>★ Star</strong></a>
-</p>
-
-</div>
+Чат — русский. Ключи и файлы агентов — английские.
 
 ---
 
-<br/>
+## Как открыть скилл
 
-<div align="center">
-<img src="docs/images/06-feature-cards.jpg" alt="Factory · ownership · night review · merge to main" width="100%" />
-</div>
+| Что | Команда |
+|---|---|
+| Каталог процессов | `/lane-stack:info` · `/info` · «справка» |
+| Карточка одного скилла | `/lane-stack:<имя> info` |
+| Сделать работу | `/lane-stack:<имя>` или фраза в чате |
 
-<br/>
+Скилл с одноимённой командой (`resume-project`, `project-onboard`, `app-architect`, `info`) **не** дублируется в меню Skills: команда делает работу, `info` — шпаргалку.
 
-| | | | |
-|:--:|:--:|:--:|:--:|
-| **🏭 Factory, not five chats** | **🛡️ Owned paths** | **🌙 Night review** | **📦 Auto-merge to main** |
-| One PM holds context | Writers stay in their lane | Independent Codex Sol rail | You never merge by hand |
-
-| | | | |
-|:--:|:--:|:--:|:--:|
-| **🧠 Memory** | **📚 Living docs** | **🎨 Design** | **ℹ️ First hour** |
-| Opt-in fact corpus | `docs/` from git, not essays | `docs/DESIGN.md` | `/info` · `/app-architect` |
+Копирайт и ЦА — агент **`copy-lead`** (скиллы ниже, диск `.agents/copy/`). SEO — `seo-specialist`. Внешность — `design-lead` (`DESIGN.md`). Код — `dev-orchestrator`.
 
 ---
 
-## ✨ Why this exists
-
-Working with AI coding tools usually means: five windows, copy-paste, midnight merges, and zero review discipline.
-
-**Claude Lane Stack turns that into a conveyor** — plain **files + git**, no mandatory cloud DB.
-
-| 😩 Typical AI coding | ✨ Lane Stack |
-|----------------------|----------------|
-| Re-explain context every chat | **One PM** holds the plan |
-| Models overwrite each other | **`owns_paths`** on every task |
-| Nobody reviews the AI | **Typed night shift** (review → fix → re-review) |
-| You merge branches | **PM merges `main`** after checks |
-| “What were we doing?” | **`resume-project`** + **memory** (facts, not chat) |
-| Docs rot after the sprint | **Night Luna** refreshes every stale `docs/` page |
-| Jobs die at ~2 min Bash | **Detached processes** (survive chat close) |
-
-> [!TIP]
-> New here? Start with the **[Beginner guide](docs/BEGINNER.md)** — zero jargon, factory metaphors.
-
----
-
-## 🔌 CLI agents we plug into
-
-<div align="center">
-<img src="docs/images/05-cli-constellation.jpg" alt="Claude Code control plane with Codex Qwen Grok Kimi AGY writers" width="100%" />
-</div>
-
-<br/>
-
-This is **not** “one model does everything.”  
-The stack is a **control plane** that runs **real CLI coding agents** as durable processes.
-
-| CLI | Required? | Role |
-|-----|-----------|------|
-| **[Claude Code](https://code.claude.com/docs)** | **Yes** | PM (`dev-orchestrator`), watchers, chat with you |
-| **[OpenAI Codex CLI](https://github.com/openai/codex)** | Optional | Day writer · **night Sol review** · onboard · **docs (Luna)** · emergency |
-| **Qwen Code** | Optional | Daytime durable **writer** |
-| **Grok** (xAI CLI) | Optional | Daytime durable **writer** |
-| **Kimi** CLI | Optional | Daytime durable **writer** (often full-profile default) |
-| **AGY** (Gemini-oriented) | Optional | Daytime durable **writer** |
-| **Cursor** / **OpenCode** | Optional | Extra daytime **writer** rails (`adoc` Coder) |
+## Как устроен завод
 
 ```text
-  You ──chat──►  Claude Code · dev-orchestrator          ← always
-                        │
-              run-supervisor + run-controller
-          ┌─────┬─────┬─────┬─────┐
-          ▼     ▼     ▼     ▼     ▼
-       Codex  Qwen  Grok  Kimi   AGY
-          │     │     │     │     │
-          └─────┴─────┴─────┴─────┘
-                        │
-              owns → L1 verify → acceptance → main
+Вы ──чат──►  Claude Code · dev-orchestrator
+                    │
+          run-supervisor + run-controller
+      ┌─────┬─────┬─────┬─────┐
+      ▼     ▼     ▼     ▼     ▼
+   Codex  Qwen  Grok  Kimi   AGY …
+                    │
+          owns → L1 → acceptance.json → main
+                    │
+              ночь: Codex Sol
 ```
 
-- **Mix and match** — install what you pay for; `agents-doctor` / `adoc` builds the profile  
-- **One protocol** — owns, verify, `acceptance.json`, progressive accept  
-- **Switch writer** — change `main_write` in adoc (e.g. `codex` → `qwen`)  
-- **Codex for night quality** when available  
+Единица работы — карточка `.agents/runs/<slug>/tasks/*.yaml`: `owns_paths`, `verification[]`, квитанция `acceptance.json`. Нет квитанции — не готово.
 
-<details>
-<summary><strong>Profiles (examples)</strong></summary>
+День: быстро катить. Ночь: независимое ревью + живые `docs/` + корпус фактов (оба модуля opt-in в `adoc`).
 
-| Profile | Writers | Review |
-|---------|---------|--------|
-| `claude-only` | Claude only | light |
-| `claude-codex` | Codex process | Codex Sol night |
-| `claude-qwen` / `grok` / `kimi` / `agy` | that CLI | as configured |
-| `full` | multi-writer ready | Codex night |
-
-</details>
+Писателя руками не запускаете. Говорите с PM. Writer — фоновый процесс, не субагент с именем бренда.
 
 ---
 
-## 🧠 How it works (60 seconds)
+## Скиллы плагина
 
-<div align="center">
-<img src="docs/images/02-how-it-works.jpg" alt="Flow: You → PM → supervisor → writer → main" width="100%" />
-</div>
+Все живут в `plugins/lane-stack/skills/`. Префикс `/lane-stack:`.
 
-<br/>
+### Жизнь проекта
+
+| Скилл | Что делает | Не делает |
+|---|---|---|
+| `info` | Каталог процессов | Ран, онборд, дизайн |
+| `resume-project` | CLI: Сейчас / Блок / Дальше | Шпаргалку (только `info`) |
+| `project-onboard` | Паспорт репо: CLAUDE.md, MODULE_MAP, тесты | `DESIGN.md` (это `design-lead`) |
+| `project-life` | Идея → туду → план → PROGRESS / LESSONS | Холодный старт (это resume) |
+| `app-architect` | Новое приложение словами, файлы плана на диск | Ран |
+| `project-design` | Роутер на полные `docs/DESIGN.md` | Код UI |
+| `ui-ux-pro-max` | Справочник стилей, a11y, баннеры | Сами DESIGN.md |
+| `docs-maintain` | Живые `docs/` по диффу | Вики, планы, новые фичи |
+| `lane-memory` | Факты, которых нет в коде (`.agents/memory/`) | PROGRESS / LESSONS |
+
+### Конвейер (только сессия `dev-orchestrator`)
+
+| Скилл | Что делает |
+|---|---|
+| `orchestrator-lanes` | Счёт, DAG, `run-init`, L0/L1/L2, ship. Пока не сказано «делай» — ран не открывать |
+| `orchestrator-workflow` | Устаревший алиас `orchestrator-lanes` |
+| `lane-contract` | Как писать YAML: owns, verify, acceptance |
+| `writer-practices` | Стиль кода внутри `owns_paths` |
+
+### Копирайт сайта (не SEO)
+
+Диск — источник правды. Скиллы заполняют файлы, не Vue и не `DESIGN.md`.
 
 ```text
-You (chat)  →  PM (dev-orchestrator)
-                  │  plan-critique · task YAML in .agents/runs/
-                  ▼
-            run-supervisor   ← Claude watches one run
-                  │
-                  ▼
-            run-controller   ← durable OS process
-                  │
-                  ▼
-         writer CLI process  ← codex / qwen / grok / …
-                  │
-                  ▼
-         owns → L1 tests → acceptance.json
-                  │
-                  ▼
-            PM merges → main → (night) Codex review
+<репо>/.agents/copy/
+  INDEX.md                  доска: status / on_site
+  ANAMNESIS.md              оффер, доказательство, запреты
+  audience.md               герой, боль, альтернативы, темы
+  buyer-personas/p1.md      история покупки, не «Мария 34»
+  voice.md                  указатель на DESIGN.md + стоп-слова
+  pages/<slug>.md           бриф страницы: H1, поток, UI
+  research/inbox|used|dead  один файл на запрос, не web.md
 ```
 
-**You don’t hand-launch “Qwen the coder” for normal work.**  
-You talk to the PM. The PM starts the **conveyor**. The writer is a **background process**, not a random brand-named subagent.
+Шаблоны: `copy-project-life/references/*.template.md`. Копировать 1:1, пустое = `unknown`. Цитаты не выдумывать.
+
+| Скилл | Роль |
+|---|---|
+| `copy-project-life` | Карта + посев файлов + первый опрос |
+| `site-copy-audience` | Анамнез, ЦА, персоны, голос |
+| `site-copy-headlines` | H1 и поток страницы |
+| `site-copy-ux` | Кнопки, формы, подписи |
+| `page-prototype` | Серый HTML: `site/` · `app/<имя>/` · `flows/` под `.agents/prototypes/` |
+
+**Цепочка**
+
+1. Нет `.agents/copy/` или пустой `product:` → посев шаблонов.
+2. Опрос пачками по 2–3 вопроса (`first-interview.md`): оффер → ЦА → персона / доказательства.
+3. Ответы сразу в файлы. «не знаю» = `unknown`.
+4. `site-copy-audience` дописывает темы и grunt test.
+5. На каждую страницу: `site-copy-headlines` → `site-copy-ux`.
+6. Нужен кликабельный макет — `page-prototype` (не Vue, не DESIGN.md).
+
+Без оффера и `audience.md` заголовки не пишутся.
+
+**Первый опрос**
+
+1. Что продаёте? Кто платит? Цена? Что купят, если вас нет? Полка рынка? Что нельзя обещать?
+2. Герой и его желание. Внешняя / внутренняя боль (покупают внутреннюю). Злодей-причина, не логотип. Что делают без вас. С чем путают.
+3. День, когда начали искать. Что пробовали. Кто ещё подписывает. Живой клиент или нет. Их слова / наши стоп-слова.
+
+**Страница** (`pages/<slug>.md`)
+
+- Уровень осведомлённости Schwartz 1–5: первый экран обязан совпасть (уровень 5 = оффер+цена; уровень 2 = назвать рану).
+- 5–8 заголовков, оценка Bly 4 U’s (срочность, уникальность, конкретность, польза). В бой — если ≥3 оси ≥3.
+- Поток: внимание → нужда → закрыть → доказать → попросить.
+- UI: один H1, одна главная кнопка = глагол + объект (`Получить аудит`, не `Отправить`).
+
+Открыть: `lane-pm` с `LANE_PM_AGENT=copy-lead` · `claude --agent copy-lead` · `/lane-stack:copy-project-life` · «весь анализ копирайта».
+
+Не путать с `seo-copywriting` (ключи, title, плотность) и с `project-design` (токены).
+
+### SEO (не код сайта)
+
+Два слоя: жизнь клиента в `<репо>/.agents/seo/<slug>/` и каталог умений `~/.agents/seo-system/` (`seo-module`).
+
+| Скилл | Роль |
+|---|---|
+| `seo-project-life` | Карта: паспорт, доска, фазы, CLI |
+| `seo-drmax-orchestrator` | Вести пайплайн DrMax, не один промпт |
+| `seo-prompt-engineering-2026` | Канон промптов книги (не переписывать) |
+| `seo-evidence-based-2026` | NavBoost / Q* / Twiddlers, аудит |
+| `seo-copywriting` | Ключи и мета в тексте |
+| `ai-detect` | Роботность LinguaForensic |
+| `drmax-cvd` | Выживет ли страница в AI Overview |
+| `drmax-latent-intent` | Скрытый интент одной фразы |
+| `drmax-text-humanization` | Редактура после GIST, не обход детекторов |
+| `drmax-lexadapt` | Упростить под CEFR / ТРКИ |
+| `mutagen` | Частотность Wordstat, конкуренция |
+| `xmlstock` | Живой SERP Яндекс / Google |
+| `proxy6` | Пул прокси для fetch / SERP |
+| `yandex-webmaster` | Запросы и индекс своего сайта |
+| `yandex-metrica` | Трафик и цели |
+| `google-search-console` | GSC searchanalytics / URL Inspection |
+| `ga4-data-api` | GA4 Data API |
+| `google-cloud-auth` | OAuth / service account для GSC и GA4 |
+
+Агент: `seo-specialist`. Код сайта — не сюда. Ключи API — `~/secrets/*.env`, не в плагине.
+
+### Поведение и инструменты
+
+| Скилл | Роль |
+|---|---|
+| `karpathy-guidelines` | Не врать про тесты, не плодить абстракции |
+| `metamcp` | agentmemory + gitnexus напрямую; остальное через MetaMCP |
 
 ---
 
-## ☀️ Day vs 🌙 night
+## Агенты (не скиллы)
 
-<div align="center">
-<img src="docs/images/03-day-night.jpg" alt="Daytime conveyor and night Codex review" width="100%" />
-</div>
+Их спавнит оркестратор. В меню CC они есть, но **не** стартуют от клика — нужен `lane-pm` или фраза «старт» / `/resume-project`.
 
-<br/>
+| Агент | Зачем |
+|---|---|
+| `dev-orchestrator` | PM: план, диспатч, merge |
+| `run-supervisor` | Смотрит один ран |
+| `lane-supervisor` | Одно действие `lane-ctl` |
+| `emergency-writer` | Codex после terminal block |
+| `project-onboarder` | Паспорт (первый) |
+| `docs-maintainer` | Wiki после онборда / ночные docs |
+| `night-reviewer` | Ночной review |
+| `design-lead` | Полные DESIGN.md |
+| `memory-maintainer` | Корпус фактов |
+| `seo-specialist` | SEO harness |
+| `copy-lead` | Копирайт, ЦА, страницы |
+| `tavily` | Поиск Tavily, отчёт с URL |
 
-| | **Day** | **Night** |
-|--|---------|-----------|
-| Goal | Ship fast | Independent quality |
-| Product code | Writer from **adoc** | Repair after findings |
-| Watch | **`run-supervisor`** | `night-shift` |
-| LLM review every commit? | **No** | **Yes** — Codex Sol |
-| Docs / memory | Writers do **not** touch `docs/` | **`docs-maintain-all`** (Luna, all stale pages) · **`memory-maintain-project`** |
-| Done | `acceptance.json` + **main** | Finding fixed + re-review |
-
----
-
-## 🎭 Who is who
-
-| Role | Kind | Does |
-|------|------|------|
-| **You** | Human | Say *what* you want |
-| **`dev-orchestrator`** | Claude agent (PM) | Plan · dispatch · merge · chat |
-| **`run-supervisor`** | Claude (watch) | One run until accepted/blocked |
-| **`run-controller`** | OS process | DAG · retry · owns/verify/accept |
-| **Writer process** | CLI (Codex/Qwen/…) | Implements the task card |
-| **`lane-supervisor`** | Claude (1 action) | Typed `lane-ctl` recovery |
-| **`emergency-writer`** | Claude → Codex | After **terminal** block only |
-| **`night-reviewer` / night-shift** | Codex Sol | Night review + findings |
-| **`project-onboarder`** | Codex | Project passport (`docs/llm/*`, CLAUDE) |
-| **`docs-maintainer`** | Codex Luna max fast | INIT + nightly living `docs/` |
-| **`memory-maintainer`** | Codex (adoc) | Opt-in fact corpus (`.agents/memory/`) |
-| **`design-lead`** | Claude | Extract / refresh `docs/DESIGN.md` |
-
-Built-ins Claude may also use: **Explore**, **Plan**, **general-purpose** (research / side tasks — **not** the daytime product conveyor).  
-Aliases: `codex-implementer` → `emergency-writer`, etc. → [`agents/claude/README.md`](agents/claude/README.md)
+Запуск копирайтера: `LANE_PM_AGENT=copy-lead lane-pm` или `claude --agent copy-lead`. Модель сессии — **Opus**. В `/config` стиль `copywriter` — **только в этой сессии** (не дефолт проекта). Профессий в модели нет: шляпы зашиты в агенте (`craft.md`).
 
 ---
 
-## 📋 Task card = contract
+## Быстрый старт
 
-<div align="center">
-<img src="docs/images/04-task-contract.jpg" alt="Task YAML owns_paths verification" width="100%" />
-</div>
-
-<br/>
-
-Every unit of work lives under `.agents/runs/<slug>/tasks/*.yaml`:
-
-| Field | Meaning |
-|-------|---------|
-| `owns_paths` | Files this task may touch |
-| `verification[]` | Focused L1 checks |
-| `lane:` | Matches adoc `main_write` |
-| Receipts | report → owns → verify → **`acceptance.json`** |
-
-> [!IMPORTANT]
-> No `acceptance.json` → **not done**. Chat green ≠ shipped.
-
----
-
-## 🧠 Memory and 📚 living docs
-
-Two **opt-in** modules in `adoc` (own tabs, not buried in Stages). Off until Enabled + Apply. Writers on a feature lane do **not** update wiki or the fact corpus.
-
-| | **Memory** | **Docs** |
-|--|------------|----------|
-| What | Facts in `.agents/memory/` (CORE + on-demand) | Living `docs/` + `web.yaml` + `llms.txt` |
-| Not | `docs/`, LESSONS, chat logs | Memory, `wiki/`, `TODO/`, `docs/plans/` |
-| First enable | `lane-memory` corpus | `docs-web` stubs now; Luna INIT in background |
-| Night | `memory-maintain-project` | cron hour → `docs-maintain-all --if-hour` |
-| Input | session ledger + git | **committed** `git log --since` ∩ `owns` / stubs |
-| Model | from adoc Memory tab | Codex **Luna max fast** |
-| Commit | no | no |
-
-```text
-regular Claude / Codex / Cursor session
-        ↓ commit
-git log --since=yesterday
-        ↓ hour (default 05:00)
-docs-web → daylog → docs-stale → Luna (every stale page)
-```
-
-Uncommitted work is invisible to the 05:00 job. Daylog: `.agents/session-log/DOCS-DAY-YYYY-MM-DD.md`.
-
----
-
-## 🚀 Quick start
-
-### ① Install once
-
-This repo **is a Claude Code plugin marketplace**. `./install.sh` installs the host runtime (`~/.agents`) **and** the Claude plugin.
+### 1. Один раз на машину
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.21.0   # or: main
+cd claude-lane-stack && git checkout v1.22.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
 
-After install, Claude Code has **`lane-stack@claude-lane-stack`** and the marketplace auto-updates from GitHub. Skills are `/lane-stack:<name>` (example: `/lane-stack:orchestrator-lanes`). Host `~/.agents` still needs `./install.sh`. Live checkout: `LANE_INSTALL_LOCAL_MARKETPLACE=1 ./install.sh`.
+Плагин: `lane-stack@claude-lane-stack`, marketplace сам обновляется с GitHub. Хост `~/.agents` — снова `./install.sh`. Живой чекаут: `LANE_INSTALL_LOCAL_MARKETPLACE=1 ./install.sh`.
 
-Plugin-only (runtime already on the machine):
+Нужно: Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`. Writers — по желанию.
 
-```bash
-claude plugin marketplace add VKirill/claude-lane-stack
-claude plugin install lane-stack@claude-lane-stack -y
-```
-
-From a local clone: `claude plugin marketplace add .` then the same `install` line. Reload with `/reload-plugins`.
-
-**Needs:** Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`  
-**Optional:** Codex · Qwen · Grok · Kimi · AGY · Linux: `bubblewrap`
-
-### ② Prepare your project once
+### 2. Один раз в проекте
 
 ```bash
 cd /path/to/your-project
-agents-doctor --apply .     # or: adoc
+agents-doctor --apply .
 ```
 
-### ③ Start the PM
+### 3. PM
 
 ```bash
-lane-pm                     # boot + session name <agent>-<folder>-DD-MM-YYYY
-# Claude Code 2.1+ auto-submits the agent initialPrompt
+lane-pm
 ```
 
-| In chat | When |
-|---------|------|
-| `/project-onboard` | First time on a repo |
-| `/resume-project` | After a break |
-| `/info` | Conveyor cheat sheet |
-| `/app-architect` | New app / service talk |
-| “Add dark mode to settings” | Normal feature work |
+| В чате | Когда |
+|---|---|
+| `/project-onboard` | Первый раз в репо |
+| `/resume-project` | После перерыва |
+| `/info` | Каталог |
+| `/app-architect` | Новый продукт |
+| `LANE_PM_AGENT=copy-lead lane-pm` | Сессия копирайтера |
+| «весь анализ копирайта» | Оффер, ЦА, страницы |
+| «Добавь тёмную тему» | Фича → конвейер |
 
 ---
 
-## ⚙️ adoc (simple)
+## adoc
 
-Tabs: **Coder · Stages · Memory · Docs · Work · Night · UI · Status · Info · Apply**.
+Вкладки: Кодер · Этапы · Память · Документация · Работа · Ночь · UI · Статус · Инфо · Применить.
 
-| Knob | Meaning |
-|------|---------|
-| **Writer** `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `cursor` / `opencode` |
-| **Model / effort** | e.g. Codex luna + max |
-| **Stages** | plan-critique · write · night review · specialist · onboard |
-| **Memory** | opt-in fact corpus · inject · maintain |
-| **Docs** | opt-in living `docs/` · hour · all stale pages (cap 0) |
-| **Info** | `?` — roles + first-hour commands |
-| **Fast mode** | Codex / Cursor `service_tier: fast` |
-| **Workspace** | `in_place` · `worktree` · `auto` |
+| Ручка | Смысл |
+|---|---|
+| Writer `main_write` | `codex` / `qwen` / `grok` / `kimi` / `agy` / `cursor` / `opencode` |
+| Этапы | критика плана · код · ночной ревью · онбординг |
+| Память / Docs | opt-in; writer фичи их не пишет |
+| Workspace | `in_place` · `worktree` · `auto` |
 
 ---
 
-## 🧰 Commands cheat sheet
+## Хост-команды
 
-| Command | Purpose |
-|---------|---------|
-| `agents-doctor` / `adoc` | Detect CLIs · write profile |
-| `resume-project .` | Now / Blocked / Next |
-| `run-init` · `run-validate` · `run-board` | Runs (usually via PM) |
-| `run-controller start\|watch\|status` | Durable lifecycle |
-| `lane-ctl …` | Typed control plane |
-| `night-shift` · `night-shift-all` | Night review/repair |
-| `plan-critique --run-dir …` | Plan quality gate |
-| `docs-maintain-project` · `docs-maintain-all` | Living docs (INIT / night / lint) |
-| `docs-web` · `docs-stale` | Stubs / INDEX / stale map (no LLM) |
-| `lane-memory` · `memory-maintain-project` | Fact corpus |
+| Команда | Зачем |
+|---|---|
+| `agents-doctor` / `adoc` | Профиль машины |
+| `resume-project .` | Сейчас / Блок / Дальше |
+| `run-init` · `run-controller` | Раны (обычно PM) |
+| `lane-memory` | Корпус фактов |
+| `docs-maintain-project` | Живые docs |
+| `night-shift` | Ночь |
 
 ---
 
-## ❓ FAQ
+## Нельзя
 
-<details>
-<summary><strong>Plugin or <code>~/.agents</code>?</strong></summary>
+- Claude Plan mode и `~/.claude/plans/`
+- `run-init`, пока не сказано **«делай»**
+- UI-ран без `docs/DESIGN.md` / `apps/<app>/docs/DESIGN.md`
+- H1 копирайта без `audience.md`
+- Копировать агентов стека в `~/.claude/agents` — копии перебивают плагин
 
-**Claude-facing** (PM agents, playbook skills, `/project-onboard`) ships as plugin `lane-stack` in marketplace `claude-lane-stack`. **Host runtime** (`bin/`, board, writer profiles) still lives in `~/.agents`. `./install.sh` does both. Do not copy stack agents into `~/.claude/agents` — those copies override the plugin.
-</details>
-
-<details>
-<summary><strong>Do I need every CLI?</strong></summary>
-
-No. **Claude Code alone** works (`claude-only`). Each extra CLI is a pluggable writer (or Codex review rail).
-</details>
-
-<details>
-<summary><strong>What is <code>general-purpose</code>?</strong></summary>
-
-A **built-in** Claude Code subagent for multi-step side tasks ([docs](https://code.claude.com/docs/en/sub-agents#general-purpose)). PM may use it for research. Product features still go through the conveyor.
-</details>
-
-<details>
-<summary><strong>Why ~2 minute Bash death?</strong></summary>
-
-Claude Code host limit. Writers run **detached**. Don’t keep long jobs in the PM foreground.
-</details>
-
-<details>
-<summary><strong>Who merges?</strong></summary>
-
-The **PM**. You never merge. If it asks you to — the PM is wrong.
-</details>
-
-<details>
-<summary><strong>Language?</strong></summary>
-
-Chat: any language. Agent-written files: **English** ([LANGUAGE.md](docs/LANGUAGE.md)).
-</details>
-
-<details>
-<summary><strong>Does a normal Claude/Codex chat update docs?</strong></summary>
-
-**Commits** feed the night job. Enable Docs in `adoc` on **that** repo, Apply. Uncommitted edits are invisible. Feature lanes do not write `docs/`.
-</details>
+Чат: русский. Файлы агентов: английский ([LANGUAGE.md](docs/LANGUAGE.md)). Merge делает PM, не вы.
 
 ---
 
-## 📚 Documentation
+## Документация
 
-| Doc | For |
-|-----|-----|
-| [BEGINNER.md](docs/BEGINNER.md) | Zero-jargon tour |
-| [SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) | Day / night rules |
-| [ROUTING.md](docs/ROUTING.md) | Models & profiles |
-| [LANE-EXEC.md](docs/LANE-EXEC.md) | Process survival |
-| [PLATFORM-CAPABILITIES.md](docs/PLATFORM-CAPABILITIES.md) | Claude Code + Codex features |
-| [FILE-CONTRACT.md](docs/FILE-CONTRACT.md) | Layout & receipts |
-| [DOCS-STAGE.md](docs/DOCS-STAGE.md) | Living docs blueprint |
-| [PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md) | Memory vs docs |
-| [agents/claude/README.md](agents/claude/README.md) | Role agent names |
-| [plugins/lane-stack/README.md](plugins/lane-stack/README.md) | Claude plugin layout |
-| [CHANGELOG.md](CHANGELOG.md) | Releases |
+| Док | Зачем |
+|---|---|
+| [BEGINNER.ru.md](docs/BEGINNER.ru.md) | С нуля |
+| [SOLO-ORCHESTRATION.md](docs/SOLO-ORCHESTRATION.md) | День / ночь |
+| [ROUTING.md](docs/ROUTING.md) | Модели |
+| [LANE-EXEC.md](docs/LANE-EXEC.md) | Процессы |
+| [FILE-CONTRACT.md](docs/FILE-CONTRACT.md) | Раскладка |
+| [plugins/lane-stack/README.md](plugins/lane-stack/README.md) | Плагин |
+| [README.en.md](README.en.md) | English |
+| [CHANGELOG.md](CHANGELOG.md) | Релизы |
 
----
-
-## 🤝 Contributing & community
-
-- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
-- Issues: use the templates · PRs welcome with tests + docs
-- Channel: [Помогающий маркетолог](https://t.me/pomogay_marketing)
-
----
-
-<div align="center">
-
-**MIT** © [VKirill](https://github.com/VKirill) and contributors
-
-<br/>
-
-<a href="https://github.com/VKirill/claude-lane-stack">
-  <img src="docs/images/01-hero-conveyor.jpg" alt="Claude Lane Stack conveyor" width="85%" />
-</a>
-
-<br/><br/>
-
-### If this factory helps you — ★ star the repo
-
-It helps others find a calmer way to multi-agent coding.
-
-</div>
+Канал: [Помогающий маркетолог](https://t.me/pomogay_marketing)

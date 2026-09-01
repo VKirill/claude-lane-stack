@@ -2,6 +2,7 @@
 
 canon: docs/DESIGN.md   # do not duplicate tokens here
 status: draft
+updated: YYYY-MM-DD
 
 - we_sound_like:
 - we_never_sound_like:

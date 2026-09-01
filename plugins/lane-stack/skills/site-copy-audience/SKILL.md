@@ -24,9 +24,12 @@ Sources (method, not reprints): Miller *StoryBrand 2.0*; Dunford *Obviously Awes
    - grunt test (offer / life better / how to buy)
 4. One file per persona: `buyer-personas/p1.md` (p2… if they really differ). Story + rings. No “Maria, 34, yoga”.
 5. `voice.md` only points at `docs/DESIGN.md` + banned words.
+6. Skip any file with `status: locked`. After edits: set `updated:`, bump `status` (`draft`/`fillable`), refresh `INDEX.md`.
+7. Language from `research/inbox/` is a lead. After a lift: `mv` that note to `research/used/`.
 
 ## NEVER
 
 - Fake quotes
 - Brand as hero
 - H1 before `audience.md` is fillable
+- Rewrite `locked`

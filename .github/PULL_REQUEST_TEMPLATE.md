@@ -17,7 +17,7 @@
 python3 -m unittest discover -s tests -v
 ```
 
-- [ ] Docs updated (`README.md` + `README.ru.md` if user-facing)  
+- [ ] Docs updated (`README.md` Russian / `README.en.md` English if user-facing)  
 - [ ] `CHANGELOG.md` note if release-worthy  
 - [ ] No secrets / machine paths  
 

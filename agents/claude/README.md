@@ -18,6 +18,8 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `memory-maintainer` | Memory | Opt-in fact corpus | Codex (adoc `stages.memory`) |
 | `design-lead` | Design | Extract/refresh `docs/DESIGN.md` | Claude |
 | `seo-specialist` | SEO | DrMax harness, `.agents/seo/`, `seo-*` CLI | Claude |
+| `copy-lead` | Copy | Audience + pages, `.agents/copy/` | Claude |
+| `tavily` | Search | Tavily REST, `.agents/research/` | Claude |
 
 ## Compatibility aliases (deprecated)
 
@@ -56,6 +58,8 @@ docs           → Agent(docs-maintainer)
 memory         → Agent(memory-maintainer)
 design         → Agent(design-lead)
 seo            → Agent(seo-specialist)
+copy           → Agent(copy-lead)
+tavily         → Agent(tavily)
 ```
 
 See also: `docs/PLATFORM-CAPABILITIES.md`, `docs/ROUTING.md`.

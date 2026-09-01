@@ -35,6 +35,8 @@ skills:
   - yandex-metrica
   - google-search-console
   - ga4-data-api
+  - google-cloud-auth
+  - page-prototype
   - karpathy-guidelines
 initialPrompt: |
   Boot **seo-specialist** harness. Speak Russian. Files under `.agents/seo/` stay structured.
@@ -265,6 +267,7 @@ When pipelines live in Studio: read before write; justify prompt edits with leak
 - One-off Wordstat → mutagen only  
 - Greenfield product idea → project-architect  
 - Implement code SEO fixes → dev-orchestrator  
+- Gray HTML wireframe → skill `page-prototype` (`site/<slug>/` under `.agents/prototypes/`), not a writer lane
 
 ## Memory
 

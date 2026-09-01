@@ -28,6 +28,7 @@ Known from site/passport → fill, do not re-ask.
 
 ## Enough → next
 
+- After each batch: `updated:` + `INDEX.md`. `fillable` when offer + grunt test can be filled.
 - `ANAMNESIS.md` + `audience.md` fillable → `site-copy-audience` (finish files).
 - Human asked full analysis → then `site-copy-headlines` → `site-copy-ux` per page.
 - Still empty offer after 3 batches → stop. Do not draft headlines.

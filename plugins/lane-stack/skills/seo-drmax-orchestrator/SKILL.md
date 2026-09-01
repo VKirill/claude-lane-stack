@@ -130,4 +130,4 @@ Update `STATUS.md` after every phase transition. Promote execution work into
 
 `seo-prompt-engineering-2026`, `seo-evidence-based-2026`, `seo-copywriting`,  
 `ai-detect`, `drmax-latent-intent`, `drmax-cvd`, `drmax-text-humanization`, `drmax-lexadapt`,  
-`mutagen`, `xmlstock`, `google-search-console`, `ga4-data-api`, `yandex-webmaster`, `yandex-metrica`
+`mutagen`, `xmlstock`, `proxy6`, `google-search-console`, `ga4-data-api`, `google-cloud-auth`, `yandex-webmaster`, `yandex-metrica`

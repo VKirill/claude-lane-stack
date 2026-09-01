@@ -18,6 +18,7 @@ Sources: Krug *Don’t Make Me Think*; Zinsser *On Writing Well*; Fenton/Lee *Ni
 3. Button = verb + object they want (`Get the audit`, not `Submit`).
 4. Cut clutter: delete the sentence, then the word. No noun stacks.
 5. Write strings only under `## UI` in that page file.
+6. Skip `status: locked`. Refresh `INDEX.md` after edits.
 
 ## NEVER
 
@@ -25,3 +26,4 @@ Sources: Krug *Don’t Make Me Think*; Zinsser *On Writing Well*; Fenton/Lee *Ni
 - “Click here” / “Learn more”
 - Puzzle nav
 - Color/type decisions (that is DESIGN.md)
+- Rewrite `locked`

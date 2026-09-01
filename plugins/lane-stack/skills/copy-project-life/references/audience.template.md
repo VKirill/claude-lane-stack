@@ -1,6 +1,7 @@
 # Audience
 
 status: draft
+updated: YYYY-MM-DD
 grunt_test:
   offer:
   life_better:

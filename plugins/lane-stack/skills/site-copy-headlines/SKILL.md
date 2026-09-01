@@ -14,7 +14,7 @@ Sources: Schwartz *Breakthrough Advertising*; Caples *Tested Advertising Methods
 
 ## MUST
 
-1. Copy the page-brief template to `pages/<slug>.md` if missing.
+1. Copy the page-brief template to `pages/<slug>.md` if missing. Add the row to `INDEX.md`. Skip if `status: locked`.
 2. Set `awareness` 1–5 from the table. First screen matches that level.
 3. Write 5–8 headlines. Score 4 U’s. Keep 2 with ≥3 axes ≥3.
 4. Pick a Caples/Bly **type** (how-to, news, number, reason-why…).
@@ -28,3 +28,4 @@ Sources: Schwartz *Breakthrough Advertising*; Caples *Tested Advertising Methods
 - “We are passionate…”
 - CTA before proof on high-ticket
 - Clever with no benefit
+- Rewrite `locked`

@@ -54,6 +54,9 @@ class InstallTest(unittest.TestCase):
             "site-copy-audience",
             "site-copy-headlines",
             "site-copy-ux",
+            "copy-research",
+            "tavily",
+            "page-prototype",
         ):
             text = (skills / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn(f"name: {name}", text)
@@ -62,6 +65,7 @@ class InstallTest(unittest.TestCase):
         self.assertIn("copy-project-life", info)
         self.assertIn("опрос", info)
         self.assertIn("first-interview.md", info)
+        self.assertIn("INDEX.md", info)
         refs = skills / "copy-project-life" / "references"
         for name in (
             "ANAMNESIS.template.md",
@@ -72,8 +76,46 @@ class InstallTest(unittest.TestCase):
             "awareness-levels.md",
             "headline-types.md",
             "first-interview.md",
+            "craft.md",
+            "INDEX.template.md",
+            "research-note.template.md",
         ):
             self.assertTrue((refs / name).is_file(), name)
+        index = (refs / "INDEX.template.md").read_text(encoding="utf-8")
+        self.assertIn("locked", index)
+        self.assertIn("research/inbox", index)
+        self.assertIn("on_site", index)
+        craft = (refs / "craft.md").read_text(encoding="utf-8")
+        self.assertIn("research/inbox/", craft)
+        self.assertIn("locked", craft)
+        playbook = skills / "copy-research" / "references" / "search-playbook.md"
+        self.assertTrue(playbook.is_file())
+        self.assertIn("firecrawl-deep-research", playbook.read_text(encoding="utf-8"))
+        helpers = (skills / "copy-research" / "references" / "helpers.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("cursor-grok-4.6-medium-fast", helpers)
+        self.assertIn("alibaba-token-plan/deepseek-v4-flash", helpers)
+        self.assertIn("alibaba-token-plan/deepseek-v4-pro", helpers)
+        self.assertIn("gpt-5.6-luna", helpers)
+        self.assertIn("gpt-5.6-terra", helpers)
+        self.assertIn("Do not `run-init`", helpers)
+        tavily = (skills / "tavily" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("~/secrets/tavily.env", tavily)
+        self.assertIn("https://api.tavily.com/search", tavily)
+        self.assertIn("https://api.tavily.com/research", tavily)
+        self.assertIn("research/inbox", tavily)
+        self.assertNotIn("> .agents/copy/research/web.json", tavily)
+        proto = (skills / "page-prototype" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn(".agents/prototypes/", proto)
+        self.assertIn("site/<slug>/index.html", proto)
+        self.assertIn("app/<app>/<slug>/index.html", proto)
+        self.assertIn("flows/<flow>/", proto)
+        self.assertIn("shell.html", proto)
+        self.assertTrue((skills / "page-prototype" / "references" / "shell.html").is_file())
+        self.assertTrue(
+            (skills / "page-prototype" / "references" / "INDEX.template.md").is_file()
+        )
 
     def test_plugin_commands_hide_same_named_skills(self) -> None:
         commands = ROOT / "plugins" / "lane-stack" / "commands"
@@ -82,6 +124,73 @@ class InstallTest(unittest.TestCase):
             skill = skills / path.stem / "SKILL.md"
             self.assertTrue(skill.is_file(), skill)
             self.assertIn("user-invocable: false", skill.read_text(encoding="utf-8"))
+
+    def test_copy_lead_pack_is_shipped(self) -> None:
+        agent = ROOT / "plugins" / "lane-stack" / "agents" / "copy-lead.md"
+        self.assertTrue(agent.is_file())
+        body = agent.read_text(encoding="utf-8")
+        self.assertIn("name: copy-lead", body)
+        self.assertIn("model: opus", body)
+        self.assertIn("initialPrompt:", body)
+        self.assertIn("copy-project-life", body)
+        self.assertIn("site-copy-audience", body)
+        self.assertIn("copy-research", body)
+        self.assertIn("tavily", body)
+        self.assertIn("page-prototype", body)
+        self.assertIn("firecrawl-deep-research", body)
+        self.assertIn("cursor-grok-4.6-medium-fast", body)
+        self.assertIn("deepseek-v4-flash", body)
+        self.assertIn("first-interview.md", body)
+        self.assertIn("craft.md", body)
+        self.assertIn("INDEX.md", body)
+        self.assertIn("locked", body)
+        self.assertIn("Agent(Explore, Plan, general-purpose)", body)
+        self.assertNotIn("Agent(run-supervisor", body)
+        self.assertNotIn("- karpathy-guidelines", body)
+        style = ROOT / "plugins" / "lane-stack" / "output-styles" / "copywriter.md"
+        self.assertTrue(style.is_file())
+        style_text = style.read_text(encoding="utf-8")
+        self.assertIn("keep-coding-instructions: false", style_text)
+        self.assertIn("force-for-plugin: false", style_text)
+        link = ROOT / "agents" / "claude" / "copy-lead.md"
+        self.assertTrue(link.is_symlink() or link.is_file())
+        info = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "info" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("copy-lead", info)
+        orch = (
+            ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("copy-lead", orch)
+        self.assertIn("page-prototype", orch)
+
+    def test_tavily_pack_is_shipped(self) -> None:
+        agent = ROOT / "plugins" / "lane-stack" / "agents" / "tavily.md"
+        self.assertTrue(agent.is_file())
+        body = agent.read_text(encoding="utf-8")
+        self.assertIn("name: tavily", body)
+        self.assertIn("initialPrompt:", body)
+        self.assertIn("~/secrets/tavily.env", body)
+        self.assertIn(".agents/research/", body)
+        self.assertIn("inbox/", body)
+        self.assertNotIn("Agent(run-supervisor", body)
+        self.assertNotIn("- karpathy-guidelines", body)
+        skill = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "tavily" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("name: tavily", skill)
+        self.assertIn("https://api.tavily.com/search", skill)
+        link = ROOT / "agents" / "claude" / "tavily.md"
+        self.assertTrue(link.is_symlink() or link.is_file())
+        info = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "info" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("`tavily`", info)
+        orch = (
+            ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("tavily", orch)
+        self.assertIn("Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily,", orch)
 
     def test_seo_specialist_pack_is_shipped(self) -> None:
         agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"
@@ -106,9 +215,19 @@ class InstallTest(unittest.TestCase):
             "drmax-cvd",
             "drmax-text-humanization",
             "drmax-lexadapt",
+            "mutagen",
+            "xmlstock",
+            "proxy6",
+            "yandex-webmaster",
+            "yandex-metrica",
+            "google-search-console",
+            "ga4-data-api",
+            "google-cloud-auth",
+            "page-prototype",
         ):
             skill = skills / name / "SKILL.md"
             self.assertTrue(skill.is_file(), skill)
+            self.assertIn(f"name: {name}", skill.read_text(encoding="utf-8"))
         originals = skills / "seo-prompt-engineering-2026" / "references" / "originals"
         self.assertTrue(originals.is_dir(), originals)
         life = skills / "seo-project-life" / "SKILL.md"
@@ -116,7 +235,6 @@ class InstallTest(unittest.TestCase):
         self.assertIn("seo-project-life — карта SEO-проекта", life.read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "seo-system" / "modules" / "passport-onboard" / "module.yaml").is_file())
         self.assertTrue((ROOT / "docs" / "seo" / "SOLO-SEO-ORCHESTRATION.md").is_file())
-
 
     def test_plugin_agents_whitelist_sendmessage(self) -> None:
         missing: list[str] = []

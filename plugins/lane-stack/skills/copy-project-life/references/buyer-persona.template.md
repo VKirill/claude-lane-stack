@@ -2,6 +2,7 @@
 
 id: p1
 status: draft
+updated: YYYY-MM-DD
 evidence: interview | quote | analytics | unknown
 
 ## Job

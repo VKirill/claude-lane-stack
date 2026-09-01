@@ -75,13 +75,13 @@ resume ──► onboard? ──► туду / план ──► архитек
 
 ### 8. `copy-project-life` — копирайт сайта
 
-Не SEO-ключи. Файлы: `.agents/copy/` — `ANAMNESIS.md`, `audience.md`, `buyer-personas/p1.md`, `voice.md`, `pages/<slug>.md`.
+Не SEO-ключи. Файлы: `.agents/copy/` — `INDEX.md`, `ANAMNESIS.md`, `audience.md`, `buyer-personas/p1.md`, `voice.md`, `pages/<slug>.md`, `research/inbox|used|dead`. `locked` не трогать.
 
 Первый полный анализ (нет папки или пустой оффер): скилл **сам ведёт опрос** пачками по 2–3 вопроса — оффер → ЦА → персона/доказательства (`first-interview.md`). Ответы сразу в шаблоны. «не знаю» = `unknown`. Без оффера H1 не пишет.
 
-Повторно: audience → headlines → ux.
+Повторно: audience → headlines → ux. Серый HTML-вайрфрейм: `page-prototype` (`site/` · `app/` · `flows/` под `.agents/prototypes/`). Ресёрч: `tavily` · сподручные `copy-research/helpers.md` (luna/terra, grok/X, OpenCode DeepSeek, Cursor Grok 4.6 medium-fast).
 
-`/lane-stack:copy-project-life` · `/lane-stack:site-copy-audience` · `/lane-stack:site-copy-headlines` · `/lane-stack:site-copy-ux` · шпаргалка: `/lane-stack:copy-project-life info`
+`/lane-stack:copy-project-life` · агент `copy-lead` · `/lane-stack:tavily` · `/lane-stack:site-copy-audience` · `/lane-stack:site-copy-headlines` · `/lane-stack:site-copy-ux` · шпаргалка: `/lane-stack:copy-project-life info`
 
 ---
 
@@ -99,6 +99,8 @@ resume ──► onboard? ──► туду / план ──► архитек
 | `docs-maintainer` | wiki после онборда (второй) |
 | `night-reviewer` | ночной review |
 | `seo-specialist` | SEO harness (не код) |
+| `copy-lead` | копирайт, ЦА, страницы (не SEO, не код) |
+| `tavily` | поиск Tavily, отчёт с URL (не копирайт, не SEO) |
 
 ---
 

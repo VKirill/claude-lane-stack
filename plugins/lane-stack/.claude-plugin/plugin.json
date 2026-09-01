@@ -1,6 +1,6 @@
 {
   "name": "lane-stack",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "description": "Solo PM conveyor for Claude Code: orchestrator agents, lane playbooks, onboard and resume commands.",
   "author": {
     "name": "VKirill",

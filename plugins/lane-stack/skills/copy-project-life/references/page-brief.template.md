@@ -5,6 +5,8 @@ url:
 persona: p1
 awareness: 1-5          # Schwartz; see awareness-levels.md
 status: draft
+on_site: no
+updated: YYYY-MM-DD
 
 ## Job of this page
 
