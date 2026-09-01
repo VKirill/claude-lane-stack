@@ -36,7 +36,7 @@ Kit (только эти виджеты)
 slider · tabs · accordion · toggle · modal · mobile menu
 Разметка: data-proto-* как в references/shell.html
 href kit: site/ и flows/ → ../../_kit/ · app/ → ../../../_kit/
-Превью 24ч: html.vechkasov.pro
+Превью 24ч: htmlshare.pro
   один файл:  publish.py --one
   пачка:      publish.py --bundle  (index.html + style.css + script.js + _kit)
   повтор:     тот же URL из .host.json · новая страница — новая папка · --new = новый URL
@@ -72,7 +72,7 @@ href kit: site/ и flows/ → ../../_kit/ · app/ → ../../../_kit/
 2. If `INDEX.md` missing: copy `references/INDEX.template.md`.
 3. Copy `references/shell.html` into the page folder. Fix the two `../../_kit/` paths if this is `app/` (`../../../_kit/`). Fill slots. Delete unused widgets. Do not invent a second CSS/JS stack.
 4. Update INDEX. If a copy brief exists, one-line `prototype:`.
-5. If the human asked to **open / share / preview**, publish to `https://html.vechkasov.pro` (24h, then gone; disk stays).
+5. If the human asked to **open / share / preview**, publish to `https://htmlshare.pro` (24h, then gone; disk stays).
    Same page folder → same URL (script writes `.host.json` and sends `id`). New slug/folder → new POST, new URL. Expired id → new URL, rewrite `.host.json`. `--new` only if they asked for a fresh link.
 
 ```bash
@@ -99,7 +99,7 @@ No flag: `--bundle` if the folder has `style.css` / `script.js` / extra `.css`/`
 
 Complex page: put extras in that folder as `style.css` / `script.js` (or more `.css`/`.js` names). Do not invent Vue. Kit stays the widget runtime.
 
-API without the script: `{"html":"<html>…"}` or `{"files":{"index.html":"…","style.css":"…","script.js":"…"}}`. Update: add `"id"` from that page’s `.host.json`. Host: `HTML_HOST_BASE` (default `https://html.vechkasov.pro`). Optional `HTML_HOST_TOKEN`.
+API without the script: `{"html":"<html>…"}` or `{"files":{"index.html":"…","style.css":"…","script.js":"…"}}`. Update: add `"id"` from that page’s `.host.json`. Host: `HTML_HOST_BASE` (default `https://htmlshare.pro`). Optional `HTML_HOST_TOKEN`.
 Write `url` + `files` into INDEX notes. Host down → say so, keep local files. Do not commit `.host.json` if the repo treats it as local.
 
 ## Widgets

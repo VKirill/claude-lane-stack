@@ -123,7 +123,7 @@ class InstallTest(unittest.TestCase):
         self.assertIn("data-proto-slider", proto)
         self.assertIn("publish.py", proto)
         self.assertIn("--bundle", proto)
-        self.assertIn("html.vechkasov.pro", proto)
+        self.assertIn("htmlshare.pro", proto)
         pub = (skills / "page-prototype" / "references" / "publish.py").read_text(
             encoding="utf-8"
         )

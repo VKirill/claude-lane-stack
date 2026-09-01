@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish a prototype to html.vechkasov.pro.
+"""Publish a prototype to htmlshare.pro.
 
   --one     one HTML (kit inlined)
   --bundle  index.html + style.css + script.js + _kit/* as separate files
@@ -115,7 +115,7 @@ def write_host(page: Path, data: dict) -> None:
 
 
 def post(payload: dict) -> tuple[int, dict]:
-    base = os.environ.get("HTML_HOST_BASE", "https://html.vechkasov.pro").rstrip("/")
+    base = os.environ.get("HTML_HOST_BASE", "https://htmlshare.pro").rstrip("/")
     req = urllib.request.Request(
         f"{base}/api/pages",
         data=json.dumps(payload).encode("utf-8"),
