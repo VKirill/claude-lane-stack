@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.23.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.24.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -98,6 +98,7 @@
 | `site-copy-headlines` | H1 и поток страницы |
 | `site-copy-ux` | Кнопки, формы, подписи |
 | `page-prototype` | Серый HTML + kit + превью 24ч (`publish.py`, тот же URL при правке) |
+| `ru-text` · `ru-check` · `ru-score` | Русский: типографика / вычитка / балл (copy-lead) |
 
 **Цепочка**
 
@@ -107,6 +108,7 @@
 4. `site-copy-audience` дописывает темы и grunt test.
 5. На каждую страницу: `site-copy-headlines` → `site-copy-ux`.
 6. Нужен кликабельный макет — `page-prototype` (не Vue, не DESIGN.md).
+7. Русский текст: `ru-text` на ходу, «вычитай» → `ru-check`, «оцени» → `ru-score`.
 
 Без оффера и `audience.md` заголовки не пишутся.
 
@@ -192,7 +194,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.23.0
+cd claude-lane-stack && git checkout v1.24.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```

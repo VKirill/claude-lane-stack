@@ -37,6 +37,9 @@ skills:
   - ga4-data-api
   - google-cloud-auth
   - page-prototype
+  - ru-text
+  - ru-check
+  - ru-score
   - karpathy-guidelines
 initialPrompt: |
   Boot **seo-specialist** harness. Speak Russian. Files under `.agents/seo/` stay structured.
@@ -268,6 +271,7 @@ When pipelines live in Studio: read before write; justify prompt edits with leak
 - Greenfield product idea → project-architect  
 - Implement code SEO fixes → dev-orchestrator  
 - Gray HTML wireframe → skill `page-prototype` (`site/<slug>/` under `.agents/prototypes/`), not a writer lane
+- Russian text quality (вычитка, типографика, нейрослоп, UX, деловая переписка, `ru-text`) → `ru-text` / `ru-check` / `ru-score`. Not a substitute for GIST or `drmax-text-humanization`.
 
 ## Memory
 

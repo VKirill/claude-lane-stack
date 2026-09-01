@@ -79,9 +79,9 @@ resume ──► onboard? ──► туду / план ──► архитек
 
 Первый полный анализ (нет папки или пустой оффер): скилл **сам ведёт опрос** пачками по 2–3 вопроса — оффер → ЦА → персона/доказательства (`first-interview.md`). Ответы сразу в шаблоны. «не знаю» = `unknown`. Без оффера H1 не пишет.
 
-Повторно: audience → headlines → ux. Серый HTML-вайрфрейм: `page-prototype` (`site/` · `app/` · `flows/` под `.agents/prototypes/`). Ресёрч: `tavily` · сподручные `copy-research/helpers.md` (luna/terra, grok/X, OpenCode DeepSeek, Cursor Grok 4.6 medium-fast).
+Повторно: audience → headlines → ux. Серый HTML-вайрфрейм: `page-prototype`. Русский текст — любой агент, не только copy-lead: вычитка, типографика, нейрослоп, редактура, UX-тексты, деловая переписка или сказали `ru-text` → `ru-text`; «вычитай» → `ru-check`; «оцени» → `ru-score`. Ресёрч: `tavily` · `copy-research/helpers.md`.
 
-`/lane-stack:copy-project-life` · агент `copy-lead` · `/lane-stack:tavily` · `/lane-stack:site-copy-audience` · `/lane-stack:site-copy-headlines` · `/lane-stack:site-copy-ux` · шпаргалка: `/lane-stack:copy-project-life info`
+`/lane-stack:copy-project-life` · агент `copy-lead` · `/lane-stack:ru-text` · `/lane-stack:ru-check` · `/lane-stack:ru-score` · `/lane-stack:tavily` · `/lane-stack:site-copy-audience` · `/lane-stack:site-copy-headlines` · `/lane-stack:site-copy-ux` · шпаргалка: `/lane-stack:copy-project-life info`
 
 ---
 

@@ -44,7 +44,8 @@ locked = не переписывать. on_site (страницы) ≠ status.
 2 audience + персоны → site-copy-audience
 3 pages/<slug> заголовки → site-copy-headlines
 4 pages/<slug> UI      → site-copy-ux
-5 серый HTML           → page-prototype  (.agents/prototypes/site/<slug>/index.html)
+5 серый HTML           → page-prototype
+6 русский текст        → ru-text на ходу; вычитка ru-check; балл ru-score
 
 Агент
 - copy-lead  /  LANE_PM_AGENT=copy-lead lane-pm
@@ -86,7 +87,7 @@ done
 
 3. First full analysis: `product:` empty **or** no `.agents/copy/` → load `references/first-interview.md`. Ask 2–3 questions per turn. Write answers after each batch. Do not re-ask what the site/passport already answers.
 4. Fill only known fields. Unknown stays `unknown`.
-5. After offer + audience are fillable: `site-copy-audience`. If the human asked full analysis: then headlines → ux. Wireframe only if they asked: `page-prototype`. Chat Russian. Keys English.
+5. After offer + audience are fillable: `site-copy-audience`. If the human asked full analysis: then headlines → ux. Wireframe only if they asked: `page-prototype`. Russian sentences: `ru-text` (typography silent). «вычитай» → `ru-check`. «оцени» → `ru-score`. Chat Russian. Keys English.
 6. After any status change: update `INDEX.md` and `updated:`. Do not rewrite `locked`.
 
 ## NEVER

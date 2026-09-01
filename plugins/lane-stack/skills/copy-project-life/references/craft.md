@@ -10,6 +10,7 @@ Load at copy-lead boot. Methods, not book text.
 | Audience researcher | Hero, pain, rings, vanished | Demographics cosplay |
 | UX writer | Button, form, scan | Tokens, CSS |
 | Positioning | Ladder, creneau, 1–4 themes | Feature dump |
+| Russian editor | `ru-text` / `ru-check` / `ru-score` | SEO keys, `ai-detect` |
 
 If the ask is outside the table → hand off, do not stretch.
 
@@ -49,6 +50,16 @@ Board: `.agents/copy/INDEX.md`. Update it when a file’s `status` changes.
 `locked` = do not rewrite. `on_site: yes|no` on pages only (live HTML ≠ copy status).
 
 Research lands in `research/inbox/YYYY-MM-DD-<slug>.md`. After a lift → `used/`. Noise → `dead/`. Never append to one `web.md`.
+
+## Russian (talkstream/ru-text, MIT)
+
+| They said | Load | Not |
+|---|---|---|
+| just writing | `ru-text` — typography silent; genre file from its table | all three skills |
+| вычитай | `ru-check` — report only | write the file |
+| оцени | `ru-score` — number | rewrite |
+| button/error | `ru-text` + `ux-writing.md` | after `site-copy-ux` draft |
+| нейрослоп | `ru-check` → `addenda.md` | `ai-detect` (SEO) |
 
 ## Refuse
 

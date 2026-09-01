@@ -57,10 +57,17 @@ class InstallTest(unittest.TestCase):
             "copy-research",
             "tavily",
             "page-prototype",
+            "ru-text",
+            "ru-check",
+            "ru-score",
         ):
             text = (skills / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn(f"name: {name}", text)
+            if name.startswith("ru-"):
+                continue
             self.assertIn("## NEVER", text)
+        self.assertTrue((skills / "ru-text" / "references" / "typography.md").is_file())
+        self.assertTrue((skills / "ru-text" / "LICENSE").is_file())
         info = (skills / "info" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("copy-project-life", info)
         self.assertIn("опрос", info)
@@ -160,6 +167,9 @@ class InstallTest(unittest.TestCase):
         self.assertIn("copy-research", body)
         self.assertIn("tavily", body)
         self.assertIn("page-prototype", body)
+        self.assertIn("ru-text", body)
+        self.assertIn("ru-check", body)
+        self.assertIn("ru-score", body)
         self.assertIn("firecrawl-deep-research", body)
         self.assertIn("cursor-grok-4.6-medium-fast", body)
         self.assertIn("deepseek-v4-flash", body)

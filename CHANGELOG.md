@@ -1,3 +1,12 @@
+## 1.24.0 — 2026-09-01
+
+### Added
+- **`ru-text` / `ru-check` / `ru-score`** from
+  [talkstream/ru-text](https://github.com/talkstream/ru-text) (MIT).
+  Call on Russian text quality: proofread, typography, neuroslop, edit,
+  UX copy, business mail, or the name `ru-text`. Wired to `copy-lead` and
+  `seo-specialist`. Check/score never write files.
+
 ## 1.23.0 — 2026-09-01
 
 ### Added
