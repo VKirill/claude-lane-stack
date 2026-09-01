@@ -138,8 +138,9 @@ class Handler(BaseHTTPRequestHandler):
                 gc()
                 self._json(404, {"error": "not found or expired"})
                 return
-            if rel in ("", "index.html"):
-                rel = "index.html"
+            if rel == "":
+                self._send(200, UI_FILE.read_bytes(), "text/html; charset=utf-8")
+                return
             if not FILE_RE.match(rel):
                 self._json(404, {"error": "not found"})
                 return
@@ -165,6 +166,9 @@ class Handler(BaseHTTPRequestHandler):
         if _expired(exp):
             gc()
             self._json(404, {"error": "not found or expired"})
+            return
+        if rel == "":
+            self._send(200, UI_FILE.read_bytes(), "text/html; charset=utf-8")
             return
         self._send(200, legacy.read_bytes(), "text/html; charset=utf-8")
 

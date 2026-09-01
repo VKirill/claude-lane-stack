@@ -46,7 +46,7 @@
       border-bottom: 1px solid var(--line);
       flex-wrap: wrap;
     }
-    .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; color: inherit; text-decoration: none; }
     .brand svg { display: block; }
     .div { width: 1px; height: 22px; background: var(--line); }
     .toggles { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -74,11 +74,20 @@
     .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
     .ghost:hover { border-color: var(--green); }
     .hint { font: 11px/1 JetBrains Mono, ui-monospace, monospace; opacity: .65; }
-    .work { flex: 1; display: flex; min-height: 0; }
+    .work { flex: 1; display: flex; min-height: 0; --ed: 50%; }
     .work.stack { flex-direction: column; }
-    .col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-    .editor { border-right: 1px solid var(--line); }
-    .work.stack .editor { border-right: 0; border-bottom: 1px solid var(--line); }
+    .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .editor { flex: 0 0 var(--ed); }
+    #preview { flex: 1 1 auto; }
+    .gutter {
+      flex: 0 0 6px; background: var(--line); cursor: col-resize;
+    }
+    .work.stack .gutter { cursor: row-resize; }
+    select {
+      background: var(--panel); color: var(--ink);
+      border: 1px solid var(--line); border-radius: 8px;
+      padding: 6px 8px; font: 12px Inter, system-ui, sans-serif;
+    }
     .split .editor { display: grid; grid-template-rows: 1fr 1fr 1fr; }
     .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--line); }
     .split .tabs { display: none; }
@@ -117,12 +126,21 @@
     .cm-operator { color: #56b6c2; }
     .cm-meta, .cm-qualifier { color: #e6c07b; }
     .cm-builtin, .cm-type { color: #e06c75; }
-    .stage { flex: 1; position: relative; min-height: 0; background: #fff; }
-    .stage iframe {
+    .stage {
+      flex: 1; min-height: 0; display: flex; justify-content: center;
+      background: #0a0a12;
+    }
+    .frame {
+      position: relative; height: 100%; width: 100%; max-width: 100%;
+      background: #fff;
+    }
+    .stage[data-vp="tablet"] .frame { width: 768px; }
+    .stage[data-vp="mobile"] .frame { width: 390px; }
+    .frame iframe {
       position: absolute; inset: 0; width: 100%; height: 100%;
       border: 0; background: #fff;
     }
-    .stage iframe.is-back { visibility: hidden; pointer-events: none; }
+    .frame iframe.is-back { visibility: hidden; pointer-events: none; }
     .status {
       display: flex; justify-content: space-between; padding: 6px 14px;
       border-top: 1px solid var(--line); color: var(--mute); font-size: 12px;
@@ -138,20 +156,27 @@
 </head>
 <body>
   <nav class="nav">
-    <div class="brand" aria-label="html.vechkasov.pro">
+    <a class="brand" href="/" aria-label="html.vechkasov.pro">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M8 6L3 12L8 18" stroke="#04AA6D" stroke-width="2.2" stroke-linecap="round"/>
         <path d="M16 6L21 12L16 18" stroke="#04AA6D" stroke-width="2.2" stroke-linecap="round"/>
         <path d="M14 4L10 20" stroke="#04AA6D" stroke-width="2" stroke-linecap="round"/>
       </svg>
       html.vechkasov.pro
-    </div>
+    </a>
     <div class="div"></div>
     <div class="toggles">
       <label class="tog">Live Preview <span class="sw"><input type="checkbox" id="live" checked><i></i></span></label>
       <label class="tog">Split Editor <span class="sw"><input type="checkbox" id="split"><i></i></span></label>
       <label class="tog">Снизу <span class="sw"><input type="checkbox" id="stack"><i></i></span></label>
       <label class="tog">Светлая <span class="sw"><input type="checkbox" id="theme"><i></i></span></label>
+      <label class="tog">Экран
+        <select id="vp" aria-label="Ширина превью">
+          <option value="pc">ПК</option>
+          <option value="tablet">Планшет</option>
+          <option value="mobile">Мобилка</option>
+        </select>
+      </label>
     </div>
     <div class="acts">
       <button class="run" id="run" type="button">▶ Run <span class="hint">Alt+R</span></button>
@@ -203,11 +228,14 @@ p { color: #8888aa; }</textarea>
         <textarea id="js" spellcheck="false">console.log("preview");</textarea>
       </div>
     </div>
-    <div class="col">
-      <div class="ph"><span><span class="badge">PREVIEW</span>iframe</span></div>
-      <div class="stage">
-        <iframe id="view" title="Preview" sandbox="allow-scripts"></iframe>
-        <iframe id="view2" title="Preview" sandbox="allow-scripts" class="is-back"></iframe>
+    <div class="gutter" id="gutter" role="separator" aria-orientation="vertical"></div>
+    <div class="col" id="preview">
+      <div class="ph"><span><span class="badge">PREVIEW</span><span id="vp-label">ПК</span></span></div>
+      <div class="stage" id="stage" data-vp="pc">
+        <div class="frame">
+          <iframe id="view" title="Preview" sandbox="allow-scripts"></iframe>
+          <iframe id="view2" title="Preview" sandbox="allow-scripts" class="is-back"></iframe>
+        </div>
       </div>
     </div>
   </div>
@@ -225,6 +253,7 @@ p { color: #8888aa; }</textarea>
     const $ = (id) => document.getElementById(id);
     let front = $("view"), back = $("view2"), gen = 0, liveT = 0;
     let lastH = "", lastJ = "";
+    let pageId = (location.pathname.match(/^\/p\/([A-Za-z0-9_-]{6,16})\/?$/) || [])[1] || "";
     const cmOpt = {
       lineNumbers: true, indentUnit: 2, tabSize: 2,
       extraKeys: { Tab: "indentMore", "Shift-Tab": "indentLess" },
@@ -237,11 +266,33 @@ p { color: #8888aa; }</textarea>
     const css = { get value() { return edCss.getValue(); }, set value(v) { edCss.setValue(v); } };
     const js = { get value() { return edJs.getValue(); }, set value(v) { edJs.setValue(v); } };
 
+    function isStarterCss(s) {
+      return s.includes("#0f0f1a") && s.includes("#04AA6D") && s.includes("align-items: center");
+    }
+    function isFullHtml(s) {
+      return /<!DOCTYPE html/i.test(s) && /<\/html>/i.test(s);
+    }
+    function isStarterHtml(s) {
+      return s.includes("html.vechkasov.pro") && s.includes("Run — превью");
+    }
+    function isStarterJs(s) {
+      return s.trim() === 'console.log("preview");';
+    }
+    function dropDemoPanes() {
+      if (isStarterCss(css.value)) css.value = "";
+      if (isStarterJs(js.value)) js.value = "";
+    }
     function doc() {
       const h = html.value;
-      const inject = `<style id="live-css">${css.value}</style><script>${js.value}<\/script>`;
-      if (/<\/body>/i.test(h)) return h.replace(/<\/body>/i, inject + "</body>");
-      return h + inject;
+      const skipDemo = isFullHtml(html.value) && isStarterCss(css.value) && !isStarterHtml(html.value);
+      const c = skipDemo ? "" : css.value;
+      const j = skipDemo ? "" : js.value;
+      let extra = "";
+      if (c.trim()) extra += `<style id="live-css">${c}</style>`;
+      if (j.trim()) extra += `<script>${j}<\/script>`;
+      if (!extra) return h;
+      if (/<\/body>/i.test(h)) return h.replace(/<\/body>/i, extra + "</body>");
+      return h + extra;
     }
     function paintCss() {
       const idoc = front.contentDocument;
@@ -298,6 +349,12 @@ p { color: #8888aa; }</textarea>
     $("clr").onclick = clearAll;
     $("live").onchange = () => { if ($("live").checked) run(); };
     eds.forEach((ed) => ed.on("change", liveSoon));
+    edHtml.on("change", (_cm, ch) => {
+      if (ch.origin !== "paste" || !isFullHtml(html.value) || isStarterHtml(html.value) || !isStarterCss(css.value)) return;
+      css.value = "";
+      js.value = "";
+      setSplit(false);
+    });
     function refreshEds() { requestAnimationFrame(() => eds.forEach((ed) => ed.refresh())); }
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.onclick = () => {
@@ -308,9 +365,40 @@ p { color: #8888aa; }</textarea>
         refreshEds();
       };
     });
-    $("split").onchange = () => { $("editor").classList.toggle("split", $("split").checked); refreshEds(); };
-    $("stack").onchange = () => { $("work").classList.toggle("stack", $("stack").checked); refreshEds(); };
+    function setSplit(on) {
+      $("split").checked = on;
+      $("editor").classList.toggle("split", on);
+      refreshEds();
+    }
+    $("split").onchange = () => setSplit($("split").checked);
+    $("stack").onchange = () => {
+      $("work").classList.toggle("stack", $("stack").checked);
+      $("gutter").setAttribute("aria-orientation", $("stack").checked ? "horizontal" : "vertical");
+      refreshEds();
+    };
     $("theme").onchange = () => document.body.classList.toggle("light", $("theme").checked);
+    const vpNames = { pc: "ПК", tablet: "Планшет", mobile: "Мобилка" };
+    $("vp").onchange = () => {
+      $("stage").dataset.vp = $("vp").value;
+      $("vp-label").textContent = vpNames[$("vp").value] || "ПК";
+    };
+    $("gutter").addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const work = $("work");
+      const rect = work.getBoundingClientRect();
+      const stack = work.classList.contains("stack");
+      function move(ev) {
+        const p = stack ? (ev.clientY - rect.top) / rect.height : (ev.clientX - rect.left) / rect.width;
+        work.style.setProperty("--ed", (Math.min(0.8, Math.max(0.2, p)) * 100) + "%");
+        refreshEds();
+      }
+      function up() {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+      }
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    });
     document.addEventListener("keydown", (e) => {
       if (!e.altKey) return;
       if (e.code === "KeyR") { e.preventDefault(); run(); }
@@ -318,29 +406,59 @@ p { color: #8888aa; }</textarea>
       if (e.code === "KeyC") { e.preventDefault(); clearAll(); }
     });
     $("pub").onclick = async () => {
+      dropDemoPanes();
       const files = { "index.html": html.value };
       if (css.value.trim()) files["style.css"] = css.value;
       if (js.value.trim()) files["script.js"] = js.value;
+      const payload = { files };
+      if (pageId) payload.id = pageId;
       $("pub").disabled = true;
       try {
-        const r = await fetch("/api/pages", {
+        let r = await fetch("/api/pages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ files }),
+          body: JSON.stringify(payload),
         });
+        if (r.status === 404 && pageId) {
+          delete payload.id;
+          r = await fetch("/api/pages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || r.status);
-        $("out").innerHTML = `<a href="${j.url}" target="_blank" rel="noopener">${j.url}</a> · 24ч`;
-        toast("Опубликовано на 24 часа");
+        pageId = j.id;
+        history.replaceState({}, "", `/p/${j.id}/`);
+        $("out").innerHTML = `<a href="${j.url}">${j.url}</a> · 24ч`;
+        toast(j.updated ? "Обновлено на том же URL" : "Опубликовано на 24 часа");
       } catch (err) {
         toast(String(err.message || err));
       } finally {
         $("pub").disabled = false;
       }
     };
+    async function loadPage() {
+      if (!pageId) { run(); refreshEds(); return; }
+      const base = `/p/${pageId}/`;
+      const h = await fetch(base + "index.html");
+      if (!h.ok) { toast("Страница не найдена или истекла"); return; }
+      html.value = await h.text();
+      let split = false;
+      const c = await fetch(base + "style.css");
+      css.value = c.ok ? await c.text() : "";
+      if (css.value.trim()) split = true;
+      const j = await fetch(base + "script.js");
+      js.value = j.ok ? await j.text() : "";
+      if (js.value.trim()) split = true;
+      if (split) setSplit(true);
+      $("out").innerHTML = `<a href="${location.href}">${location.href}</a>`;
+      run();
+      refreshEds();
+    }
     addEventListener("resize", refreshEds);
-    run();
-    refreshEds();
+    loadPage();
   </script>
 </body>
 </html>

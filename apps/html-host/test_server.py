@@ -44,6 +44,8 @@ def main() -> None:
     assert code == 201, (code, body)
     nid = json.loads(body)["id"]
     code, page = _req("GET", f"http://127.0.0.1:18787/p/{nid}/")
+    assert code == 200 and b"codemirror" in page, (code, page[:80])
+    code, page = _req("GET", f"http://127.0.0.1:18787/p/{nid}/index.html")
     assert code == 200 and b"<h1>hi</h1>" in page, (code, page)
 
     bundle = {
@@ -68,7 +70,7 @@ def main() -> None:
         json.dumps({"id": nid, "html": upd}).encode(), "application/json",
     )
     assert code == 200 and json.loads(body)["id"] == nid, (code, body)
-    code, page = _req("GET", f"http://127.0.0.1:18787/p/{nid}/")
+    code, page = _req("GET", f"http://127.0.0.1:18787/p/{nid}/index.html")
     assert code == 200 and b"<h1>upd</h1>" in page, (code, page)
     code, miss = _req(
         "POST", "http://127.0.0.1:18787/api/pages",
