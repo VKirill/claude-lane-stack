@@ -1,10 +1,19 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f0f1a">
-  <title>html.vechkasov.pro — HTML / CSS / JS</title>
+  <title>HTML share online: 24-hour link, same URL when you edit</title>
+  <meta name="description" content="Publish HTML, CSS, and JS without Git. Updates keep the same URL. The page is gone after 24 hours — no account.">
+  <link rel="canonical" href="https://html.vechkasov.pro/">
+  <meta property="og:title" content="HTML share online: 24-hour link, same URL when you edit">
+  <meta property="og:description" content="Publish HTML, CSS, and JS without Git. Updates keep the same URL. Gone after 24 hours.">
+  <meta property="og:url" content="https://html.vechkasov.pro/">
+  <meta property="og:type" content="website">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"HTML Share","url":"https://html.vechkasov.pro/","applicationCategory":"DeveloperApplication","operatingSystem":"Web","description":"Paste HTML, CSS, and JS and publish a 24-hour share link. Updates reuse the same URL.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -36,7 +45,15 @@
       font: 14px/1.4 Inter, system-ui, sans-serif;
       display: flex;
       flex-direction: column;
+      overflow: auto;
     }
+    .hero { padding: 14px 16px 4px; }
+    .hero h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.02em; }
+    .hero p { margin: 0 0 10px; color: var(--mute); max-width: 46rem; }
+    .seo { padding: 20px 16px 40px; border-top: 1px solid var(--line); max-width: 46rem; }
+    .seo h2 { font-size: 16px; margin: 22px 0 8px; }
+    .seo h3 { font-size: 14px; margin: 16px 0 6px; }
+    .seo p { color: var(--mute); margin: 0 0 8px; }
     .nav {
       display: flex;
       align-items: center;
@@ -74,7 +91,7 @@
     .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
     .ghost:hover { border-color: var(--green); }
     .hint { font: 11px/1 JetBrains Mono, ui-monospace, monospace; opacity: .65; }
-    .work { flex: 1; display: flex; min-height: 0; --ed: 50%; }
+    .work { flex: 1; display: flex; min-height: 62vh; --ed: 50%; }
     .work.stack { flex-direction: column; }
     .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
     .editor { flex: 0 0 var(--ed); }
@@ -156,25 +173,25 @@
 </head>
 <body>
   <nav class="nav">
-    <a class="brand" href="/" aria-label="html.vechkasov.pro">
+    <a class="brand" href="/" aria-label="HTML Share">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M8 6L3 12L8 18" stroke="#04AA6D" stroke-width="2.2" stroke-linecap="round"/>
         <path d="M16 6L21 12L16 18" stroke="#04AA6D" stroke-width="2.2" stroke-linecap="round"/>
         <path d="M14 4L10 20" stroke="#04AA6D" stroke-width="2" stroke-linecap="round"/>
       </svg>
-      html.vechkasov.pro
+      HTML Share
     </a>
     <div class="div"></div>
     <div class="toggles">
       <label class="tog">Live Preview <span class="sw"><input type="checkbox" id="live" checked><i></i></span></label>
       <label class="tog">Split Editor <span class="sw"><input type="checkbox" id="split"><i></i></span></label>
-      <label class="tog">Снизу <span class="sw"><input type="checkbox" id="stack"><i></i></span></label>
-      <label class="tog">Светлая <span class="sw"><input type="checkbox" id="theme"><i></i></span></label>
-      <label class="tog">Экран
-        <select id="vp" aria-label="Ширина превью">
-          <option value="pc">ПК</option>
-          <option value="tablet">Планшет</option>
-          <option value="mobile">Мобилка</option>
+      <label class="tog">Stack <span class="sw"><input type="checkbox" id="stack"><i></i></span></label>
+      <label class="tog">Light <span class="sw"><input type="checkbox" id="theme"><i></i></span></label>
+      <label class="tog">Viewport
+        <select id="vp" aria-label="Preview width">
+          <option value="pc">Desktop</option>
+          <option value="tablet">Tablet</option>
+          <option value="mobile">Phone</option>
         </select>
       </label>
     </div>
@@ -182,9 +199,13 @@
       <button class="run" id="run" type="button">▶ Run <span class="hint">Alt+R</span></button>
       <button class="ghost" id="save" type="button">Save <span class="hint">Alt+S</span></button>
       <button class="ghost" id="clr" type="button">Clear <span class="hint">Alt+C</span></button>
-      <button class="ghost" id="pub" type="button">Publish 24ч</button>
+      <button class="ghost" id="pub" type="button">Publish 24h</button>
     </div>
   </nav>
+  <header class="hero">
+    <h1>HTML share online</h1>
+    <p>Paste HTML, CSS, and JS. Publish. Send a live HTTPS link. Edits keep the same URL. The page expires in 24 hours. No Git, no account.</p>
+  </header>
 
   <div class="work" id="work">
     <div class="col editor" id="editor">
@@ -196,15 +217,15 @@
       <div class="panel on" data-panel="html">
         <div class="ph"><span><span class="badge">HTML</span>index.html</span></div>
         <textarea id="html" spellcheck="false">&lt;!DOCTYPE html&gt;
-&lt;html lang="ru"&gt;
+&lt;html lang="en"&gt;
 &lt;head&gt;
   &lt;meta charset="utf-8"&gt;
   &lt;title&gt;Preview&lt;/title&gt;
   &lt;link rel="stylesheet" href="style.css"&gt;
 &lt;/head&gt;
 &lt;body&gt;
-  &lt;h1&gt;html.vechkasov.pro&lt;/h1&gt;
-  &lt;p&gt;HTML / CSS / JS на 24 часа. Run — превью. Publish — ссылка.&lt;/p&gt;
+  &lt;h1&gt;HTML share online&lt;/h1&gt;
+  &lt;p&gt;Publish to get a 24-hour link. Updates keep the same URL.&lt;/p&gt;
   &lt;script src="script.js"&gt;&lt;/script&gt;
 &lt;/body&gt;
 &lt;/html&gt;</textarea>
@@ -230,7 +251,7 @@ p { color: #8888aa; }</textarea>
     </div>
     <div class="gutter" id="gutter" role="separator" aria-orientation="vertical"></div>
     <div class="col" id="preview">
-      <div class="ph"><span><span class="badge">PREVIEW</span><span id="vp-label">ПК</span></span></div>
+      <div class="ph"><span><span class="badge">PREVIEW</span><span id="vp-label">Desktop</span></span></div>
       <div class="stage" id="stage" data-vp="pc">
         <div class="frame">
           <iframe id="view" title="Preview" sandbox="allow-scripts"></iframe>
@@ -243,6 +264,21 @@ p { color: #8888aa; }</textarea>
     <span>Alt+R Run · Alt+S Save · Alt+C Clear · Tab Indent · Shift+Tab Outdent</span>
     <span id="out"></span>
   </div>
+  <footer class="seo">
+    <h2>Publish HTML online without a host</h2>
+    <p>This page is the only URL that should rank. You paste code here, hit Publish 24h, and send <code>/p/…/</code>. Shared pages are noindex and die after 24 hours — they are not a content silo.</p>
+    <h2>Same link when you update</h2>
+    <p>Publish again from the same editor session and the host overwrites that id. You do not mint a new URL for every save. That is the difference versus most “drop a file, get a new slug” tools.</p>
+    <h2>HTML, CSS, and JS together</h2>
+    <p>A full document can live in the HTML pane alone. If you split <code>style.css</code> and <code>script.js</code>, the host serves them as sibling files. Demo starter CSS is not attached to a pasted complete page.</p>
+    <h2>FAQ</h2>
+    <h3>How do I share HTML online?</h3>
+    <p>Paste the markup, click Publish 24h, copy the HTTPS link. Recipients open a rendered page. Opening <code>/p/{id}/</code> yourself loads the editor so you can keep editing.</p>
+    <h3>How is this different from GitHub Pages?</h3>
+    <p>No repository, no build, no custom domain on the share link. The tradeoff is explicit: 24 hours, then the files are gone.</p>
+    <h3>Can I publish only HTML?</h3>
+    <p>Yes. CSS and JS panes are optional. A complete <code>&lt;!DOCTYPE html&gt;</code> document is enough.</p>
+  </footer>
   <div class="toast" id="toast"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/xml/xml.min.js"></script>
@@ -273,7 +309,7 @@ p { color: #8888aa; }</textarea>
       return /<!DOCTYPE html/i.test(s) && /<\/html>/i.test(s);
     }
     function isStarterHtml(s) {
-      return s.includes("html.vechkasov.pro") && s.includes("Run — превью");
+      return s.includes("Publish to get a 24-hour link") || s.includes("Run — превью");
     }
     function isStarterJs(s) {
       return s.trim() === 'console.log("preview");';
@@ -336,7 +372,7 @@ p { color: #8888aa; }</textarea>
       a.download = "index.html";
       a.click();
       URL.revokeObjectURL(a.href);
-      toast("Скачан index.html");
+      toast("Downloaded index.html");
     }
     function clearAll() {
       html.value = "";
@@ -377,10 +413,10 @@ p { color: #8888aa; }</textarea>
       refreshEds();
     };
     $("theme").onchange = () => document.body.classList.toggle("light", $("theme").checked);
-    const vpNames = { pc: "ПК", tablet: "Планшет", mobile: "Мобилка" };
+    const vpNames = { pc: "Desktop", tablet: "Tablet", mobile: "Phone" };
     $("vp").onchange = () => {
       $("stage").dataset.vp = $("vp").value;
-      $("vp-label").textContent = vpNames[$("vp").value] || "ПК";
+      $("vp-label").textContent = vpNames[$("vp").value] || "Desktop";
     };
     $("gutter").addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -432,7 +468,7 @@ p { color: #8888aa; }</textarea>
         pageId = j.id;
         history.replaceState({}, "", `/p/${j.id}/`);
         $("out").innerHTML = `<a href="${j.url}">${j.url}</a> · 24ч`;
-        toast(j.updated ? "Обновлено на том же URL" : "Опубликовано на 24 часа");
+        toast(j.updated ? "Updated the same URL" : "Published for 24 hours");
       } catch (err) {
         toast(String(err.message || err));
       } finally {
@@ -443,16 +479,14 @@ p { color: #8888aa; }</textarea>
       if (!pageId) { run(); refreshEds(); return; }
       const base = `/p/${pageId}/`;
       const h = await fetch(base + "index.html");
-      if (!h.ok) { toast("Страница не найдена или истекла"); return; }
+      if (!h.ok) { toast("Page not found or expired"); return; }
       html.value = await h.text();
-      let split = false;
       const c = await fetch(base + "style.css");
       css.value = c.ok ? await c.text() : "";
-      if (css.value.trim()) split = true;
       const j = await fetch(base + "script.js");
       js.value = j.ok ? await j.text() : "";
-      if (js.value.trim()) split = true;
-      if (split) setSplit(true);
+      dropDemoPanes();
+      if (css.value.trim() || js.value.trim()) setSplit(true);
       $("out").innerHTML = `<a href="${location.href}">${location.href}</a>`;
       run();
       refreshEds();

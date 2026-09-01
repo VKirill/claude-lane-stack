@@ -108,15 +108,23 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: object) -> None:
         return
 
-    def _send(self, code: int, body: bytes, ctype: str) -> None:
+    def _send(
+        self,
+        code: int,
+        body: bytes,
+        ctype: str,
+        robots: str = "noindex",
+        cache: str = "no-store",
+    ) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("X-Robots-Tag", "noindex")
+        self.send_header("X-Robots-Tag", robots)
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _json(self, code: int, payload: dict) -> None:
         self._send(code, json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -172,6 +180,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(200, legacy.read_bytes(), "text/html; charset=utf-8")
 
+    def do_HEAD(self) -> None:
+        self.do_GET()
+
     def do_GET(self) -> None:
         gc()
         path = unquote(self.path.split("?", 1)[0])
@@ -179,7 +190,28 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True, "ttl": TTL})
             return
         if path == "/":
-            self._send(200, UI_FILE.read_bytes(), "text/html; charset=utf-8")
+            self._send(
+                200,
+                UI_FILE.read_bytes(),
+                "text/html; charset=utf-8",
+                robots="index, follow",
+                cache="public, max-age=120",
+            )
+            return
+        if path == "/robots.txt":
+            body = (
+                "User-agent: *\nAllow: /\nDisallow: /p/\nDisallow: /api/\n"
+                f"Sitemap: {BASE}/sitemap.xml\n"
+            ).encode()
+            self._send(200, body, "text/plain; charset=utf-8", robots="index, follow")
+            return
+        if path == "/sitemap.xml":
+            body = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                f"<url><loc>{BASE}/</loc></url></urlset>\n"
+            ).encode()
+            self._send(200, body, "application/xml; charset=utf-8", robots="index, follow")
             return
         if path.startswith("/p/"):
             rest = path[3:].strip("/")

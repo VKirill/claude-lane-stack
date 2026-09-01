@@ -35,7 +35,11 @@ def main() -> None:
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     time.sleep(0.05)
     code, landing = _req("GET", "http://127.0.0.1:18787/")
-    assert code == 200 and b"codemirror" in landing and b"Alt+S" in landing, (code, landing[:80])
+    assert code == 200 and b"HTML share online" in landing and b"Alt+S" in landing, (code, landing[:80])
+    code, robots = _req("GET", "http://127.0.0.1:18787/robots.txt")
+    assert code == 200 and b"Disallow: /p/" in robots, (code, robots)
+    code, _ = _req("HEAD", "http://127.0.0.1:18787/")
+    assert code == 200, code
     html = "<!DOCTYPE html><html><body><h1>hi</h1></body></html>"
     code, body = _req(
         "POST", "http://127.0.0.1:18787/api/pages",
