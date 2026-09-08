@@ -35,6 +35,24 @@ class InstallTest(unittest.TestCase):
         self.assertNotIn('"$BOOT"', text)
         self.assertIn('exec claude --agent "$AGENT" --name "$NAME" "$@"', text)
 
+    def test_lane_pm_rand_survives_utf8_locale(self) -> None:
+        text = (ROOT / "bin" / "lane-pm").read_text(encoding="utf-8")
+        self.assertNotIn("tr -dc", text)
+        self.assertNotIn("</dev/urandom", text)
+        script = (
+            "set -euo pipefail\n"
+            "export LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8\n"
+            'RAND="$(LC_ALL=C od -An -tx1 -N4 /dev/urandom | tr -d \' \\n\' | cut -c1-4)"\n'
+            'printf "%s" "$RAND"\n'
+        )
+        out = subprocess.run(
+            ["bash", "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertRegex(out.stdout, r"^[0-9a-f]{4}$")
+
     def test_lane_stack_resume_command_runs_cli(self) -> None:
         cmd = (
             ROOT / "plugins" / "lane-stack" / "commands" / "resume-project.md"
