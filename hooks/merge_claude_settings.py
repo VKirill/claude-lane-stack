@@ -272,7 +272,7 @@ def merge_pm_bulk_read(settings: dict[str, Any], hook_path: Path) -> dict[str, A
                 {
                     "type": "command",
                     "command": cmd,
-                    "timeout": 5,
+                    "timeout": 200,
                 }
             ],
         }

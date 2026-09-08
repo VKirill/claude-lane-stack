@@ -18,7 +18,16 @@ if str(_BIN) not in sys.path:
 
 from routing_profile import load_routing_profile  # noqa: E402
 
-PM_READ_PROVIDERS = ("agy", "qwen", "kimi", "grok", "codex")
+PM_READ_PROVIDERS = ("agy", "qwen", "kimi", "grok", "codex", "claude")
+PICK_ORDER = ("agy", "qwen", "kimi", "grok", "codex", "claude")
+HOST_BIN = {
+    "agy": "agy",
+    "qwen": "qwen",
+    "kimi": "kimi",
+    "grok": "grok",
+    "codex": "codex",
+    "claude": "claude",
+}
 DEFAULT_MIN_LINES = 350
 DEFAULT_PROVIDER = "agy"
 DEFAULT_MODEL = "gemini-3.8-flash-low"
@@ -28,7 +37,8 @@ DEFAULT_MODELS = {
     "qwen": "qwen3.6-flash",
     "kimi": "kimi-code/k3-256k",
     "grok": "grok-4.5",
-    "codex": "gpt-5.6-luna",
+    "codex": "gpt-5.6-terra",
+    "claude": "sonnet",
 }
 DEFAULT_EFFORTS = {
     "agy": "low",
@@ -36,6 +46,15 @@ DEFAULT_EFFORTS = {
     "kimi": "low",
     "grok": "low",
     "codex": "low",
+    "claude": "low",
+}
+DEFAULT_TIERS = {
+    "agy": "standard",
+    "qwen": "standard",
+    "kimi": "standard",
+    "grok": "standard",
+    "codex": "fast",
+    "claude": "standard",
 }
 PM_READ_EFFORTS = {
     "agy": ("low", "medium", "high"),
@@ -43,12 +62,14 @@ PM_READ_EFFORTS = {
     "kimi": ("low", "medium", "high"),
     "grok": ("low", "medium", "high"),
     "codex": ("low", "medium", "high", "xhigh", "max"),
+    "claude": ("low", "medium", "high"),
 }
 MIN_LINE_CHOICES = (100, 200, 350, 500, 800, 1000, 2000)
 MIN_LINES_LO = 50
 MIN_LINES_HI = 5000
 MAX_FILE_BYTES = 400_000
 INVOKE_TIMEOUT = 180
+HOOK_TIMEOUT = 200
 BRIEF_MARK = "PM_READ_BRIEF v1"
 
 BRIEF_RULES = """You map one source file for a senior planner who will NEVER see the file body.
@@ -104,18 +125,61 @@ def normalize_pm_read(raw: Any) -> dict[str, Any]:
     ).strip().lower()
     if effort not in allowed:
         effort = DEFAULT_EFFORTS.get(provider, DEFAULT_EFFORT)
+    tier = str(block.get("service_tier") or DEFAULT_TIERS.get(provider) or "standard").strip().lower()
+    if tier not in {"fast", "standard"}:
+        tier = DEFAULT_TIERS.get(provider, "standard")
     return {
         "enabled": _truthy(block.get("enabled", False)),
         "min_lines": min_lines,
         "provider": provider,
         "model": model,
         "reasoning_effort": effort,
+        "service_tier": tier,
     }
+
+
+def host_has(provider: str, tools: dict[str, Any] | None = None) -> bool:
+    if tools is not None:
+        block = tools.get(provider)
+        if isinstance(block, dict) and "present" in block:
+            return bool(block.get("present"))
+        return False
+    import shutil
+
+    return bool(shutil.which(HOST_BIN.get(provider, provider)))
+
+
+def defaults_for(provider: str) -> dict[str, str]:
+    return {
+        "provider": provider,
+        "model": DEFAULT_MODELS.get(provider, DEFAULT_MODEL),
+        "reasoning_effort": DEFAULT_EFFORTS.get(provider, DEFAULT_EFFORT),
+        "service_tier": DEFAULT_TIERS.get(provider, "standard"),
+    }
+
+
+def pick_pm_read(tools: dict[str, Any] | None = None) -> dict[str, str]:
+    """Cheap mapper: AGY flash → other CLIs → Codex terra fast → Claude sonnet."""
+    for provider in PICK_ORDER:
+        if host_has(provider, tools):
+            return defaults_for(provider)
+    return defaults_for("claude")
+
+
+def resolve_pm_read(
+    raw: Any, tools: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    cfg = normalize_pm_read(raw)
+    if host_has(str(cfg["provider"]), tools):
+        return cfg
+    picked = pick_pm_read(tools)
+    cfg.update(picked)
+    return cfg
 
 
 def load_pm_read(start: Path | None = None) -> dict[str, Any]:
     profile = load_routing_profile(start or Path.cwd())
-    return normalize_pm_read(profile.get("pm_read"))
+    return resolve_pm_read(profile.get("pm_read"))
 
 
 def count_lines(path: Path) -> int:
@@ -186,8 +250,42 @@ def _read_body(path: Path) -> tuple[str, bool]:
     return text, truncated
 
 
+def invoke_claude(prompt: str, *, model: str, timeout: int) -> str:
+    import shutil
+    import subprocess
+
+    bin_path = shutil.which("claude")
+    if not bin_path:
+        raise SystemExit("pm_read: claude not on PATH")
+    completed = subprocess.run(
+        [
+            bin_path,
+            "-p",
+            prompt,
+            "--model",
+            model or "sonnet",
+            "--output-format",
+            "text",
+            "--dangerously-skip-permissions",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    if completed.returncode != 0:
+        tail = (completed.stderr or completed.stdout or "")[-800:]
+        raise SystemExit(f"pm_read: claude exited {completed.returncode}: {tail}")
+    return (completed.stdout or "").strip()
+
+
 def invoke_brief(
-    prompt: str, *, provider: str, model: str, effort: str = DEFAULT_EFFORT
+    prompt: str,
+    *,
+    provider: str,
+    model: str,
+    effort: str = DEFAULT_EFFORT,
+    service_tier: str = "standard",
 ) -> str:
     from plan_critique_llm import (  # noqa: WPS433
         LlmCritiqueError,
@@ -209,7 +307,10 @@ def invoke_brief(
                 model=model,
                 effort=effort or "low",
                 timeout=INVOKE_TIMEOUT,
+                service_tier=service_tier or "fast",
             )
+        if provider == "claude":
+            return invoke_claude(prompt, model=model, timeout=INVOKE_TIMEOUT)
         if provider == "qwen":
             return invoke_qwen(prompt, model=model, timeout=INVOKE_TIMEOUT)
         if provider == "kimi":
@@ -233,11 +334,25 @@ def run_brief(path: Path, question: str, *, cfg: dict[str, Any] | None = None) -
         provider=str(settings["provider"]),
         model=str(settings["model"]),
         effort=str(settings.get("reasoning_effort") or DEFAULT_EFFORT),
+        service_tier=str(settings.get("service_tier") or "standard"),
     )
     text = (raw or "").strip()
     if BRIEF_MARK not in text:
         text = f"{BRIEF_MARK}\npath: {path}\nlines: {lines}\n\n{text}"
     return text.rstrip() + "\n"
+
+
+def worker_brief_for_hook(path: Path, cfg: dict[str, Any]) -> str:
+    """Run the adoc worker; on failure keep the deny hint so Fable still stops."""
+    try:
+        return run_brief(path, "", cfg=cfg)
+    except SystemExit as exc:
+        hint = exc.args[0] if exc.args else "worker failed"
+        return (
+            f"{BRIEF_MARK}\npath: {path}\n"
+            f"unknown:\n- worker failed: {hint}\n"
+            f"Retry: pm_read --path {path}\n"
+        )
 
 
 def hook_main() -> int:
@@ -272,14 +387,15 @@ def hook_main() -> int:
     path = Path(raw_path)
     if not path.is_absolute():
         path = cwd / path
+    cfg = load_pm_read(cwd)
     block, _lines, reason = should_block_read(
         path,
         offset=inp.get("offset"),
         limit=inp.get("limit"),
-        cfg=load_pm_read(cwd),
+        cfg=cfg,
     )
     if block:
-        emit_deny(client, reason)
+        emit_deny(client, worker_brief_for_hook(path, cfg) or reason)
         return 2
     emit_allow(client)
     return 0

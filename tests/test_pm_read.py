@@ -13,9 +13,13 @@ from merge_claude_settings import merge_pm_bulk_read  # noqa: E402
 from pm_read import (  # noqa: E402
     BRIEF_MARK,
     BRIEF_RULES,
+    HOOK_TIMEOUT,
     build_prompt,
     normalize_pm_read,
+    pick_pm_read,
+    resolve_pm_read,
     should_block_read,
+    worker_brief_for_hook,
 )
 from routing_profile import load_routing_profile  # noqa: E402
 
@@ -28,6 +32,35 @@ class PmReadTest(unittest.TestCase):
         self.assertEqual(cfg["provider"], "agy")
         self.assertEqual(cfg["model"], "gemini-3.8-flash-low")
         self.assertEqual(cfg["reasoning_effort"], "low")
+
+    def test_pick_claude_only_is_sonnet(self) -> None:
+        picked = pick_pm_read({"claude": {"present": True}})
+        self.assertEqual(picked["provider"], "claude")
+        self.assertEqual(picked["model"], "sonnet")
+
+    def test_pick_codex_without_agy_is_terra_fast(self) -> None:
+        picked = pick_pm_read(
+            {
+                "agy": {"present": False},
+                "qwen": {"present": False},
+                "kimi": {"present": False},
+                "grok": {"present": False},
+                "codex": {"present": True},
+                "claude": {"present": True},
+            }
+        )
+        self.assertEqual(picked["provider"], "codex")
+        self.assertEqual(picked["model"], "gpt-5.6-terra")
+        self.assertEqual(picked["service_tier"], "fast")
+        self.assertEqual(picked["reasoning_effort"], "low")
+
+    def test_resolve_keeps_ready_agy(self) -> None:
+        cfg = resolve_pm_read(
+            {"enabled": True, "provider": "agy", "model": "gemini-3.7-flash-medium"},
+            {"agy": {"present": True}},
+        )
+        self.assertEqual(cfg["provider"], "agy")
+        self.assertEqual(cfg["model"], "gemini-3.7-flash-medium")
 
     def test_codex_gpt_worker_keeps_effort(self) -> None:
         cfg = normalize_pm_read(
@@ -96,9 +129,30 @@ class PmReadTest(unittest.TestCase):
         self.assertTrue(any(e.get("matcher") == "Read" for e in entries))
         cmd = entries[0]["hooks"][0]["command"]
         self.assertIn("pm_bulk_read.py", cmd)
+        self.assertGreaterEqual(entries[0]["hooks"][0]["timeout"], HOOK_TIMEOUT)
         out2 = merge_pm_bulk_read(out, hook)
         read_hooks = [e for e in out2["hooks"]["PreToolUse"] if e.get("matcher") == "Read"]
         self.assertEqual(len(read_hooks), 1)
+
+    def test_hook_worker_brief_uses_adoc_model(self) -> None:
+        from unittest.mock import patch
+
+        cfg = normalize_pm_read(
+            {"enabled": True, "provider": "agy", "model": "gemini-3.7-flash-medium"}
+        )
+        with patch(
+            "pm_read.run_brief",
+            return_value=f"{BRIEF_MARK}\npath: a.py\npurpose: map\n",
+        ) as run:
+            text = worker_brief_for_hook(Path("a.py"), cfg)
+        run.assert_called_once()
+        self.assertIn(BRIEF_MARK, text)
+        self.assertNotIn("print(", text)
+        orch = (
+            ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("pm_read --path", orch)
+        self.assertIn("Fat files — `pm_read`", orch)
 
     def test_apply_receipt_shows_pm_read(self) -> None:
         from agents_doctor_tui import _done_pm_read, _print_apply_receipt  # noqa: E402

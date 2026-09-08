@@ -194,6 +194,10 @@ WRITER_MODELS: dict[str, list[str]] = {
         "claude-opus-4-6-thinking",
         "gpt-oss-120b-medium",
     ],
+    "claude": [
+        "sonnet",
+        "claude-sonnet-4-6",
+    ],
     "codex": [
         "gpt-5.6-luna",
         "gpt-5.6-terra",
@@ -229,6 +233,7 @@ WRITER_META: dict[str, dict[str, str]] = {
     "grok": {"title": "Grok", "badge": "XAI"},
     "agy": {"title": "AGY", "badge": "GEMINI"},
     "codex": {"title": "Codex", "badge": "OPENAI"},
+    "claude": {"title": "Claude", "badge": "SONNET"},
     "cursor": {"title": "Cursor", "badge": "AGENT"},
     "opencode": {"title": "OpenCode", "badge": "MULTI"},
     "auto": {"title": "Auto", "badge": "STACK"},

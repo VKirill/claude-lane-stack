@@ -624,17 +624,17 @@ def write_outputs(
 
         writer_effort = resolve_agy_effort(writer_model or "", writer_effort or "")
     try:
-        from pm_read import normalize_pm_read
+        from pm_read import normalize_pm_read, resolve_pm_read
         from routing_profile import load_routing_profile as _load_profile
     except ImportError:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from pm_read import normalize_pm_read
+        from pm_read import normalize_pm_read, resolve_pm_read
         from routing_profile import load_routing_profile as _load_profile
     prev_pr = _load_profile(repo).get("pm_read")
     pr_seed = dict(prev_pr) if isinstance(prev_pr, dict) else {}
     if isinstance(pm_read, dict):
         pr_seed.update({k: v for k, v in pm_read.items() if v is not None})
-    pr = normalize_pm_read(pr_seed)
+    pr = resolve_pm_read(normalize_pm_read(pr_seed), tools)
     ws_mode = (workspace_mode or "auto").strip().lower()
     if ws_mode not in {"in_place", "worktree", "auto"}:
         ws_mode = "auto"
@@ -755,6 +755,10 @@ def write_outputs(
     lines.append(f"  provider: {pr['provider']}")
     lines.append(f"  model: {pr['model']}")
     lines.append(f"  reasoning_effort: {pr['reasoning_effort']}")
+    lines.append(
+        f"  service_tier: {pr.get('service_tier') or 'standard'}  "
+        "# Codex terra uses fast; others standard"
+    )
     # Pipeline stages (plan critique / write / night / specialist / onboard).
     night_enabled = False
     night_path = agents / "night-shift.yaml"
