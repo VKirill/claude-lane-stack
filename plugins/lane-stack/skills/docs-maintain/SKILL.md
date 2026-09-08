@@ -12,7 +12,7 @@ If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как 
 print the block below **verbatim** (Russian), then **stop**. Do not start docs-maintain.
 
 ```text
-docs-maintain — живые docs/. Не фичи.
+docs-maintain — живые docs/: пакеты + функциональность систем (docs/features/).
 
 Когда
 - «обнови документацию / nightly docs / INIT docs».
@@ -32,9 +32,9 @@ docs-maintain — живые docs/. Не фичи.
 - агент: сначала project-onboarder, потом docs-maintainer
 
 Как работает
-1) Паспорт тонкий — отдельный агент project-onboarder. Wiki не стартует раньше.
-2) docs-web: шапки / stubs / web.yaml / INDEX. Без LLM.
-3) docs-stale: owns ∪ цитаты ∪ stub/thin. Luna wiki INIT/night. Не коммитит.
+1) Паспорт тонкий — ночной раннер зовёт project-onboard, потом wiki (не BLOCKED).
+2) docs-web: шапки / stubs / web.yaml / INDEX + stubs docs/features/ из apps/*/modules. Без LLM.
+3) docs-stale: owns ∪ цитаты ∪ stub/thin. Luna пишет wiki и product spec фич (Business rules). Не коммитит.
    Отчёт: .agents/session-log/DOCS-YYYY-MM-DD.md
    Daylog: .agents/session-log/DOCS-DAY-YYYY-MM-DD.md
 ```

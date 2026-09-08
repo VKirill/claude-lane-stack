@@ -624,7 +624,7 @@ def validate_run(run_dir: Path, phase: str) -> int:
                     run_dir,
                     settings=critique_settings,
                     timeout=int(
-                        __import__("os").environ.get("PLAN_CRITIQUE_TIMEOUT", "180")
+                        __import__("os").environ.get("PLAN_CRITIQUE_TIMEOUT", "1800")
                     ),
                     invoke_llm=bool(critique_settings.get("profile_path")),
                 )

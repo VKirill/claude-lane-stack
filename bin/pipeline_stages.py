@@ -77,7 +77,7 @@ DEFAULT_MODELS = {
     "grok": "grok-4.5",
     "agy": "gemini-3.7-flash-high",
     "codex": "gpt-5.6-luna",
-    "cursor": "composer-2.5",
+    "cursor": "cursor-grok-4.6-medium",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
     "structural": "",
 }
@@ -1658,7 +1658,7 @@ def run_full_critique(
     *,
     settings: dict[str, Any] | None = None,
     structural_only: bool = False,
-    timeout: int = 180,
+    timeout: int = 1800,
     invoke_llm: bool = True,
 ) -> dict[str, Any]:
     """Coverage helper + optional LLM; skip below complexity bar."""

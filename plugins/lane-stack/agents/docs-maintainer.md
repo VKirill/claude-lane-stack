@@ -1,6 +1,6 @@
 ---
 name: docs-maintainer
-description: "Living wiki after onboard. If passport is thin, FAILED — parent must finish project-onboarder first. No feature code."
+description: "Living wiki after onboard. Thin passport → project-onboard, then wiki (packages + docs/features). No feature code."
 model: sonnet
 background: true
 maxTurns: 25
@@ -24,13 +24,9 @@ skills:
 
 ## Run
 
-Wiki only. Onboard is a **previous** agent (`project-onboarder`).
+Night runner onboard+wiki. Do not stop on a thin passport.
 
 ```bash
-if docs-stale "$PROJECT_CWD" --passport-gaps; then
-  echo "FAILED passport incomplete — spawn project-onboarder first"
-  exit 2
-fi
 docs-maintain-project "$PROJECT_CWD"
 ```
 
@@ -40,5 +36,5 @@ Report → `.agents/session-log/DOCS-YYYY-MM-DD.md`.
 
 ## Completion (mandatory)
 
-`DONE` only if passport-gaps is empty (`docs-stale --passport-gaps` exits 2). Wiki fill while `apps/*/CLAUDE.md` is a stub is `FAILED`.  
+`DONE` if the runner wrote `.agents/session-log/DOCS-YYYY-MM-DD.md` (or skip/partial). Passport stubs are Luna's job on that pass.  
 Last line: `DONE <report-path>` or `FAILED <reason>`, then **stop**.

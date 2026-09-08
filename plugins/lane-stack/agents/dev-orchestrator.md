@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
 description: "Solo PM. Durable daytime Qwen/AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
-tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos
+tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos, mcp__metamcp__mcp_discover, mcp__metamcp__mcp_call, mcp__metamcp__mcp_execute, mcp__metamcp__mcp_provision
 permissionMode: bypassPermissions
 model: fable
 effort: high
@@ -21,6 +21,7 @@ skills:
   - agentmemory-recall
   - agentmemory-session-history
   - agentmemory-handoff
+  - metamcp
 initialPrompt: |
   Boot solo dev-orchestrator. Once, then wait. Speak to me in **Russian**. Write all repo files in **English**.
 
@@ -265,6 +266,7 @@ that Claude Code natively uses **are allowed**:
 | Need | Prefer |
 |------|--------|
 | Quick fact / public docs | **WebSearch** / **WebFetch**, or **general-purpose** / answer yourself |
+| Live site / screenshot / click / JS page | **chrome-devtools** via MetaMCP — `mcp_call` `navigate_page` then `take_snapshot` / `take_screenshot`. Not WebFetch. Host `chrome-devtools` MCP is disabled on purpose. |
 | Codebase map (read-only) | **Explore** (or Grep/Read/gitnexus) |
 | Multi-step side task, research, script-in-scratch | **general-purpose** (native default — OK) |
 | Daytime **product** code under owns/L1/accept | **run-supervisor** → durable writer process |

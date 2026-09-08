@@ -40,6 +40,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sum_night_on": "night:ON",
         "sum_night_off": "night:off",
         "field_provider": "Provider",
+        "field_enabled": "Enabled",
         "field_model": "Model",
         "field_effort": "Effort",
         "field_fast": "Fast mode",
@@ -177,7 +178,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "work_h1": "  Writer workspace\n",
         "work_help": (
             "  Where daytime writers edit code. Not about night review.\n"
-            "  ↑↓ choose mode · Space/Enter select · +/- auto score · [ ]/,. session · m multi-write\n\n"
+            "  ↑↓ mode or PM fields · Space/Enter list · click · +/- score · "
+            "[ ] session · m multi\n\n"
         ),
         "work_mode_h2": "  Mode\n",
         "work_auto_h2": "\n  Auto thresholds  (only when Mode = Auto)\n",
@@ -187,6 +189,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "work_session_h2": "\n  Writer session\n",
         "work_session_line": "  tasks per session = {n} / 10     [[ ]]\n",
         "work_session_hint": "  1 = new session every task. Same run resumes until this limit.\n",
+        "pm_read_h2": "\n  PM file read (Fable context)\n",
+        "pm_read_field_lines": "N lines",
+        "pm_read_toggle": "  {sw}  shunt full Read when file > N lines     [b]\n",
+        "pm_read_lines": "  N = {n} lines     [<>]\n",
+        "pm_read_worker": "  worker {provider} / {model}     [p]\n",
+        "pm_read_help": (
+            "  Worker (AGY/Qwen/Kimi/Grok/Codex GPT) returns PM_READ_BRIEF, not the file.\n"
+            "  Effort is thinking depth. Spotify shunt used temp 0.2, not effort.\n"
+        ),
         "work_footer": (
             "\n  In-place: project_cwd = repo, PM commits main.\n"
             "  Worktree: wt-create → agent/<slug>, PM wt-merge-main.\n"
@@ -224,6 +235,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "status_help": "  Green = ready for writer lanes.\n\n",
         "status_profile": "\n  Profile preview · {profile}\n",
         "status_rescan": "\n  r  rescan CLIs\n",
+        "msg_pm_read": "pm_read → {on}",
+        "msg_pm_read_lines": "pm_read.min_lines → {n}",
+        "msg_pm_read_worker": "pm_read worker → {provider} / {model}",
         "apply_h1": "  Save to this project\n",
         "apply_help": "  Writes routing + night-shift. Safe to re-run anytime.\n\n",
         "apply_summary": "  Summary\n",
@@ -232,6 +246,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "apply_model": "  model     {model}\n",
         "apply_effort": "  effort    {effort}\n",
         "apply_fast": "  fast mode {value}\n",
+        "apply_pm_read": "  pm_read   {sw}  >{n}  {provider}/{model}  {effort}\n",
         "apply_workspace": "  workspace {ws}\n",
         "apply_session": "  session   {n} tasks / session\n",
         "apply_lang": "  language  {lang}\n",
@@ -251,7 +266,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "keys_stages": "↑↓ field · ←→ value · 1-5 stage · p/n · Space",
         "keys_memory": "↑↓ field · ←→ value · Space · 0 Apply",
         "keys_docs": "↑↓ field · ←→ value · Space · 0 Apply",
-        "keys_work": "↑↓ mode · Space select · +/- score · [ ]/,. session · m multi",
+        "keys_work": "↑↓ mode · Space · +/- score · [ ] session · m multi · b <> p PM-read",
         "keys_night": "Space night · a merge · +/- budget · n writer",
         "keys_ui": "↑↓ language · L cycle · Tab tabs",
         "keys_status": "r rescan · 1-9 tabs · 0 Apply · q quit",
@@ -309,6 +324,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_ws_score": "worktree_min_score → {n}",
         "msg_session_max": "session_max_tasks → {n}",
         "msg_multi": "multi-write worktree → {on}",
+        "msg_pm_read": "pm_read → {on}",
+        "msg_pm_read_lines": "pm_read.min_lines → {n}",
+        "msg_pm_read_worker": "pm_read worker → {provider} / {model}",
         "msg_night": "Night → {on}",
         "msg_merge": "Auto-merge → {on}",
         "msg_night_writer": "Night writer list · ↑↓",
@@ -344,7 +362,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_qwen_blurb": "Fast everyday coder for product work",
         "wr_kimi_blurb": "Long-context Kimi K3 (256k)",
         "wr_grok_blurb": "xAI Grok writer lane",
-        "wr_agy_blurb": "Gemini 3.7 Flash high via AGY",
+        "wr_agy_blurb": "Gemini 3.8 Flash via AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (no host MCP/plugins)",
         "wr_cursor_blurb": "Cursor Agent CLI — any account model (+ fast siblings)",
         "wr_opencode_blurb": "OpenCode CLI — any connected model + host agent (build/plan/wiki/…)",
@@ -360,6 +378,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "done_lbl_lang": "language",
         "done_lbl_night": "night",
         "done_lbl_critique": "critique",
+        "done_lbl_pm_read": "pm_read",
+        "done_pm_off": "off",
+        "done_pm_on": "ON  >{n}  {provider}/{model}  {effort}",
         "done_lbl_files": "wrote",
         "done_fast_on": "ON  ·  service_tier=fast  (~1.5× speed, ~2.5× credits)",
         "done_fast_off": "off  ·  service_tier=standard",
@@ -414,6 +435,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "sum_night_on": "ночь:ВКЛ",
         "sum_night_off": "ночь:выкл",
         "field_provider": "Провайдер",
+        "field_enabled": "Включено",
         "field_model": "Модель",
         "field_effort": "Effort",
         "field_fast": "Fast mode",
@@ -551,7 +573,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "work_h1": "  Рабочая область writer\n",
         "work_help": (
             "  Куда пишут дневные writer’ы. Не про ночной review.\n"
-            "  ↑↓ режим · Space/Enter · +/- порог auto · [ ]/,. сессия · m multi-write\n\n"
+            "  ↑↓ режим или поля PM · Space/Enter список · клик · +/- порог · "
+            "[ ] сессия · m multi\n\n"
         ),
         "work_mode_h2": "  Режим\n",
         "work_auto_h2": "\n  Пороги Auto  (только при Mode = Auto)\n",
@@ -561,6 +584,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "work_session_h2": "\n  Сессия writer\n",
         "work_session_line": "  задач на сессию = {n} / 10     [[ ]]\n",
         "work_session_hint": "  1 = новая сессия на каждую задачу. Иначе resume в том же run до лимита.\n",
+        "pm_read_h2": "\n  Чтение файлов PM (контекст Fable)\n",
+        "pm_read_field_lines": "N строк",
+        "pm_read_toggle": "  {sw}  полный Read если файл > N строк → дешёвая модель     [b]\n",
+        "pm_read_lines": "  N = {n} строк     [<>]\n",
+        "pm_read_worker": "  worker {provider} / {model}     [p]\n",
+        "pm_read_help": (
+            "  Worker (AGY/Qwen/Kimi/Grok/Codex GPT) отдаёт PM_READ_BRIEF, не файл.\n"
+            "  Effort — глубина мышления. У Spotify shunt был temp 0.2, не effort.\n"
+        ),
         "work_footer": (
             "\n  In-place: project_cwd = repo, PM коммитит main.\n"
             "  Worktree: wt-create → agent/<slug>, PM wt-merge-main.\n"
@@ -606,6 +638,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "apply_model": "  модель    {model}\n",
         "apply_effort": "  effort    {effort}\n",
         "apply_fast": "  fast mode {value}\n",
+        "apply_pm_read": "  pm_read   {sw}  >{n}  {provider}/{model}  {effort}\n",
         "apply_workspace": "  workspace {ws}\n",
         "apply_session": "  сессия    {n} задач / сессия\n",
         "apply_lang": "  язык      {lang}\n",
@@ -625,7 +658,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "keys_stages": "↑↓ поле · ←→ значение · 1–5 этап · p/n · Пробел",
         "keys_memory": "↑↓ поле · ←→ значение · Пробел · 0 Сохранить",
         "keys_docs": "↑↓ поле · ←→ значение · Пробел · 0 Сохранить",
-        "keys_work": "↑↓ режим · Space · +/- score · [ ]/,. сессия · m multi",
+        "keys_work": "↑↓ режим · Space · +/- score · [ ] сессия · m multi · b <> p PM-read",
         "keys_night": "Space ночь · a merge · +/- бюджет · n writer",
         "keys_ui": "↑↓ язык · L переключить · Tab",
         "keys_status": "r rescan · 1–9 вкладки · 0 Сохранить · q выход",
@@ -683,6 +716,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_ws_score": "worktree_min_score → {n}",
         "msg_session_max": "session_max_tasks → {n}",
         "msg_multi": "multi-write worktree → {on}",
+        "msg_pm_read": "pm_read → {on}",
+        "msg_pm_read_lines": "pm_read.min_lines → {n}",
+        "msg_pm_read_worker": "pm_read worker → {provider} / {model}",
         "msg_night": "Ночь → {on}",
         "msg_merge": "Auto-merge → {on}",
         "msg_night_writer": "Список night writer · ↑↓",
@@ -718,7 +754,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "wr_qwen_blurb": "Быстрый повседневный кодер",
         "wr_kimi_blurb": "Длинный контекст Kimi K3 (256k)",
         "wr_grok_blurb": "Writer-lane xAI Grok",
-        "wr_agy_blurb": "Gemini 3.7 Flash high через AGY",
+        "wr_agy_blurb": "Gemini 3.8 Flash через AGY",
         "wr_codex_blurb": "Bare Codex lane-writer (без host MCP/plugins)",
         "wr_cursor_blurb": "Cursor Agent CLI — любая модель аккаунта (+ fast)",
         "wr_opencode_blurb": "OpenCode CLI — любая подключённая модель + агент хоста (build/plan/wiki/…)",
@@ -734,6 +770,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "done_lbl_lang": "язык",
         "done_lbl_night": "ночь",
         "done_lbl_critique": "critique",
+        "done_lbl_pm_read": "pm_read",
+        "done_pm_off": "выкл",
+        "done_pm_on": "ВКЛ  >{n}  {provider}/{model}  {effort}",
         "done_lbl_files": "записано",
         "done_fast_on": "ВКЛ  ·  service_tier=fast  (~1.5× скорость, ~2.5× кредиты)",
         "done_fast_off": "выкл  ·  service_tier=standard",

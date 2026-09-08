@@ -224,6 +224,8 @@ class InstallTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("tavily", orch)
         self.assertIn("Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily,", orch)
+        self.assertIn("mcp__metamcp__mcp_call", orch)
+        self.assertIn("- metamcp", orch)
 
     def test_seo_specialist_pack_is_shipped(self) -> None:
         agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"

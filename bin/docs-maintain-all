@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Scan common roots for Claude Lane Stack projects and maintain docs.
 set -euo pipefail
-export PATH="${HOME}/.agents/bin:${PATH}"
+# shellcheck disable=SC1091
+. "$(dirname "$0")/lane-cron-path.sh"
 
 SINCE="yesterday"
 DRY=""

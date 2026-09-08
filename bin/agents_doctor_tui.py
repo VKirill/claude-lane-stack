@@ -48,6 +48,25 @@ from pipeline_stages import (  # type: ignore  # noqa: E402
     normalize_stages,
     resolve_opencode_agent,
 )
+from pm_read import (  # type: ignore  # noqa: E402
+    DEFAULT_EFFORT as PM_READ_DEFAULT_EFFORT,
+    DEFAULT_EFFORTS as PM_READ_DEFAULT_EFFORTS,
+    DEFAULT_MIN_LINES,
+    DEFAULT_MODEL as PM_READ_DEFAULT_MODEL,
+    DEFAULT_MODELS as PM_READ_DEFAULT_MODELS,
+    DEFAULT_PROVIDER as PM_READ_DEFAULT_PROVIDER,
+    MIN_LINE_CHOICES,
+    MIN_LINES_HI,
+    MIN_LINES_LO,
+    PM_READ_EFFORTS,
+    PM_READ_PROVIDERS,
+    normalize_pm_read,
+)
+
+PM_READ_FIELDS = ("enabled", "min_lines", "provider", "model", "effort")
+PM_READ_PICK = frozenset(
+    {"pm_enabled", "pm_min_lines", "pm_provider", "pm_model", "pm_effort"}
+)
 from routing_profile import resolve_agy_effort  # type: ignore  # noqa: E402
 
 # Form field order on the Coder tab (stable indices for ↑↓).
@@ -160,6 +179,9 @@ WRITER_MODELS: dict[str, list[str]] = {
         "grok-3-mini",
     ],
     "agy": [
+        "gemini-3.8-flash-high",
+        "gemini-3.8-flash-medium",
+        "gemini-3.8-flash-low",
         "gemini-3.7-flash-high",
         "gemini-3.7-flash-medium",
         "gemini-3.7-flash-low",
@@ -218,7 +240,7 @@ DEFAULT_MODEL = {
     "grok": "grok-4.5",
     "agy": "gemini-3.7-flash-high",
     "codex": "gpt-5.6-luna",
-    "cursor": "composer-2.5",
+    "cursor": "cursor-grok-4.6-medium",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
     "auto": "(stack default)",
 }
@@ -270,6 +292,11 @@ class SetupState:
         worktree_min_score: int = 4,
         worktree_on_multi_write: bool = True,
         session_max_tasks: int = 10,
+        pm_read_enabled: bool = False,
+        pm_read_min_lines: int = DEFAULT_MIN_LINES,
+        pm_read_provider: str = PM_READ_DEFAULT_PROVIDER,
+        pm_read_model: str = PM_READ_DEFAULT_MODEL,
+        pm_read_effort: str = PM_READ_DEFAULT_EFFORT,
         lang: str = "en",
         message: str = "",
         last_apply: str = "",
@@ -299,6 +326,12 @@ class SetupState:
         self.worktree_min_score = worktree_min_score
         self.worktree_on_multi_write = worktree_on_multi_write
         self.session_max_tasks = session_max_tasks
+        self.pm_read_enabled = bool(pm_read_enabled)
+        self.pm_read_min_lines = int(pm_read_min_lines)
+        self.pm_read_provider = pm_read_provider
+        self.pm_read_model = pm_read_model
+        self.pm_read_effort = pm_read_effort
+        self.pm_field_i = 0
         self.lang = normalize_lang(lang)
         self.message = message
         self.last_apply = last_apply
@@ -368,6 +401,9 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                 if s == "ui:" or s.startswith("ui:"):
                     section = "ui"
                     continue
+                if s == "pm_read:" or s.startswith("pm_read:"):
+                    section = "pm_read"
+                    continue
                 if section == "writer":
                     if raw and not raw.startswith(" ") and not raw.startswith("\t"):
                         section = None
@@ -407,6 +443,24 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                             )
                         except ValueError:
                             pass
+                if section == "pm_read":
+                    if raw and not raw.startswith(" ") and not raw.startswith("\t"):
+                        section = None
+                    elif s.startswith("enabled:"):
+                        out["pm_read_enabled"] = "true" in s.lower()
+                    elif s.startswith("min_lines:"):
+                        try:
+                            out["pm_read_min_lines"] = int(
+                                s.split(":", 1)[1].strip().split()[0]
+                            )
+                        except ValueError:
+                            pass
+                    elif s.startswith("provider:"):
+                        out["pm_read_provider"] = s.split(":", 1)[1].strip().split()[0]
+                    elif s.startswith("model:"):
+                        out["pm_read_model"] = s.split(":", 1)[1].strip().strip("\"'")
+                    elif s.startswith("reasoning_effort:") or s.startswith("effort:"):
+                        out["pm_read_effort"] = s.split(":", 1)[1].strip().split()[0]
                 if section == "ui":
                     if raw and not raw.startswith(" ") and not raw.startswith("\t"):
                         section = None
@@ -782,6 +836,11 @@ def _field_label(state: SetupState, kind: str) -> str:
         "effort": _t(state, "field_effort"),
         "fast": _t(state, "field_fast"),
         "agent": _t(state, "field_agent"),
+        "pm_enabled": _t(state, "field_enabled"),
+        "pm_min_lines": _t(state, "pm_read_field_lines"),
+        "pm_provider": _t(state, "field_provider"),
+        "pm_model": _t(state, "field_model"),
+        "pm_effort": _t(state, "field_effort"),
     }.get(kind, kind)
 
 
@@ -900,6 +959,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
         existing.get("effort") or DEFAULT_EFFORT.get(writer0, "medium"),
         model0,
     )
+    fresh_profile = not existing.get("writer")
+    if fresh_profile and writer0 == "codex" and not doctor.cursor_default_writer_ready(tools):
+        effort0 = _ensure_effort(writer0, "high", model0)
     agent0 = existing.get("agent") or (
         (existing.get("stages_raw") or {}).get("write") or {}
     ).get("agent") or DEFAULT_OPENCODE_WRITE_AGENT
@@ -927,6 +989,18 @@ def run_tui(repo: Path, doctor: Any) -> int:
     if night_w0 and night_w0 != "auto":
         stages0["night_review"]["provider"] = night_w0
 
+    pr0 = normalize_pm_read(
+        {
+            "enabled": existing.get("pm_read_enabled", False),
+            "min_lines": existing.get("pm_read_min_lines", DEFAULT_MIN_LINES),
+            "provider": existing.get("pm_read_provider", PM_READ_DEFAULT_PROVIDER),
+            "model": existing.get("pm_read_model", PM_READ_DEFAULT_MODEL),
+            "reasoning_effort": existing.get(
+                "pm_read_effort", PM_READ_DEFAULT_EFFORT
+            ),
+        }
+    )
+
     state = SetupState(
         repo=repo,
         tools=tools,
@@ -935,7 +1009,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
         model=model0,
         effort=effort0,
         agent=agent0,
-        fast_mode=bool(existing.get("fast_mode", False)) and _supports_fast(writer0),
+        fast_mode=(
+            bool(existing.get("fast_mode", False))
+            if not fresh_profile
+            else writer0 == "cursor"
+            or (
+                writer0 == "codex"
+                and not doctor.cursor_default_writer_ready(tools)
+            )
+        )
+        and _supports_fast(writer0),
         night_review=bool(existing.get("night_review", False)),
         night_provider=night_w0,
         max_fix_tasks=int(existing.get("max_fix_tasks", 5)),
@@ -946,6 +1029,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
         session_max_tasks=max(
             1, min(10, int(existing.get("session_max_tasks", 10)))
         ),
+        pm_read_enabled=bool(pr0["enabled"]),
+        pm_read_min_lines=int(pr0["min_lines"]),
+        pm_read_provider=str(pr0["provider"]),
+        pm_read_model=str(pr0["model"]),
+        pm_read_effort=str(pr0["reasoning_effort"]),
         lang=lang0,
         message=tr(lang0, "msg_boot"),
         cursor=max(0, writers.index(writer0) if writer0 in writers else 0),
@@ -961,6 +1049,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     tab_i = {"i": 0}
     pick_view = {"start": 0, "header": 3}
+    work_hit: dict[int, str] = {}
     pane = {"col": "main"}  # "nav" | "main"
 
     def _sync_stages_from_coder_night() -> None:
@@ -1152,6 +1241,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return _probe_opencode_agents()
         if kind == "fast":
             return ["off", "on"]
+        if kind == "pm_enabled":
+            return ["off", "on"]
+        if kind == "pm_min_lines":
+            return [str(n) for n in MIN_LINE_CHOICES]
+        if kind == "pm_provider":
+            return list(PM_READ_PROVIDERS)
+        if kind == "pm_model":
+            return _models_for(state.pm_read_provider)
+        if kind == "pm_effort":
+            return list(PM_READ_EFFORTS.get(state.pm_read_provider, ("low", "medium", "high")))
         return _efforts_for(state.writer, state.model)
 
     def _current_value(kind: str) -> str:
@@ -1163,6 +1262,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return state.agent
         if kind == "fast":
             return "on" if state.fast_mode else "off"
+        if kind == "pm_enabled":
+            return "on" if state.pm_read_enabled else "off"
+        if kind == "pm_min_lines":
+            return str(state.pm_read_min_lines)
+        if kind == "pm_provider":
+            return state.pm_read_provider
+        if kind == "pm_model":
+            return state.pm_read_model
+        if kind == "pm_effort":
+            return state.pm_read_effort
         return state.effort
 
     def _display_value(kind: str, value: str) -> str:
@@ -1171,8 +1280,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
             title = meta.get("title", value)
             badge = meta.get("badge", "")
             return f"{title:<10}  {badge}" if badge else title
-        if kind == "fast":
+        if kind in {"fast", "pm_enabled"}:
             return _t(state, "on") if value == "on" else _t(state, "off")
+        if kind == "pm_provider":
+            meta = WRITER_META.get(value, {})
+            title = meta.get("title", value)
+            badge = meta.get("badge", "")
+            return f"{title:<10}  {badge}" if badge else title
         return value
 
     def body_coder_form() -> list[tuple[str, str]]:
@@ -1910,14 +2024,21 @@ def run_tui(repo: Path, doctor: Any) -> int:
         ]
 
     def body_work() -> list[tuple[str, str]]:
+        work_hit.clear()
+        if state.view == "pick" and state.pick_kind in PM_READ_PICK:
+            return body_coder_pick()
         lines: list[tuple[str, str]] = [
             ("class:h1", _t(state, "work_h1")),
             ("class:help", _t(state, "work_help")),
             ("class:h2", _t(state, "work_mode_h2")),
         ]
+        def _work_y() -> int:
+            return sum(text.count("\n") for _, text in lines)
+
         for i, mode in enumerate(WORKSPACE_MODES):
             selected = mode == state.workspace_mode
             focused = state.focus == "work_mode" and i == state.cursor
+            work_hit[_work_y()] = f"ws:{mode}"
             if selected and focused:
                 st = "class:row-on-focus"
             elif selected:
@@ -1962,6 +2083,36 @@ def run_tui(repo: Path, doctor: Any) -> int:
         )
         lines.append(("class:dim", f"  {bar}\n"))
         lines.append(("class:help", _t(state, "work_session_hint")))
+        lines.append(("class:h2", _t(state, "pm_read_h2")))
+        rows = (
+            (
+                "pm_enabled",
+                _t(state, "field_enabled"),
+                _t(state, "on") if state.pm_read_enabled else _t(state, "off"),
+            ),
+            (
+                "pm_min_lines",
+                _t(state, "pm_read_field_lines"),
+                str(state.pm_read_min_lines),
+            ),
+            (
+                "pm_provider",
+                _t(state, "field_provider"),
+                WRITER_META.get(state.pm_read_provider, {}).get(
+                    "title", state.pm_read_provider
+                ),
+            ),
+            ("pm_model", _t(state, "field_model"), state.pm_read_model),
+            ("pm_effort", _t(state, "field_effort"), state.pm_read_effort),
+        )
+        for kind, label, value in rows:
+            focused = state.focus == kind and state.view == "form"
+            st = "class:row-on-focus" if focused else "class:row-on"
+            caret = "▸" if focused else " "
+            open_hint = _t(state, "coder_open_list") if focused else ""
+            work_hit[_work_y()] = kind
+            lines.append((st, f"  {caret} {label:<10}  {value}{open_hint}\n"))
+        lines.append(("class:help", _t(state, "pm_read_help")))
         lines.append(("class:help", _t(state, "work_footer")))
         return lines
 
@@ -2079,6 +2230,15 @@ def run_tui(repo: Path, doctor: Any) -> int:
             )
         lines.append(("class:dim", f"    workspace        {state.workspace_mode}\n"))
         lines.append(
+            (
+                "class:dim",
+                f"    pm_read          "
+                f"{'on' if state.pm_read_enabled else 'off'} "
+                f">{state.pm_read_min_lines} "
+                f"{state.pm_read_provider}/{state.pm_read_model}\n",
+            )
+        )
+        lines.append(
             ("class:dim", f"    session_max      {state.session_max_tasks}\n")
         )
         lines.append(("class:dim", f"    language         {state.lang}\n"))
@@ -2144,6 +2304,18 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 ]
                 if _supports_fast(state.writer)
                 else []
+            ),
+            (
+                "class:row-on",
+                _t(
+                    state,
+                    "apply_pm_read",
+                    sw=_switch(state.pm_read_enabled),
+                    n=state.pm_read_min_lines,
+                    provider=state.pm_read_provider,
+                    model=state.pm_read_model,
+                    effort=state.pm_read_effort,
+                ),
             ),
             (
                 "class:row-on",
@@ -2229,7 +2401,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.effort = _ensure_effort(
             w, DEFAULT_EFFORT.get(w, state.effort), state.model
         )
-        if not _supports_fast(w):
+        if w == "cursor":
+            state.fast_mode = True
+        elif not _supports_fast(w):
             state.fast_mode = False
         _sync_stages_from_coder_night()
         state.message = _t(
@@ -2280,10 +2454,87 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 "msg_fast",
                 value=_t(state, "on") if state.fast_mode else _t(state, "off"),
             )
+        elif kind in PM_READ_PICK:
+            _apply_pm_value(kind, chosen)
         else:
             state.effort = _ensure_effort(state.writer, chosen, state.model)
             state.message = _t(state, "msg_effort", name=state.effort)
             _sync_stages_from_coder_night()
+
+    def _pm_kinds() -> tuple[str, ...]:
+        return ("pm_enabled", "pm_min_lines", "pm_provider", "pm_model", "pm_effort")
+
+    def _apply_pm_value(kind: str, chosen: str) -> None:
+        if kind == "pm_enabled":
+            state.pm_read_enabled = chosen == "on"
+            state.message = _t(
+                state, "msg_pm_read", on=("on" if state.pm_read_enabled else "off")
+            )
+            return
+        if kind == "pm_min_lines":
+            try:
+                state.pm_read_min_lines = max(
+                    MIN_LINES_LO, min(MIN_LINES_HI, int(chosen))
+                )
+            except ValueError:
+                return
+            state.message = _t(state, "msg_pm_read_lines", n=state.pm_read_min_lines)
+            return
+        if kind == "pm_provider":
+            state.pm_read_provider = chosen
+            state.pm_read_model = _ensure_model(
+                chosen, PM_READ_DEFAULT_MODELS.get(chosen, "")
+            )
+            opts = list(PM_READ_EFFORTS.get(chosen, ("low", "medium", "high")))
+            pref = PM_READ_DEFAULT_EFFORTS.get(chosen, PM_READ_DEFAULT_EFFORT)
+            if state.pm_read_effort not in opts:
+                state.pm_read_effort = pref if pref in opts else opts[0]
+            if chosen == "agy":
+                state.pm_read_effort = resolve_agy_effort(
+                    state.pm_read_model, state.pm_read_effort
+                )
+            state.message = _t(
+                state,
+                "msg_pm_read_worker",
+                provider=chosen,
+                model=state.pm_read_model,
+            )
+            return
+        if kind == "pm_model":
+            state.pm_read_model = chosen
+            if state.pm_read_provider == "agy":
+                state.pm_read_effort = resolve_agy_effort(chosen, state.pm_read_effort)
+            state.message = _t(state, "msg_model", name=chosen)
+            return
+        state.pm_read_effort = chosen
+        state.message = _t(state, "msg_effort", name=chosen)
+
+    def _activate_work() -> None:
+        if state.view == "pick" and state.pick_kind in PM_READ_PICK:
+            close_pick(confirm=True)
+            return
+        if state.focus in PM_READ_PICK:
+            open_pick(state.focus)
+            return
+        i = max(0, min(state.cursor, len(WORKSPACE_MODES) - 1))
+        state.focus = "work_mode"
+        state.workspace_mode = WORKSPACE_MODES[i]
+        state.message = _t(
+            state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
+        )
+
+    def _cycle_pm_field(delta: int) -> None:
+        if state.focus not in PM_READ_PICK:
+            return
+        opts = _options_for(state.focus)
+        if not opts:
+            return
+        cur = _current_value(state.focus)
+        try:
+            i = opts.index(cur)
+        except ValueError:
+            i = 0
+        _apply_pm_value(state.focus, opts[(i + delta) % len(opts)])
 
     def _cycle_coder_field(delta: int) -> None:
         fields = _coder_fields()
@@ -2303,6 +2554,15 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return
         kind = state.pick_kind
         opts = _options_for(kind)
+        if kind in PM_READ_PICK:
+            if confirm and opts:
+                i = max(0, min(state.pick_cursor, len(opts) - 1))
+                _apply_pm_value(kind, opts[i])
+            else:
+                state.message = _t(state, "msg_cancelled")
+            state.view = "form"
+            state.focus = kind
+            return
         fields = _coder_fields()
         if confirm and opts:
             i = max(0, min(state.pick_cursor, len(opts) - 1))
@@ -2347,14 +2607,43 @@ def run_tui(repo: Path, doctor: Any) -> int:
         state.message = _t(state, "msg_night_fix", name=state.night_provider)
 
     def move_work_mode(delta: int) -> None:
+        kinds = _pm_kinds()
+        if state.view == "pick" and state.pick_kind in PM_READ_PICK:
+            move_pick(delta)
+            return
+        if state.focus in kinds:
+            i = kinds.index(state.focus)
+            ni = i + delta
+            if ni < 0:
+                state.focus = "work_mode"
+                state.cursor = len(WORKSPACE_MODES) - 1
+                state.message = _t(
+                    state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
+                )
+                return
+            if ni >= len(kinds):
+                state.focus = "work_mode"
+                state.cursor = 0
+                state.message = _t(
+                    state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
+                )
+                return
+            state.focus = kinds[ni]
+            state.message = _t(state, "msg_focus", name=_field_label(state, state.focus))
+            return
+        i = state.cursor
+        ni = i + delta
+        if ni >= len(WORKSPACE_MODES):
+            state.focus = kinds[0]
+            state.message = _t(state, "msg_focus", name=_field_label(state, kinds[0]))
+            return
+        if ni < 0:
+            state.focus = kinds[-1]
+            state.message = _t(state, "msg_focus", name=_field_label(state, kinds[-1]))
+            return
         state.focus = "work_mode"
-        try:
-            i = WORKSPACE_MODES.index(state.workspace_mode)
-        except ValueError:
-            i = 0
-        i = (i + delta) % len(WORKSPACE_MODES)
-        state.cursor = i
-        state.workspace_mode = WORKSPACE_MODES[i]
+        state.cursor = ni
+        state.workspace_mode = WORKSPACE_MODES[ni]
         state.message = _t(
             state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
         )
@@ -2500,6 +2789,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
                         session_max_tasks=state.session_max_tasks,
                         ui_language=state.lang,
                         stages=state.stages,
+                        pm_read={
+                            "enabled": state.pm_read_enabled,
+                            "min_lines": state.pm_read_min_lines,
+                            "provider": state.pm_read_provider,
+                            "model": state.pm_read_model,
+                            "reasoning_effort": state.pm_read_effort,
+                        },
                         quiet=True,
                     )
                 except TypeError:
@@ -2580,7 +2876,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 if pc.get("enabled")
                 else "off"
             ),
+            "pm_read_enabled": state.pm_read_enabled,
+            "pm_read_min_lines": state.pm_read_min_lines,
+            "pm_read_provider": state.pm_read_provider,
+            "pm_read_model": state.pm_read_model,
+            "pm_read_effort": state.pm_read_effort,
         }
+        _disable_app_mouse(app)
         if app is not None:
             app.exit(result=result)
         else:
@@ -2613,11 +2915,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
     kb = KeyBindings()
 
     def leave_pick_if_any() -> None:
-        if state.view == "pick":
-            state.view = "form"
-            fields = _coder_fields()
-            state.field_i = max(0, min(state.field_i, len(fields) - 1))
-            state.focus = fields[state.field_i]
+        if state.view != "pick":
+            return
+        kind = state.pick_kind
+        state.view = "form"
+        if kind in PM_READ_PICK:
+            state.focus = kind
+            return
+        fields = _coder_fields()
+        state.field_i = max(0, min(state.field_i, len(fields) - 1))
+        state.focus = fields[state.field_i]
 
     def _goto_tab(i: int) -> None:
         tab_i["i"] = i % len(TAB_IDS)
@@ -2659,7 +2966,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
     @kb.add("escape")
     @kb.add("backspace")
     def _(event) -> None:
-        if TAB_IDS[tab_i["i"]] == "coder" and state.view == "pick":
+        if state.view == "pick" and (
+            TAB_IDS[tab_i["i"]] == "coder" or state.pick_kind in PM_READ_PICK
+        ):
             close_pick(confirm=False)
 
     @kb.add("tab")
@@ -2685,6 +2994,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             if state.view == "form":
                 _cycle_coder_field(1)
             return
+        if tid == "work":
+            if state.view == "pick" and state.pick_kind in PM_READ_PICK:
+                return
+            if state.focus in PM_READ_PICK:
+                _cycle_pm_field(1)
+                return
         if tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(1)
             return
@@ -2700,6 +3015,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
             else:
                 _cycle_coder_field(-1)
             return
+        if tid == "work":
+            if state.view == "pick" and state.pick_kind in PM_READ_PICK:
+                close_pick(confirm=False)
+                return
+            if state.focus in PM_READ_PICK:
+                _cycle_pm_field(-1)
+                return
         if tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(-1)
             return
@@ -2785,6 +3107,19 @@ def run_tui(repo: Path, doctor: Any) -> int:
             move_night_writer(1)
 
     # Stage prev/next — layout-safe (works on RU keyboards; [ ] often don't).
+    def _cycle_pm_read_provider() -> None:
+        opts = list(PM_READ_PROVIDERS)
+        cur = state.pm_read_provider if state.pm_read_provider in opts else opts[0]
+        nxt = opts[(opts.index(cur) + 1) % len(opts)]
+        state.focus = "pm_provider"
+        _apply_pm_value("pm_provider", nxt)
+
+    def _nudge_pm_read_lines(delta: int) -> None:
+        state.pm_read_min_lines = max(
+            MIN_LINES_LO, min(MIN_LINES_HI, state.pm_read_min_lines + delta)
+        )
+        state.message = _t(state, "msg_pm_read_lines", n=state.pm_read_min_lines)
+
     @kb.add("p")
     def _(event) -> None:
         tid = TAB_IDS[tab_i["i"]]
@@ -2793,6 +3128,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
         elif tid == "coder":
             state.field_i = 0
             open_pick("writer")
+        elif tid == "work":
+            _cycle_pm_read_provider()
 
     @kb.add("n")
     def _(event) -> None:
@@ -2876,11 +3213,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         elif tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(1)
         elif tid == "work":
-            i = max(0, min(state.cursor, len(WORKSPACE_MODES) - 1))
-            state.workspace_mode = WORKSPACE_MODES[i]
-            state.message = _t(
-                state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
-            )
+            _activate_work()
         elif tid == "ui":
             i = max(0, min(state.cursor, len(LANGS) - 1))
             state.lang = LANGS[i]
@@ -2917,11 +3250,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         elif tid in {"stages", *MODULE_TAB_IDS}:
             _cycle_stage_field(1)
         elif tid == "work":
-            i = max(0, min(state.cursor, len(WORKSPACE_MODES) - 1))
-            state.workspace_mode = WORKSPACE_MODES[i]
-            state.message = _t(
-                state, "msg_workspace", name=_ws_title(state, state.workspace_mode)
-            )
+            _activate_work()
         elif tid == "ui":
             i = max(0, min(state.cursor, len(LANGS) - 1))
             state.lang = LANGS[i]
@@ -2973,6 +3302,27 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.max_fix_tasks = max(1, state.max_fix_tasks - 1)
             state.message = _t(state, "msg_max_fix", n=state.max_fix_tasks)
 
+    @kb.add("b")
+    def _(event) -> None:
+        if TAB_IDS[tab_i["i"]] != "work":
+            return
+        state.pm_read_enabled = not state.pm_read_enabled
+        state.message = _t(
+            state,
+            "msg_pm_read",
+            on=("on" if state.pm_read_enabled else "off"),
+        )
+
+    @kb.add("<")
+    def _(event) -> None:
+        if TAB_IDS[tab_i["i"]] == "work":
+            _nudge_pm_read_lines(-50)
+
+    @kb.add(">")
+    def _(event) -> None:
+        if TAB_IDS[tab_i["i"]] == "work":
+            _nudge_pm_read_lines(50)
+
     @kb.add("r")
     def _(event) -> None:
         rescan()
@@ -3010,12 +3360,34 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 state.focus = fields[i]
                 open_pick(fields[i])
             return
-        if tid == "coder" and state.view == "pick" and y >= pick_view["header"]:
+        if (
+            tid in {"coder", "work"}
+            and state.view == "pick"
+            and y >= pick_view["header"]
+        ):
             opts = _options_for(state.pick_kind)
             i = pick_view["start"] + (y - pick_view["header"])
             if 0 <= i < len(opts):
                 state.pick_cursor = i
                 close_pick(confirm=True)
+            return
+        if tid == "work" and state.view == "form":
+            hit = work_hit.get(y)
+            if not hit:
+                return
+            if hit.startswith("ws:"):
+                mode = hit.split(":", 1)[1]
+                if mode in WORKSPACE_MODES:
+                    state.focus = "work_mode"
+                    state.cursor = WORKSPACE_MODES.index(mode)
+                    state.workspace_mode = mode
+                    state.message = _t(
+                        state, "msg_workspace", name=_ws_title(state, mode)
+                    )
+                return
+            if hit in PM_READ_PICK:
+                state.focus = hit
+                open_pick(hit)
 
     root = HSplit(
         [
@@ -3119,11 +3491,79 @@ def run_tui(repo: Path, doctor: Any) -> int:
     except Exception as exc:  # noqa: BLE001
         print(tr("en", "err_tui", err=exc), file=sys.stderr)
         return doctor.run_setup(repo, interactive=True)
+    finally:
+        _reset_tty_after_tui()
 
     if isinstance(result, dict) and result.get("ok"):
         _print_apply_receipt(result)
         return 0
     return int(result or 0) if isinstance(result, int) else 0
+
+
+def _disable_app_mouse(app: Any | None) -> None:
+    target = app
+    if target is None:
+        try:
+            from prompt_toolkit.application.current import get_app
+
+            target = get_app()
+        except Exception:  # noqa: BLE001
+            return
+    try:
+        target.renderer.output.disable_mouse_support()
+        target.renderer.output.flush()
+        target.renderer._mouse_support_enabled = False
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _reset_tty_after_tui() -> None:
+    """Turn off xterm mouse modes and drop leftover SGR bytes (35;46;29M)."""
+    if sys.stdout.isatty():
+        sys.stdout.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l")
+        sys.stdout.flush()
+    if not sys.stdin.isatty():
+        return
+    fd = sys.stdin.fileno()
+    try:
+        import select
+        import termios
+        import time
+    except ImportError:
+        return
+    try:
+        attrs = termios.tcgetattr(fd)
+    except termios.error:
+        return
+    raw = list(attrs)
+    raw[3] = raw[3] & ~(termios.ECHO | termios.ICANON)
+    try:
+        termios.tcsetattr(fd, termios.TCSANOW, raw)
+        until = time.monotonic() + 0.05
+        while time.monotonic() < until:
+            if not select.select([fd], [], [], 0.01)[0]:
+                break
+            os.read(fd, 8192)
+    except (OSError, termios.error):
+        pass
+    finally:
+        try:
+            termios.tcsetattr(fd, termios.TCSANOW, attrs)
+        except termios.error:
+            pass
+
+
+def _done_pm_read(lang: str, result: dict[str, Any]) -> str:
+    if not result.get("pm_read_enabled"):
+        return tr(lang, "done_pm_off")
+    return tr(
+        lang,
+        "done_pm_on",
+        n=result.get("pm_read_min_lines") or 350,
+        provider=result.get("pm_read_provider") or "—",
+        model=result.get("pm_read_model") or "—",
+        effort=result.get("pm_read_effort") or "low",
+    )
 
 
 def _print_apply_receipt(result: dict[str, Any]) -> None:
@@ -3168,6 +3608,7 @@ def _print_apply_receipt(result: dict[str, Any]) -> None:
             (tr(lang, "done_lbl_lang"), lang),
             (tr(lang, "done_lbl_night"), night_v),
             (tr(lang, "done_lbl_critique"), str(result.get("critique") or "—")),
+            (tr(lang, "done_lbl_pm_read"), _done_pm_read(lang, result)),
         ]
     )
 

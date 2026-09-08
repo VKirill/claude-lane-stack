@@ -2,7 +2,8 @@
 # Nightly / INIT living docs: docs-web then Luna max fast on stale/stub pages.
 # Does not commit or push. Opt-in: stages.docs.enabled=true
 set -euo pipefail
-export PATH="${HOME}/.agents/bin:${PATH}"
+# shellcheck disable=SC1091
+. "$(dirname "$0")/lane-cron-path.sh"
 export CLAUDE_LANE_AUTOMATION=1
 
 REPO="${1:-.}"
@@ -42,7 +43,8 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 BIN="$(dirname "$0")"
-python3 - "$REPO" "$SINCE_ARG" "$BIN" "$MODE_ARG" <<'PY'
+docs_rc=0
+python3 - "$REPO" "$SINCE_ARG" "$BIN" "$MODE_ARG" <<'PY' || docs_rc=$?
 import os
 import sys
 from pathlib import Path
@@ -97,7 +99,6 @@ if (
 ):
     sys.exit(3)
 PY
-docs_rc=$?
 if [[ "$docs_rc" -eq 2 ]]; then
   echo "SKIP: stages.docs.enabled=false: $REPO"
   exit 0
@@ -125,24 +126,32 @@ fi
 # shellcheck disable=SC1091
 source /tmp/lane-docs-stage.env
 
-WEB_BIN="${HOME}/.agents/bin/docs-web"
-[[ -x "$WEB_BIN" ]] || WEB_BIN="$(dirname "$0")/docs-web"
-STALE_BIN="${HOME}/.agents/bin/docs-stale"
-[[ -x "$STALE_BIN" ]] || STALE_BIN="$(dirname "$0")/docs-stale"
+WEB_BIN="$(dirname "$0")/docs-web"
+[[ -x "$WEB_BIN" ]] || WEB_BIN="${HOME}/.agents/bin/docs-web"
+STALE_BIN="$(dirname "$0")/docs-stale"
+[[ -x "$STALE_BIN" ]] || STALE_BIN="${HOME}/.agents/bin/docs-stale"
+ONBOARD_BIN="$(dirname "$0")/project-onboard"
+[[ -x "$ONBOARD_BIN" ]] || ONBOARD_BIN="${HOME}/.agents/bin/project-onboard"
 
 echo "PROJECT=$REPO SINCE=$SINCE MODE_ARG=${MODE_ARG:-}"
+
+"$WEB_BIN" rebuild "$REPO" || echo "WARN: docs-web failed" >&2
 
 if [[ "${MODE_ARG:-}" != "lint" ]]; then
   pass_rc=0
   "$STALE_BIN" "$REPO" --passport-gaps > /tmp/lane-docs-passport.json || pass_rc=$?
   if [[ "$pass_rc" -eq 0 ]]; then
-    echo "BLOCKED: passport incomplete — run project-onboard first, then this runner"
+    echo "ONBOARD: passport incomplete — filling CLAUDE.md packs, then wiki"
     python3 -c "import json; print('GAPS', ' '.join(json.load(open('/tmp/lane-docs-passport.json')).get('gaps') or []))" || true
-    exit 2
+    if [[ "$DRY" == "--dry-run" ]]; then
+      echo "DRY-RUN: project-onboard $REPO"
+    elif [[ -x "$ONBOARD_BIN" ]]; then
+      ONBOARD_PLAIN=1 "$ONBOARD_BIN" "$REPO" || echo "WARN: project-onboard failed; continuing wiki"
+    else
+      echo "WARN: project-onboard missing; Luna will fill CLAUDE.md stubs"
+    fi
   fi
 fi
-
-"$WEB_BIN" rebuild "$REPO" || echo "WARN: docs-web failed" >&2
 
 LINT_FILE=$(mktemp -t docs-lint.XXXXXX)
 "$WEB_BIN" lint "$REPO" > "$LINT_FILE" || true
@@ -343,6 +352,7 @@ PY
 )"
 
 dispatch_luna "$MODE"
+"$WEB_BIN" rebuild "$REPO" || echo "WARN: docs-web failed after Luna" >&2
 "$WEB_BIN" lint "$REPO" || true
 "$WEB_BIN" log "$REPO" --kind ingest --subject "$SINCE" --extra "model: ${MODEL} ${EFFORT} ${TIER} mode: $MODE" || true
 if [[ "$WEEKDAY" == "7" && "$MODE" != "lint" ]]; then

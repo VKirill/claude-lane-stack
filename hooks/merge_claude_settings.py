@@ -109,6 +109,7 @@ SESSION_MARK_RE = re.compile(r"lane_statusline_session\.py")
 TEAMMATE_IDLE_RE = re.compile(r"teammate_idle_sentinel\.py")
 SESSION_LEDGER_RE = re.compile(r"session_ledger\.py")
 PM_STOP_RE = re.compile(r"pm_stop_sentinel\.py")
+PM_BULK_READ_RE = re.compile(r"pm_bulk_read\.py")
 
 
 def _replace_event_hooks(
@@ -252,6 +253,33 @@ def merge_pm_stop_sentinel(settings: dict[str, Any], hook_path: Path) -> dict[st
     return settings
 
 
+def merge_pm_bulk_read(settings: dict[str, Any], hook_path: Path) -> dict[str, Any]:
+    """PreToolUse Read: shunt fat full-file reads when project pm_read.enabled."""
+    cmd = (
+        f"AGENT_HOOK_CLIENT=claude python3 "
+        f"{shlex.quote(str(hook_path.expanduser().resolve()))}"
+    )
+    _drop_command_hooks(settings, "PreToolUse", PM_BULK_READ_RE)
+    hooks = settings.setdefault("hooks", {})
+    entries = hooks.setdefault("PreToolUse", [])
+    if not isinstance(entries, list):
+        entries = []
+        hooks["PreToolUse"] = entries
+    entries.append(
+        {
+            "matcher": "Read",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": cmd,
+                    "timeout": 5,
+                }
+            ],
+        }
+    )
+    return settings
+
+
 # Stack env keys we own (setdefaults only — never clobber user overrides).
 STACK_ENV_DEFAULTS: dict[str, str] = {
     # Agent teams + tool search (Claude Code 2.1.x capability surface)
@@ -274,6 +302,7 @@ STACK_PERMISSION_ALLOW_EXTRA = (
     "TaskStop",
     "Monitor",
     "Artifact",
+    "mcp__metamcp",
 )
 
 
@@ -499,6 +528,9 @@ def main() -> int:
             pm_stop = candidate
     if pm_stop is not None and pm_stop.is_file():
         settings = merge_pm_stop_sentinel(settings, pm_stop)
+    bulk = hooks_dir / "pm_bulk_read.py"
+    if bulk.is_file():
+        settings = merge_pm_bulk_read(settings, bulk)
     ledger = hooks_dir / "session_ledger.py"
     if ledger.is_file():
         settings = merge_subagent_usage(settings, ledger)

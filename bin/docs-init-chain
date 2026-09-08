@@ -2,7 +2,8 @@
 # Apply/INIT: project-onboard (if passport thin), then docs-maintain-project.
 # Two jobs, each with its own adoc stage. Not one agent doing both.
 set -euo pipefail
-export PATH="${HOME}/.agents/bin:${PATH}"
+# shellcheck disable=SC1091
+. "$(dirname "$0")/lane-cron-path.sh"
 
 REPO="${1:-.}"
 DRY=""

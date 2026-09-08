@@ -81,7 +81,12 @@ if [[ -z "$DEPTH_OVERRIDE" && -n "${ONBOARD_DEPTH:-}" ]]; then
 fi
 
 REPO="$(cd "$REPO" && pwd)"
-export PATH="${HOME}/.agents/bin:/home/ubuntu/.agents/bin:$PATH"
+# shellcheck disable=SC1091
+if [[ -f "$(dirname "$0")/lane-cron-path.sh" ]]; then
+  . "$(dirname "$0")/lane-cron-path.sh"
+else
+  export PATH="${HOME}/.agents/bin:${HOME}/.local/bin:${HOME}/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-/usr/bin:/bin}"
+fi
 
 STACK_DOCS="${HOME}/.agents/docs"
 if [[ ! -d "$STACK_DOCS" && -d /home/ubuntu/tools/claude-lane-stack/docs ]]; then

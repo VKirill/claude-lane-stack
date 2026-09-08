@@ -117,6 +117,23 @@ def command_lines(cmd: list[str], timeout: float = 8.0) -> list[str]:
         return []
 
 
+AGY_READY_MODELS = (
+    "gemini-3.8-flash-high",
+    "gemini-3.7-flash-high",
+    "gemini-3.6-flash-high",
+)
+
+
+def agy_model_ids(lines: list[str]) -> set[str]:
+    """First token of each `agy models` line (`id<tab>label`)."""
+    ids: set[str] = set()
+    for line in lines:
+        token = line.strip().split()[0] if line.strip() else ""
+        if token:
+            ids.add(token)
+    return ids
+
+
 def bubblewrap_operational(binary: str | None) -> bool:
     if not binary:
         return False
@@ -234,10 +251,7 @@ def detect() -> dict:
     p = which("agy")
     agy_models = command_lines(["agy", "models"]) if p else []
     agy_agents = command_lines(["agy", "agents"]) if p else []
-    agy_model_ready = any(
-        name in agy_models
-        for name in ("gemini-3.7-flash-high", "gemini-3.6-flash-high")
-    )
+    agy_model_ready = bool(agy_model_ids(agy_models) & set(AGY_READY_MODELS))
     agy_agent_ready = any(line.strip() == "agy-writer" for line in agy_agents)
     tools["agy"] = {
         "present": bool(
@@ -254,7 +268,7 @@ def detect() -> dict:
         "version": run_version(["agy", "--version"]) if p else None,
         "required": False,
         "unavailable_reason": (
-            "gemini-3.7-flash-high unavailable"
+            "gemini-3.8-flash-high unavailable"
             if p and not agy_model_ready
             else "agy-writer agent unavailable"
             if p and not agy_agent_ready
@@ -371,6 +385,60 @@ def detect() -> dict:
     return tools
 
 
+PREFERRED_CURSOR_MODELS = frozenset(
+    {"cursor-grok-4.6-medium", "cursor-grok-4.6-medium-fast"}
+)
+DEFAULT_CURSOR_MODEL = "cursor-grok-4.6-medium"
+DEFAULT_CURSOR_EFFORT = "medium"
+DEFAULT_CURSOR_TIER = "fast"
+FALLBACK_CODEX_MODEL = "gpt-5.6-luna"
+FALLBACK_CODEX_EFFORT = "high"
+FALLBACK_CODEX_TIER = "fast"
+
+
+def list_cursor_models(binary: str | None = None) -> list[str]:
+    """Parse `cursor-agent --list-models`. Empty list = probe failed or no CLI."""
+    path = binary or which("cursor-agent") or which("agent")
+    if not path:
+        return []
+    models: list[str] = []
+    for line in command_lines([path, "--list-models"], timeout=12):
+        token = line.strip().split()[0] if line.strip() else ""
+        if not token or token.lower() in {"available", "models", "model"}:
+            continue
+        if token.endswith("-") or token.startswith("-"):
+            continue
+        cleaned = token.replace("_", "").replace("-", "").replace(".", "")
+        cleaned = cleaned.replace("/", "").replace(":", "")
+        if cleaned.isalnum():
+            models.append(token)
+    return list(dict.fromkeys(models))
+
+
+def cursor_default_writer_ready(tools: dict) -> bool:
+    """True when Cursor is a usable writer and Grok 4.6 medium(-fast) is listed."""
+    cur = tools.get("cursor") or {}
+    if not cur.get("present"):
+        return False
+    models = list_cursor_models(cur.get("path"))
+    if not models:
+        # ponytail: list-models failed — CLI is present; keep Cursor default.
+        # Upgrade: treat empty live catalog as missing and force Codex fallback.
+        return True
+    return bool(PREFERRED_CURSOR_MODELS.intersection(models))
+
+
+def pick_auto_writer(has: dict, tools: dict) -> str | None:
+    if cursor_default_writer_ready(tools):
+        return "cursor"
+    if has.get("codex"):
+        return "codex"
+    for name in ("kimi", "qwen", "grok", "agy", "opencode"):
+        if has.get(name):
+            return name
+    return None
+
+
 def pick_profile(
     tools: dict, writer_provider: str = "auto"
 ) -> tuple[str, dict, list[str]]:
@@ -382,20 +450,13 @@ def pick_profile(
     writer = (
         writer_provider
         if writer_provider != "auto" and has.get(writer_provider)
-        else "kimi"
-        if has["kimi"]
-        else "qwen"
-        if has["qwen"]
-        else "grok"
-        if has["grok"]
-        else "agy"
-        if has["agy"]
-        else "cursor"
-        if has["cursor"]
-        else "opencode"
-        if has["opencode"]
-        else None
+        else pick_auto_writer(has, tools)
     )
+    if writer_provider == "auto" and writer == "codex":
+        notes.append(
+            "Cursor Grok 4.6 medium-fast unavailable — "
+            "write via Codex luna high fast"
+        )
     if writer_provider != "auto" and not has.get(writer_provider):
         notes.append(f"Requested writer {writer_provider} unavailable; using {writer or 'fallback'}")
     if tools["agy"].get("binary_present") and not has["agy"]:
@@ -457,10 +518,8 @@ def pick_profile(
 
 
 WRITER_CHOICES = ("auto", "kimi", "qwen", "agy", "grok", "codex", "cursor", "opencode")
-# Interactive setup default preference (first available wins).
-# Differs from --apply --writer-provider auto (Kimi first) — setup asks you.
-# codex = gpt-5.6-luna + reasoning effort max (see lane-ctl PRIMARY_*).
-SETUP_WRITER_PREF = ("qwen", "kimi", "grok", "agy", "codex", "cursor", "opencode")
+# Interactive setup default: Cursor Grok 4.6 medium-fast, else Codex luna high fast.
+SETUP_WRITER_PREF = ("cursor", "codex", "qwen", "kimi", "grok", "agy", "opencode")
 
 
 def available_writers(tools: dict) -> list[str]:
@@ -468,8 +527,14 @@ def available_writers(tools: dict) -> list[str]:
 
 
 def default_setup_writer(tools: dict) -> str:
-    found = available_writers(tools)
-    return found[0] if found else "auto"
+    if cursor_default_writer_ready(tools):
+        return "cursor"
+    if tools.get("codex", {}).get("present"):
+        return "codex"
+    for name in available_writers(tools):
+        if name != "cursor":
+            return name
+    return "auto"
 
 
 def write_outputs(
@@ -482,6 +547,7 @@ def write_outputs(
     writer_model: str | None = None,
     writer_effort: str | None = None,
     writer_service_tier: str | None = None,
+    auto_writer: bool = False,
     workspace_mode: str | None = None,
     worktree_min_score: int = 4,
     worktree_on_multi_write: bool = True,
@@ -489,6 +555,7 @@ def write_outputs(
     ui_language: str | None = None,
     stages: dict | None = None,
     writer_agent: str | None = None,
+    pm_read: dict | None = None,
     quiet: bool = False,
 ) -> None:
     try:
@@ -521,7 +588,7 @@ def write_outputs(
         "grok": "grok-4.5",
         "agy": "gemini-3.7-flash-high",
         "codex": "gpt-5.6-luna",
-        "cursor": "composer-2.5",
+        "cursor": DEFAULT_CURSOR_MODEL,
         "opencode": "alibaba-token-plan/qwen3.8-max-preview",
     }
     default_efforts = {
@@ -530,10 +597,24 @@ def write_outputs(
         "grok": "medium",
         "agy": "high",
         "codex": "max",
-        "cursor": "medium",
+        "cursor": DEFAULT_CURSOR_EFFORT,
         "opencode": "medium",
     }
-    if main_write in default_models:
+    if main_write == "cursor":
+        if not writer_model:
+            writer_model = DEFAULT_CURSOR_MODEL
+        if not writer_effort:
+            writer_effort = DEFAULT_CURSOR_EFFORT
+        if writer_service_tier is None:
+            writer_service_tier = DEFAULT_CURSOR_TIER
+    elif main_write == "codex" and auto_writer:
+        if not writer_model:
+            writer_model = FALLBACK_CODEX_MODEL
+        if not writer_effort:
+            writer_effort = FALLBACK_CODEX_EFFORT
+        if writer_service_tier is None:
+            writer_service_tier = FALLBACK_CODEX_TIER
+    elif main_write in default_models:
         if not writer_model:
             writer_model = default_models[main_write]
         if not writer_effort:
@@ -542,6 +623,18 @@ def write_outputs(
         from routing_profile import resolve_agy_effort
 
         writer_effort = resolve_agy_effort(writer_model or "", writer_effort or "")
+    try:
+        from pm_read import normalize_pm_read
+        from routing_profile import load_routing_profile as _load_profile
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from pm_read import normalize_pm_read
+        from routing_profile import load_routing_profile as _load_profile
+    prev_pr = _load_profile(repo).get("pm_read")
+    pr_seed = dict(prev_pr) if isinstance(prev_pr, dict) else {}
+    if isinstance(pm_read, dict):
+        pr_seed.update({k: v for k, v in pm_read.items() if v is not None})
+    pr = normalize_pm_read(pr_seed)
     ws_mode = (workspace_mode or "auto").strip().lower()
     if ws_mode not in {"in_place", "worktree", "auto"}:
         ws_mode = "auto"
@@ -587,6 +680,7 @@ def write_outputs(
             if (ui_language or "en").strip().lower() in {"en", "ru"}
             else "en",
         },
+        "pm_read": pr,
     }
     (agents / "capabilities.json").write_text(
         json.dumps(caps, indent=2) + "\n", encoding="utf-8"
@@ -652,6 +746,15 @@ def write_outputs(
     ui_lang = caps["ui"]["language"]
     lines.append("ui:")
     lines.append(f"  language: {ui_lang}  # en | ru  (agents-doctor TUI only)")
+    lines.append("pm_read:")
+    lines.append(
+        f"  enabled: {'true' if pr['enabled'] else 'false'}  "
+        "# PM Read >N lines → cheap model brief, not Fable context"
+    )
+    lines.append(f"  min_lines: {pr['min_lines']}")
+    lines.append(f"  provider: {pr['provider']}")
+    lines.append(f"  model: {pr['model']}")
+    lines.append(f"  reasoning_effort: {pr['reasoning_effort']}")
     # Pipeline stages (plan critique / write / night / specialist / onboard).
     night_enabled = False
     night_path = agents / "night-shift.yaml"
@@ -728,9 +831,35 @@ def write_outputs(
         except Exception as exc:  # noqa: BLE001
             if not quiet:
                 print(f"WARN: lane-memory init/inject skipped: {exc}")
+    try:
+        _ensure_pm_read_hook(enabled=bool(pr.get("enabled")))
+    except Exception as exc:  # noqa: BLE001
+        if not quiet:
+            print(f"WARN: pm_read hook merge skipped: {exc}")
     if not quiet:
         print(f"Wrote {agents / 'capabilities.json'}")
         print(f"Wrote {agents / 'routing.profile.yaml'}")
+
+
+def _ensure_pm_read_hook(*, enabled: bool = True) -> None:
+    if not enabled:
+        return
+    if "unittest" in sys.modules:
+        return
+    settings = Path.home() / ".claude" / "settings.json"
+    if not settings.is_file():
+        return
+    here = Path(__file__).resolve().parent.parent / "hooks" / "pm_bulk_read.py"
+    dest = Path.home() / ".agents" / "hooks" / "pm_bulk_read.py"
+    hook = dest if dest.is_file() else here
+    if not hook.is_file():
+        return
+    hooks_dir = str(hook.parent)
+    if hooks_dir not in sys.path:
+        sys.path.insert(0, hooks_dir)
+    from merge_claude_settings import load_settings, merge_pm_bulk_read, write_settings
+
+    write_settings(settings, merge_pm_bulk_read(load_settings(settings), hook))
 
 
 def write_night_shift(
@@ -836,6 +965,7 @@ def run_setup(
         print("ERROR: Claude Code is required as PM.", file=sys.stderr)
         return 1
 
+    requested_auto = writer_provider in (None, "auto")
     writers = available_writers(tools)
     suggested = default_setup_writer(tools)
 
@@ -850,8 +980,8 @@ def run_setup(
         print(
             "\n--- Writer (daytime coder) ---\n"
             "PM is always Claude. This is who implements task YAML.\n"
-            "Without a project profile, the orchestrator defaults to kimi.\n"
-            "codex = gpt-5.6-luna + reasoning effort max (opt-in programmer)."
+            "Default: Cursor Grok 4.6 medium-fast; else Codex luna high fast.\n"
+            "codex opt-in (explicit) = gpt-5.6-luna + reasoning effort max."
         )
         writer_provider = _prompt_choice(
             "Daytime writer provider",
@@ -922,7 +1052,9 @@ def run_setup(
         print(f"  max_fix_tasks: {max_fix_tasks}")
         print(f"  auto_merge:     {auto_merge}")
 
-    write_outputs(repo, tools, profile, lanes, notes)
+    write_outputs(
+        repo, tools, profile, lanes, notes, auto_writer=requested_auto
+    )
     write_night_shift(
         repo,
         enabled=bool(night_review),
@@ -955,7 +1087,7 @@ def setup_main(argv: list[str]) -> int:
         "--writer-provider",
         choices=WRITER_CHOICES,
         default=None,
-        help="daytime writer (default: first available of qwen, kimi, grok, agy)",
+        help="daytime writer (default: cursor grok-4.6-medium-fast, else luna high fast)",
     )
     ap.add_argument(
         "--night-review",
@@ -1090,7 +1222,7 @@ def main(argv: list[str] | None = None) -> int:
         "--writer-provider",
         choices=WRITER_CHOICES,
         default="auto",
-        help="preferred writer provider (default: auto, Kimi before Qwen before Grok before AGY)",
+        help="preferred writer provider (default: auto, Cursor Grok 4.6 medium-fast else Codex luna high fast)",
     )
     ap.add_argument(
         "--night-review",
@@ -1277,6 +1409,7 @@ def main(argv: list[str] | None = None) -> int:
             writer_effort=args.writer_effort,
             writer_agent=args.writer_agent,
             writer_service_tier=service_tier,
+            auto_writer=args.writer_provider == "auto",
             workspace_mode=args.workspace_mode or "auto",
             worktree_min_score=max(0, min(10, int(args.worktree_min_score))),
             worktree_on_multi_write=bool(args.worktree_on_multi_write),

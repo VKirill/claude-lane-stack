@@ -21,6 +21,9 @@ _MAX_FILE_CHARS = 12_000
 _MAX_TOTAL_CHARS = 48_000
 AGY_SCHEMA_PATH = Path(__file__).with_name("plan_critique_agy.schema.json")
 CRITIQUE_SCHEMA_PATH = AGY_SCHEMA_PATH
+# Wall cap for a working critic. Idle is activity-aware via lane-exec (CPU/stdout).
+CRITIQUE_IDLE_DEFAULT = 900
+CRITIQUE_MAX_DEFAULT = 1800
 
 
 def _record_invoke_usage(cli: str, model: str, stdout: str) -> None:
@@ -194,6 +197,13 @@ def _which(name: str) -> str | None:
     return shutil.which(name)
 
 
+def _lane_exec_bin() -> str | None:
+    sibling = Path(__file__).resolve().parent / "lane-exec"
+    if sibling.is_file() and os.access(sibling, os.X_OK):
+        return str(sibling)
+    return shutil.which("lane-exec")
+
+
 def _run(
     argv: list[str],
     *,
@@ -202,17 +212,41 @@ def _run(
     timeout: int,
     stdin_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        argv,
+    idle = max(5, int(os.environ.get("PLAN_CRITIQUE_IDLE") or CRITIQUE_IDLE_DEFAULT))
+    wall = max(0, int(timeout or 0))
+    if wall and wall < idle:
+        idle = max(5, wall)
+    argv_run = list(argv)
+    sub_timeout: int | None = wall or None
+    lane = _lane_exec_bin()
+    if lane:
+        argv_run = [
+            lane,
+            "--idle",
+            str(idle),
+            "--max",
+            str(wall),
+            "--label",
+            "plan-critique",
+            "--",
+            *argv,
+        ]
+        # lane-exec owns idle/max; subprocess slack is only a last-resort cap.
+        sub_timeout = None if wall <= 0 else wall + 60
+    completed = subprocess.run(
+        argv_run,
         cwd=str(cwd),
         env=env,
         input=stdin_text,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        timeout=timeout,
+        timeout=sub_timeout,
         check=False,
     )
+    if completed.returncode == 124:
+        raise subprocess.TimeoutExpired(argv, wall or idle)
+    return completed
 
 
 def _parse_stream_or_json_array(stdout: str) -> str:
@@ -434,6 +468,8 @@ def invoke_agy(
             model_id,
             "--effort",
             effort_id,
+            "--print-timeout",
+            f"{max(int(timeout), 60)}s",
             "--dangerously-skip-permissions",
             "--sandbox=false",
             "--output-format",
@@ -619,7 +655,7 @@ def invoke_llm_critique(
     provider: str,
     model: str = "",
     effort: str = "",
-    timeout: int = 180,
+    timeout: int = CRITIQUE_MAX_DEFAULT,
     service_tier: str = "standard",
     agent: str = "",
 ) -> dict[str, Any]:

@@ -27,7 +27,7 @@ DEFAULT_MODELS = {
     "grok": "grok-4.5",
     "agy": "gemini-3.7-flash-high",
     "codex": "gpt-5.6-luna",
-    "cursor": "composer-2.5",
+    "cursor": "cursor-grok-4.6-medium",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
 }
 DEFAULT_EFFORTS = {
@@ -131,6 +131,7 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
         "lanes": {},
         "writer": {},
         "workspace": {},
+        "pm_read": {},
         "stages": {},
         "notes": [],
     }
@@ -145,7 +146,8 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
             key = line[:-1].strip()
             section = (
                 key
-                if key in {"lanes", "writer", "workspace", "stages", "notes", "ui"}
+                if key
+                in {"lanes", "writer", "workspace", "pm_read", "stages", "notes", "ui"}
                 else None
             )
             stage_name = None
@@ -174,6 +176,9 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
             result["writer"][key] = value
         elif section == "workspace" and indent >= 2:
             result["workspace"][key] = value
+        elif section == "pm_read" and indent >= 2:
+            result.setdefault("pm_read", {})
+            result["pm_read"][key] = value
         elif section == "ui" and indent >= 2:
             result.setdefault("ui", {})
             result["ui"][key] = value
@@ -193,6 +198,7 @@ def load_routing_profile(start: Path) -> dict[str, Any]:
             "lanes": {},
             "writer": {},
             "workspace": {},
+            "pm_read": {},
             "stages": {},
         }
     try:
@@ -203,6 +209,7 @@ def load_routing_profile(start: Path) -> dict[str, Any]:
             "lanes": {},
             "writer": {},
             "workspace": {},
+            "pm_read": {},
             "stages": {},
         }
     data = _parse_simple_yaml_map(text)

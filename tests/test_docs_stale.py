@@ -27,6 +27,31 @@ def _git(repo: Path, *args: str) -> None:
 
 
 class DocsStaleTest(unittest.TestCase):
+    def test_feature_kind_floor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            page = repo / "docs" / "features" / "web-editor.md"
+            page.parent.mkdir(parents=True)
+            page.write_text(
+                "---\nstatus: active\nkind: feature\nowns:\n  - apps/web/modules/editor/**\n---\n"
+                "# Editor\n\n<!-- body:start -->\nTL;DR: short.\n<!-- body:end -->\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(docs_stale.page_kind(page, {"kind": "feature"}), "feature")
+            reasons = docs_stale.thin_reasons(page, repo)
+            self.assertTrue(any(r.startswith("heading:") for r in reasons))
+            self.assertIn("heading:business rules", reasons)
+            page.write_text(
+                "---\nstatus: active\nkind: feature\nowns:\n  - apps/web/modules/editor/**\n---\n"
+                "# Editor\n\n<!-- body:start -->\nTL;DR: editor.\n\n"
+                "## What it does\nEdits.\n\n## How it works\nFlow.\n\n"
+                "## Actions\nSave.\n\n## Limits\nNone.\n"
+                "<!-- body:end -->\n",
+                encoding="utf-8",
+            )
+            reasons = docs_stale.thin_reasons(page, repo)
+            self.assertIn("heading:business rules", reasons)
+
     def test_extract_file_tokens(self) -> None:
         cited = docs_stale.extract_cited(
             "See `apps/api/src/foo.ts:12` and packages/core/bar.py"
@@ -216,6 +241,42 @@ class DocsStaleTest(unittest.TestCase):
             )
             skipped = docs_stale.scan_repo(repo, "24 hours ago")
             self.assertEqual(skipped["status"], "skip")
+
+    def test_complete_feature_needs_rules_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            src = repo / "apps" / "web" / "modules" / "referral" / "model.ts"
+            src.parent.mkdir(parents=True)
+            src.write_text("export const RATE = 15\n" * 20, encoding="utf-8")
+            cites = " ".join(f"(apps/web/modules/referral/model.ts:{i})" for i in range(1, 11))
+            body = (
+                "TL;DR: referral product spec.\n\n## What it does\n"
+                + ("word " * 500)
+                + "\n\n## How it works\nFlow "
+                + cites
+                + "\n\n## Actions\n- accrue\n\n## Business rules\n"
+                + "| Rule | Value | Basis |\n| --- | --- | --- |\n"
+                + "| Level 1 share | 15% | after fee |\n"
+                + "| Level 2 share | 10% | after fee |\n\n"
+                + "## Limits\n- min payout\n"
+            )
+            page = repo / "docs" / "features" / "web-referral.md"
+            page.parent.mkdir(parents=True)
+            page.write_text(
+                "---\nstatus: active\nkind: feature\nowns:\n"
+                "  - apps/web/modules/referral/**\n---\n"
+                f"# Referral\n\n<!-- body:start -->\n{body}<!-- body:end -->\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(docs_stale.thin_reasons(page, repo), [])
+            thin = body.replace("## Business rules\n| Rule | Value | Basis |\n| --- | --- | --- |\n| Level 1 share | 15% | after fee |\n| Level 2 share | 10% | after fee |\n", "## Business rules\nPolicy exists.\n")
+            page.write_text(
+                "---\nstatus: active\nkind: feature\n---\n"
+                f"# Referral\n\n<!-- body:start -->\n{thin}<!-- body:end -->\n",
+                encoding="utf-8",
+            )
+            reasons = docs_stale.thin_reasons(page, repo)
+            self.assertTrue(any(r.startswith("rows:") for r in reasons))
 
     def test_thin_app_claude_is_stub(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

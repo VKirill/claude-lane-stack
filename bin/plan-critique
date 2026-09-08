@@ -77,8 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--timeout",
         type=int,
-        default=180,
-        help="LLM pass timeout seconds (default 180)",
+        default=1800,
+        help="LLM wall-clock max seconds (default 1800; idle via lane-exec)",
     )
     args = ap.parse_args(argv)
 
@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             run_dir,
             settings=settings,
             structural_only=bool(args.structural_only),
-            timeout=max(30, int(args.timeout or 180)),
+            timeout=max(30, int(args.timeout or 1800)),
             invoke_llm=not args.structural_only,
         )
         write_critique_artifacts(

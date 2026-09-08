@@ -35,7 +35,14 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
         self.assertEqual(env["CLAUDE_CODE_SUBAGENT_MODEL"], "sonnet")
         self.assertEqual(env["ENABLE_TOOL_SEARCH"], "true")
         allow = out["permissions"]["allow"]
-        for tool in ("SendMessage", "ListAgents", "TaskStop", "Monitor", "Artifact"):
+        for tool in (
+            "SendMessage",
+            "ListAgents",
+            "TaskStop",
+            "Monitor",
+            "Artifact",
+            "mcp__metamcp",
+        ):
             self.assertIn(tool, allow)
         # idempotent
         out2 = merge_stack_capabilities(out)

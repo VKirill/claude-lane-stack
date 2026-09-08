@@ -50,7 +50,24 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = __import__("json").loads(result.stdout)
             self.assertTrue(payload["tools"]["agy"]["present"])
-            self.assertEqual(payload["lanes"]["fast_write"], "grok")
+            self.assertEqual(payload["lanes"]["fast_write"], "codex")
+
+            agy.write_text(
+                "#!/usr/bin/env bash\n"
+                "[[ \"${1:-}\" == models ]] && "
+                "printf '%s\\n' 'gemini-3.8-flash-high\tGemini 3.8 Flash (High)' && exit 0\n"
+                "[[ \"${1:-}\" == agents ]] && echo agy-writer && exit 0\n"
+                "echo 'agy 1.1.5'\n",
+                encoding="utf-8",
+            )
+            labeled = subprocess.run(
+                [str(DOCTOR), "--json", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertTrue(__import__("json").loads(labeled.stdout)["tools"]["agy"]["present"])
 
             agy.write_text(
                 "#!/usr/bin/env bash\n"
@@ -70,7 +87,7 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertFalse(missing_payload["tools"]["agy"]["present"])
             self.assertEqual(
                 missing_payload["tools"]["agy"]["unavailable_reason"],
-                "gemini-3.7-flash-high unavailable",
+                "gemini-3.8-flash-high unavailable",
             )
 
             agy.write_text(
@@ -179,7 +196,8 @@ class AgentsDoctorTest(unittest.TestCase):
                 payload["tools"]["bubblewrap"]["resolver_operational"]
             )
             self.assertFalse(payload["tools"]["grok"]["present"])
-            self.assertEqual(payload["profile"], "claude-codex")
+            self.assertEqual(payload["profile"], "full")
+            self.assertEqual(payload["lanes"]["main_write"], "codex")
             self.assertEqual(
                 payload["tools"]["grok"]["unavailable_reason"],
                 "bubblewrap resolver unavailable",
@@ -296,6 +314,8 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertIn("provider: codex", profile)
             self.assertIn("model: gpt-5.6-luna", profile)
             self.assertIn("reasoning_effort: max", profile)
+            self.assertIn("pm_read:", profile)
+            self.assertIn("enabled: false", profile)
             self.assertIn("workspace:", profile)
             self.assertIn("mode: auto", profile)
             self.assertIn("session_max_tasks: 10", profile)
@@ -423,7 +443,8 @@ class AgentsDoctorTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = __import__("json").loads(result.stdout)
             self.assertFalse(payload["tools"]["grok"]["present"])
-            self.assertEqual(payload["profile"], "claude-codex")
+            self.assertEqual(payload["profile"], "full")
+            self.assertEqual(payload["lanes"]["main_write"], "codex")
             self.assertIn("bubblewrap is required", " ".join(payload["notes"]))
 
     def test_installed_but_inoperable_bubblewrap_disables_grok_writer(self) -> None:
@@ -529,12 +550,119 @@ class AgentsDoctorTest(unittest.TestCase):
                 (repo / "CLAUDE.md").read_text(encoding="utf-8"),
             )
 
+    def test_auto_prefers_cursor_grok_46_medium_fast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            for name in ("claude", "grok", "codex", "bwrap"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+            cursor = fake_bin / "cursor-agent"
+            cursor.write_text(
+                "#!/usr/bin/env bash\n"
+                "[[ \"${1:-}\" == --list-models ]] && "
+                "printf '%s\\n' 'cursor-grok-4.6-medium-fast' 'composer-2.5' && exit 0\n"
+                "echo 'fake 1.0'\n",
+                encoding="utf-8",
+            )
+            cursor.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            result = subprocess.run(
+                [
+                    str(DOCTOR),
+                    "--apply",
+                    "--writer-provider",
+                    "auto",
+                    "--night-review",
+                    "off",
+                    str(repo),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            profile = (repo / ".agents" / "routing.profile.yaml").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("main_write: cursor", profile)
+            self.assertIn("model: cursor-grok-4.6-medium", profile)
+            self.assertIn("service_tier: fast", profile)
+
+    def test_auto_falls_back_to_codex_luna_high_fast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            for name in ("claude", "grok", "codex", "bwrap"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+            cursor = fake_bin / "cursor-agent"
+            cursor.write_text(
+                "#!/usr/bin/env bash\n"
+                "[[ \"${1:-}\" == --list-models ]] && "
+                "printf '%s\\n' 'composer-2.5' 'gpt-5.6-sol-high' && exit 0\n"
+                "echo 'fake 1.0'\n",
+                encoding="utf-8",
+            )
+            cursor.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            result = subprocess.run(
+                [
+                    str(DOCTOR),
+                    "--apply",
+                    "--writer-provider",
+                    "auto",
+                    "--night-review",
+                    "off",
+                    str(repo),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            profile = (repo / ".agents" / "routing.profile.yaml").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("main_write: codex", profile)
+            self.assertIn("model: gpt-5.6-luna", profile)
+            self.assertIn("reasoning_effort: high", profile)
+            self.assertIn("service_tier: fast", profile)
+            listed = subprocess.run(
+                [str(DOCTOR), "--json", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            payload = __import__("json").loads(listed.stdout)
+            self.assertIn("luna high fast", " ".join(payload["notes"]))
+
 
 class DoctorTuiCatalogTest(unittest.TestCase):
     def test_grok_46_is_selectable(self) -> None:
         sys.path.insert(0, str(ROOT / "bin"))
         import agents_doctor_tui as tui  # noqa: E402
 
+        self.assertIn("gemini-3.8-flash-high", tui.WRITER_MODELS["agy"])
+        self.assertEqual(tui._efforts_for("agy", "gemini-3.8-flash-high"), ["high"])
+        self.assertEqual(tui.DEFAULT_MODEL["cursor"], "cursor-grok-4.6-medium")
         self.assertIn("grok-4.6", tui.WRITER_MODELS["grok"])
         self.assertIn("opencode", tui.ALL_AGENTS)
         self.assertIn("alibaba-token-plan/qwen3.8-max-preview", tui.WRITER_MODELS["opencode"])
@@ -552,6 +680,8 @@ class DoctorTuiCatalogTest(unittest.TestCase):
         self.assertEqual(tui.TAB_IDS[-1], "apply")
         import agents_doctor_tui_i18n as i18n  # noqa: E402
 
+        self.assertEqual(set(i18n.STRINGS["en"]), set(i18n.STRINGS["ru"]))
+        self.assertIn("pm_read_h2", i18n.STRINGS["en"])
         self.assertIn("tab_info", i18n.STRINGS["en"])
         self.assertIn("tab_info", i18n.STRINGS["ru"])
         self.assertIn("tab_memory", i18n.STRINGS["ru"])

@@ -35,6 +35,7 @@ from routing_profile import load_routing_profile  # noqa: E402
 from plan_critique_llm import (  # noqa: E402
     AGY_SCHEMA_PATH,
     CRITIQUE_SCHEMA_PATH,
+    _run as critique_run,
     extract_json_payload,
     invoke_agy,
     invoke_codex,
@@ -729,6 +730,7 @@ class PipelineStagesTest(unittest.TestCase):
             captured[0][captured[0].index("--json-schema") + 1],
             str(AGY_SCHEMA_PATH),
         )
+        self.assertEqual(captured[0][captured[0].index("--print-timeout") + 1], "60s")
         self.assertIn("split 001", text)
         from usage_ledger import rows
 
@@ -741,6 +743,23 @@ class PipelineStagesTest(unittest.TestCase):
         })
         self.assertTrue(all(row["input_tokens"] == 9 for row in recorded))
         self.assertTrue(all(row["cache_tokens"] == 5 for row in recorded))
+
+    def test_critique_run_uses_lane_exec(self) -> None:
+        fake = subprocess.CompletedProcess(["agy"], 0, stdout="ok", stderr="")
+        with patch("plan_critique_llm.subprocess.run", return_value=fake) as mock_run, patch(
+            "plan_critique_llm._lane_exec_bin", return_value="/bin/lane-exec"
+        ):
+            critique_run(
+                ["agy", "--print", "hi"],
+                cwd=Path("/tmp"),
+                env=os.environ.copy(),
+                timeout=1800,
+            )
+        argv = mock_run.call_args[0][0]
+        self.assertEqual(argv[:3], ["/bin/lane-exec", "--idle", "900"])
+        self.assertEqual(argv[argv.index("--max") + 1], "1800")
+        self.assertIn("agy", argv)
+        self.assertGreater(mock_run.call_args[1]["timeout"], 1800)
 
     def test_parse_llm_payload(self) -> None:
         text = 'Here you go:\n```json\n{"verdict":"ship","summary":"ok","findings":[]}\n```\n'

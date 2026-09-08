@@ -255,6 +255,147 @@ def infer_surfaces(repo: Path, unit: dict[str, Any]) -> list[dict[str, str]]:
     return unique[:8]
 
 
+_SKIP_FEATURE = frozenset(
+    {
+        "shared",
+        "common",
+        "lib",
+        "utils",
+        "types",
+        "hooks",
+        "components",
+        "ui",
+        "api",
+        "src",
+        "_lib",
+        "app",
+        "internal",
+    }
+)
+_FEATURE_CODE = {".ts", ".tsx", ".js", ".jsx", ".py", ".go"}
+_FEATURE_UI = {".tsx", ".jsx", ".vue", ".svelte"}
+_FEATURE_SKIP_PARTS = frozenset(
+    {"node_modules", "dist", ".git", ".next", "coverage", "build", "__tests__", "vendor"}
+)
+FEATURE_CAP = 24
+
+
+def _iter_feature_code(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    out: list[Path] = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix not in _FEATURE_CODE:
+            continue
+        if any(part in _FEATURE_SKIP_PARTS for part in path.parts):
+            continue
+        out.append(path)
+    return out
+
+
+def _is_feature_dir(path: Path) -> bool:
+    if not path.is_dir() or path.name.startswith(".") or path.name in _SKIP_FEATURE:
+        return False
+    files = _iter_feature_code(path)
+    if len(files) < 3:
+        return False
+    has_ui = any(item.suffix in _FEATURE_UI for item in files)
+    has_layer = (path / "services").is_dir() or (path / "ui").is_dir()
+    return has_ui or has_layer or len(files) >= 8
+
+
+def discover_features(repo: Path) -> list[dict[str, Any]]:
+    """App-local systems that need a how-it-works page (not a package API table)."""
+    features: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    apps = repo / "apps"
+    if not apps.is_dir():
+        return features
+    for app in sorted(p for p in apps.iterdir() if p.is_dir() and not p.name.startswith(".")):
+        modules = app / "modules"
+        if modules.is_dir():
+            for mod in sorted(modules.iterdir()):
+                if not _is_feature_dir(mod):
+                    continue
+                fid = f"{app.name}-{mod.name}"
+                if fid in seen:
+                    continue
+                seen.add(fid)
+                features.append(
+                    {
+                        "id": fid,
+                        "slug": mod.name,
+                        "kind": "feature",
+                        "owns": [f"apps/{app.name}/modules/{mod.name}/**"],
+                        "app": app.name,
+                    }
+                )
+            continue
+        for group in ("(cabinet)", "(dashboard)", "(admin)", "(app)"):
+            root = app / "app" / group
+            if not root.is_dir():
+                continue
+            for seg in sorted(root.iterdir()):
+                if seg.name.startswith((".", "(", "[")) or seg.name in _SKIP_FEATURE:
+                    continue
+                if not ((seg / "page.tsx").is_file() or (seg / "page.ts").is_file()):
+                    if not list(seg.glob("**/page.tsx")):
+                        continue
+                if not _is_feature_dir(seg) and len(_iter_feature_code(seg)) < 2:
+                    continue
+                fid = f"{app.name}-{seg.name}"
+                if fid in seen:
+                    continue
+                seen.add(fid)
+                features.append(
+                    {
+                        "id": fid,
+                        "slug": seg.name,
+                        "kind": "feature",
+                        "owns": [f"apps/{app.name}/app/{group}/{seg.name}/**"],
+                        "app": app.name,
+                    }
+                )
+
+    def _weight(item: dict[str, Any]) -> int:
+        return len(_iter_feature_code(repo / str(item["owns"][0]).replace("/**", "").rstrip("/")))
+
+    features.sort(key=_weight, reverse=True)
+    return features[:FEATURE_CAP]
+
+
+def seed_features(repo: Path, features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    nodes: list[dict[str, Any]] = []
+    for feat in features:
+        rel = f"docs/features/{feat['id']}.md"
+        title = str(feat["slug"]).replace("-", " ").title()
+        _seed_stub(
+            repo,
+            rel,
+            title,
+            (
+                f"# {title}\n\n"
+                "<!-- body:start -->\n"
+                "TL;DR: _stub — product spec for this system_\n\n"
+                "## What it does\n\n<!-- fill:what -->\n\n"
+                "## How it works\n\n<!-- fill:how -->\n\n"
+                "## Actions\n\n<!-- fill:actions -->\n\n"
+                "## Business rules\n\n<!-- fill:rules -->\n\n"
+                "## Limits\n\n<!-- fill:limits -->\n"
+                "<!-- body:end -->\n"
+            ),
+            id=feat["id"],
+            kind="feature",
+            type="explanation",
+            owns=list(feat["owns"]),
+            tags=["feature", str(feat.get("app") or ""), str(feat["slug"])],
+        )
+        nodes.append(
+            {"id": feat["id"], "kind": "feature", "page": rel, "owns": list(feat["owns"])}
+        )
+    return nodes
+
+
 def seed_hubs(repo: Path, units: list[dict[str, Any]]) -> list[dict[str, Any]]:
     hubs: list[dict[str, Any]] = []
     for unit in units:
@@ -513,6 +654,8 @@ def _index_group(rel: str, kind: str) -> str:
         return "systems"
     if kind == "hub" or "/hubs/" in rel:
         return "hubs"
+    if kind == "feature" or "/features/" in rel:
+        return "features"
     if kind == "process":
         return "processes"
     return "units"
@@ -526,6 +669,7 @@ def write_index(
         "foundation": [],
         "systems": [],
         "units": [],
+        "features": [],
         "hubs": [],
         "processes": [],
     }
@@ -555,7 +699,7 @@ def write_index(
         "<!-- generated by docs-web -->",
         "",
     ]
-    for name in ("foundation", "systems", "units", "hubs", "processes"):
+    for name in ("foundation", "systems", "features", "units", "hubs", "processes"):
         items = groups[name]
         if not items:
             continue
@@ -702,6 +846,7 @@ def seed_manifest(repo: Path) -> None:
         "    - docs/packages/*.md\n"
         "    - docs/apps/*.md\n"
         "    - docs/hubs/*.md\n"
+        "    - docs/features/*.md\n"
         "    - docs/glossary.md\n"
         "    - docs/patterns.md\n"
         "    - docs/gotchas.md\n"
@@ -917,7 +1062,11 @@ def write_llms_txt(repo: Path, pages: list[str]) -> None:
 
 def write_backlinks(repo: Path, pages: list[str]) -> None:
     incoming: dict[str, list[str]] = {p: [] for p in pages}
-    for rel in pages:
+    scan = list(pages)
+    index = "docs/INDEX.md"
+    if (repo / index).is_file() and index not in scan:
+        scan.append(index)
+    for rel in scan:
         path = repo / rel
         if not path.is_file():
             continue
@@ -941,7 +1090,7 @@ def write_backlinks(repo: Path, pages: list[str]) -> None:
         start = "<!-- backlinks:start -->"
         end = "<!-- backlinks:end -->"
         links = []
-        for src in sources:
+        for src in list(dict.fromkeys(sources)):
             rel_href = Path(os.path.relpath(src, start=str(Path(rel).parent))).as_posix()
             links.append(f"- [{src}]({rel_href})\n")
         block = start + "\n" + "".join(links) + end
@@ -1063,6 +1212,7 @@ def rebuild(repo: Path) -> dict[str, Any]:
         unit["used_by"] = sorted(used_by.get(str(unit["id"])) or [])
         unit["surfaces"] = infer_surfaces(repo, unit)
     hubs = seed_hubs(repo, units)
+    feature_nodes = seed_features(repo, discover_features(repo))
     pages = [apply_unit_page(repo, unit, gn=gn) for unit in units]
     for unit in units:
         seed_app_pack(repo, unit)
@@ -1074,6 +1224,7 @@ def rebuild(repo: Path) -> dict[str, Any]:
         {"id": h["id"], "kind": "hub", "page": h["page"], "owns": h.get("owns") or []}
         for h in hubs
     ]
+    extra_nodes.extend(feature_nodes)
     write_web_yaml(repo, units, pages, gn=gn, extra_nodes=extra_nodes)
     seed_glossary_terms(repo, units + hubs)
     extra = [
@@ -1087,6 +1238,7 @@ def rebuild(repo: Path) -> dict[str, Any]:
         "docs/TESTING.md",
     ]
     extra.extend(h["page"] for h in hubs)
+    extra.extend(n["page"] for n in feature_nodes)
     index_pages = list(pages)
     for rel in extra:
         if (repo / rel).is_file() and rel not in index_pages:
@@ -1098,6 +1250,7 @@ def rebuild(repo: Path) -> dict[str, Any]:
         "units": [u["id"] for u in units],
         "pages": pages,
         "hubs": [h["id"] for h in hubs],
+        "features": [n["id"] for n in feature_nodes],
         "deprecated": deprecated,
         "gitnexus": gn,
     }

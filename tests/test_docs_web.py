@@ -121,6 +121,36 @@ class DocsWebTest(unittest.TestCase):
             lint = docs_web.lint_repo(repo)
             self.assertTrue(any(e.startswith("language:") for e in lint["errors"]))
 
+    def test_rebuild_seeds_feature_from_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            app = repo / "apps" / "web"
+            editor = app / "modules" / "editor"
+            (editor / "services").mkdir(parents=True)
+            (editor / "ui").mkdir()
+            (app / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+            (app / "src").mkdir()
+            (app / "src" / "index.ts").write_text("export const w = 1\n", encoding="utf-8")
+            (editor / "services" / "save.ts").write_text("export function save() {}\n", encoding="utf-8")
+            (editor / "ui" / "Canvas.tsx").write_text("export function Canvas() { return null }\n", encoding="utf-8")
+            (editor / "model" / "doc.ts").parent.mkdir()
+            (editor / "model" / "doc.ts").write_text("export type Doc = { id: string }\n", encoding="utf-8")
+            utils = app / "modules" / "utils"
+            utils.mkdir()
+            (utils / "ids.ts").write_text("export const id = 1\n", encoding="utf-8")
+            result = docs_web.rebuild(repo)
+            self.assertIn("web-editor", result["features"])
+            self.assertNotIn("web-utils", result["features"])
+            page = repo / "docs" / "features" / "web-editor.md"
+            self.assertTrue(page.is_file())
+            text = page.read_text(encoding="utf-8")
+            self.assertIn("kind: feature", text)
+            self.assertIn("## Business rules", text)
+            self.assertIn("apps/web/modules/editor/**", text)
+            self.assertIn("## features", (repo / "docs" / "INDEX.md").read_text(encoding="utf-8"))
+            back = text.split("<!-- backlinks:start -->", 1)[1].split("<!-- backlinks:end -->", 1)[0]
+            self.assertIn("docs/INDEX.md", back)
+
     def test_infer_surfaces_skips_next(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

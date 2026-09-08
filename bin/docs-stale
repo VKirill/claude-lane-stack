@@ -44,6 +44,7 @@ LIVE_EXTRA_GLOBS = (
     "docs/DESIGN.md",
     "docs/TESTING.md",
     "docs/surfaces/*.md",
+    "docs/features/*.md",
     "docs/processes/*.md",
     "docs/web.yaml",
     "apps/*/docs/**/*",
@@ -71,6 +72,12 @@ _SKIP_COMPLETENESS_NAMES = frozenset({"INDEX.md", "log.md", "llms.txt", "DESIGN.
 _KIND_FLOORS: dict[str, dict[str, Any]] = {
     "unit": {"words": 700, "cites": 12, "headings": ("purpose", "public api", "gotchas")},
     "surface": {"words": 700, "cites": 12, "headings": ("purpose", "public api", "gotchas")},
+    "feature": {
+        "words": 500,
+        "cites": 10,
+        "rows": 3,
+        "headings": ("what it does", "how it works", "actions", "business rules"),
+    },
     "hub": {"words": 400, "cites": 8, "headings": ("scope",)},
     "architecture": {"words": 500, "cites": 12, "mermaid": True, "h2": 3},
     "gotchas": {"cites": 8, "bullets": 6},
@@ -313,10 +320,12 @@ def page_kind(path: Path, meta: dict[str, Any] | None = None) -> str:
     if "pattern" in name:
         return "patterns"
     kind = str((meta or {}).get("kind") or "").strip().lower()
-    if kind in {"hub", "unit", "surface", "process", "store"}:
+    if kind in {"hub", "unit", "surface", "process", "store", "feature"}:
         return kind
     if "/hubs/" in rel:
         return "hub"
+    if "/features/" in rel:
+        return "feature"
     if any(part in rel for part in ("/packages/", "/apps/", "/components/")):
         return "unit"
     return "other"
