@@ -18,6 +18,7 @@ from pm_read import (  # noqa: E402
     normalize_pm_read,
     pick_pm_read,
     resolve_pm_read,
+    should_block_bash,
     should_block_read,
     worker_brief_for_hook,
 )
@@ -89,6 +90,7 @@ class PmReadTest(unittest.TestCase):
             self.assertTrue(block)
             self.assertEqual(lines, 400)
             self.assertIn("pm_read --path", reason)
+            self.assertIn("/bulk-reader", reason)
             self.assertIn(BRIEF_MARK, reason)
 
             small = Path(tmp) / "small.py"
@@ -98,6 +100,35 @@ class PmReadTest(unittest.TestCase):
 
             block, _, _ = should_block_read(path, offset=20, limit=40, cfg=on)
             self.assertFalse(block)
+
+            jpg = Path(tmp) / "shot.jpg"
+            jpg.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 20 + b"\n" * 400)
+            block, _, _ = should_block_read(jpg, cfg=on)
+            self.assertFalse(block)
+            png = Path(tmp) / "a.png"
+            png.write_text("x\n" * 400, encoding="utf-8")
+            block, _, _ = should_block_read(png, cfg=on)
+            self.assertFalse(block)
+
+            cmd = (
+                f'f=$(ls {path.name} other*.py 2>/dev/null | head -1); '
+                f'wc -l "$f"; cat -n "$f"'
+            )
+            hit, lines, reason = should_block_bash(cmd, Path(tmp), on)
+            self.assertEqual(hit, path.resolve())
+            self.assertEqual(lines, 400)
+            self.assertIn("pm_read --path", reason)
+            self.assertIsNone(should_block_bash(f"cat {path.name} | grep foo", Path(tmp), on)[0])
+            self.assertEqual(
+                should_block_bash(f"sed -n 1,40p {path.name}", Path(tmp), on)[0],
+                path.resolve(),
+            )
+            self.assertEqual(
+                should_block_bash(f"head -20 {path.name}", Path(tmp), on)[0],
+                path.resolve(),
+            )
+            self.assertIsNone(should_block_bash(f"cat > {path.name} <<'EOF'\nx\nEOF", Path(tmp), on)[0])
+            self.assertIsNone(should_block_bash(f"pm_read --path {path.name}", Path(tmp), on)[0])
 
     def test_brief_prompt_is_the_fable_contract(self) -> None:
         prompt = build_prompt(Path("a.py"), "Where is auth?", "print(1)\n", 1)
@@ -126,12 +157,12 @@ class PmReadTest(unittest.TestCase):
         hook = ROOT / "hooks" / "pm_bulk_read.py"
         out = merge_pm_bulk_read({"hooks": {}}, hook)
         entries = out["hooks"]["PreToolUse"]
-        self.assertTrue(any(e.get("matcher") == "Read" for e in entries))
+        self.assertTrue(any(e.get("matcher") == "Read|Bash" for e in entries))
         cmd = entries[0]["hooks"][0]["command"]
         self.assertIn("pm_bulk_read.py", cmd)
         self.assertGreaterEqual(entries[0]["hooks"][0]["timeout"], HOOK_TIMEOUT)
         out2 = merge_pm_bulk_read(out, hook)
-        read_hooks = [e for e in out2["hooks"]["PreToolUse"] if e.get("matcher") == "Read"]
+        read_hooks = [e for e in out2["hooks"]["PreToolUse"] if e.get("matcher") == "Read|Bash"]
         self.assertEqual(len(read_hooks), 1)
 
     def test_hook_worker_brief_uses_adoc_model(self) -> None:
@@ -152,7 +183,12 @@ class PmReadTest(unittest.TestCase):
             ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md"
         ).read_text(encoding="utf-8")
         self.assertIn("pm_read --path", orch)
-        self.assertIn("Fat files — `pm_read`", orch)
+        self.assertIn("/bulk-reader", orch)
+        skill = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "bulk-reader" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("pm_read --path FILE", skill)
+        self.assertIn("NEVER", skill)
 
     def test_apply_receipt_shows_pm_read(self) -> None:
         from agents_doctor_tui import _done_pm_read, _print_apply_receipt  # noqa: E402

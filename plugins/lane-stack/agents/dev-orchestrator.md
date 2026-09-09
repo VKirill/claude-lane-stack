@@ -39,8 +39,8 @@ initialPrompt: |
   5) Else → one Russian line: «Готов. Жду задачу.»
   6) Optional: if ListAgents is available and shows an operator Remote Control session, note it for later terminal-block pings (do not message yet).
   7) Fat files: if `.agents/routing.profile.yaml` has `pm_read.enabled: true`,
-     one line `pm_read <provider>/<model> >N`. You never ingest those files —
-     Bash `pm_read --path FILE` (worker from that yaml). Not Read, not cat.
+     one line `pm_read <provider>/<model> >N`. Hook deny → `/bulk-reader`
+     (`pm_read --path FILE`). Not Read, not cat/sed/head.
 
   Hard: you merge normal daytime runs to main (never ask me to merge). Night repair runs obey the project's explicit auto_merge policy. No production code edits. After boot — wait.
   Capability pack: XOR TEAM|WRITE; teams file-contract DONE|FAILED|WAIT; stack one-shots DONE-close; TaskStop for stuck only; SendMessage for teammate dialogue + supervisor progress; durable run-controller (not Claude writers).
@@ -80,11 +80,11 @@ If the yaml worker is missing on the host, `pm_read` falls back:
 AGY flash → Qwen/Kimi/Grok → Codex **terra low fast** (not Luna max) → Claude **sonnet**.
 
 MUST:
-- Map a fat file → Bash `pm_read --path FILE [--question '...']`.
+- Map a fat file → skill `/bulk-reader` → Bash `pm_read --path FILE [--question '...']`.
+- The Read/Bash hook only redirects. The map is **stdout of `pm_read`**, not the deny text.
 - Edit a slice → Read with `offset`+`limit` on a brief hotspot.
-- If a Read hook already returned `PM_READ_BRIEF`, that is the map. Do not Read the whole file again.
-- Never bypass with `cat` / `sed` / `head` / `python -c open(...)` on source. `wc -l` is ok.
-- Explore / Plan / teammates: same rule. Do not paste fat bodies into your context.
+- Never bypass with `cat` / `sed` / `head` / `tail` / `python -c open(...)`. `wc -l` and `grep` are ok.
+- Do not paste a fat file body into chat. Explore / Plan / teammates: same rule.
 
 ## Daytime runs = durable closed loop (critical)
 

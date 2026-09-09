@@ -254,7 +254,7 @@ def merge_pm_stop_sentinel(settings: dict[str, Any], hook_path: Path) -> dict[st
 
 
 def merge_pm_bulk_read(settings: dict[str, Any], hook_path: Path) -> dict[str, Any]:
-    """PreToolUse Read: shunt fat full-file reads when project pm_read.enabled."""
+    """PreToolUse Read|Bash: shunt fat full-file dumps when project pm_read.enabled."""
     cmd = (
         f"AGENT_HOOK_CLIENT=claude python3 "
         f"{shlex.quote(str(hook_path.expanduser().resolve()))}"
@@ -267,7 +267,7 @@ def merge_pm_bulk_read(settings: dict[str, Any], hook_path: Path) -> dict[str, A
         hooks["PreToolUse"] = entries
     entries.append(
         {
-            "matcher": "Read",
+            "matcher": "Read|Bash",
             "hooks": [
                 {
                     "type": "command",

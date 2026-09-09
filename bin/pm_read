@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Run pm_read.py from the stack checkout in install.json.
+# ~/.agents/bin copies go stale; source_repo has the current script.
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+source_script() {
+  python3 -c '
+import json, sys
+from pathlib import Path
+path = Path.home() / ".agents" / "install.json"
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(1)
+repo = Path(str(data.get("source_repo") or "")).expanduser()
+script = repo / "bin" / "pm_read.py"
+print(script) if script.is_file() else sys.exit(1)
+'
+}
+
+SRC="$(source_script 2>/dev/null || true)"
+if [[ -n "${SRC}" ]]; then
+  exec python3 "$SRC" "$@"
+fi
+exec python3 "$HERE/pm_read.py" "$@"

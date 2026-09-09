@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """PM bulk-read: cheap model maps a fat file; Fable never ingests the source.
 
-Hook (PreToolUse Read) blocks full-file reads over pm_read.min_lines.
+Hook (PreToolUse Read|Bash) blocks full-file dumps over pm_read.min_lines.
 Run:  pm_read --path FILE [--question '...']
 """
 from __future__ import annotations
 
 import argparse
 import os
+import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -102,6 +104,16 @@ Rules:
 """
 
 
+def pm_read_cli() -> str:
+    home = Path.home() / ".agents" / "bin" / "pm_read"
+    if home.is_file() and os.access(home, os.X_OK):
+        return str(home)
+    here = Path(__file__).resolve().parent / "pm_read.py"
+    if here.is_file():
+        return f"python3 {here}"
+    return "pm_read"
+
+
 def _truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -182,6 +194,37 @@ def load_pm_read(start: Path | None = None) -> dict[str, Any]:
     return resolve_pm_read(profile.get("pm_read"))
 
 
+IMAGE_SUFFIXES = frozenset(
+    {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".avif",
+        ".heic",
+        ".heif",
+        ".bmp",
+        ".ico",
+        ".tif",
+        ".tiff",
+        ".svg",
+    }
+)
+
+
+def looks_like_text(path: Path) -> bool:
+    """Fable reads images himself. Only text sources go to the worker."""
+    if path.suffix.lower() in IMAGE_SUFFIXES:
+        return False
+    try:
+        with path.open("rb") as fh:
+            chunk = fh.read(4096)
+    except OSError:
+        return False
+    return bool(chunk) and b"\x00" not in chunk
+
+
 def count_lines(path: Path) -> int:
     n = 0
     with path.open("rb") as fh:
@@ -206,6 +249,8 @@ def should_block_read(
         return False, 0, ""
     if not path.is_file():
         return False, 0, ""
+    if not looks_like_text(path):
+        return False, 0, ""
     lines = count_lines(path)
     min_lines = int(settings["min_lines"])
     if lines <= min_lines:
@@ -215,17 +260,120 @@ def should_block_read(
         f"effort={settings.get('reasoning_effort') or DEFAULT_EFFORT}"
     )
     cmd = (
-        f"pm_read --path {path} --question "
+        f"{pm_read_cli()} --path {path} --question "
         f"\"<what the planner needs from this file>\""
     )
     reason = (
         f"File is {lines} lines (pm_read.min_lines={min_lines}). "
-        f"Do not Read the whole file into Fable. "
-        f"For a map, run: {cmd}  "
-        f"(worker: {reader}; returns {BRIEF_MARK}). "
-        "For an edit, Read again with offset+limit on a hotspot."
+        f"Use the /bulk-reader skill: {cmd}  "
+        f"(worker: {reader}; stdout is {BRIEF_MARK}). "
+        "Do not cat/head/tail/sed/Read the whole file. "
+        "For an edit, Read with offset+limit on a hotspot."
     )
     return True, lines, reason
+
+
+_DUMP_BIN = frozenset({
+    "cat", "nl", "tac", "bat", "batcat", "less", "more", "pr", "head", "tail",
+})
+_ASSIGN_RE = re.compile(
+    r"(?:^|[\n;&])\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=([^\n;&]+)"
+)
+_SED_SPAN = re.compile(r"(\d+)\s*,\s*(\d+)\s*p")
+_PATHISH = re.compile(
+    r"""['\"]([^'\"]+\.[A-Za-z0-9]{1,8})['\"]|((?:[\w./~-])+\.[A-Za-z0-9]{1,8})"""
+)
+
+
+def _assignment_map(cmd: str) -> dict[str, str]:
+    return {m.group(1): m.group(2).strip() for m in _ASSIGN_RE.finditer(cmd)}
+
+
+def _tokens_from_rhs(rhs: str) -> list[str]:
+    return [m.group(1) or m.group(2) for m in _PATHISH.finditer(rhs)]
+
+
+def _expand_operand(token: str, assigns: dict[str, str]) -> list[str]:
+    raw = token
+    if raw.startswith("${") and raw.endswith("}"):
+        raw = "$" + raw[2:-1]
+    if raw.startswith("$"):
+        rhs = assigns.get(raw[1:], "")
+        found = _tokens_from_rhs(rhs)
+        if found:
+            return found
+        if rhs and not rhs.startswith("$("):
+            return [rhs]
+        return []
+    return [token]
+
+
+def dump_paths_from_bash(cmd: str, cwd: Path, min_lines: int) -> list[Path]:
+    # ponytail: Spotify shunt — dump bins + sed print. python -c open() still dumps.
+    del min_lines
+    assigns = _assignment_map(cmd)
+    out: list[Path] = []
+    seen: set[str] = set()
+    for part in re.split(r"(?:&&|\|\||\n|;)", cmd):
+        part = part.strip()
+        if not part:
+            continue
+        if re.search(r"\bcat\s*(>>?|<<)", part):
+            continue
+        if "|" in part:
+            continue
+        try:
+            argv = shlex.split(part, posix=True)
+        except ValueError:
+            continue
+        i = 0
+        while i < len(argv) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[i]):
+            i += 1
+        if i >= len(argv):
+            continue
+        bin_ = Path(argv[i]).name
+        rest = argv[i + 1 :]
+        if bin_ == "sed":
+            if any(a == "-i" or a.startswith("-i") for a in rest):
+                continue
+            operands = [
+                a for a in rest if not a.startswith("-") and not _SED_SPAN.fullmatch(a)
+            ]
+        elif bin_ in _DUMP_BIN:
+            operands = [a for a in rest if not a.startswith("-")]
+        else:
+            continue
+        for op in operands:
+            for tok in _expand_operand(op, assigns):
+                path = Path(tok).expanduser()
+                if not path.is_absolute():
+                    path = cwd / path
+                try:
+                    path = path.resolve()
+                except OSError:
+                    continue
+                key = str(path)
+                if key in seen or not path.is_file():
+                    continue
+                seen.add(key)
+                out.append(path)
+    return out
+
+
+def should_block_bash(
+    cmd: str,
+    cwd: Path,
+    cfg: dict[str, Any] | None = None,
+) -> tuple[Path | None, int, str]:
+    settings = cfg or load_pm_read(cwd)
+    if not settings.get("enabled") or not (cmd or "").strip():
+        return None, 0, ""
+    min_lines = int(settings["min_lines"])
+    for path in dump_paths_from_bash(cmd, cwd, min_lines):
+        block, lines, reason = should_block_read(path, cfg=settings)
+        if block:
+            return path, lines, reason
+    return None, 0, ""
 
 
 def build_prompt(path: Path, question: str, body: str, lines: int) -> str:
@@ -326,6 +474,8 @@ def run_brief(path: Path, question: str, *, cfg: dict[str, Any] | None = None) -
     settings = cfg or load_pm_read(Path.cwd())
     if not path.is_file():
         raise SystemExit(f"pm_read: not a file: {path}")
+    if not looks_like_text(path):
+        raise SystemExit(f"pm_read: not a text file: {path}")
     lines = count_lines(path)
     body, _ = _read_body(path)
     prompt = build_prompt(path, question, body, lines)
@@ -346,7 +496,7 @@ def worker_brief_for_hook(path: Path, cfg: dict[str, Any]) -> str:
     """Run the adoc worker; on failure keep the deny hint so Fable still stops."""
     try:
         return run_brief(path, "", cfg=cfg)
-    except SystemExit as exc:
+    except (SystemExit, OSError, ValueError) as exc:
         hint = exc.args[0] if exc.args else "worker failed"
         return (
             f"{BRIEF_MARK}\npath: {path}\n"
@@ -356,6 +506,25 @@ def worker_brief_for_hook(path: Path, cfg: dict[str, Any]) -> str:
 
 
 def hook_main() -> int:
+    try:
+        return _hook_body()
+    except SystemExit:
+        raise
+    except Exception:
+        emit_allow_quiet()
+        return 0
+
+
+def emit_allow_quiet() -> None:
+    try:
+        from lib_payload import emit_allow  # noqa: WPS433
+
+        emit_allow(os.environ.get("AGENT_HOOK_CLIENT", "") or "")
+    except Exception:
+        return
+
+
+def _hook_body() -> int:
     hooks = Path(__file__).resolve().parent.parent / "hooks"
     if hooks.is_dir() and str(hooks) not in sys.path:
         sys.path.insert(0, str(hooks))
@@ -365,6 +534,7 @@ def hook_main() -> int:
         emit_deny,
         file_path,
         read_payload,
+        shell_command,
         tool_input,
         tool_name,
     )
@@ -375,19 +545,30 @@ def hook_main() -> int:
         return 0
     client = detect_client(payload)
     name = tool_name(payload).lower()
+    cwd = Path(str(payload.get("cwd") or payload.get("workspaceRoot") or os.getcwd()))
+    cfg = load_pm_read(cwd)
+    inp = tool_input(payload)
+    if name == "bash":
+        path, _lines, reason = should_block_bash(
+            shell_command(payload) or str(inp.get("command") or ""),
+            cwd,
+            cfg,
+        )
+        if path is not None:
+            emit_deny(client, reason)
+            return 2
+        emit_allow(client)
+        return 0
     if name != "read":
         emit_allow(client)
         return 0
-    inp = tool_input(payload)
     raw_path = file_path(payload)
     if not raw_path:
         emit_allow(client)
         return 0
-    cwd = Path(str(payload.get("cwd") or payload.get("workspaceRoot") or os.getcwd()))
     path = Path(raw_path)
     if not path.is_absolute():
         path = cwd / path
-    cfg = load_pm_read(cwd)
     block, _lines, reason = should_block_read(
         path,
         offset=inp.get("offset"),
@@ -395,7 +576,7 @@ def hook_main() -> int:
         cfg=cfg,
     )
     if block:
-        emit_deny(client, worker_brief_for_hook(path, cfg) or reason)
+        emit_deny(client, reason)
         return 2
     emit_allow(client)
     return 0
