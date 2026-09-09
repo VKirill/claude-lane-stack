@@ -1,3 +1,12 @@
+## 1.25.0 — 2026-09-09
+
+### Added
+- **`/bulk-reader` + `pm_read` CLI** (Spotify shunt-style). Fat files
+  (`pm_read.enabled`, default >350 lines) are mapped by the project's
+  cheap worker. The PreToolUse hook blocks full `Read` and shell dumps
+  (`cat` / `head` / `tail` / `sed`); Claude runs `pm_read --path FILE`
+  and keeps `PM_READ_BRIEF` only.
+
 ## 1.24.0 — 2026-09-01
 
 ### Added
