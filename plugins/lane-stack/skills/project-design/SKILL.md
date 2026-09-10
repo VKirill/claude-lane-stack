@@ -1,6 +1,6 @@
 ---
 name: project-design
-description: Lane-stack router for design/brand. Load ui-ux-pro-max. Full DESIGN.md at root and every UI app. Use when user says info, справка, как запускать project-design, lane-stack:project-design info, дизайн, токены, DESIGN.md, brand, UI, баннер, соцсети, or a UI run has no DESIGN.md.
+description: Lane-stack router for design/brand. Load ui-ux-pro-max. Full DESIGN.md at root and every UI app. Use when user says info, справка, как запускать project-design, lane-stack:project-design info, дизайн, токены, DESIGN.md, brand, UI, баннер, соцсети, or a UI run has no DESIGN.md. SKIP: UI slop / layout review (web-design).
 argument-hint: "[info]"
 ---
 
@@ -60,6 +60,10 @@ Search --design-system только дыры, вмержи в DESIGN.md этой
 5) Баннер / соцсети
 Load ui-ux-pro-max → brand/ + banner-design/.
 Размеры и voice → Surfaces в корневом и marketing DESIGN.md.
+
+6) Слоп / ревью вёрстки
+Не этот скилл. /lane-stack:web-design info
+Агент design-lead MODE=audit. Код — ран.
 
 UI-ран
 - Нет нужного DESIGN.md → сначала design-lead, потом run-init.

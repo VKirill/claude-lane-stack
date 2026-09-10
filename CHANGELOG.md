@@ -1,3 +1,17 @@
+## 1.26.0 — 2026-09-11
+
+### Added
+- **`web-design`** router: web-designer role, layout rules, routes
+  taste / impeccable / DESIGN.md / prototype. Audit is `design-lead`
+  `MODE=audit`; live Vue stays a writer run.
+- **`design-taste`**: lane adapter of
+  [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) (MIT).
+  Design read, dials, anti-slop tells. No React/Tailwind defaults.
+- **`impeccable-ui`**: lane adapter of
+  [pbakaus/impeccable](https://github.com/pbakaus/impeccable) (Apache-2.0).
+  Command map + craft-floor. No `PRODUCT.md`, no hooks, no
+  `npx impeccable install`.
+
 ## 1.25.0 — 2026-09-09
 
 ### Added

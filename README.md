@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.25.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.26.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -60,7 +60,10 @@
 | `project-onboard` | Паспорт репо: CLAUDE.md, MODULE_MAP, тесты | `DESIGN.md` (это `design-lead`) |
 | `project-life` | Идея → туду → план → PROGRESS / LESSONS | Холодный старт (это resume) |
 | `app-architect` | Новое приложение словами, файлы плана на диск | Ран |
-| `project-design` | Роутер на полные `docs/DESIGN.md` | Код UI |
+| `project-design` | Роутер на полные `docs/DESIGN.md` | Код UI, слоп-ревью |
+| `web-design` | Веб-дизайнер: слоп, вёрстка, роутер taste/impeccable | Живой Vue |
+| `design-taste` | Визуальный антислоп (адаптер taste-skill) | Код UI |
+| `impeccable-ui` | Структура / a11y / карта команд impeccable | Хуки, `PRODUCT.md` |
 | `ui-ux-pro-max` | Справочник стилей, a11y, баннеры | Сами DESIGN.md |
 | `docs-maintain` | Живые `docs/` по диффу | Вики, планы, новые фичи |
 | `lane-memory` | Факты, которых нет в коде (`.agents/memory/`) | PROGRESS / LESSONS |
@@ -174,7 +177,7 @@
 | `project-onboarder` | Паспорт (первый) |
 | `docs-maintainer` | Wiki после онборда / ночные docs |
 | `night-reviewer` | Ночной review |
-| `design-lead` | Полные DESIGN.md |
+| `design-lead` | Полные DESIGN.md + аудит слопа |
 | `memory-maintainer` | Корпус фактов |
 | `seo-specialist` | SEO harness |
 | `copy-lead` | Копирайт, ЦА, страницы |
@@ -190,7 +193,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.25.0
+cd claude-lane-stack && git checkout v1.26.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```

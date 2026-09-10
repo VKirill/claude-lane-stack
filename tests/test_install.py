@@ -65,6 +65,32 @@ class InstallTest(unittest.TestCase):
         self.assertIn("user-invocable: false", skill)
         self.assertLess(skill.find("## MUST"), skill.find("## Info"))
 
+    def test_web_design_skills_are_shipped(self) -> None:
+        skills = ROOT / "plugins" / "lane-stack" / "skills"
+        for name in ("web-design", "design-taste", "impeccable-ui"):
+            text = (skills / name / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn(f"name: {name}", text)
+            self.assertIn("## NEVER", text)
+        self.assertTrue(
+            (skills / "web-design" / "references" / "layout.md").is_file()
+        )
+        self.assertTrue(
+            (skills / "impeccable-ui" / "references" / "craft-floor.md").is_file()
+        )
+        info = (skills / "info" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("web-design", info)
+        self.assertIn("design-taste", info)
+        lead = (ROOT / "plugins" / "lane-stack" / "agents" / "design-lead.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("MODE=extract|seed|audit", lead)
+        self.assertIn("web-design", lead)
+        orch = (ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("web-design", orch)
+        self.assertIn("MODE=audit", orch)
+
     def test_site_copy_skills_are_shipped(self) -> None:
         skills = ROOT / "plugins" / "lane-stack" / "skills"
         for name in (
@@ -260,14 +286,13 @@ class InstallTest(unittest.TestCase):
         skills = ROOT / "plugins" / "lane-stack" / "skills"
         for name in (
             "seo-drmax-orchestrator",
-            "seo-prompt-engineering-2026",
-            "seo-evidence-based-2026",
-            "seo-copywriting",
-            "ai-detect",
-            "drmax-latent-intent",
-            "drmax-cvd",
+            "drmax-cocoon-engine-x4",
+            "drmax-brandcore",
             "drmax-text-humanization",
-            "drmax-lexadapt",
+            "ai-detect",
+            "drmax-signalforge",
+            "drmax-latent-intent",
+            "drmax-market-scoped",
             "proxy6",
             "page-prototype",
         ):
@@ -294,8 +319,8 @@ class InstallTest(unittest.TestCase):
             skill = skills / rel
             self.assertTrue(skill.is_file(), skill)
             self.assertIn(f"name: {name}", skill.read_text(encoding="utf-8"))
-        originals = skills / "seo-prompt-engineering-2026" / "references" / "originals"
-        self.assertTrue(originals.is_dir(), originals)
+        originals = skills / "drmax-cocoon-engine-x4" / "originals"
+        self.assertTrue((originals / "CP-Navigator-v1-9.md").is_file(), originals)
         life = skills / "seo-project-life" / "SKILL.md"
         self.assertTrue(life.is_file(), life)
         self.assertIn("seo-project-life — карта SEO-проекта", life.read_text(encoding="utf-8"))

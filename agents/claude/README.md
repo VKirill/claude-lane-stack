@@ -16,7 +16,7 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `project-onboarder` | Onboard | CLAUDE.md / docs pack | Codex Terra/Sol |
 | `docs-maintainer` | Docs | INIT + nightly living docs/ | Codex Luna max fast |
 | `memory-maintainer` | Memory | Opt-in fact corpus | Codex (adoc `stages.memory`) |
-| `design-lead` | Design | Extract/refresh `docs/DESIGN.md` | Claude |
+| `design-lead` | Design | Extract/refresh/audit `docs/DESIGN.md` | Claude |
 | `seo-specialist` | SEO | DrMax harness, `.agents/seo/`, `seo-*` CLI | Claude |
 | `copy-lead` | Copy | Audience + pages, `.agents/copy/` | Claude |
 | `tavily` | Search | Tavily REST, `.agents/research/` | Claude |

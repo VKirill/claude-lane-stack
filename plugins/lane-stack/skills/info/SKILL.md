@@ -53,6 +53,8 @@ resume ──► onboard? ──► туду / план ──► архитек
 
 `/lane-stack:project-design info`
 
+**`web-design`** — веб-дизайнер: слоп, ревью вёрстки, роутер на `design-taste` / `impeccable-ui`. Аудит пишет `design-lead` (`MODE=audit`). Чинить живой UI — ран после «делай». `/lane-stack:web-design info`
+
 **`ui-ux-pro-max`** — справочник рядом: стили, удобство, баннеры. Сами DESIGN.md не пишет. `/lane-stack:ui-ux-pro-max info`
 
 ### 5. `docs-maintain` — доки после кода
@@ -91,7 +93,7 @@ resume ──► onboard? ──► туду / план ──► архитек
 
 | Агент | Зачем |
 |---|---|
-| `design-lead` | полные DESIGN.md |
+| `design-lead` | полные DESIGN.md + аудит слопа |
 | `run-supervisor` | смотрит один ран |
 | `lane-supervisor` | одно действие `lane-ctl` |
 | `emergency-writer` | Codex после terminal block |

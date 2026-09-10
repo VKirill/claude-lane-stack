@@ -14,6 +14,7 @@ skills:
   - resume-project
   - project-onboard
   - project-design
+  - web-design
   - ui-ux-pro-max
   - app-architect
   - info
@@ -264,7 +265,7 @@ replace the write conveyor with teammates or Codex multi_agent inside the lane.
 | `night-reviewer` | Shell-out Codex review | No |
 | `project-onboarder` | Shell-out Codex onboard | No |
 | `docs-maintainer` | Shell-out Codex docs refresh | No |
-| `design-lead` | Extract/refresh `docs/DESIGN.md` | No |
+| `design-lead` | Extract/refresh/audit `docs/DESIGN.md` | No |
 | `seo-specialist` | SEO harness (DrMax, `.agents/seo/`) | No — not product code |
 | `copy-lead` | Site copy + audience (`.agents/copy/`) | No — not product code |
 | `tavily` | Web search / cited report (`.agents/research/`) | No — not product code |
@@ -292,6 +293,7 @@ that Claude Code natively uses **are allowed**:
 | SEO / семантика / контент под поиск | **seo-specialist** — never a writer lane, never PM-written DrMax |
 | Копирайт / ЦА / подача страницы | **copy-lead** — never a writer lane, never PM-written headlines |
 | Серый HTML-прототип страницы | skill **`page-prototype`** → `site/` · `app/` · `flows/` — never a writer lane, never DESIGN.md |
+| UI слоп / ревью вёрстки | skill **`web-design`** → **design-lead** `MODE=audit` — never a writer lane, never Vue |
 | Поиск в интернете / cited report | **tavily** — never a writer lane |
 
 **Hard line for `general-purpose`:**
@@ -394,6 +396,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
 9. **Onboard + docs (two agents, in order):** if passport thin → spawn **project-onboarder**, wait `DONE`. If `stages.docs.enabled` → then spawn **docs-maintainer**. Never both at once. Never Qwen/Grok.
    UI scan / missing `docs/DESIGN.md`: **design-lead** (skill `project-design`), not a writer lane.
+   UI slop / «проверь дизайн» / верстка-ревью: skill **`web-design`**, screenshot via chrome-devtools if URL, then **design-lead** `MODE=audit`. Fixes only after «делай» in a run (`read_first`: DESIGN.md + `web-design` + `design-taste` + `impeccable-ui`).
 10. **Never** long foreground Bash for Qwen/Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related writer tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.
 11. Write programmer = **`adoc` profile** (`main_write` + model/effort). When authoring tasks set `lane: <main_write>` exactly (never invent `kimi` if profile is `codex`). `run-supervisor` has no source-write tools. Codex Sol remains recovery + night review; Codex luna is a valid daytime writer when selected via adoc.
 12. Provider concurrency and verification concurrency are separate bounded pools; a model is never the lifecycle decision loop.
@@ -418,7 +421,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 never expand owns with caches.
 | Agent → **project-onboarder** | first: CLAUDE / `docs/llm` / app packs (`stages.onboard`) |
 | Agent → **docs-maintainer** | second, after onboard DONE: wiki (`stages.docs`) |
-| Agent → **design-lead** | extract/refresh `docs/DESIGN.md` |
+| Agent → **design-lead** | extract/refresh `docs/DESIGN.md`; `MODE=audit` after `web-design` |
 | Agent → **seo-specialist** | SEO / семантика / контент под поиск — never PM-written DrMax |
 | Agent → **copy-lead** | копирайт / ЦА / H1 / микрокопи — never PM-written page copy |
 | Write `.agents/prototypes/{site,app,flows}/` | skill **`page-prototype`** — gray HTML; not Vue, not DESIGN.md |

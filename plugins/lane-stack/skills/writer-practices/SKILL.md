@@ -29,6 +29,7 @@ writer-practices — стиль кода внутри owns_paths. Для writer,
 - Ошибки: сообщение + контекст. Пустой catch / return null — нельзя.
 - Тест: одно поведение, контракт, не private internals.
 - Нет drive-by format и «раз уж я здесь».
+- UI-экран: read_first DESIGN.md этой поверхности + web-design + design-taste + impeccable-ui.
 
 Важнее этого файла
 - CLAUDE.md / AGENTS.md / .agents/LESSONS.md в PROJECT_CWD
@@ -55,6 +56,7 @@ Do not create `.agents/**`, wiki, or README unless that path is in `owns_paths`.
 - Errors: specific message + context. Never empty `catch` / `return null` to hide a throw.
 - Tests: one behavior per test; assert the contract, not private internals.
 - No drive-by format, comments, or "while I'm here" refactors.
+- UI screen: `read_first` that app's `DESIGN.md` plus `web-design`, `design-taste`, `impeccable-ui`.
 
 ## Not your job
 

@@ -1,6 +1,6 @@
 ---
 name: page-prototype
-description: "Axure-like gray HTML wireframe of one page. Shared proto.css/js: slider, tabs, accordion, modal, toggle. Use when: прототип страницы, вайрфрейм, axure, html mock, кликабельный макет, слайдер. SKIP: live UI (dev-orchestrator run); tokens (project-design); copy brief only (site-copy-headlines)."
+description: "Axure-like gray HTML wireframe of one page. Shared proto.css/js: slider, tabs, accordion, modal, toggle. Use when: прототип страницы, вайрфрейм, axure, html mock, кликабельный макет, слайдер. SKIP: live UI (dev-orchestrator run); tokens (project-design); slop/layout review (web-design); copy brief only (site-copy-headlines)."
 argument-hint: "[info]"
 ---
 
