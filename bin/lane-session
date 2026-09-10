@@ -1191,6 +1191,14 @@ def sandbox_provider_command(
                 sandbox_command[0],
             )
         )
+        # Codex >= 0.154 spawns its shell/patch tools through a sibling
+        # `codex-code-mode-host` binary resolved next to argv[0]; expose it
+        # next to the sandboxed binary so tools can start.
+        code_mode_host = codex_binary.parent / "codex-code-mode-host"
+        if code_mode_host.is_file():
+            wrapped.extend(
+                ("--ro-bind", str(code_mode_host), "/opt/codex-code-mode-host")
+            )
     wrapped.extend(("--chdir", str(cwd), "--", *sandbox_command))
     return wrapped
 
