@@ -6,7 +6,7 @@ mode: any
 steps:
   - id: gist
     action: agent
-    run: "GIST v3.3 Creation → gist-plan.md + draft.md"
+    run: "X4 GIST v4.3 Creation → gist-plan.md + draft.md"
   - id: quality
     action: module
     uses_module: content-quality

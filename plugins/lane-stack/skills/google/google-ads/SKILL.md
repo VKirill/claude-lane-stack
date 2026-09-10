@@ -1,7 +1,7 @@
 ---
 name: google-ads
 description: |
-  Спецификации Google Ads для российского рынка 2026 — 8 форматов (RSA / Performance Max / Display / Demand Gen / Video / App / Call / Shopping), полный набор character limits (headline 30, description 90, long-headline 90, business-name 25 и т.д.), creative-frameworks под RSA-логику динамической сборки, Google Ads Policies (запрещённые ниши, ограничения по claims, financial services, healthcare, gambling), pre-launch checklist, бенчмарки CTR/CPC/CR/QS по индустриям, **критичный российский контекст** (Google Ads недоступен для размещения в РФ с 22.09.2022 — клиентам с РФ-таргетом перенаправлять на Яндекс.Директ; российские клиенты могут таргетить только зарубеж через зарубежные юрлица). Включает **Python-валидатор `scripts/validate-ads.py`** для проверки длины headlines/descriptions/paths перед запуском. Use when: «Google Ads», «гугл реклама», «РСЯ vs Google», «лимиты для RSA», «PMax кампания», «headline в Google», «character limit», «pre-launch checklist Google», «бенчмарки CTR Google», «можно ли запустить Google Ads в Россию», «таргет на США через Google». SKIP: Я.Директ (→yandex-direct-creatives), VK Ads, TG Ads (→telegram-ads-spec), SEO / органика (→seo-evidence-based-2026), Google Search Console / аналитика (→google-search-console / google-analytics), Google Ads API программно (→google-ads-api если будет создан).
+  Спецификации Google Ads для российского рынка 2026 — 8 форматов (RSA / Performance Max / Display / Demand Gen / Video / App / Call / Shopping), полный набор character limits (headline 30, description 90, long-headline 90, business-name 25 и т.д.), creative-frameworks под RSA-логику динамической сборки, Google Ads Policies (запрещённые ниши, ограничения по claims, financial services, healthcare, gambling), pre-launch checklist, бенчмарки CTR/CPC/CR/QS по индустриям, **критичный российский контекст** (Google Ads недоступен для размещения в РФ с 22.09.2022 — клиентам с РФ-таргетом перенаправлять на Яндекс.Директ; российские клиенты могут таргетить только зарубеж через зарубежные юрлица). Включает **Python-валидатор `scripts/validate-ads.py`** для проверки длины headlines/descriptions/paths перед запуском. Use when: «Google Ads», «гугл реклама», «РСЯ vs Google», «лимиты для RSA», «PMax кампания», «headline в Google», «character limit», «pre-launch checklist Google», «бенчмарки CTR Google», «можно ли запустить Google Ads в Россию», «таргет на США через Google». SKIP: Я.Директ (→yandex-direct-creatives), VK Ads, TG Ads (→telegram-ads-spec), SEO / органика (→seo-specialist), Google Search Console / аналитика (→google-search-console / google-analytics), Google Ads API программно (→google-ads-api если будет создан).
 stacks:
   - google-ads
   - paid-media
@@ -39,7 +39,7 @@ risk: high-stakes
 ## Do not use this skill when
 
 - Задача про Я.Директ / TG Ads — `yandex-direct-creatives`, `telegram-ads-spec` (VK Ads spec снят из каталога)
-- Задача про органическое продвижение в Google — это SEO (`seo-evidence-based-2026`)
+- Задача про органическое продвижение в Google — это SEO (`seo-specialist`)
 - Задача про Google Search Console, GA4, GTM — это аналитика (`google-search-console`, `google-analytics`, `google-tag-manager`)
 - Программная работа с Google Ads API (создание кампаний через код) — это отдельный skill (если/когда `google-ads-api` будет создан)
 - Креатив-визуал баннеров / image assets — делегируй `worker-image-designer` (агент)

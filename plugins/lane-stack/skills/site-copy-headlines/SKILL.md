@@ -1,6 +1,6 @@
 ---
 name: site-copy-headlines
-description: "Fill .agents/copy/pages/<slug>.md headlines and flow. Schwartz awareness, Bly 4 U's, Caples types, Sugarman slide. Use when H1, лендинг, CTA. SKIP: no audience.md yet; SEO title (seo-copywriting)."
+description: "Fill .agents/copy/pages/<slug>.md headlines and flow. Schwartz awareness, Bly 4 U's, Caples types, Sugarman slide. Use when H1, лендинг, CTA. SKIP: no audience.md yet; SEO title (seo-specialist)."
 argument-hint: "[info]"
 ---
 

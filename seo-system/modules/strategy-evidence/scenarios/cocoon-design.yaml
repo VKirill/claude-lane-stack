@@ -1,12 +1,12 @@
 id: cocoon-design
 module: strategy-evidence
-title: Semantic cocoon topology
+title: Semantic cocoon 4.0
 when: "Site >~50 pages or topical expansion"
 mode: any
 steps:
   - id: design
     action: agent
-    run: "Semantic Cocoon Topology + matriarchal linking notes → strategy/cocoons/"
+    run: "Cocoon Engine X4 /кокон → strategy/cocoons/"
 acceptance:
   - "At least one cocoon map file"
 next_modules: [content-gist]

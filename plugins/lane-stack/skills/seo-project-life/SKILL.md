@@ -56,7 +56,7 @@ passport → discovery → strategy → technical → content → offpage → me
 | Capability catalog | `~/.agents/seo-system/` | 18 modules + playbooks. Not per-project. |
 | CLI | `~/.agents/bin/seo-*` | `seo-resume`, `seo-module`, `seo-dispatch`, … |
 | Settings | `seodoc` | Providers, OpenRouter models, stage agents |
-| Originals | skill `seo-prompt-engineering-2026` | Open 1:1, never rewrite |
+| Originals | thin DrMax skills (`ORIGINAL.md` / `originals/`) | Open 1:1, never rewrite |
 
 If `~/.agents/seo-system/modules` is missing: the catalog is not installed.
 Do not invent playbooks. Tell the human to rerun lane-stack `./install.sh`

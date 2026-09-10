@@ -8,7 +8,7 @@ depends_on: [core-harness, services-data]
 soft_depends_on: [proxy-fetch, routing-agents, intent-semantics]
 provides: [serp.dumps, clustering.config, clustering.temperature]
 requires_provides: []
-skills: [xmlstock, mutagen, seo-prompt-engineering-2026]
+skills: [xmlstock, mutagen]
 originals: []
 cli: [seo-serp-save, seo-routing, seodoc]
 artifacts:

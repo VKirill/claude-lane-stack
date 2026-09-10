@@ -21,7 +21,7 @@ module_yaml_fields:
   provides: list[string]        # capability tags other modules can require
   requires_provides: list[string]
   skills: list[string]          # ~/.agents/skills names or paths
-  originals: list[string]       # paths under seo-prompt-engineering-2026/references/originals
+  originals: list[string]       # paths relative to thin DrMax skill originals
   cli: list[string]             # binaries in ~/.agents/bin
   artifacts:
     writes: list[glob under .agents/seo/<slug>/]

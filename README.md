@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.26.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.27.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -130,7 +130,7 @@
 
 Открыть: `lane-pm` с `LANE_PM_AGENT=copy-lead` · `claude --agent copy-lead` · `/lane-stack:copy-project-life` · «весь анализ копирайта».
 
-Не путать с `seo-copywriting` (ключи, title, плотность) и с `project-design` (токены).
+Не путать с `seo-specialist` (ключи, title) и с `project-design` (токены).
 
 ### SEO (не код сайта)
 
@@ -139,15 +139,15 @@
 | Скилл | Роль |
 |---|---|
 | `seo-project-life` | Карта: паспорт, доска, фазы, CLI |
-| `seo-drmax-orchestrator` | Вести пайплайн DrMax, не один промпт |
-| `seo-prompt-engineering-2026` | Канон промптов книги (не переписывать) |
-| `seo-evidence-based-2026` | NavBoost / Q* / Twiddlers, аудит |
-| `seo-copywriting` | Ключи и мета в тексте |
-| `ai-detect` | Роботность LinguaForensic |
-| `drmax-cvd` | Выживет ли страница в AI Overview |
+| `seo-drmax-orchestrator` | Вести пайплайн DrMax |
+| `drmax-cocoon-engine-x4` | Кокон 4.0, TGA, GIST 4.3, Mapper |
+| `drmax-brandcore` | SSoT бренда |
+| `drmax-text-humanization` | Редактура после экспорта |
+| `ai-detect` | LinguaForensic 3.9.4 |
+| `drmax-signalforge` | Эксперимент на живой URL |
 | `drmax-latent-intent` | Скрытый интент одной фразы |
-| `drmax-text-humanization` | Редактура после GIST, не обход детекторов |
-| `drmax-lexadapt` | Упростить под CEFR / ТРКИ |
+| `drmax-market-scoped` | Дифференциация локалей |
+| `drmax-promptsculptor` | Сжатие промпта (не в основном пайпе) |
 | `seo-tools/` | Роутер: `mutagen` (Wordstat), `xmlstock` (живой SERP) |
 | `proxy6` | Пул прокси для fetch / SERP |
 | `yandex/` | Роутер: Cloud, Direct, креативы, Метрика, Вебмастер |
@@ -193,7 +193,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.26.0
+cd claude-lane-stack && git checkout v1.27.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```

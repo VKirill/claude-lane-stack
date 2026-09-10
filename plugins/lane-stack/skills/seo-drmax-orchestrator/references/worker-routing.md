@@ -35,11 +35,10 @@ Default for agents: `never_while_running` until hard ceiling or idle-after-soft.
 | Task shape | Executor | Why |
 |---|---|---|
 | Ambiguous diagnosis, prioritization, client coaching | Claude `seo-specialist` (main) | Judgment + multi-skill routing |
-| One heavy DrMax system (TITAN, full Assessor, long GIST) | Claude subagent with skill preload | Large context, quality |
-| Latent intent / CVD / LexAdapt on **many** items | CLI batch (`qwen` / `deepseek` / `kimi`) | Cheap volume; tight JSON schema |
-| Article drafts from approved GIST plan | `grok` or `qwen` with GIST contract attached | Throughput |
-| Humanization pass | `drmax-text-humanization` on mid-tier model | Editorial, lower stakes than strategy |
-| ai-detect full mode | Strong model; Mode B can be separate call | Knockoff needs isolation |
+| One heavy DrMax system (X4, BrandCore) | Same chat, originals attached | Large context, quality |
+| Latent intent on **many** queries | CLI batch (`qwen` / `deepseek` / `kimi`) | Cheap volume; tight JSON schema |
+| Article drafts from approved X4/GIST 4.3 plan | `grok` or `qwen` with that original attached | Throughput |
+| Humanization pass | `drmax-text-humanization` on mid-tier model | Editorial, after export |
 | Mutagen / xmlstock / GSC / GA4 / Webmaster | Main agent Bash+curl via API skills | Deterministic tools |
 | SERP harvest for clustering | `seo-serp-save` (+ proxy6 if enabled) | Persist dumps; re-cluster with new temperature |
 | Page HTML for agents | `seo-scan` → `snapshot.md` / `seo-html2md` | Fewer tokens than raw HTML |
@@ -62,7 +61,7 @@ Example shape (illustrative):
 
 ```bash
 # Pseudocode — use the project's actual CLI wrappers
-cat ORIGINALS/GIST-v3.3.md PASSPORT.md BRIEF.md | \
+cat ORIGINALS/GIST-v4.3.md PASSPORT.md BRIEF.md | \
   grok --system-from-stdin -o .agents/seo/acme/content/pages/foo/gist-plan.md
 ```
 
@@ -71,12 +70,11 @@ cat ORIGINALS/GIST-v3.3.md PASSPORT.md BRIEF.md | \
 | Phase | Default |
 |---|---|
 | Passport / strategy | Claude high |
-| Discovery prompts 01–25 selective | Claude or strong CLI |
+| Discovery / X4 | Claude or strong CLI |
 | SERP/freq harvest | scripts + mutagen/xmlstock |
 | Bulk clustering assist | deepseek/qwen |
 | Draft writing | grok / qwen |
-| CVD + humanization | mid model |
-| Detector full | Claude or strong CLI |
+| Humanization | mid model |
 | Final gate | Claude |
 
 ## Parallelism

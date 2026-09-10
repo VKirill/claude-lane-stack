@@ -8,7 +8,7 @@ depends_on: [strategy-evidence]
 soft_depends_on: [content-gist, brand-entity]
 provides: [offpage.listicle, offpage.link_plan]
 requires_provides: []
-skills: [seo-prompt-engineering-2026, seo-evidence-based-2026]
+skills: [drmax-brandcore]
 originals:
   - "drmax-prompt-channel/46/listicle-citation-engine-00-project-intake.txt"
   - "drmax-prompt-channel/45/listicle-citation-engine-01-listicle-discovery.txt"

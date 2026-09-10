@@ -8,12 +8,9 @@ depends_on: [discovery-research]
 soft_depends_on: [services-data]
 provides: [intent.map, intent.latent, intent.modifiers]
 requires_provides: []
-skills: [seo-prompt-engineering-2026, drmax-latent-intent]
+skills: [drmax-latent-intent, drmax-cocoon-engine-x4]
 originals:
-  - "book-v1.5-prompts/03-Search Demand Mapper v3.txt"
-  - "telegram-channel/1374/03-02-Search Intent Classifier v3.txt"
-  - "telegram-channel/1378/03-03-Query Modifier & Language Pattern Extractor.txt"
-  - "drmax-prompt-channel/82/latent_intent_analyst_v2.2.md"
+  - "drmax-latent-intent/ORIGINAL.md"
 cli: []
 artifacts:
   writes:

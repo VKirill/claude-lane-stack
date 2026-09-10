@@ -39,8 +39,8 @@ See `~/.agents/seo-system/README.md`.
 
 1. **Disk is truth.** Chat is disposable. State lives under `.agents/seo/`.
 2. **Passport before strategy.** No full strategy without Collector→Validator (or logged gaps + explicit user skip).
-3. **Originals 1:1.** Never rewrite DrMax prompts; open files under `seo-prompt-engineering-2026/references/originals/`.
-4. **Newest version for new work.** LinguaForensic 3.9.4, GIST 3.3, Humanization 1.6.1, CVD 2.3, Latent Intent 2.2, Forensic v3.
+3. **Originals 1:1.** Never rewrite DrMax prompts; open thin-skill `ORIGINAL.md` / `originals/`.
+4. **Newest version for new work.** X4 (GIST 4.3), BrandCore 0.8, Humanization 1.6.1, LinguaForensic 3.9.4, Latent Intent 2.2.
 5. **Evidence over vibe.** SERP/freq/traffic require tools + date/region; else mark hypothesis.
 6. **Provenance.** Every prompt run → `seo-prompt-log` (or row in `prompts-used/log.tsv`).
 7. **Delegation contract.** Workers get original path + inputs + output path via `seo-dispatch`; never «сделай по DrMax» alone.

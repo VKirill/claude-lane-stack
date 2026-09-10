@@ -1,6 +1,6 @@
 ---
 name: seo-tools
-description: "[RU: SEO-инструментарий] Роутер платных SEO-API: Mutagen (Wordstat, конкуренция, биды) и xmlstock (SERP XML Яндекс/Google). SKILL.md не содержит API — читает дочерний SKILL.md. Use when: seo tools, частотность, вордстат, wordstat, позиции сайта, парсинг выдачи, mutagen, xmlstock, /seo-tools. SKIP: Вебмастер/GSC своего сайта→yandex/google; SEO-копирайтинг→seo-copywriting; стратегия→seo-evidence-based-2026; Ahrefs/Semrush."
+description: "[RU: SEO-инструментарий] Роутер платных SEO-API: Mutagen (Wordstat, конкуренция, биды) и xmlstock (SERP XML Яндекс/Google). SKILL.md не содержит API — читает дочерний SKILL.md. Use when: seo tools, частотность, вордстат, wordstat, позиции сайта, парсинг выдачи, mutagen, xmlstock, /seo-tools. SKIP: Вебмастер/GSC своего сайта→yandex/google; кокон/текст→drmax-cocoon-engine-x4; Ahrefs/Semrush."
 stacks:
   - seo
   - ru-seo
@@ -37,8 +37,8 @@ Inventory is two tools now. To add a third: drop a folder next to `mutagen/` / `
 ## Do not use this skill when
 
 - Поисковые запросы **своего** сайта → `yandex` (Вебмастер) или `google` (Search Console)
-- Написать SEO-текст → `seo-copywriting`
-- SEO-стратегия / кокон → `seo-evidence-based-2026`
+- Написать SEO-текст / кокон → `drmax-cocoon-engine-x4` затем `drmax-text-humanization`
+- Живая URL + GSC эксперимент → `drmax-signalforge`
 - Key Collector desktop, Ahrefs, Semrush, официальный Wordstat API — **нет скилла**
 - Свой скрапер SERP через прокси → `proxy6`
 
@@ -103,7 +103,7 @@ Do not share API keys or one HTTP client across the two.
 - `yandex` — Вебмастер (запросы **своего** сайта), Direct
 - `google` — Search Console (запросы **своего** сайта)
 - `proxy6` — свой скрапинг SERP, если xmlstock не подходит
-- `seo-copywriting`, `seo-evidence-based-2026` — текст и стратегия, не API
+- `drmax-cocoon-engine-x4`, `drmax-text-humanization`, `drmax-signalforge` — метод, не API
 
 ## API Reference
 

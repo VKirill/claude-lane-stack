@@ -15,4 +15,5 @@ chain:
   - module: content-gist
     scenario: meta-step8
 notes: |
-  SERP evidence required before final page job claim.
+  Prefer X4 /страница if the page sits in a cluster. Latent Intent only for one isolated query.
+  SERP evidence required before final page-type claim.

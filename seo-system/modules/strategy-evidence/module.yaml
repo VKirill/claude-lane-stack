@@ -3,12 +3,12 @@ title: Evidence-based strategy & cocoons
 phase: strategy
 status: active
 version: "1.0.0"
-summary: "Q* vs NavBoost, semantic cocoons, prioritised backlog from leak signals."
+summary: "Cocoon 4.0 via X4; backlog from graph + evidence."
 depends_on: [passport-onboard, discovery-research]
 soft_depends_on: [intent-semantics, technical-seo]
 provides: [strategy.doc, strategy.cocoons, strategy.backlog]
 requires_provides: [passport.anamnesis]
-skills: [seo-evidence-based-2026, seo-drmax-orchestrator]
+skills: [drmax-cocoon-engine-x4, seo-drmax-orchestrator]
 originals: []
 cli: []
 artifacts:
@@ -20,6 +20,6 @@ artifacts:
 env: []
 agent_triggers: ["стратегия", "кокон", "Q*", "NavBoost"]
 entrypoints:
-  agent: "Load seo-evidence-based-2026; write strategy/01-strategy.md + backlog.yaml"
+  agent: "X4 /кокон → strategy/cocoons/ + backlog.yaml"
   cli: "seo-module scenario strategy-evidence qstar-navboost"
 scenarios: [qstar-navboost.yaml, cocoon-design.yaml, titan-os.yaml]

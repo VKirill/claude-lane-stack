@@ -1,13 +1,13 @@
 ---
 name: drmax-text-humanization
-description: "DrMax TEXT HUMANIZATION v1.6.1 RUNTIME — редакционный слой после GIST: ясность, естественность, decision value без ломки semantic contract и без detector-evasion. Use when: очеловечить текст, humanization, довести черновик, GIST handoff, сделать текст естественнее, editorial rewrite SEO. SKIP: детекция AI (→ai-detect), упрощение под CEFR/ТРКИ (→drmax-lexadapt), создание структуры с нуля (→GIST)."
+description: "DrMax TEXT HUMANIZATION v1.6.1 RUNTIME — last-mile editorial after X4/GIST export: clarity, naturalness, decision value; no semantic-contract break, no detector-evasion. Use when: очеловечить текст, humanization, довести черновик, GIST handoff, сделать текст естественнее. SKIP: cocoon/IA (→drmax-cocoon-engine-x4); AI-style measure (→ai-detect, not always-on)."
 ---
 
 # TEXT HUMANIZATION by DrMax v1.6.1
 
 ## When
 
-- После GIST Creation / rewrite: delivery layer only
+- After X4 `экспорт` or an approved draft: delivery layer only
 - Draft is factually approved; need natural professional prose
 - **Not** for gaming AI detectors (that is a different, discouraged goal)
 
@@ -24,11 +24,11 @@ description: "DrMax TEXT HUMANIZATION v1.6.1 RUNTIME — редакционны�
 ## Place in pipeline
 
 ```
-GIST draft (+ handoff) → Text Humanization → (optional) ai-detect check → publish
+X4 export / approved draft → Text Humanization → ai-detect → publish
 ```
 
 ## Related
 
-- GIST v3.3 in `seo-prompt-engineering-2026`
-- `ai-detect` — separate detector pass, not a substitute for humanization
-- `drmax-lexadapt` — proficiency-level simplification (different goal)
+- `drmax-cocoon-engine-x4` — structure and GIST 4.3; this skill does not design pages
+- `ai-detect` — LinguaForensic 3.9.4 measure after this pass; not a substitute
+- `drmax-signalforge` — live-URL experiments, not prose polish

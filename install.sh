@@ -68,7 +68,7 @@ KEEP_CLAUDE_SKILLS="project-life google yandex seo-tools"
 # User-owned skills in ~/.agents/skills: canonical on this host, never
 # overwritten by install (repo copy is the distribution snapshot).
 KEEP_AGENTS_SKILLS="project-life"
-STALE_SKILLS="agent-todos project-memory ga4-data-api google-cloud-auth google-search-console yandex-metrica yandex-webmaster mutagen xmlstock"
+STALE_SKILLS="agent-todos project-memory ga4-data-api google-cloud-auth google-search-console yandex-metrica yandex-webmaster mutagen xmlstock seo-prompt-engineering-2026 seo-evidence-based-2026 seo-copywriting drmax-cvd drmax-lexadapt"
 
 # bins
 for executable in "$STACK_ROOT"/bin/*; do

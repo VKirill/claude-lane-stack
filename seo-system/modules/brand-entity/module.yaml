@@ -3,27 +3,26 @@ title: Brand entity & SERM
 phase: offpage
 status: active
 version: "1.0.0"
-summary: "Entity Footprint, Brand Poisoning, market-scoped differentiation."
+summary: "BrandCore SSoT + market-scoped locale split."
 depends_on: [passport-onboard]
 soft_depends_on: [services-data]
 provides: [brand.entity, brand.serm]
 requires_provides: []
-skills: [seo-prompt-engineering-2026, seo-evidence-based-2026]
+skills: [drmax-brandcore, drmax-market-scoped]
 originals:
-  - "drmax-prompt-channel/57/ENTITY FOOTPRINT - PROMPT 1.txt"
-  - "drmax-prompt-channel/58/ENTITY FOOTPRINT - PROMPT 2.txt"
-  - "drmax-prompt-channel/59/Brand Entity Poisoning Forensics -v-1-0.txt"
-  - "drmax-prompt-channel/61/Ultimate Market-Scoped Differentiation.txt"
+  - "drmax-brandcore/ORIGINAL.md"
+  - "drmax-brandcore/NAVIGATOR.md"
+  - "drmax-market-scoped/ORIGINAL.md"
 cli: []
 artifacts:
   writes:
-    - ".agents/seo/<slug>/offpage/entity-footprint/**"
-    - ".agents/seo/<slug>/offpage/brand-poisoning/**"
+    - ".agents/seo/<slug>/passport/BRANDCORE.md"
+    - ".agents/seo/<slug>/offpage/locales/**"
   reads:
     - ".agents/seo/<slug>/ANAMNESIS.md"
 env: []
 agent_triggers: ["entity", "SERM", "бренд в LLM", "негатив бренд"]
 entrypoints:
-  agent: "Entity Footprint 1→2; Poisoning if negatives"
+  agent: "BrandCore fill; Market-Scoped if 2+ locales"
   cli: "seo-module scenario brand-entity footprint"
 scenarios: [footprint.yaml, poisoning.yaml, locales.yaml]

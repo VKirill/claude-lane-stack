@@ -1,6 +1,6 @@
 ---
 name: drmax-latent-intent
-description: "DrMax Latent Intent Analyst v2.2 — статический разбор явных и скрытых интентов одного текстового запроса (human/json/minimal). Без SERP, каталога, истории и поведения. Use when: скрытый интент, latent intent, разбери запрос, подтекст запроса, что реально хочет пользователь по фразе, intent analyst. SKIP: кластеризация семантики (→Search Demand Mapper + Intent Classifier в seo-prompt-engineering-2026), SERP-проверка (→xmlstock + SERP Reality Check), полный SEO-аудит (→seo-specialist)."
+description: "DrMax Latent Intent Analyst v2.2 — static explicit+hidden intents for one query text (human/json/minimal). No SERP, catalog, history, behavior. Use when: скрытый интент, latent intent, разбери запрос, подтекст запроса, intent analyst. SKIP: cocoon/cluster (→drmax-cocoon-engine-x4, TGA M06); SERP (→xmlstock)."
 ---
 
 # Latent Intent Analyst v2.2
@@ -22,11 +22,12 @@ description: "DrMax Latent Intent Analyst v2.2 — статический раз
 ## Place in pipeline
 
 ```
-query → Latent Intent Analyst → (optional) Search Intent Classifier + SERP
-      → GIST marker / page job → content
+one query → Latent Intent Analyst → SERP if the page-type claim needs proof
 ```
+
+Do not run this in the same job as X4 (TGA already has M06).
 
 ## Related
 
-- `seo-prompt-engineering-2026` (03 Search Demand Mapper, Intent Classifier, Query Modifier)
-- `seo-drmax-orchestrator` (phase routing)
+- `drmax-cocoon-engine-x4` — cluster / page set
+- `seo-drmax-orchestrator` — phase routing

@@ -1,6 +1,6 @@
 ---
 name: copy-project-life
-description: "Карта копирайта сайта: шаблоны и цепочка файлов в .agents/copy/. Агент copy-lead. Use when copy, копирайт, анамнез, buyer persona, заголовок лендинга, site-copy. SKIP: SEO-ключи (seo-copywriting); код и DESIGN.md."
+description: "Карта копирайта сайта: шаблоны и цепочка файлов в .agents/copy/. Агент copy-lead. Use when copy, копирайт, анамнез, buyer persona, заголовок лендинга, site-copy. SKIP: SEO-ключи (seo-specialist); код и DESIGN.md."
 argument-hint: "[info]"
 ---
 

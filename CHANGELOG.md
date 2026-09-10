@@ -1,3 +1,16 @@
+## 1.27.0 — 2026-09-11
+
+### Changed
+- **Current DrMax pack.** Live skills: Cocoon Engine X4, BrandCore,
+  Humanization, ai-detect 3.9.4, SignalForge, Latent Intent,
+  Market-Scoped, PromptSculptor. `seo-specialist` and
+  `seo-drmax-orchestrator` route to these only.
+
+### Removed
+- Book/corpus skills: `seo-prompt-engineering-2026`,
+  `seo-evidence-based-2026`, `seo-copywriting`, `drmax-cvd`,
+  `drmax-lexadapt`. `install.sh` treats them as stale host copies.
+
 ## 1.26.0 — 2026-09-11
 
 ### Added

@@ -1,119 +1,66 @@
-# Activation matrix — when which DrMax system fires
+# Activation matrix — current DrMax only
 
-Newest official version wins for new work. Paths are under  
-`seo-prompt-engineering-2026/references/originals/` unless a thin skill is listed.
+Newest official version wins. Open the thin skill original 1:1.
+
+Removed from the stack (do not load): old prompt corpus, leak-book skill, seo-copywriting, CVD, LexAdapt.
 
 ## A. Project entry
 
-| Trigger | System | Version / skill |
-|---|---|---|
-| Messy brief, many unknowns | Universal Project Data Collector | book-v1.5 `БОНУСЫ/…Collector v2` |
-| Passport exists but dirty | Project Data Validator & Normalizer | book-v1.5 bonuses |
-| Full strategic OS dump (Bing/Google AI Performance etc.) | SEO TITAN OS | prompt-channel `12/` |
-
-## B. Book v1.5 research systems (selective)
-
-| Need | Systems (numbers) |
+| Trigger | System |
 |---|---|
-| Niche map | 01 → optionally 02, 21, 22 |
-| Demand / semantics start | **03** Search Demand Mapper → channel **Intent Classifier** → **Query Modifier** |
-| Trends | **04** book lite **or** Trend v4 (`prompt-channel/7`) for applied early signals |
-| Audience | 05 → 06 → 07; deep voice → Reddit Mapper 0–6 |
-| Buyer path queries | 08 or 15 (pin which version) |
-| Language of niche | 09 |
-| Reality check | **10 SERP Reality Check** (always before big bets) |
-| Season / geo / commercial | 11, 12, 13 |
-| White space | 14 + InfoGapRadar |
-| Platforms | 16 |
-| Trust / YMYL | 17 + Entity 18 + Regulatory 19 |
-| Linkability | 20; execution → Listicle engine |
-| Entry difficulty / monetization | 21, 22 |
-| Community voice | 23 |
-| Format fit | 24 |
-| AI search / GEO visibility | 25 + LSI 2.0 + Chunk Sentinel |
+| New / dirty company facts, claims, legal | **`drmax-brandcore`** → `passport/BRANDCORE.md` |
+| Messy URL/brief, no facts yet | `seo-onboard` (harness) then BrandCore if claims matter |
+| Site / cluster / section from an idea | **`drmax-cocoon-engine-x4`** `/start` → `/кокон` |
 
-Competitor bonus chain (order fixed):  
-Landscape Mapper → Strategy Deconstructor → Weakness Extractor → SERP & Demand Gap → Competitor-Informed Strategy Builder.
-
-## C. Intent & page job
+## B. Intent & architecture
 
 | Trigger | System |
 |---|---|
-| Single query subtext | **`drmax-latent-intent` v2.2** |
-| Corpus intent taxonomy | Search Intent Classifier v3 |
-| Modifiers / language shifts | Query Modifier Extractor |
-| Live proof of page type | Fresh SERP + SERP Reality Check |
-| Page design non-replaceable | **GIST v3.3** |
+| One query, no cocoon job | **`drmax-latent-intent`** v2.2 |
+| Cluster, IA, page-or-block, links, hidden intents in a topic | **X4** (TGA M06 inside — do not also run Latent Intent) |
+| Live SERP proof of page type | `xmlstock` + dated dump |
 
-Do not invent unpublished stages 3.4–3.7 as “DrMax originals”.
+## C. Content
 
-## D. Content production
-
-| Stage | System | Skill |
-|---|---|---|
-| Structure / uniqueness | GIST Content Logic v3.3 | corpus + pocketbook |
-| Draft body | GIST Creation + multi-stage content PE | evidence-based multi-stage |
-| Replaceability score | CVD v2.3 | `drmax-cvd` |
-| Editorial naturalness | Text Humanization v1.6.1 | `drmax-text-humanization` |
-| Proficiency simplify | LexAdapt v1.5 | `drmax-lexadapt` |
-| AI-style risk | LinguaForensic **v3.9.4** | `ai-detect` |
-| Assessor quality | MC Quality lite/full | prompt-channel 4–5 |
-| Spam / scaled | Spam audit | prompt-channel 6 |
-| Ranking pipeline page | page-audit-001 | 21 |
-| Good content still loses | SERP Barrier Breaker | 22 |
-| Meta title/description | GIST Step 8 + seo-copywriting | |
-
-Order for a new article:
+| Stage | System |
+|---|---|
+| Structure, jobs, drafts, cluster audit | X4 GIST **4.3** + Pilot |
+| After `экспорт` | **`drmax-text-humanization`** v1.6.1 |
+| AI-style / knockoff measure | **`ai-detect`** v3.9.4 (after Humanization, not instead of it) |
+| Locales that must not collapse | **`drmax-market-scoped`** |
 
 ```text
-passport → demand/intent → GIST plan → draft → CVD → Humanization
-→ (optional LexAdapt) → ai-detect if risk → Assessor MC → publish
+BrandCore (if claims) → X4 → export → Humanization → ai-detect → publish
 ```
 
-## E. HTML / LLM extractability
+## D. Measure / iterate one URL
 
-SemanticRank Orchestrator (6 files, prompt-channel 50–55) — HTML semantics, lists, entity clarity.  
-Chunk Sentinel — chunk boundaries for RAG.  
-LSI 2.0 — LLM citation readiness.
-
-## F. Brand & entity
-
-| Need | System |
+| Trigger | System |
 |---|---|
-| How Google/LLM see brand | Entity Footprint 1→2 |
-| Negatives / poisoning | Brand Entity Poisoning Forensics |
-| Locales differentiation | Ultimate Market-Scoped Differentiation |
-| Official entity | evidence-based Official Entity Validation |
+| One live URL + 5 competitors + GSC | **`drmax-signalforge`** v0.4 |
+| Positions / freq only | `xmlstock` / `mutagen` |
+| Own-site Search Console / Metrica | GSC / GA4 / Webmaster / Metrica skills |
 
-## G. Off-page
+## E. Scenario shortcuts
 
-Listicle Citation Engine 00→06 (no skip intake/quality gate).  
-Forensic SEO Due Diligence **v3** for YouTube idea mining (v2 archive only).
-
-## H. Execution signals (book Доказательное SEO)
-
-Map strategy items to capabilities in `seo-evidence-based-2026`:  
-Q* / siteAuthority, NavBoost clicks, T* ABC, indexing tier, clutter/canonical, CWV-NavBoost, anchors, link activation, chromeInTotal, review intent, contentEffort, semantic cocoon, matriarchal linking, entity shadow, multimodal, hyperlocal, GSC low-hanging fruit, etc.
-
-## I. Scenario shortcuts
-
-| Scenario | Chain (minimal) |
+| Scenario | Chain |
 |---|---|
-| New RU commercial site | Passport → 01,03,05,10,13,17 → strategy Q*/NavBoost → cocoon → GIST top pages |
-| Growth on existing site | Passport → GSC low-hanging → 10,14 → technical clutter → content CVD on losers |
-| One article | Latent Intent + SERP → GIST → draft → CVD → Humanization → meta |
-| Bulk programmatic risk | CVD + Spam Assessor + ai-detect on samples before scale |
-| Brand SERM | Entity Footprint → Poisoning → Official Entity plan |
-| AI Overview visibility | 25 + LSI 2.0 + Chunk Sentinel + GIST distinctiveness |
-| Local service RU | 12 + 17 + hyperlocal GBP/NAP (evidence-based) + Mutagen geo freq |
+| New commercial site | BrandCore → X4 `/кокон` → Humanization → ai-detect on top URLs |
+| Growth on existing site | `seo-scan` → X4 `/аудит` or SignalForge on losers |
+| One article | Latent Intent **or** X4 `/страница` → Humanization → ai-detect |
+| Multi-locale | BrandCore → Market-Scoped → X4 per locale |
+| Prompt/skill compression | `drmax-promptsculptor` (not this agent) |
 
-## J. Version supersession (critical)
+## F. Version pin
 
-| Old | Current for new work |
+| System | Current |
 |---|---|
-| LinguaForensic ≤3.8.12 / skill body 3.8.6 | **3.9.4 full** (`ai-detect`) |
-| GIST v1 / v2 / three-file pack alone | **GIST v3.3** (+ pocketbook) |
-| Trend book-only for early signals | Trend **v4** when early detection needed |
-| Forensic Due Diligence v2 | **v3** |
-| Text humanization informal rewrites | **Humanization v1.6.1 runtime** + help/scenarios |
-| AI-detect used as “humanize” | Split: Humanization for delivery; ai-detect for measurement/rewrite modes |
+| Cocoon Engine X4 | Pilot v1.9 · Mapper Total v2.2 · TGA v4.0.8 · GIST **4.3** |
+| BrandCore | v0.8 + Navigator v1.1.4 |
+| Humanization | v1.6.1 |
+| LinguaForensic | **3.9.4** (`ai-detect`) |
+| SignalForge | v0.4 |
+| Latent Intent | v2.2 |
+| Market-Scoped | Ultimate Market-Scoped Differentiation |
+
+Superseded for **new** work: GIST 3.3, Reddit Mapper staged prompts, TGA-only, TGA Navigator (post 88), book matriarchal cocoon.

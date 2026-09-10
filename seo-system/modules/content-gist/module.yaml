@@ -2,16 +2,16 @@ id: content-gist
 title: GIST content logic
 phase: content
 status: active
-version: "1.0.0"
-summary: "GIST v3.3 creation/audit/competitive/meta — non-replaceable page design."
+version: "1.1.0"
+summary: "X4 GIST v4.3 — page jobs and drafts inside Cocoon Engine."
 depends_on: [intent-semantics]
 soft_depends_on: [site-scan, strategy-evidence]
 provides: [content.gist_plan, content.draft_structure]
 requires_provides: []
-skills: [seo-prompt-engineering-2026, seo-copywriting]
+skills: [drmax-cocoon-engine-x4]
 originals:
-  - "gist-v3.3/GIST Content Logic Skill-v-3-3.md"
-  - "drmax-prompt-channel/71/GIST Content Logic Skill-v-3-3.md"
+  - "drmax-cocoon-engine-x4/originals/GIST Content Logic Skill-v-4-3.md"
+  - "drmax-cocoon-engine-x4/originals/CP-Navigator-v1-9.md"
 cli: [seo-prompt-log]
 artifacts:
   writes:
@@ -24,6 +24,6 @@ artifacts:
 env: []
 agent_triggers: ["GIST", "написать страницу", "переписать страницу"]
 entrypoints:
-  agent: "Choose GIST mode; open v3.3 original 1:1"
+  agent: "X4 /start then GIST 4.3 mode; open originals 1:1"
   cli: "seo-module scenario content-gist creation"
 scenarios: [creation.yaml, audit.yaml, competitive.yaml, meta-step8.yaml]

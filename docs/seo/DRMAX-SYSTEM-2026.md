@@ -12,22 +12,20 @@ Sources under `/home/ubuntu/downloads/drmax_update`:
 | `Доказательное SEO 2026` PDF | Re-extracted book markdown |
 | GIST pocketbook PDF | Re-extracted pocketbook |
 
-Importer: `~/.agents/skills/seo-prompt-engineering-2026/scripts/import_drmax_sources.py`  
-Validation: `…/scripts/validate_drmax_corpus.py` (194 exact originals at last import).
+Current originals live in thin skills (`drmax-cocoon-engine-x4/originals/`, BrandCore, Humanization, ai-detect, …).
 
 ## Skill map
 
 | Skill | Role |
 |---|---|
 | `seo-drmax-orchestrator` | **Master**: phases, activation, `.agents/seo/`, workers |
-| `seo-prompt-engineering-2026` | Canonical originals + channel/book corpus |
-| `seo-evidence-based-2026` | Leak-signal execution capabilities |
-| `seo-copywriting` | On-page copy mechanics |
-| `ai-detect` | LinguaForensic **v3.9.4** (was 3.8.6 body) |
+| `drmax-cocoon-engine-x4` | Cocoon 4.0 / TGA / GIST 4.3 / Mapper |
+| `drmax-brandcore` | Company SSoT |
+| `ai-detect` | LinguaForensic **v3.9.4** |
 | `drmax-latent-intent` | Latent Intent Analyst v2.2 |
-| `drmax-cvd` | Content Value Detector v2.3 |
-| `drmax-text-humanization` | Humanization v1.6.1 + help/scenarios |
-| `drmax-lexadapt` | LexAdapt v1.5 |
+| `drmax-text-humanization` | Humanization v1.6.1 |
+| `drmax-signalforge` | Live-URL experiment loop |
+| `drmax-market-scoped` | Locale differentiation |
 
 Agent: `~/.claude/agents/seo-specialist.md` (orchestrator behavior + bootstrap).
 
@@ -76,17 +74,7 @@ Code SEO fixes still go through `.agents/runs/` + `dev-orchestrator`.
 
 ## Re-import later
 
-```bash
-python3 ~/.agents/skills/seo-prompt-engineering-2026/scripts/import_drmax_sources.py \
-  --channel <export-dir> \
-  --prompt-channel <export-dir> \
-  --book-pack <v1-5-dir> \
-  --evidence-pdf <pdf> \
-  --gist <gist-dir-with-skill-md-and-pocketbook-pdf> \
-  --chat <optional-chat-export>
-python3 ~/.agents/skills/seo-prompt-engineering-2026/scripts/validate_drmax_corpus.py \
-  ~/.agents/skills/seo-prompt-engineering-2026
-```
+Copy new DrMax originals 1:1 into the matching thin skill (`ORIGINAL.md` / `originals/`). Do not revive the old corpus skill.
 
 
 ## Harness CLI (full control plane)

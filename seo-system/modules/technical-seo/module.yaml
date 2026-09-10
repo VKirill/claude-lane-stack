@@ -8,7 +8,7 @@ depends_on: [site-scan]
 soft_depends_on: [measurement-analytics, services-data]
 provides: [tech.audit, tech.fixes]
 requires_provides: [scan.site]
-skills: [seo-evidence-based-2026]
+skills: [google-search-console, yandex-webmaster]
 originals: []
 cli: []
 artifacts:

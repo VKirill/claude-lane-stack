@@ -1,9 +1,8 @@
 # DrMax methodology — project OT → DO
 
-Канон по трём книгам + prompt-каналу. Главы — указатель; **первоисточник всегда PDF/Markdown корпуса и originals/**.
+Канон: текущие thin DrMax skills. Главы книг — указатель, не always-on.
 
-Корпус: `~/.agents/skills/seo-prompt-engineering-2026/references/books/`  
-Промпты: `…/originals/`  
+Оригиналы: `~/.agents/skills/drmax-*/ORIGINAL.md` и `drmax-cocoon-engine-x4/originals/`  
 Оркестрация: `seo-drmax-orchestrator` · harness: `SOLO-SEO-ORCHESTRATION.md`
 
 ---

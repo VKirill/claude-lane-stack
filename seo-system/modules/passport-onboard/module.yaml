@@ -8,10 +8,10 @@ depends_on: [core-harness]
 soft_depends_on: [services-data, site-scan]
 provides: [passport.anamnesis, passport.brief]
 requires_provides: []
-skills: [seo-prompt-engineering-2026, seo-drmax-orchestrator]
+skills: [drmax-brandcore, seo-drmax-orchestrator]
 originals:
-  - "book-v1.5-prompts/БОНУСЫ/Universal Project Data Collector v2.txt"
-  - "book-v1.5-prompts/БОНУСЫ/Project Data Validator & Normalizer.txt"
+  - "drmax-brandcore/ORIGINAL.md"
+  - "drmax-brandcore/NAVIGATOR.md"
 cli: [seo-onboard]
 artifacts:
   writes:
@@ -22,6 +22,6 @@ artifacts:
 env: []
 agent_triggers: ["онбординг", "паспорт проекта", "анамнез", "новый проект seo"]
 entrypoints:
-  agent: "seo-onboard live|greenfield; then Collector+Validator originals"
+  agent: "seo-onboard live|greenfield; then BrandCore if claims matter"
   cli: "seo-onboard live --slug <s> --url https://…"
 scenarios: [live-site.yaml, greenfield.yaml, validate-passport.yaml]

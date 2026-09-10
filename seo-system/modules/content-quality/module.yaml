@@ -8,7 +8,7 @@ depends_on: [content-gist]
 soft_depends_on: []
 provides: [content.cvd, content.humanized, content.detect, content.assessor]
 requires_provides: [content.gist_plan]
-skills: [drmax-cvd, drmax-text-humanization, ai-detect, drmax-lexadapt, seo-prompt-engineering-2026]
+skills: [drmax-text-humanization, ai-detect]
 originals:
   - "drmax-prompt-channel/77/CVD_skill_v2.3.md"
   - "drmax-prompt-channel/79/TEXT-HUMANIZATION-by-DrMax-v-1-6-1-RUNTIME-FINAL.md"
