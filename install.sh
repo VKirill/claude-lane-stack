@@ -210,6 +210,16 @@ if [[ -d "$PLUGIN_ROOT/agents" ]]; then
     rm -f "$CLAUDE/agents/$(basename "$agent_file")"
   done
 fi
+# Brand aliases removed from the plugin; wipe host copies that still override it.
+for stale_agent in \
+  codex-implementer.md \
+  codex-reviewer.md \
+  codex-onboarder.md \
+  codex-docs-maintainer.md \
+  grok-implementer.md
+do
+  rm -f "$CLAUDE/agents/$stale_agent"
+done
 if [[ -d "$PLUGIN_ROOT/commands" ]]; then
   for command_file in "$PLUGIN_ROOT/commands/"*.md; do
     [[ -f "$command_file" ]] || continue

@@ -12,7 +12,7 @@
 Talk to Claude Code — it runs Codex / Qwen / Grok / Kimi / AGY, checks work, **merges to `main`**, reviews at night.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.27.0"><img src="https://img.shields.io/badge/version-v1.27.0-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.28.0"><img src="https://img.shields.io/badge/version-v1.28.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -194,9 +194,10 @@ You talk to the PM. The PM starts the **conveyor**. The writer is a **background
 | **`docs-maintainer`** | Codex Luna max fast | INIT + nightly living `docs/` |
 | **`memory-maintainer`** | Codex (adoc) | Opt-in fact corpus (`.agents/memory/`) |
 | **`design-lead`** | Claude | Extract / refresh / audit `docs/DESIGN.md` |
+| **`browser-qa`** | Claude Haiku | Live URL click-through + `.agents/qa` replay |
 
 Built-ins Claude may also use: **Explore**, **Plan**, **general-purpose** (research / side tasks — **not** the daytime product conveyor).  
-Aliases: `codex-implementer` → `emergency-writer`, etc. → [`agents/claude/README.md`](agents/claude/README.md)
+Roster: [`agents/claude/README.md`](agents/claude/README.md)
 
 ---
 
@@ -256,7 +257,7 @@ This repo **is a Claude Code plugin marketplace**. `./install.sh` installs the h
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.27.0   # or: main
+cd claude-lane-stack && git checkout v1.28.0   # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```

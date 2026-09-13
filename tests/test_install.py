@@ -267,9 +267,48 @@ class InstallTest(unittest.TestCase):
             ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md"
         ).read_text(encoding="utf-8")
         self.assertIn("tavily", orch)
-        self.assertIn("Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily,", orch)
+        self.assertIn("Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, browser-qa,", orch)
         self.assertIn("mcp__metamcp__mcp_call", orch)
         self.assertIn("- metamcp", orch)
+
+    def test_browser_qa_pack_is_shipped(self) -> None:
+        agent = ROOT / "plugins" / "lane-stack" / "agents" / "browser-qa.md"
+        self.assertTrue(agent.is_file())
+        body = agent.read_text(encoding="utf-8")
+        self.assertIn("name: browser-qa", body)
+        self.assertIn("SendMessage", body)
+        self.assertIn("ListAgents", body)
+        self.assertIn(".agents/qa/", body)
+        skill = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "browser-qa" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("name: browser-qa", skill)
+        for needle in (
+            "case_digest",
+            "target_fingerprint",
+            "script_digest",
+            "first execution is the proof",
+            "product fail",
+            "qa-digest",
+            "lee-to/ai-factory#154",
+            "Human mode",
+        ):
+            self.assertIn(needle, skill)
+        self.assertTrue(
+            (ROOT / "plugins" / "lane-stack" / "skills" / "browser-qa" / "references" / "REPORT.md").is_file()
+        )
+        self.assertTrue((ROOT / "bin" / "qa-digest").is_file())
+        self.assertIn("## NEVER", skill)
+        link = ROOT / "agents" / "claude" / "browser-qa.md"
+        self.assertTrue(link.is_symlink() or link.is_file())
+        info = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "info" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("`browser-qa`", info)
+        orch = (
+            ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("browser-qa", orch)
 
     def test_seo_specialist_pack_is_shipped(self) -> None:
         agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"
@@ -326,6 +365,17 @@ class InstallTest(unittest.TestCase):
         self.assertIn("seo-project-life — карта SEO-проекта", life.read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "seo-system" / "modules" / "passport-onboard" / "module.yaml").is_file())
         self.assertTrue((ROOT / "docs" / "seo" / "SOLO-SEO-ORCHESTRATION.md").is_file())
+
+    def test_removed_brand_aliases_are_gone(self) -> None:
+        for name in (
+            "codex-implementer.md",
+            "codex-reviewer.md",
+            "codex-onboarder.md",
+            "codex-docs-maintainer.md",
+            "grok-implementer.md",
+        ):
+            self.assertFalse((ROOT / "agents" / "claude" / name).exists(), name)
+            self.assertFalse((ROOT / "plugins" / "lane-stack" / "agents" / name).exists(), name)
 
     def test_plugin_agents_whitelist_sendmessage(self) -> None:
         missing: list[str] = []

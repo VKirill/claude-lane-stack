@@ -1,1 +1,0 @@
-../../plugins/lane-stack/agents/codex-reviewer.md

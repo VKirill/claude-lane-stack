@@ -53,7 +53,7 @@ web-design — веб-дизайнер lane-stack. Роутер, не верст
 
 1. Load **one** child skill from the table. Do not load all of them.
 2. Existing UI without `DESIGN.md` → `project-design` first, then come back.
-3. Review: spawn **design-lead** `MODE=audit` `APP=<surface>`. Need a screenshot or URL (orchestrator captures via chrome-devtools). Output: Don'ts in that app's `DESIGN.md` + `.agents/session-log/DESIGN-AUDIT-YYYY-MM-DD.md`.
+3. Review: spawn **design-lead** `MODE=audit` `APP=<surface>`. Live click / viewports: spawn **browser-qa**. Output (audit): Don'ts in that app's `DESIGN.md` + `.agents/session-log/DESIGN-AUDIT-YYYY-MM-DD.md`. Output (QA): `.agents/qa/<slug>/REPORT.md`.
 4. After the human says **«делай»**: open a run. Writer `read_first`:
    - `docs/DESIGN.md`
    - `apps/<app>/docs/DESIGN.md`

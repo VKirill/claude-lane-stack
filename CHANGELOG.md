@@ -1,3 +1,22 @@
+## 1.28.0 — 2026-09-14
+
+### Added
+- **`browser-qa`**: AI Factory #154 replay adapted to lane-stack
+  (`.agents/qa/`, SPEC/acceptance, `qa-digest`, stale on HEAD/dirty
+  tree, no human mode). Live chrome-devtools; Playwright-compatible
+  `replay/TC-00N.js`; missing selector is a product fail.
+
+### Changed
+- **`run-board`** skips rewrite of `STATUS.md` / `BOARD.md` when only the
+  `_Generated … UTC_` stamp would change.
+
+### Removed
+- Claude agent brand aliases: `codex-implementer`, `codex-reviewer`,
+  `codex-onboarder`, `codex-docs-maintainer`, `grok-implementer`. Use
+  `emergency-writer`, `night-reviewer`, `project-onboarder`,
+  `docs-maintainer`, `lane-supervisor`. `install.sh` deletes leftover
+  copies from `~/.claude/agents`.
+
 ## 1.27.0 — 2026-09-11
 
 ### Changed

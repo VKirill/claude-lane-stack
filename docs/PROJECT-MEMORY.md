@@ -20,6 +20,8 @@ Files every serious agent project should keep so a cold session is useful in min
 | `.agents/runs/<slug>/artifacts/<task>/outcome.json` | CLI-agnostic result manifest (exit_status, failure_class, files_changed) for supervisors | `run-controller` |
 | `.agents/night-fix-current.json` | Pointer to current/last repair state | `night-fix-runner` |
 | `.agents/todos/` | Ideas backlog | Humans + PM agents |
+| `.agents/qa/<slug>/` | Browser QA cases / REPORT / replay | `browser-qa` |
+| `.agents/qa/context.md` | Non-secret browser setup | `browser-qa` |
 | `.agents/runs/` | Immutable task specs + machine receipts + reports | Orchestrator + lanes |
 | `.agents/runs/BOARD.md` | Generated multi-run board | `run-board` |
 | `docs/` wiki (if any) | Architecture truth | Humans + wiki pipeline / docs-maintain |

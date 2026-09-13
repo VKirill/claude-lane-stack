@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Canonical digests for .agents/qa (adapted from AI Factory PR #154)."""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+CASE_HEAD = re.compile(r"^## (TC-\d+)\b", re.M)
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def lf(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def normalize_block(text: str) -> str:
+    lines = [line.rstrip(" \t") for line in lf(text).split("\n")]
+    while lines and lines[0] == "":
+        lines.pop(0)
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
+
+
+def case_digest(case_id: str, block: str) -> str:
+    wrapped = f"BEGIN {case_id}\n{normalize_block(block)}\nEND {case_id}\n"
+    return sha256_text(wrapped)
+
+
+def split_cases(cases_md: str) -> list[tuple[str, str]]:
+    text = lf(cases_md)
+    matches = list(CASE_HEAD.finditer(text))
+    out: list[tuple[str, str]] = []
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        out.append((match.group(1), text[match.start() : end]))
+    return out
+
+
+def normalize_base_url(url: str) -> str:
+    parts = urlsplit(url.strip())
+    if not parts.scheme or not parts.netloc:
+        raise SystemExit(f"qa-digest: invalid BASE_URL {url!r}")
+    path = parts.path or "/"
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+    return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def target_fingerprint(env_class: str, base_url: str) -> str:
+    payload = f"QA TARGET\n{env_class.strip()}\n{normalize_base_url(base_url)}\n"
+    return sha256_text(payload)
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2 or argv[1] in {"-h", "--help"}:
+        print(
+            "usage: qa-digest cases <cases.md>\n"
+            "       qa-digest script <TC.js>\n"
+            "       qa-digest target <class> <base_url>",
+            file=sys.stderr,
+        )
+        return 2
+    cmd = argv[1]
+    if cmd == "cases":
+        path = Path(argv[2])
+        raw = path.read_text(encoding="utf-8")
+        cases = {
+            case_id: case_digest(case_id, block) for case_id, block in split_cases(raw)
+        }
+        print(
+            json.dumps(
+                {"source_digest": sha256_text(lf(raw)), "cases": cases},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if cmd == "script":
+        path = Path(argv[2])
+        print(hashlib.sha256(path.read_bytes()).hexdigest())
+        return 0
+    if cmd == "target":
+        print(target_fingerprint(argv[2], argv[3]))
+        return 0
+    print(f"qa-digest: unknown command {cmd}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

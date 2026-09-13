@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -113,6 +114,54 @@ class ContractViewTests(unittest.TestCase):
             run(str(ROOT / "bin" / "run-board"), str(repo))
             board = (repo / ".agents" / "runs" / "BOARD.md").read_text(encoding="utf-8")
             self.assertNotIn("**done**", board)
+
+    def test_run_board_skips_rewrite_when_only_generated_stamp_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            repo = Path(raw)
+            run_dir = repo / ".agents" / "runs" / "demo"
+            task_dir = run_dir / "tasks"
+            artifact = run_dir / "artifacts" / "001"
+            task_dir.mkdir(parents=True)
+            artifact.mkdir(parents=True)
+            (run_dir / "run.yaml").write_text("schema_version: 2\nslug: demo\n", encoding="utf-8")
+            (task_dir / "001.yaml").write_text(
+                "schema_version: 2\nid: '001'\ntitle: Demo task\nstatus: pending\nlane: grok\n",
+                encoding="utf-8",
+            )
+            (artifact / "state.json").write_text(
+                json.dumps({"schema_version": 2, "task_id": "001", "status": "pending", "attempt": 0}),
+                encoding="utf-8",
+            )
+
+            result = run(str(ROOT / "bin" / "run-board"), str(repo))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            status_path = run_dir / "STATUS.md"
+            board_path = repo / ".agents" / "runs" / "BOARD.md"
+            stamp = "_Generated 1999-01-01 00:00 UTC"
+            status_path.write_text(
+                re.sub(r"_Generated \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC", stamp, status_path.read_text()),
+                encoding="utf-8",
+            )
+            board_path.write_text(
+                re.sub(r"_Generated \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC", stamp, board_path.read_text()),
+                encoding="utf-8",
+            )
+            frozen_status = status_path.read_text(encoding="utf-8")
+            frozen_board = board_path.read_text(encoding="utf-8")
+
+            result = run(str(ROOT / "bin" / "run-board"), str(repo))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(status_path.read_text(encoding="utf-8"), frozen_status)
+            self.assertEqual(board_path.read_text(encoding="utf-8"), frozen_board)
+
+            (artifact / "state.json").write_text(
+                json.dumps({"schema_version": 2, "task_id": "001", "status": "running", "attempt": 1}),
+                encoding="utf-8",
+            )
+            result = run(str(ROOT / "bin" / "run-board"), str(repo))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("**running**", board_path.read_text(encoding="utf-8"))
+            self.assertNotIn("1999-01-01", status_path.read_text(encoding="utf-8"))
 
     def test_stall_mark_updates_state_without_mutating_v2_task(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

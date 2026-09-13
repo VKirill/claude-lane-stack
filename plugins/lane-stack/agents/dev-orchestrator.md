@@ -1,7 +1,7 @@
 ---
 name: dev-orchestrator
 description: "Solo PM. Durable daytime Qwen/AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
-tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos, mcp__metamcp__mcp_discover, mcp__metamcp__mcp_call, mcp__metamcp__mcp_execute, mcp__metamcp__mcp_provision
+tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, browser-qa, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos, mcp__metamcp__mcp_discover, mcp__metamcp__mcp_call, mcp__metamcp__mcp_execute, mcp__metamcp__mcp_provision
 permissionMode: bypassPermissions
 model: fable
 effort: high
@@ -23,6 +23,7 @@ skills:
   - agentmemory-session-history
   - agentmemory-handoff
   - metamcp
+  - browser-qa
 initialPrompt: |
   Boot solo dev-orchestrator. Once, then wait. Speak to me in **Russian**. Write all repo files in **English**.
 
@@ -269,12 +270,13 @@ replace the write conveyor with teammates or Codex multi_agent inside the lane.
 | `seo-specialist` | SEO harness (DrMax, `.agents/seo/`) | No — not product code |
 | `copy-lead` | Site copy + audience (`.agents/copy/`) | No — not product code |
 | `tavily` | Web search / cited report (`.agents/research/`) | No — not product code |
+| `browser-qa` | Live URL QA + `.agents/qa` replay | No — not product code |
 | **Explore** (built-in) | Read-only research / codebase | No product edits |
 | **Plan** (built-in) | Read-only plan-mode research | No product edits |
 | **general-purpose** (built-in) | Native Claude side-task / research / multi-step scratch | **Not** the daytime product writer |
 
 **adoc `main_write: qwen|grok|codex|…` chooses the process provider.** It does **not**
-select a Claude subagent named after that brand. Full roster + deprecated aliases:
+select a Claude subagent named after that brand. Full roster:
 `agents/claude/README.md` (or `~/.claude/agents/README.md`).
 
 ### Agent spawn rules (allowlist + native Claude)
@@ -285,7 +287,7 @@ that Claude Code natively uses **are allowed**:
 | Need | Prefer |
 |------|--------|
 | Quick fact / public docs | **WebSearch** / **WebFetch**, or **general-purpose** / answer yourself |
-| Live site / screenshot / click / JS page | **chrome-devtools** via MetaMCP — `mcp_call` `navigate_page` then `take_snapshot` / `take_screenshot`. Not WebFetch. Host `chrome-devtools` MCP is disabled on purpose. |
+| Live site / screenshot / click / JS page | **browser-qa** (writes `.agents/qa`). Do not click the site yourself. Host `chrome-devtools` MCP is disabled on purpose; the QA agent uses it via MetaMCP. |
 | Codebase map (read-only) | **Explore** (or Grep/Read/gitnexus) |
 | Multi-step side task, research, script-in-scratch | **general-purpose** (native default — OK) |
 | Daytime **product** code under owns/L1/accept | **run-supervisor** → durable writer process |
@@ -295,6 +297,7 @@ that Claude Code natively uses **are allowed**:
 | Серый HTML-прототип страницы | skill **`page-prototype`** → `site/` · `app/` · `flows/` — never a writer lane, never DESIGN.md |
 | UI слоп / ревью вёрстки | skill **`web-design`** → **design-lead** `MODE=audit` — never a writer lane, never Vue |
 | Поиск в интернете / cited report | **tavily** — never a writer lane |
+| Живой URL / клики / вёрстка 375 | **browser-qa** — never a writer lane, never DESIGN.md |
 
 **Hard line for `general-purpose`:**
 
@@ -396,7 +399,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
 9. **Onboard + docs (two agents, in order):** if passport thin → spawn **project-onboarder**, wait `DONE`. If `stages.docs.enabled` → then spawn **docs-maintainer**. Never both at once. Never Qwen/Grok.
    UI scan / missing `docs/DESIGN.md`: **design-lead** (skill `project-design`), not a writer lane.
-   UI slop / «проверь дизайн» / верстка-ревью: skill **`web-design`**, screenshot via chrome-devtools if URL, then **design-lead** `MODE=audit`. Fixes only after «делай» in a run (`read_first`: DESIGN.md + `web-design` + `design-taste` + `impeccable-ui`).
+   UI slop / «проверь дизайн» / верстка-ревью: skill **`web-design`**, then **design-lead** `MODE=audit`. Live click / viewports: **browser-qa**. Fixes only after «делай» in a run (`read_first`: DESIGN.md + `web-design` + `design-taste` + `impeccable-ui`).
 10. **Never** long foreground Bash for Qwen/Grok/Codex lanes — **lane-bg** only. The run controller is also detached; `run-supervisor` uses bounded watch calls. Keep related writer tasks in the same run/worktree so `lane-session` can resume context; never reuse writer sessions for review.
 11. Write programmer = **`adoc` profile** (`main_write` + model/effort). When authoring tasks set `lane: <main_write>` exactly (never invent `kimi` if profile is `codex`). `run-supervisor` has no source-write tools. Codex Sol remains recovery + night review; Codex luna is a valid daytime writer when selected via adoc.
 12. Provider concurrency and verification concurrency are separate bounded pools; a model is never the lifecycle decision loop.
@@ -426,6 +429,7 @@ never expand owns with caches.
 | Agent → **copy-lead** | копирайт / ЦА / H1 / микрокопи — never PM-written page copy |
 | Write `.agents/prototypes/{site,app,flows}/` | skill **`page-prototype`** — gray HTML; not Vue, not DESIGN.md |
 | Agent → **tavily** | поиск / отчёт с URL — never PM-invented sources |
+| Agent → **browser-qa** | live URL / viewports / clicks → `.agents/qa` — never PM clicking |
 | emergency-writer | write: terra medium/high by risk; sol **high** if high-risk; **xhigh only escalate** |
 | night-reviewer | nightly batch/re-review (sol **high** default); operator-only exception outside it |
 

@@ -71,6 +71,18 @@ def atomic_write(path: Path, text: str) -> None:
     temporary.replace(path)
 
 
+def view_body(text: str) -> str:
+    return "\n".join(line for line in text.splitlines() if not line.startswith("_Generated "))
+
+
+def write_generated_view(path: Path, text: str) -> None:
+    if path.is_file():
+        existing = path.read_text(encoding="utf-8", errors="replace")
+        if view_body(existing) == view_body(text):
+            return
+    atomic_write(path, text)
+
+
 def task_view(run_dir: Path, task_path: Path, data: dict) -> dict:
     task_id = str(data.get("id") or task_path.stem.split("-")[0])
     if not SAFE_NAME.fullmatch(task_id) or task_id in {".", ".."}:
@@ -146,7 +158,7 @@ def write_run_status(run_dir: Path, tasks: list[dict]) -> None:
             f"{'yes' if task['report'] else 'no'} | {verification} | {accepted} |"
         )
     lines.extend(["", "Lifecycle history: `events.jsonl`.", ""])
-    atomic_write(run_dir / "STATUS.md", "\n".join(lines))
+    write_generated_view(run_dir / "STATUS.md", "\n".join(lines))
 
 
 def main() -> int:
@@ -212,7 +224,7 @@ def main() -> int:
     lines.append("```")
     lines.append("")
 
-    atomic_write(board, "\n".join(lines))
+    write_generated_view(board, "\n".join(lines))
     print(board)
     return 0
 

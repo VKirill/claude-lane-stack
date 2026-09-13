@@ -20,19 +20,10 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `seo-specialist` | SEO | DrMax harness, `.agents/seo/`, `seo-*` CLI | Claude |
 | `copy-lead` | Copy | Audience + pages, `.agents/copy/` | Claude |
 | `tavily` | Search | Tavily REST, `.agents/research/` | Claude |
+| `browser-qa` | Browser QA | Live click + replay under `.agents/qa/` | Claude Haiku + chrome-devtools |
 
-## Compatibility aliases (deprecated)
-
-| Alias | Prefer |
-|-------|--------|
-| `codex-implementer` | `emergency-writer` |
-| `codex-reviewer` | `night-reviewer` |
-| `codex-onboarder` | `project-onboarder` |
-| `codex-docs-maintainer` | `docs-maintainer` |
-| `grok-implementer` | `lane-supervisor` |
-
-Aliases keep the same tools and body for one transition period so old prompts
-and sessions still resolve. **Do not use aliases in new task text.**
+Removed brand aliases (`codex-implementer`, `grok-implementer`, …). Dispatch
+the function name only.
 
 ## What is *not* a Claude agent
 
@@ -50,8 +41,8 @@ should not be. One watch agent + one process pool is the conveyor.
 
 ```text
 normal run     → Agent(run-supervisor)
-typed recovery → Agent(lane-supervisor)   # not grok-implementer
-terminal block → Agent(emergency-writer)  # not “spawn codex because adoc is qwen”
+typed recovery → Agent(lane-supervisor)
+terminal block → Agent(emergency-writer)
 night review   → night-shift / Agent(night-reviewer)
 onboard        → Agent(project-onboarder)
 docs           → Agent(docs-maintainer)
@@ -60,6 +51,7 @@ design         → Agent(design-lead)
 seo            → Agent(seo-specialist)
 copy           → Agent(copy-lead)
 tavily         → Agent(tavily)
+browser QA     → Agent(browser-qa)
 ```
 
 See also: `docs/PLATFORM-CAPABILITIES.md`, `docs/ROUTING.md`.

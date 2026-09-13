@@ -16,6 +16,8 @@ Replace Postgres/task MCP with **files in the project**. Agents never call task/
 | `.agents/runs/<slug>/night-fix-state.json` | Resumable repair-run control state |
 | `.agents/night-fix-current.json` | Pointer to the current/last repair state |
 | `.agents/todos/` | Ideas / backlog until promoted |
+| `.agents/qa/<slug>/` | Browser QA: cases, REPORT, shots, replay (`browser-qa`) |
+| `.agents/qa/context.md` | Cross-run non-secret browser setup |
 | `.agents/plans/` | Delivery map (`ROADMAP.md` + initiative `PLAN.md`) — spawns runs; not execution |
 | `docs/plans/<topic>/` | Durable **strategy / SEO / product** docs (e.g. `COCOON.md`) for humans + long-form research |
 | `docs/` | Architecture, decisions, wiki |

@@ -1,1 +1,0 @@
-../../plugins/lane-stack/agents/codex-onboarder.md

@@ -103,6 +103,7 @@ resume ──► onboard? ──► туду / план ──► архитек
 | `seo-specialist` | SEO harness (не код) |
 | `copy-lead` | копирайт, ЦА, страницы (не SEO, не код) |
 | `tavily` | поиск Tavily, отчёт с URL (не копирайт, не SEO) |
+| `browser-qa` | живой браузер, replay в `.agents/qa/` (не DESIGN, не код) |
 
 ---
 
