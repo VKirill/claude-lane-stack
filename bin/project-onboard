@@ -4,6 +4,17 @@
 # Dual depth: fast (passport) vs deep (forensic module walk + wiki↔code audit).
 set -euo pipefail
 
+# Portable lowercase (bash 3.2 / macOS has no ${var,,}).
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Portable in-place sed: BSD sed requires an in-place suffix argument (even an
+# empty one); GNU sed also accepts a glued suffix the same way, so `-i.bak`
+# behaves identically on both, then we drop the backup file.
+sed_i() {
+  local script="$1" file="$2"
+  sed -i.bak -e "$script" "$file" && rm -f "$file.bak"
+}
+
 REPO="."
 FORCE=""
 SCENARIO_OVERRIDE=""
@@ -68,13 +79,13 @@ esac
 
 # Env override (CLI wins)
 if [[ -z "$SCENARIO_OVERRIDE" && -n "${ONBOARD_SCENARIO:-}" ]]; then
-  case "${ONBOARD_SCENARIO,,}" in
+  case "$(lc "${ONBOARD_SCENARIO:-}")" in
     minimal|min|lite) SCENARIO_OVERRIDE="minimal" ;;
     full|mature|adult) SCENARIO_OVERRIDE="full" ;;
   esac
 fi
 if [[ -z "$DEPTH_OVERRIDE" && -n "${ONBOARD_DEPTH:-}" ]]; then
-  case "${ONBOARD_DEPTH,,}" in
+  case "$(lc "${ONBOARD_DEPTH:-}")" in
     fast|lite|shallow) DEPTH_OVERRIDE="fast" ;;
     deep|full|forensic) DEPTH_OVERRIDE="deep" ;;
   esac
@@ -96,6 +107,9 @@ fi
 TPL_DIR="${HOME}/.agents/templates"
 [[ -d "$TPL_DIR" ]] || TPL_DIR="/home/ubuntu/.agents/templates"
 [[ -d "$TPL_DIR" ]] || TPL_DIR="/home/ubuntu/tools/claude-lane-stack/templates"
+# Dev/test fallback: run directly from a repo checkout (bin/project-onboard's
+# own parent) without ~/.agents installed yet.
+[[ -d "$TPL_DIR" ]] || TPL_DIR="$(cd "$(dirname "$0")/.." && pwd)/templates"
 
 echo "==> project-onboard: $REPO"
 
@@ -600,7 +614,7 @@ seed_tpl() {
       return
     fi
     # Topic aliases (lowercase wiki style)
-    case "${base,,}" in
+    case "$(lc "$base")" in
       gotchas.md)
         if find "$dir" -maxdepth 1 -type f \( -iname '*gotcha*' \) 2>/dev/null | grep -q .; then
           echo "    skip $1 (gotchas doc already present)"; return
@@ -736,14 +750,14 @@ for _f in \
   "$REPO/docs/llm/TAXONOMY.yaml" \
   "$REPO/docs/llm/TEST_INDEX.yaml"; do
   if [[ -f "$_f" ]] && grep -q 'project: REPLACE_ME' "$_f" 2>/dev/null; then
-    sed -i "s/project: REPLACE_ME/project: ${NAME}/g" "$_f"
+    sed_i "s/project: REPLACE_ME/project: ${NAME}/g" "$_f"
   fi
 done
 if [[ -f "$REPO/docs/llm/INDEX.md" ]] && grep -q 'REPLACE_ME —' "$REPO/docs/llm/INDEX.md" 2>/dev/null; then
-  sed -i "s/REPLACE_ME —/${NAME} —/g" "$REPO/docs/llm/INDEX.md"
+  sed_i "s/REPLACE_ME —/${NAME} —/g" "$REPO/docs/llm/INDEX.md"
 fi
 if [[ -f "$REPO/llms.txt" ]] && grep -q '^# REPLACE_ME$' "$REPO/llms.txt" 2>/dev/null; then
-  sed -i "s/^# REPLACE_ME$/# ${NAME}/" "$REPO/llms.txt"
+  sed_i "s/^# REPLACE_ME$/# ${NAME}/" "$REPO/llms.txt"
 fi
 if [[ "$DEPTH" == "deep" || "$SCENARIO" == "full" ]]; then
   seed_tpl "docs/llm/FLOWS.md" "llm/FLOWS.md"
@@ -763,7 +777,7 @@ if [[ ! -f "$REPO/README.md" ]]; then
   if [[ -f "$REPO/README.md" ]]; then
     # template may use {{PROJECT_NAME}}
     if grep -q '{{PROJECT_NAME}}' "$REPO/README.md" 2>/dev/null; then
-      sed -i "s/{{PROJECT_NAME}}/$NAME/g" "$REPO/README.md"
+      sed_i "s/{{PROJECT_NAME}}/$NAME/g" "$REPO/README.md"
     fi
   fi
 fi
@@ -933,6 +947,8 @@ run_onboard_fill() {
   local log="$art/codex-exec.log"
   local instr="${HOME}/.agents/codex/instructions/onboard.md"
   [[ -f "$instr" ]] || instr="/home/ubuntu/tools/claude-lane-stack/agents/codex/instructions/onboard.md"
+  # Dev/test fallback: run directly from a repo checkout without ~/.agents installed yet.
+  [[ -f "$instr" ]] || instr="$(cd "$(dirname "$0")/.." && pwd)/agents/codex/instructions/onboard.md"
   local ref_dir="${HOME}/.agents/skills/project-onboard/references"
   [[ -d "$ref_dir" ]] || ref_dir="${HOME}/.claude/skills/project-onboard/references"
   [[ -d "$ref_dir" ]] || ref_dir="$(cd "$(dirname "$0")/../skills/project-onboard/references" 2>/dev/null && pwd)"
@@ -1082,7 +1098,7 @@ EOF
     for c in \
       "${HOME}/.agents/bin/onboard_fill_tui.py" \
       "/home/ubuntu/tools/claude-lane-stack/bin/onboard_fill_tui.py" \
-      "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "$0")")/onboard_fill_tui.py"
+      "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/onboard_fill_tui.py"
     do
       [[ -f "$c" ]] && { echo "$c"; return 0; }
     done

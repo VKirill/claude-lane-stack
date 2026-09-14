@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -10,6 +11,26 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LANE_BG = ROOT / "bin" / "lane-bg"
+
+
+def _user_systemd_available() -> bool:
+    """True only when systemctl exists and a user manager responds.
+
+    `systemctl` is Linux-only; platforms such as macOS do not have the
+    binary at all, so probe with shutil.which() first instead of letting
+    subprocess.run() raise FileNotFoundError.
+    """
+    if shutil.which("systemctl") is None:
+        return False
+    return (
+        subprocess.run(
+            ["systemctl", "--user", "show-environment"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    )
 
 
 class LaneBgTest(unittest.TestCase):
@@ -86,13 +107,7 @@ class LaneBgTest(unittest.TestCase):
             )
 
     @unittest.skipUnless(
-        subprocess.run(
-            ["systemctl", "--user", "show-environment"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        ).returncode
-        == 0,
+        _user_systemd_available(),
         "user systemd manager is unavailable",
     )
     def test_auto_backend_uses_transient_user_service(self) -> None:

@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
+import { realpathSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { discoverProjects } from './lib/discover.mjs';
 import { readAllReviews, readTaskDetail, readTodoBody, readTodos } from './lib/parsers.mjs';
 import { searchAcrossProjects } from './lib/search.mjs';
@@ -281,7 +282,24 @@ async function main() {
   process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Resolve symlinks before comparing: on macOS, Node resolves import.meta.url
+// through symlinks (e.g. /var -> /private/var, /tmp -> /private/tmp) while
+// process.argv[1] stays unresolved, so a literal string comparison can miss
+// even when both paths point at the same file. Fall back to the raw path if
+// realpath fails (e.g. the file no longer exists).
+function realOrSelf(candidate) {
+  try {
+    return realpathSync(candidate);
+  } catch {
+    return candidate;
+  }
+}
+
+const isMainModule =
+  Boolean(process.argv[1]) &&
+  realOrSelf(fileURLToPath(import.meta.url)) === realOrSelf(process.argv[1]);
+
+if (isMainModule) {
   main().catch((error) => {
     warn('failed to start', error);
     process.exit(1);

@@ -6,6 +6,30 @@ export PATH="${HOME}/.agents/bin:${PATH}"
 # Skip session-ledger / other stack hooks if Codex still inherits them.
 export CLAUDE_LANE_AUTOMATION=1
 
+# Portable timeout: macOS ships neither GNU `timeout` nor `gtimeout` by
+# default. Use whichever coreutils binary is present; otherwise fall back to
+# a background watchdog that SIGTERMs the command after the deadline.
+run_with_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+    return $?
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+    return $?
+  fi
+  "$@" &
+  local cmd_pid=$!
+  ( sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null ) &
+  local watchdog_pid=$!
+  local status=0
+  wait "$cmd_pid" 2>/dev/null || status=$?
+  kill "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
+  return "$status"
+}
+
 REPO="${1:-.}"
 SINCE="${2:-24 hours ago}"
 DRY="${3:-}"
@@ -157,7 +181,6 @@ FINAL=$(mktemp -t memory-maintain-out.XXXXXX)
 # ignore-user-config: host hooks/skills (~371k) starve Luna.
 # danger-full-access: workspace-write treats .agents/memory as RO (gitignored).
 CODEX_CMD=(
-  timeout 1800
   codex exec
   --ignore-user-config
   --model "${MODEL}"
@@ -173,7 +196,7 @@ if [[ "${TIER:-standard}" == "fast" ]]; then
 else
   CODEX_CMD+=(--disable fast_mode)
 fi
-"${CODEX_CMD[@]}" - < "$SPEC" || true
+run_with_timeout 1800 "${CODEX_CMD[@]}" - < "$SPEC" || true
 
 "$MEM" inject "$REPO" || true
 "$MEM" lint "$REPO" || true
@@ -187,6 +210,6 @@ fi
   cat "$FINAL" 2>/dev/null || echo "(no codex output)"
   echo ""
   echo "## leftover drafts"
-  find "$REPO/.agents/memory/drafts" -name '*.md' ! -name '_TEMPLATE.md' -printf '%f\n' 2>/dev/null | sort || true
+  find "$REPO/.agents/memory/drafts" -name '*.md' ! -name '_TEMPLATE.md' -type f -exec basename {} \; 2>/dev/null | sort || true
 } > "$REPORT"
 echo "WROTE $REPORT"

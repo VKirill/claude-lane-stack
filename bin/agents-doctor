@@ -245,9 +245,53 @@ def detect() -> dict:
         "version": run_version(["claude", "--version"]) if p else None,
         "required": True,
     }
+    # Raw bubblewrap probe, computed unconditionally on every platform so
+    # tools["bubblewrap"] keeps its historical shape (present/operational/
+    # resolver_operational/path) for any existing consumer, even on macOS
+    # where bwrap is normally absent. Provider gating below, however, uses
+    # the *active* sandbox backend (bubblewrap on Linux, seatbelt/sandbox-exec
+    # on macOS; see sandbox_backend.select_backend / LANE_SANDBOX_BACKEND).
     bwrap = which("bwrap")
     bwrap_ready = bubblewrap_operational(bwrap)
-    resolver_ready = bubblewrap_resolver_operational(bwrap) if bwrap_ready else False
+    bwrap_resolver_ready = (
+        bubblewrap_resolver_operational(bwrap) if bwrap_ready else False
+    )
+    try:
+        import sandbox_backend
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import sandbox_backend
+
+    sandbox_backend_name = sandbox_backend.select_backend()
+    if sandbox_backend_name == "bubblewrap":
+        sandbox_binary = bwrap
+        sandbox_ready = bwrap_ready
+        resolver_ready = bwrap_resolver_ready
+        sandbox_missing_reason = "bubblewrap missing"
+        sandbox_probe_failed_reason = "bubblewrap probe failed"
+        sandbox_resolver_reason = "bubblewrap resolver unavailable"
+    else:
+        sandbox_binary = sandbox_backend.seatbelt_binary()
+        sandbox_ready = sandbox_backend.seatbelt_operational(sandbox_binary)
+        # Seatbelt does not use a private mount/network namespace the way
+        # bwrap does, so there is no equivalent DNS-resolver-visibility
+        # failure mode to probe for; treat it as always satisfied.
+        resolver_ready = True
+        sandbox_missing_reason = "sandbox-exec missing"
+        sandbox_probe_failed_reason = "sandbox-exec probe failed"
+        sandbox_resolver_reason = None
+
+    def sandbox_unavailable_reason(binary_present: bool) -> str | None:
+        if not binary_present:
+            return None
+        if not sandbox_binary:
+            return sandbox_missing_reason
+        if not sandbox_ready:
+            return sandbox_probe_failed_reason
+        if not resolver_ready:
+            return sandbox_resolver_reason
+        return None
+
     p = which("agy")
     agy_models = command_lines(["agy", "models"]) if p else []
     agy_agents = command_lines(["agy", "agents"]) if p else []
@@ -258,7 +302,7 @@ def detect() -> dict:
             p
             and agy_model_ready
             and agy_agent_ready
-            and bwrap_ready
+            and sandbox_ready
             and resolver_ready
         ),
         "binary_present": bool(p),
@@ -272,72 +316,53 @@ def detect() -> dict:
             if p and not agy_model_ready
             else "agy-writer agent unavailable"
             if p and not agy_agent_ready
-            else "bubblewrap missing"
-            if p and not bwrap
-            else "bubblewrap probe failed"
-            if p and not bwrap_ready
-            else "bubblewrap resolver unavailable"
-            if p and not resolver_ready
-            else None
+            else sandbox_unavailable_reason(bool(p))
         ),
     }
     p = which("grok")
     tools["grok"] = {
-        "present": bool(p and bwrap_ready and resolver_ready),
+        "present": bool(p and sandbox_ready and resolver_ready),
         "binary_present": bool(p),
         "path": p,
         "version": run_version(["grok", "--version"]) if p else None,
         "required": False,
-        "unavailable_reason": (
-            "bubblewrap missing"
-            if p and not bwrap
-            else "bubblewrap probe failed"
-            if p and not bwrap_ready
-            else "bubblewrap resolver unavailable"
-            if p and not resolver_ready
-            else None
-        ),
+        "unavailable_reason": sandbox_unavailable_reason(bool(p)),
     }
     p = which("qwen")
     tools["qwen"] = {
-        "present": bool(p and bwrap_ready and resolver_ready),
+        "present": bool(p and sandbox_ready and resolver_ready),
         "binary_present": bool(p),
         "path": p,
         "version": run_version(["qwen", "--version"]) if p else None,
         "required": False,
-        "unavailable_reason": (
-            "bubblewrap missing"
-            if p and not bwrap
-            else "bubblewrap probe failed"
-            if p and not bwrap_ready
-            else "bubblewrap resolver unavailable"
-            if p and not resolver_ready
-            else None
-        ),
+        "unavailable_reason": sandbox_unavailable_reason(bool(p)),
     }
     p = which("kimi")
     tools["kimi"] = {
-        "present": bool(p and bwrap_ready and resolver_ready),
+        "present": bool(p and sandbox_ready and resolver_ready),
         "binary_present": bool(p),
         "path": p,
         "version": run_version(["kimi", "--version"]) if p else None,
         "required": False,
-        "unavailable_reason": (
-            "bubblewrap missing"
-            if p and not bwrap
-            else "bubblewrap probe failed"
-            if p and not bwrap_ready
-            else "bubblewrap resolver unavailable"
-            if p and not resolver_ready
-            else None
-        ),
+        "unavailable_reason": sandbox_unavailable_reason(bool(p)),
     }
     tools["bubblewrap"] = {
         "present": bool(bwrap),
         "operational": bwrap_ready,
-        "resolver_operational": resolver_ready,
+        "resolver_operational": bwrap_resolver_ready,
         "path": bwrap,
         "version": None,
+        "required": False,
+    }
+    tools["sandbox"] = {
+        "backend": sandbox_backend_name,
+        "present": bool(sandbox_binary),
+        "operational": sandbox_ready,
+        "path": sandbox_binary,
+        # Surfaced as the "version" column in the TUI status list (see
+        # agents_doctor_tui.py body_status) so the active backend name is
+        # visible at a glance next to the other tool rows.
+        "version": sandbox_backend_name,
         "required": False,
     }
     p = which("codex")
@@ -350,37 +375,21 @@ def detect() -> dict:
     # Prefer real binary; wrapper `agent` may open an interactive project picker.
     p = which("cursor-agent") or which("agent")
     tools["cursor"] = {
-        "present": bool(p and bwrap_ready and resolver_ready),
+        "present": bool(p and sandbox_ready and resolver_ready),
         "binary_present": bool(p),
         "path": p,
         "version": run_version([p, "--version"]) if p else None,
         "required": False,
-        "unavailable_reason": (
-            "bubblewrap missing"
-            if p and not bwrap
-            else "bubblewrap probe failed"
-            if p and not bwrap_ready
-            else "bubblewrap resolver unavailable"
-            if p and not resolver_ready
-            else None
-        ),
+        "unavailable_reason": sandbox_unavailable_reason(bool(p)),
     }
     p = which("opencode")
     tools["opencode"] = {
-        "present": bool(p and bwrap_ready and resolver_ready),
+        "present": bool(p and sandbox_ready and resolver_ready),
         "binary_present": bool(p),
         "path": p,
         "version": run_version(["opencode", "--version"]) if p else None,
         "required": False,
-        "unavailable_reason": (
-            "bubblewrap missing"
-            if p and not bwrap
-            else "bubblewrap probe failed"
-            if p and not bwrap_ready
-            else "bubblewrap resolver unavailable"
-            if p and not resolver_ready
-            else None
-        ),
+        "unavailable_reason": sandbox_unavailable_reason(bool(p)),
     }
     return tools
 
@@ -459,38 +468,45 @@ def pick_profile(
         )
     if writer_provider != "auto" and not has.get(writer_provider):
         notes.append(f"Requested writer {writer_provider} unavailable; using {writer or 'fallback'}")
+    # Human-readable name of the OS sandbox mechanism gating writer lanes on
+    # this host — bubblewrap on Linux, sandbox-exec (Seatbelt) on macOS. Falls
+    # back to "a sandbox backend" if an older tools dict lacks the key.
+    sandbox_names = {"bubblewrap": "bubblewrap", "seatbelt": "sandbox-exec"}
+    sandbox_backend_label = sandbox_names.get(
+        (tools.get("sandbox") or {}).get("backend"), "a sandbox backend"
+    )
     if tools["agy"].get("binary_present") and not has["agy"]:
         reason = tools["agy"].get("unavailable_reason") or "unavailable"
         notes.append(f"AGY disabled ({reason})")
     if tools["grok"].get("binary_present") and not has["grok"]:
-        reason = tools["grok"].get("unavailable_reason") or "bubblewrap unavailable"
+        reason = tools["grok"].get("unavailable_reason") or "sandbox unavailable"
         notes.append(
-            "Grok disabled — bubblewrap is required for safe writer lanes "
-            f"({reason})"
+            f"Grok disabled — {sandbox_backend_label} is required for safe "
+            f"writer lanes ({reason})"
         )
     if tools["qwen"].get("binary_present") and not has["qwen"]:
-        reason = tools["qwen"].get("unavailable_reason") or "bubblewrap unavailable"
+        reason = tools["qwen"].get("unavailable_reason") or "sandbox unavailable"
         notes.append(
-            "Qwen disabled — bubblewrap is required for safe writer lanes "
-            f"({reason})"
+            f"Qwen disabled — {sandbox_backend_label} is required for safe "
+            f"writer lanes ({reason})"
         )
     if tools["kimi"].get("binary_present") and not has["kimi"]:
-        reason = tools["kimi"].get("unavailable_reason") or "bubblewrap unavailable"
+        reason = tools["kimi"].get("unavailable_reason") or "sandbox unavailable"
         notes.append(
-            "Kimi disabled — bubblewrap is required for safe writer lanes "
-            f"({reason})"
+            f"Kimi disabled — {sandbox_backend_label} is required for safe "
+            f"writer lanes ({reason})"
         )
     if tools["cursor"].get("binary_present") and not has["cursor"]:
-        reason = tools["cursor"].get("unavailable_reason") or "bubblewrap unavailable"
+        reason = tools["cursor"].get("unavailable_reason") or "sandbox unavailable"
         notes.append(
-            "Cursor disabled — bubblewrap is required for safe writer lanes "
-            f"({reason})"
+            f"Cursor disabled — {sandbox_backend_label} is required for safe "
+            f"writer lanes ({reason})"
         )
     if tools["opencode"].get("binary_present") and not has["opencode"]:
-        reason = tools["opencode"].get("unavailable_reason") or "bubblewrap unavailable"
+        reason = tools["opencode"].get("unavailable_reason") or "sandbox unavailable"
         notes.append(
-            "OpenCode disabled — bubblewrap is required for safe writer lanes "
-            f"({reason})"
+            f"OpenCode disabled — {sandbox_backend_label} is required for "
+            f"safe writer lanes ({reason})"
         )
     if not has["claude"]:
         notes.append("Claude Code missing — install required for PM")

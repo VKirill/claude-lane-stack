@@ -20,6 +20,7 @@ if str(BIN_DIR) not in sys.path:
     sys.path.insert(0, str(BIN_DIR))
 
 from verification_safety import verification_error
+from path_utils import same_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -271,7 +272,8 @@ def build_plan(
     expected_worktree = (repo / ".worktrees" / run_dir.name).resolve()
     if worktree != expected_worktree or not worktree.is_dir():
         raise RunnerError(f"night fix worktree must be {expected_worktree}")
-    if metadata.get("repo") != str(repo):
+    metadata_repo = metadata.get("repo")
+    if not isinstance(metadata_repo, str) or not same_path(metadata_repo, repo):
         raise RunnerError("worktree metadata repo does not match target repo")
     if metadata.get("branch") != f"agent/{run_dir.name}":
         raise RunnerError("worktree metadata branch does not match run slug")

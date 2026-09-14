@@ -7,6 +7,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -106,13 +107,17 @@ class GateTriageEndToEndTests(unittest.TestCase):
             json.dumps({"schema_version": 1, "source_repo": str(self.tool_repo)}),
             encoding="utf-8",
         )
-        # gate log with one blocking event
+        # gate log with one blocking event. Timestamp is computed relative to
+        # "now" (not a fixed date) so the default --days=7 window always
+        # includes it, however far the wall clock has drifted since this test
+        # was written.
+        recent_ts = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         self.gate_log = self.root / "gate-events.jsonl"
         self.gate_log.write_text(
             json.dumps(
                 {
                     "v": 1,
-                    "ts": "2026-07-23T00:00:00+00:00",
+                    "ts": recent_ts,
                     "gate": "owns-paths",
                     "status": "failed",
                     "project": "/srv/app",

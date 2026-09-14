@@ -136,7 +136,14 @@ class RunFinalizeTest(unittest.TestCase):
         self.assertEqual(sha256(self.progress), progress_hash)
         self.assertEqual(sha256(self.open_path), open_hash)
         self.assertEqual(receipt_path.read_bytes(), receipt_before)
-        self.assertEqual(self.board_log.read_text(encoding="utf-8").splitlines(), [str(self.repo), str(self.repo)])
+        # merge.json (and thus run-board's argv) carries the resolved repo
+        # path; canonicalize the expected side too so macOS /var ->
+        # /private/var symlinks don't cause a spurious mismatch.
+        resolved_repo = str(self.repo.resolve())
+        self.assertEqual(
+            self.board_log.read_text(encoding="utf-8").splitlines(),
+            [resolved_repo, resolved_repo],
+        )
         self.assertEqual(
             self.board_progress_log.read_text(encoding="utf-8").splitlines(),
             ["- Merged demo is ready", "- Merged demo is ready"],

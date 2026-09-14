@@ -73,6 +73,15 @@ export PATH="$HOME/.agents/bin:$PATH"
 > [!TIP]
 > Add the `export PATH=..` line to your `~/.bashrc` (or `~/.zshrc`) once — then every new terminal just works.
 
+### macOS
+
+- `flock` isn't in the base system: `brew install flock` first, or `./install.sh` stops with an install hint.
+- Python needs PyYAML + jsonschema: `pip3 install --break-system-packages pyyaml jsonschema`.
+- Cursor / AGY / Codex CLIs install separately, same as on Linux — `./install.sh` only wires up what's already on the machine.
+- Writer lane sandboxing uses the built-in `sandbox-exec` (Seatbelt); no extra install. Override with `LANE_SANDBOX_BACKEND=auto|bubblewrap|seatbelt` if needed.
+- `install.sh` appends `export PATH=..` to `~/.zshrc` too (the default macOS login shell), not just `~/.bashrc`.
+- `lane-bg` runs on the plain `nohup` backend on macOS — there's no user systemd.
+
 **Station 1 checklist — done when:**
 
 - [ ] `./install.sh` finished without errors

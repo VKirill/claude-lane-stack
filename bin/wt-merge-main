@@ -13,7 +13,7 @@ if [[ ! "$SLUG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || [[ "$SLUG" == "." ||
   exit 2
 fi
 
-REPO="$(cd "$REPO" && pwd)"
+REPO="$(cd "$REPO" && pwd -P)"
 cd "$REPO"
 
 MAIN_REF="main"

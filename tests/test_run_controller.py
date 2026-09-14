@@ -366,6 +366,15 @@ class RunControllerTest(unittest.TestCase):
         return [json.loads(line) for line in self.fake_log.read_text().splitlines()]
 
     def test_provider_cap_and_dag_release_are_progressive(self) -> None:
+        # Keep 002 running well past the accept of 001: the accept is a separate
+        # child process, and on hosts with fast process spawn (macOS) a sibling
+        # finishing after only four polls raced it, which turned a semantic
+        # check (dependents are released before the slowest sibling finishes)
+        # into a timing flake.
+        self.fake_plan.write_text(
+            json.dumps({"finish_after": {"001": 1, "002": 30, "003": 1}}),
+            encoding="utf-8",
+        )
         self.write_run(provider_slots=2)
         self.write_task("001")
         self.write_task("002")
@@ -454,7 +463,10 @@ class RunControllerTest(unittest.TestCase):
             self.assertEqual(outcome["exit_status"], "completed")
             self.assertIsNone(outcome["failure_class"])
             self.assertEqual(outcome["attempts"], 1)
-            self.assertEqual(outcome["run_dir"], str(self.run_dir))
+            # controller.json (and thus outcome.json) records the resolved
+            # run_dir; canonicalize the expected side too so macOS
+            # /var -> /private/var symlinks don't cause a spurious mismatch.
+            self.assertEqual(outcome["run_dir"], str(self.run_dir.resolve()))
         first = json.loads(
             (self.run_dir / "artifacts" / "001" / "outcome.json").read_text()
         )
@@ -462,7 +474,8 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(first["owns_paths_violations"], [])
         self.assertEqual(first["report_sha256"], report_sha)
         self.assertEqual(
-            first["report_path"], str(self.run_dir / "artifacts" / "001" / "report.md")
+            first["report_path"],
+            str(self.run_dir.resolve() / "artifacts" / "001" / "report.md"),
         )
         second = json.loads(
             (self.run_dir / "artifacts" / "002" / "outcome.json").read_text()

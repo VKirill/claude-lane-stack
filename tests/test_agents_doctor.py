@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,18 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 DOCTOR = ROOT / "bin" / "agents-doctor"
 
+# This whole file exercises agents-doctor's bubblewrap-era detection and
+# gating logic (fake `bwrap` scripts that exit 0/1, or are absent, standing
+# in for a real Linux bwrap install). Since agents-doctor now selects its
+# sandbox backend per-host (bubblewrap on Linux, seatbelt/sandbox-exec on
+# macOS — see bin/sandbox_backend.py), every subprocess below pins the
+# backend to "bubblewrap" so this Linux-oriented coverage keeps exercising
+# the same code paths regardless of which OS actually runs the test suite.
+# macOS/seatbelt-specific coverage lives in its own tests (see
+# test_darwin_auto_backend_uses_seatbelt_and_needs_no_bubblewrap below and
+# tests/test_sandbox_backend.py).
+BUBBLEWRAP_ENV = {"LANE_SANDBOX_BACKEND": "bubblewrap"}
+
 
 class AgentsDoctorTest(unittest.TestCase):
     def test_grok_is_preferred_and_agy_requires_gemini_36(self) -> None:
@@ -22,7 +35,7 @@ class AgentsDoctorTest(unittest.TestCase):
             fake_bin.mkdir()
             repo.mkdir()
             (fake_bin / "python3").symlink_to(sys.executable)
-            (fake_bin / "bash").symlink_to("/usr/bin/bash")
+            (fake_bin / "bash").symlink_to(shutil.which("bash") or "/bin/bash")
             for name in ("claude", "grok", "codex", "bwrap"):
                 executable = fake_bin / name
                 executable.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
@@ -38,6 +51,7 @@ class AgentsDoctorTest(unittest.TestCase):
             agy.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = str(fake_bin)
             result = subprocess.run(
                 [str(DOCTOR), "--json", str(repo)],
@@ -120,7 +134,7 @@ class AgentsDoctorTest(unittest.TestCase):
             fake_bin.mkdir()
             repo.mkdir()
             (fake_bin / "python3").symlink_to(sys.executable)
-            (fake_bin / "bash").symlink_to("/usr/bin/bash")
+            (fake_bin / "bash").symlink_to(shutil.which("bash") or "/bin/bash")
             for name in ("claude", "grok", "codex"):
                 executable = fake_bin / name
                 executable.write_text(
@@ -135,6 +149,7 @@ class AgentsDoctorTest(unittest.TestCase):
             bwrap.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = str(fake_bin)
             env["BWRAP_ARGS_LOG"] = str(args_log)
             result = subprocess.run(
@@ -163,7 +178,7 @@ class AgentsDoctorTest(unittest.TestCase):
             fake_bin.mkdir()
             repo.mkdir()
             (fake_bin / "python3").symlink_to(sys.executable)
-            (fake_bin / "bash").symlink_to("/usr/bin/bash")
+            (fake_bin / "bash").symlink_to(shutil.which("bash") or "/bin/bash")
             for name in ("claude", "grok", "codex"):
                 executable = fake_bin / name
                 executable.write_text(
@@ -180,6 +195,7 @@ class AgentsDoctorTest(unittest.TestCase):
             bwrap.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = str(fake_bin)
             result = subprocess.run(
                 [str(DOCTOR), "--json", str(repo)],
@@ -203,6 +219,48 @@ class AgentsDoctorTest(unittest.TestCase):
                 "bubblewrap resolver unavailable",
             )
 
+    @unittest.skipUnless(
+        sys.platform == "darwin",
+        "exercises the real macOS sandbox-exec probe (auto backend selection)",
+    )
+    def test_darwin_auto_backend_uses_seatbelt_and_needs_no_bubblewrap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            (fake_bin / "python3").symlink_to(sys.executable)
+            (fake_bin / "bash").symlink_to(shutil.which("bash") or "/bin/bash")
+            for name in ("claude", "grok", "codex"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\necho 'fake 1.0'\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+            # No fake `bwrap` anywhere on PATH and no LANE_SANDBOX_BACKEND
+            # override: "auto" selection must land on seatbelt on Darwin and
+            # gate providers on the real /usr/bin/sandbox-exec probe instead.
+            env = os.environ.copy()
+            env.pop("LANE_SANDBOX_BACKEND", None)
+            env["PATH"] = str(fake_bin)
+            result = subprocess.run(
+                [str(DOCTOR), "--json", str(repo)],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = __import__("json").loads(result.stdout)
+            self.assertEqual(payload["tools"]["sandbox"]["backend"], "seatbelt")
+            self.assertTrue(payload["tools"]["sandbox"]["present"])
+            self.assertTrue(payload["tools"]["sandbox"]["operational"])
+            self.assertFalse(payload["tools"]["bubblewrap"]["present"])
+            self.assertTrue(payload["tools"]["grok"]["present"])
+            self.assertIsNone(payload["tools"]["grok"]["unavailable_reason"])
+
     def test_grok_routing_names_read_only_lane_supervisor(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -218,6 +276,7 @@ class AgentsDoctorTest(unittest.TestCase):
                 executable.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             result = subprocess.run(
                 [str(DOCTOR), "--apply", "--writer-provider", "grok", str(repo)],
@@ -250,6 +309,7 @@ class AgentsDoctorTest(unittest.TestCase):
                 executable.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             result = subprocess.run(
                 [
@@ -290,6 +350,7 @@ class AgentsDoctorTest(unittest.TestCase):
                 executable.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             result = subprocess.run(
                 [
@@ -363,6 +424,7 @@ class AgentsDoctorTest(unittest.TestCase):
                 executable.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             off = subprocess.run(
                 [
@@ -422,7 +484,7 @@ class AgentsDoctorTest(unittest.TestCase):
             fake_bin.mkdir()
             repo.mkdir()
             (fake_bin / "python3").symlink_to(sys.executable)
-            (fake_bin / "bash").symlink_to("/usr/bin/bash")
+            (fake_bin / "bash").symlink_to(shutil.which("bash") or "/bin/bash")
             for name in ("claude", "grok", "codex"):
                 executable = fake_bin / name
                 executable.write_text(
@@ -431,6 +493,7 @@ class AgentsDoctorTest(unittest.TestCase):
                 executable.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = str(fake_bin)
             result = subprocess.run(
                 [str(DOCTOR), "--json", str(repo)],
@@ -455,7 +518,7 @@ class AgentsDoctorTest(unittest.TestCase):
             fake_bin.mkdir()
             repo.mkdir()
             (fake_bin / "python3").symlink_to(sys.executable)
-            (fake_bin / "bash").symlink_to("/usr/bin/bash")
+            (fake_bin / "bash").symlink_to(shutil.which("bash") or "/bin/bash")
             for name in ("claude", "grok", "codex"):
                 executable = fake_bin / name
                 executable.write_text(
@@ -467,6 +530,7 @@ class AgentsDoctorTest(unittest.TestCase):
             bwrap.chmod(0o755)
 
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = str(fake_bin)
             result = subprocess.run(
                 [str(DOCTOR), "--json", str(repo)],
@@ -522,6 +586,7 @@ class AgentsDoctorTest(unittest.TestCase):
                 encoding="utf-8",
             )
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             result = subprocess.run(
                 [str(DOCTOR), "--apply", "--writer-provider", "grok", str(repo)],
@@ -573,6 +638,7 @@ class AgentsDoctorTest(unittest.TestCase):
             )
             cursor.chmod(0o755)
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             result = subprocess.run(
                 [
@@ -620,6 +686,7 @@ class AgentsDoctorTest(unittest.TestCase):
             )
             cursor.chmod(0o755)
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             result = subprocess.run(
                 [
@@ -829,6 +896,7 @@ class DoctorTuiCatalogTest(unittest.TestCase):
             )
             adoc = ROOT / "bin" / "adoc"
             env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
             env["HOME"] = str(home)
             result = subprocess.run(
                 ["bash", str(adoc), "--json", "."],

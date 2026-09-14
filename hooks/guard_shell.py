@@ -73,6 +73,12 @@ _PM_L1_CHECK_SCRIPT = re.compile(
     r"check\.py$"
 )
 _PM_TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".json", ".txt"}
+# Resolved once at import time: on macOS these literal roots are themselves
+# symlinks (/tmp -> /private/tmp, /var/tmp -> /private/var/tmp), while a
+# `.resolve()`d target path follows the symlink too. Comparing an unresolved
+# literal against a resolved target would wrongly deny allowed temp paths.
+# On Linux these roots are not symlinks, so resolving them is a no-op.
+_PM_TMP_ROOTS = tuple(candidate.resolve() for candidate in (Path("/tmp"), Path("/var/tmp")))
 SQL_MUTATION = re.compile(
     r"\b(?:insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|"
     r"comment|vacuum|reindex|cluster|refresh)\b",
@@ -126,7 +132,7 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     suffix = target.suffix.lower()
     if lexical.is_relative_to(root) and not target.is_relative_to(root):
         return False
-    if requested.is_absolute() and target.is_relative_to(Path("/tmp")):
+    if requested.is_absolute() and any(target.is_relative_to(root) for root in _PM_TMP_ROOTS):
         return suffix in _PM_TEXT_SUFFIXES
     if not target.is_relative_to(root):
         return False
@@ -534,7 +540,8 @@ def main() -> None:
             "node_modules", "/tmp/", ".next", "dist", "build", ".cache", "coverage", ".turbo",
         ))
         if not safe:
-            emit_deny(client, "[agent-guard] rm -rf blocked (use gio trash or whitelist build/tmp paths).")
+            trash_hint = "the trash CLI or Finder" if sys.platform == "darwin" else "gio trash"
+            emit_deny(client, f"[agent-guard] rm -rf blocked (use {trash_hint} or whitelist build/tmp paths).")
 
     emit_allow(client)
 

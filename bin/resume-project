@@ -157,8 +157,16 @@ fi
 echo "======== recent session-log ========"
 LOGDIR="$REPO/.agents/session-log"
 if [[ -d "$LOGDIR" ]]; then
-  find "$LOGDIR" -name '*.md' ! -name 'INDEX.md' ! -name 'AUDIT-*' -type f -printf '%T@ %p\n' 2>/dev/null \
-    | sort -nr | head -3 | while read -r _ p; do
+  # `find -printf` is GNU-only (no BSD/macOS find equivalent); sort by mtime
+  # in python3 instead so this works the same on Linux and macOS.
+  python3 -c "
+import glob, os, sys
+files = [f for f in glob.glob(os.path.join(sys.argv[1], '*.md'))
+         if os.path.basename(f) != 'INDEX.md' and not os.path.basename(f).startswith('AUDIT-')]
+files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+for f in files[:3]:
+    print(f)
+" "$LOGDIR" 2>/dev/null | while read -r p; do
       echo "--- $p ---"
       head -n 40 "$p"
       echo

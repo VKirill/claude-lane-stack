@@ -19,6 +19,18 @@ ROOT = Path(__file__).resolve().parents[1]
 LANE_SESSION = ROOT / "bin" / "lane-session"
 LANE_EXEC = ROOT / "bin" / "lane-exec"
 
+_BIN = ROOT / "bin"
+if str(_BIN) not in sys.path:
+    sys.path.insert(0, str(_BIN))
+import sandbox_backend  # noqa: E402 - see sys.path setup above
+
+# The active backend follows the host running the tests (LANE_SANDBOX_BACKEND
+# override, else sys.platform via sandbox_backend.select_backend()): bwrap on
+# Linux, sandbox-exec/seatbelt on macOS. Never hardcode "bubblewrap-workspace".
+RUNTIME_SANDBOX_PROFILE = sandbox_backend.runtime_sandbox_profile(
+    sandbox_backend.select_backend()
+)
+
 class LaneSessionTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -1078,7 +1090,11 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(first[first.index("--output-format") + 1], "streaming-json")
         rules = first[first.index("--rules") + 1]
         self.assertIn("task_id=001", rules)
-        self.assertIn(f"workspace={self.cwd}", rules)
+        # lane-session resolves --cwd (Path.resolve()) before stamping the
+        # boundary text; compare against the resolved form too, since on
+        # macOS TMPDIR (used by tempfile) is itself a symlink
+        # (/var/folders/... -> /private/var/folders/...).
+        self.assertIn(f"workspace={self.cwd.resolve()}", rules)
         expected_prompt_sha = hashlib.sha256(b"Implement task 001\n").hexdigest()
         self.assertIn(f"prompt_sha256={expected_prompt_sha}", rules)
         self.assertIn("owns_paths", rules)
@@ -1184,7 +1200,7 @@ class LaneSessionTest(unittest.TestCase):
 
         active = self._state()["sessions"]["grok:grok:0"]
         self.assertNotEqual(active["session_id"], first_id)
-        self.assertEqual(active["sandbox"], "bubblewrap-workspace")
+        self.assertEqual(active["sandbox"], RUNTIME_SANDBOX_PROFILE)
         self.assertEqual(self._state()["history"][0]["rotation_reason"], "sandbox_changed")
 
     def test_two_runs_in_same_worktree_never_resume_each_others_session(self) -> None:
@@ -1472,6 +1488,12 @@ class LaneSessionTest(unittest.TestCase):
         self.assertTrue(probe["resolver_target_readable"])
         self.assertTrue(probe["resolv_conf_readable"])
 
+    @unittest.skipUnless(
+        shutil.which("bwrap"),
+        "host pathname-socket masking and /tmp tmpfs-overlay isolation are "
+        "bubblewrap mount-namespace properties with no seatbelt equivalent "
+        "(see sandbox_backend.py / active_pathname_sockets docstring)",
+    )
     def test_provider_cannot_reach_host_socket_tmp_or_unsafe_environment(self) -> None:
         socket_path = self.grok_home / "host-control.sock"
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -1525,7 +1547,7 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(receipt["provider_version"], "0.2.103-test")
         self.assertEqual(receipt["model"], "test-model")
         self.assertEqual(receipt["reasoning_effort"], "high")
-        self.assertEqual(receipt["sandbox"], "bubblewrap-workspace")
+        self.assertEqual(receipt["sandbox"], RUNTIME_SANDBOX_PROFILE)
         self.assertEqual(receipt["provider_sandbox"], "off")
         self.assertFalse(receipt["subagents_enabled"])
         self.assertEqual(receipt["session_id"], self._state()["sessions"]["grok:grok:0"]["session_id"])

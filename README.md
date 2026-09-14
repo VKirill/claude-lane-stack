@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.28.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.29.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -193,7 +193,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.28.0
+cd claude-lane-stack && git checkout v1.29.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
@@ -201,6 +201,8 @@ export PATH="$HOME/.agents/bin:$PATH"
 Плагин: `lane-stack@claude-lane-stack`, marketplace сам обновляется с GitHub. Хост `~/.agents` — снова `./install.sh`. Живой чекаут: `LANE_INSTALL_LOCAL_MARKETPLACE=1 ./install.sh`.
 
 Нужно: Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`. Writers — по желанию.
+
+**macOS:** `brew install flock`; PyYAML/jsonschema через `pip3 install --break-system-packages pyyaml jsonschema`; Cursor/AGY/Codex CLI — отдельно, как на Linux. Песочница write-лейнов — встроенный `sandbox-exec` (Seatbelt), переключается `LANE_SANDBOX_BACKEND=auto|bubblewrap|seatbelt`. `install.sh` дописывает PATH и в `~/.zshrc` (дефолтный шелл). `lane-bg` — на `nohup`, без пользовательского systemd.
 
 ### 2. Один раз в проекте
 

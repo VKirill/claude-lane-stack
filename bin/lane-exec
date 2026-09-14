@@ -206,10 +206,17 @@ def main() -> int:
     def kill_tree(sig: int = signal.SIGTERM) -> None:
         try:
             os.killpg(proc.pid, sig)
-        except ProcessLookupError:
+        except OSError:
+            # macOS/BSD can raise PermissionError (EPERM) instead of ESRCH
+            # when the process group has no live members left (e.g. the
+            # child already exited), in addition to the usual
+            # ProcessLookupError case. Fall back to signalling the child
+            # directly; it is started with start_new_session=True so it is
+            # its own process-group leader, and this still reaches it when
+            # killpg itself cannot be used.
             try:
                 proc.send_signal(sig)
-            except ProcessLookupError:
+            except OSError:
                 pass
 
     # Initial pulse so stall-check sees the lane immediately after detach

@@ -76,7 +76,11 @@ collect_dirs() {
   exit 1
 }
 
-mapfile -t DIRS < <(collect_dirs || true)
+# bash 3.2 has no mapfile/readarray; build the array with a while-read loop.
+DIRS=()
+while IFS= read -r _dir_line; do
+  [[ -n "$_dir_line" ]] && DIRS+=("$_dir_line")
+done < <(collect_dirs || true)
 
 if [[ ${#DIRS[@]} -eq 0 ]]; then
   echo "LANE_POLL count=0 started=0 running=0 done=0 finish_ready=0"

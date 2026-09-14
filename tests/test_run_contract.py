@@ -207,7 +207,10 @@ class RunContractTest(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(Path(result.stdout.strip()), self.run_dir)
+        # run-init prints the canonical run_dir (repo is resolved internally);
+        # canonicalize the expected side too so macOS /var -> /private/var
+        # symlinks don't cause a spurious mismatch.
+        self.assertEqual(Path(result.stdout.strip()), self.run_dir.resolve())
         self.assertTrue((self.run_dir / "tasks").is_dir())
         self.assertTrue((self.run_dir / "artifacts").is_dir())
         for name in ("PLAN.md", "SPEC.md", "STATUS.md"):

@@ -108,6 +108,25 @@ same outer Bubblewrap boundary. It is ephemeral, has multi-agent disabled, and
 cannot write `.agents`; `lane-session` parses its JSON event stream and writes
 the canonical report only after `turn.completed`.
 
+### Sandbox backends
+
+Bubblewrap (`bwrap`) is Linux-only. On Darwin the same outer boundary is built
+with the OS-native `sandbox-exec` (Seatbelt): a generated profile exposes the
+project, private temp directories, and the provider's own conversation state
+as writable, mounts the rest of the host read-only, and over-mounts `.agents`
+read-only — the same shape as the Bubblewrap boundary above, expressed as a
+Seatbelt profile instead of namespaces/binds.
+
+| `LANE_SANDBOX_BACKEND` | Effect |
+|---|---|
+| `auto` (default) | `bubblewrap` on Linux, `seatbelt` on Darwin |
+| `bubblewrap` | Force `bwrap`; fails fast if missing (Linux only) |
+| `seatbelt` | Force `sandbox-exec`; fails fast if missing (Darwin only) |
+
+`agents-doctor` probes for the backend actually usable on the host instead of
+gating on `bubblewrap` alone. Neither backend claims network-egress isolation;
+the `owns_paths` contract remains the narrower behavioral boundary.
+
 Status deliberately distinguishes `provider_incomplete`, `provider_partial`,
 `awaiting_verification`, `verified`, and `verification_failed`. Provider exit 0
 with a trusted `STATUS: partial` report is `provider_partial → inspect` (contract

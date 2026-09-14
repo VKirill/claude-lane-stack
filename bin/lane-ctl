@@ -33,6 +33,8 @@ if str(BIN_DIR) not in sys.path:
     sys.path.insert(0, str(BIN_DIR))
 
 from verification_safety import verification_argv, verification_error
+from sandbox_backend import KNOWN_RUNTIME_SANDBOX_PROFILES
+from path_utils import same_path
 
 try:
     from gate_log import record_gate_event
@@ -457,26 +459,81 @@ def parse_int_file(path: Path) -> int | None:
         return None
 
 
-def pid_start_time(pid: int) -> int | None:
+_HAS_PROC = sys.platform.startswith("linux")
+
+
+def _ps_field(pid: int, fmt: str) -> str | None:
+    """Run `ps -p PID -o FMT=` under a fixed C locale; return trimmed stdout or None.
+
+    Used as the portable (non-/proc) fallback for process introspection on
+    macOS/BSD, where `/proc` does not exist.
+    """
+    env = os.environ.copy()
+    env["LC_ALL"] = "C"
     try:
-        parts = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
-        return int(parts[21])
-    except (OSError, IndexError, ValueError):
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", f"{fmt}="],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    text = result.stdout.strip()
+    return text or None
+
+
+def _ps_zombie(pid: int) -> bool | None:
+    """Return True if `ps` reports pid as a zombie, None if pid is unknown."""
+    stat = _ps_field(pid, "stat")
+    if stat is None:
+        return None
+    return "Z" in stat
+
+
+def pid_start_time(pid: int) -> int | None:
+    if _HAS_PROC:
+        try:
+            parts = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
+            return int(parts[21])
+        except (OSError, IndexError, ValueError):
+            return None
+    # Portable fallback: `ps -o lstart=` prints the ctime-style wall-clock
+    # start time (e.g. "Mon Sep 14 01:41:51 2026"); with LC_ALL=C this matches
+    # Python's default ("C" locale) %c parsing.
+    text = _ps_field(pid, "lstart")
+    if not text:
+        return None
+    try:
+        return int(time.mktime(time.strptime(text, "%c")))
+    except ValueError:
         return None
 
 
 def pid_alive(pid: int | None, expected_start: int | None = None) -> bool:
     if pid is None or pid <= 1:
         return False
+    if _HAS_PROC:
+        try:
+            parts = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
+            if len(parts) < 22 or parts[2] == "Z":
+                return False
+            if expected_start is not None and int(parts[21]) != expected_start:
+                return False
+        except (OSError, ValueError):
+            return False
+    else:
+        if expected_start is not None and pid_start_time(pid) != expected_start:
+            return False
+        if _ps_zombie(pid):
+            return False
     try:
-        parts = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()
-        if len(parts) < 22 or parts[2] == "Z":
-            return False
-        if expected_start is not None and int(parts[21]) != expected_start:
-            return False
         os.kill(pid, 0)
         return True
-    except (OSError, ValueError):
+    except OSError:
         return False
 
 
@@ -679,7 +736,9 @@ def trusted_provider_report(
         and runtime.get("provider_exit_code") == 0
         and runtime.get("exit_code") == 0
         and runtime.get("protocol_valid") is True
-        and runtime.get("sandbox") == "bubblewrap-workspace"
+        # Accept any known per-backend profile (bubblewrap-workspace on
+        # Linux, seatbelt-workspace on macOS) — see sandbox_backend.py.
+        and runtime.get("sandbox") in KNOWN_RUNTIME_SANDBOX_PROFILES
         and runtime.get("subagents_enabled") is False
         and runtime.get("control_plane_read_only") is True
         and isinstance(prompt_sha256, str)
@@ -1588,19 +1647,38 @@ def cmd_events(args: argparse.Namespace) -> int:
 
 
 def child_pids(pid: int) -> list[int]:
-    try:
-        text = Path(f"/proc/{pid}/task/{pid}/children").read_text(encoding="utf-8")
-    except OSError:
-        return []
-    result: list[int] = []
-    for value in text.split():
+    if _HAS_PROC:
         try:
-            child = int(value)
+            text = Path(f"/proc/{pid}/task/{pid}/children").read_text(encoding="utf-8")
+        except OSError:
+            return []
+        values = text.split()
+    else:
+        # Portable fallback: pgrep -P lists direct children of pid, one per line.
+        try:
+            result = subprocess.run(
+                ["pgrep", "-P", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        # pgrep exits 1 with empty output when there are no matches.
+        if result.returncode not in (0, 1):
+            return []
+        values = result.stdout.split()
+    direct: list[int] = []
+    for value in values:
+        try:
+            direct.append(int(value))
         except ValueError:
             continue
-        result.append(child)
-        result.extend(child_pids(child))
-    return result
+    out: list[int] = []
+    for child in direct:
+        out.append(child)
+        out.extend(child_pids(child))
+    return out
 
 
 def terminate_tree(pid: int, grace_seconds: float = 3.0) -> None:
@@ -2823,7 +2901,10 @@ def require_review_receipt_identity(
         raise ContractError("review.json task_sha256 does not match state")
     if review.get("attempt") != attempt:
         raise ContractError("review.json attempt is not current")
-    if review.get("project_cwd") != str(project_cwd):
+    review_project_cwd = review.get("project_cwd")
+    if not isinstance(review_project_cwd, str) or not same_path(
+        review_project_cwd, project_cwd
+    ):
         raise ContractError("review.json project_cwd does not match task")
     base_ref = review.get("base_ref")
     if not isinstance(base_ref, str) or not GIT_COMMIT_HEX.fullmatch(base_ref):

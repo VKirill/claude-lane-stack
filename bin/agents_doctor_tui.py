@@ -2202,6 +2202,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
             "codex",
             "cursor",
             "opencode",
+            # "sandbox" is the platform-agnostic gate that actually decides
+            # writer-lane availability (bubblewrap on Linux, sandbox-exec /
+            # seatbelt on macOS — see bin/sandbox_backend.py); "bubblewrap"
+            # is kept alongside it for backward compatibility and will show
+            # as unavailable on a non-Linux host even when "sandbox" is ok.
+            "sandbox",
             "bubblewrap",
         ]
         seen: set[str] = set()

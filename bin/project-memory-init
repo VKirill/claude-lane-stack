@@ -3,9 +3,14 @@ set -euo pipefail
 ROOT="${1:-.}"
 ROOT="$(cd "$ROOT" && pwd)"
 TPL="${HOME}/.agents/templates"
+[[ -d "$TPL" ]] || TPL="/home/ubuntu/.agents/templates"
+[[ -d "$TPL" ]] || TPL="/home/ubuntu/tools/claude-lane-stack/templates"
+# Dev/test fallback: run directly from a repo checkout without ~/.agents installed yet.
+[[ -d "$TPL" ]] || TPL="$(cd "$(dirname "$0")/.." && pwd)/templates"
 install_if_missing() {
   local dest="$1" src="$2"
   if [[ -e "$dest" ]]; then echo "skip exists: $dest"; return; fi
+  if [[ ! -f "$src" ]]; then echo "WARN: missing template $src" >&2; return; fi
   mkdir -p "$(dirname "$dest")"
   cp "$src" "$dest"
   echo "created: $dest"

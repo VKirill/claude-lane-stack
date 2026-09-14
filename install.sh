@@ -32,16 +32,57 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+UNAME_S="$(uname -s 2>/dev/null || echo unknown)"
+IS_DARWIN=0
+[[ "$UNAME_S" == "Darwin" ]] && IS_DARWIN=1
+
+install_hint() {
+  # $1: missing command name
+  if [[ "$IS_DARWIN" == 1 ]]; then
+    case "$1" in
+      flock) echo "brew install flock" ;;
+      node) echo "brew install node" ;;
+      git) echo "xcode-select --install, or: brew install git" ;;
+      rsync) echo "brew install rsync" ;;
+      python3) echo "brew install python3" ;;
+      *) echo "brew install $1" ;;
+    esac
+  else
+    case "$1" in
+      flock) echo "apt-get install util-linux (or your distro's util-linux package)" ;;
+      node) echo "your distro's nodejs package, or https://nodejs.org" ;;
+      *) echo "your distro's package manager" ;;
+    esac
+  fi
+}
+
 for command in flock git python3 rsync node; do
   command -v "$command" >/dev/null 2>&1 || {
-    echo "error: missing required command: $command" >&2
+    echo "error: missing required command: $command (install: $(install_hint "$command"))" >&2
     exit 1
   }
 done
 python3 -c 'import jsonschema, yaml' >/dev/null 2>&1 || {
-  echo "error: missing Python modules: PyYAML and jsonschema" >&2
+  if [[ "$IS_DARWIN" == 1 ]]; then
+    PY_HINT="pip3 install --break-system-packages pyyaml jsonschema (or: brew install python-yaml, then pip3 install --break-system-packages jsonschema)"
+  else
+    PY_HINT="pip3 install --break-system-packages pyyaml jsonschema"
+  fi
+  echo "error: missing Python modules: PyYAML and jsonschema (install: $PY_HINT)" >&2
   exit 1
 }
+if [[ "$IS_DARWIN" == 1 ]] && [[ -x /usr/bin/python3 ]]; then
+  /usr/bin/python3 -c 'import jsonschema, yaml' >/dev/null 2>&1 || {
+    echo "warning: /usr/bin/python3 is missing PyYAML/jsonschema; hooks launched under a" >&2
+    echo "  clean PATH (e.g. by Claude Code) may pick it up instead of Homebrew's python3." >&2
+    echo "  Fix: /usr/bin/python3 -m pip install --break-system-packages pyyaml jsonschema" >&2
+  }
+fi
+if [[ "$IS_DARWIN" == 1 ]] && [[ ! -x /usr/bin/sandbox-exec ]]; then
+  echo "warning: /usr/bin/sandbox-exec (Seatbelt) not found; writer lane sandboxing" >&2
+  echo "  falls back per LANE_SANDBOX_BACKEND. This ships with macOS; if it is" >&2
+  echo "  missing something on this system is unusual — check Xcode Command Line Tools." >&2
+fi
 if ! command -v claude >/dev/null 2>&1; then
   echo "warning: Claude Code is not installed; install it before starting dev-orchestrator" >&2
 fi
@@ -227,18 +268,48 @@ if [[ -d "$PLUGIN_ROOT/commands" ]]; then
   done
 fi
 if [[ "${LANE_INSTALL_CLAUDE_PLUGIN:-1}" != "0" ]] && command -v claude >/dev/null 2>&1; then
-  if ! CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin marketplace add "$MARKETPLACE_ADD" --scope user; then
+  # Do not force CLAUDE_CONFIG_DIR: claude's own default already resolves to
+  # $CLAUDE ($HOME/.claude) for plugin state, while its top-level session
+  # config lives at $HOME/.claude.json (outside that directory). Forcing
+  # CLAUDE_CONFIG_DIR="$CLAUDE" here made claude look for a nonexistent
+  # $CLAUDE/.claude.json and left known_marketplaces.json entries without
+  # installLocation, breaking every later `claude plugin` command. Only an
+  # env var the caller already exported should change this.
+  CLAUDE_MARKETPLACES_DIR="${CLAUDE_CONFIG_DIR:-$CLAUDE}"
+  python3 - "$CLAUDE_MARKETPLACES_DIR/plugins/known_marketplaces.json" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if path.is_file():
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        data = None
+    if isinstance(data, dict):
+        entry = data.get("claude-lane-stack")
+        if isinstance(entry, dict) and "installLocation" not in entry:
+            del data["claude-lane-stack"]
+            temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            temporary.write_text(
+                json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            os.replace(temporary, path)
+PY
+  if ! claude plugin marketplace add "$MARKETPLACE_ADD" --scope user; then
     echo "warning: claude plugin marketplace add failed; extraKnownMarketplaces is still set" >&2
   fi
   if [[ "$PLUGIN_LOCAL" != 1 ]]; then
-    CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin marketplace update claude-lane-stack >/dev/null || true
+    claude plugin marketplace update claude-lane-stack >/dev/null || true
   fi
   python3 "$DEST/hooks/merge_claude_settings.py" \
     "$CLAUDE/settings.json" "$DEST/hooks/guard_shell.py" \
     --statusline "$DEST/bin/lane-statusline" \
     --session-mark "$DEST/hooks/lane_statusline_session.py" \
     "${MERGE_PLUGIN_ARGS[@]}"
-  if ! CLAUDE_CONFIG_DIR="$CLAUDE" claude plugin install lane-stack@claude-lane-stack -y -s user; then
+  if ! claude plugin install lane-stack@claude-lane-stack -y -s user; then
     echo "warning: claude plugin install lane-stack@claude-lane-stack failed; enable after next Claude launch" >&2
   fi
 fi
@@ -257,6 +328,11 @@ fi
 if ! grep -q '\.agents/bin' "$HOME/.bashrc" 2>/dev/null; then
   echo 'export PATH="$HOME/.agents/bin:$PATH"' >> "$HOME/.bashrc"
   echo " appended PATH to ~/.bashrc"
+fi
+# macOS login shells are zsh by default; keep ~/.zshrc in sync too.
+if [[ "${SHELL:-}" == */zsh || -f "$HOME/.zshrc" ]] && ! grep -q '\.agents/bin' "$HOME/.zshrc" 2>/dev/null; then
+  echo 'export PATH="$HOME/.agents/bin:$PATH"' >> "$HOME/.zshrc"
+  echo " appended PATH to ~/.zshrc"
 fi
 export PATH="$HOME/.agents/bin:$PATH"
 

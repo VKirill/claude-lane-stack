@@ -8,7 +8,9 @@ mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/AUDIT-${DAY}.md"
 {
   echo "# Night audit — ${DAY}"
-  echo; echo "Project: \`$ROOT\`"; echo "Generated: $(date -Iseconds)"; echo
+  # `date -Iseconds` is a GNU extension that older BSD/macOS `date` lacks;
+  # use the explicit strftime form that's already used elsewhere in this repo.
+  echo; echo "Project: \`$ROOT\`"; echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo
   echo "## PROGRESS (live state)"; echo
   PROGRESS_F="$ROOT/.agents/PROGRESS.md"
   [[ -f "$PROGRESS_F" ]] || PROGRESS_F="$ROOT/PROGRESS.md"

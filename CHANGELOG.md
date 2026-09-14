@@ -1,3 +1,50 @@
+## 1.29.0 — 2026-09-14
+
+### Added
+- **macOS support.** `install.sh` preflight now prints platform-specific
+  install hints (`brew`/`pip3`) instead of a bare "missing" line, warns when
+  `/usr/bin/python3` lacks PyYAML/jsonschema (hooks can pick it up under a
+  clean PATH even though the interpreter first on `PATH` is fine), and warns
+  — without failing — when `/usr/bin/sandbox-exec` is missing. PATH is now
+  also appended to `~/.zshrc` (macOS's default login shell), in addition to
+  `~/.bashrc`.
+- **Seatbelt sandbox backend.** Writer lanes on Darwin sandbox via the
+  built-in `sandbox-exec` instead of Linux-only `bubblewrap`. Select with
+  `LANE_SANDBOX_BACKEND=auto|bubblewrap|seatbelt`; `auto` (default) picks
+  `bubblewrap` on Linux and `seatbelt` on Darwin. `agents-doctor` now probes
+  for whichever backend the host can actually run instead of gating on
+  bubblewrap alone. `docs/LANE-EXEC.md` documents both backends.
+- Portable pid helpers in `lane-ctl` (via `ps`/`pgrep`) replace `/proc`-only
+  lookups so status/cancel work on Darwin; `lane-exec` falls back cleanly
+  when `killpg` returns `EPERM` instead of treating it as a hard failure.
+
+### Fixed
+- **`install.sh` plugin bootstrap.** Forcing
+  `CLAUDE_CONFIG_DIR="$HOME/.claude"` made Claude Code look for a
+  nonexistent `~/.claude/.claude.json` and left `known_marketplaces.json`
+  entries for `claude-lane-stack` without `installLocation`/`lastUpdated`,
+  breaking every later `claude plugin` command with "Marketplace
+  configuration file is corrupted". `install.sh` no longer overrides
+  `CLAUDE_CONFIG_DIR` unless the caller already exported it, and repairs a
+  broken `known_marketplaces.json` entry before `marketplace add`.
+  `LANE_INSTALL_CLAUDE_PLUGIN=0` still skips the plugin bootstrap entirely.
+- `hooks/guard_shell.py`'s `rm -rf` denial now suggests `trash`/Finder on
+  Darwin instead of Linux-only `gio trash`.
+- `lane-bg`'s test coverage assumed the user-systemd backend and failed
+  against hosts (including macOS) that use the `nohup` fallback.
+- **Symlinked temp/home paths.** macOS resolves `/tmp` and `/var` to
+  `/private/...`; several checks compared a resolved path with a raw one and
+  failed. Fixed `board/server/server.mjs` (main-module guard never matched,
+  server exited silently), `hooks/guard_shell.py` (`/tmp` allowlist),
+  `wt-merge-main` (`pwd -P`), `lane-ctl` (`review.json` `project_cwd`) and
+  `night-fix-runner` (`worktree.json` repo) via a shared `bin/path_utils.py`
+  (`canonical_path` / `same_path`).
+- **bash 3.2 / BSD userland.** `project-onboard`, `project-memory-init`,
+  `lane-poll`, `memory-maintain-project`, `resume-project`, `night-audit`
+  no longer use `${var,,}`, `mapfile`, bare `sed -i`, `readlink -f`,
+  `find -printf`, `date -Iseconds` or a required `timeout` binary; templates
+  resolve from the checkout when `~/.agents` is absent.
+
 ## 1.28.0 — 2026-09-14
 
 ### Added

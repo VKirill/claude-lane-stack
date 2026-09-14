@@ -1470,7 +1470,10 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual(verified.returncode, 1)
         self.assertLess(time.monotonic() - started, 2)
         payload = json.loads(verified.stdout)
-        self.assertEqual(payload["commands"][0]["resolved_cwd"], str(nested))
+        # resolved_cwd is produced via Path.resolve(); canonicalize the
+        # expected side too so macOS /var -> /private/var symlinks don't
+        # cause a spurious mismatch.
+        self.assertEqual(payload["commands"][0]["resolved_cwd"], str(nested.resolve()))
         self.assertEqual(payload["commands"][1]["timeout_sec"], 1)
         self.assertEqual(payload["commands"][1]["exit_code"], 124)
         self.assertEqual((nested / "marker.txt").read_text(), "nested")
@@ -1967,6 +1970,77 @@ class LaneCtlTest(unittest.TestCase):
         )
         payload = json.loads(filtered.stdout)
         self.assertEqual([event["task_id"] for event in payload], ["001"])
+
+
+def _load_lane_ctl():
+    """Import bin/lane-ctl (no .py suffix) as a module for direct unit tests."""
+    from importlib.machinery import SourceFileLoader
+    import importlib.util
+
+    name = "lane_ctl_under_test"
+    loader = SourceFileLoader(name, str(LANE_CTL))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        loader.exec_module(module)
+    finally:
+        sys.modules.pop(name, None)
+    return module
+
+
+class PidHelpersTest(unittest.TestCase):
+    """Portable process helpers (pid_start_time/pid_alive/child_pids).
+
+    On Linux these read /proc; on macOS/BSD they must fall back to `ps` and
+    `pgrep`. These tests exercise the real fallback path on whatever
+    platform they run on, so they double as a portability regression guard.
+    """
+
+    def setUp(self) -> None:
+        self.lane_ctl = _load_lane_ctl()
+
+    def test_pid_alive_true_and_start_time_stable_for_running_process(self) -> None:
+        proc = subprocess.Popen(["sleep", "30"])
+        try:
+            self.assertTrue(self.lane_ctl.pid_alive(proc.pid))
+            start1 = self.lane_ctl.pid_start_time(proc.pid)
+            self.assertIsNotNone(start1)
+            time.sleep(0.5)
+            start2 = self.lane_ctl.pid_start_time(proc.pid)
+            self.assertEqual(start1, start2)
+            self.assertTrue(self.lane_ctl.pid_alive(proc.pid, expected_start=start1))
+        finally:
+            proc.kill()
+            proc.wait(timeout=5)
+
+    def test_pid_alive_false_after_kill_and_on_start_time_mismatch(self) -> None:
+        proc = subprocess.Popen(["sleep", "30"])
+        pid = proc.pid
+        proc.kill()
+        proc.wait(timeout=5)
+        self.assertFalse(self.lane_ctl.pid_alive(pid))
+        # A live pid with a deliberately wrong expected_start must not be
+        # reported alive (guards against dropping the start-time check).
+        self.assertFalse(
+            self.lane_ctl.pid_alive(os.getpid(), expected_start=1)
+        )
+
+    def test_child_pids_finds_grandchild_via_nested_shell(self) -> None:
+        proc = subprocess.Popen(["bash", "-c", "sleep 30 & wait"])
+        try:
+            deadline = time.monotonic() + 5
+            children: list[int] = []
+            while time.monotonic() < deadline:
+                children = self.lane_ctl.child_pids(proc.pid)
+                if children:
+                    break
+                time.sleep(0.1)
+            self.assertEqual(len(children), 1, children)
+            self.assertTrue(self.lane_ctl.pid_alive(children[0]))
+        finally:
+            proc.kill()
+            proc.wait(timeout=5)
 
 
 if __name__ == "__main__":

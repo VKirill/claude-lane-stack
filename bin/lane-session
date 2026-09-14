@@ -27,6 +27,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
+try:
+    import sandbox_backend
+except ImportError:  # pragma: no cover - defensive, see routing_profile imports below
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import sandbox_backend
+
 
 STATE_VERSION = 1
 HARD_MAX_TASKS = 10
@@ -90,7 +96,8 @@ guardian_approval = false
 # Native `codex exec --disable <feature>` set for bare writer (stable flags only).
 # System skills (imagegen, skill-installer, …) are baked into Codex and cannot
 # be fully removed via public CLI; user skills/MCP/plugins are excluded by the
-# ephemeral CODEX_HOME + bwrap mask of host ~/.codex.
+# ephemeral CODEX_HOME + sandbox-backend mask of host ~/.codex (bwrap tmpfs
+# on Linux, seatbelt deny rules on macOS).
 CODEX_DISABLE_FEATURES = (
     "multi_agent",
     "multi_agent_v2",
@@ -116,7 +123,11 @@ CODEX_DISABLE_FEATURES = (
     "workspace_dependencies",
     "guardian_approval",
 )
-RUNTIME_SANDBOX_PROFILE = "bubblewrap-workspace"
+# Sandbox backend for this process: "bubblewrap" (Linux, external bwrap) or
+# "seatbelt" (macOS, sandbox-exec + generated SBPL profile). Selected once at
+# import time from LANE_SANDBOX_BACKEND (bubblewrap|seatbelt|auto) / sys.platform.
+SANDBOX_BACKEND = sandbox_backend.select_backend()
+RUNTIME_SANDBOX_PROFILE = sandbox_backend.runtime_sandbox_profile(SANDBOX_BACKEND)
 PROTOCOL_FAILURE_EXIT = 65
 MAX_PROVIDER_LOG_BYTES = 1024 * 1024
 MAX_REPORT_SCAN_CHARS = 512 * 1024
@@ -638,7 +649,8 @@ def provider_command(
         # - `-p lane-writer` layers the same bare profile by name (also installed
         #   as ~/.codex/lane-writer.config.toml for human inspection)
         # - do NOT pass --ignore-user-config (would skip our bare config.toml)
-        # - host ~/.codex is tmpfs-hidden by bwrap so MCP/plugins/user skills stay out
+        # - host ~/.codex is hidden by the sandbox backend (bwrap tmpfs on
+        #   Linux, seatbelt deny rules on macOS) so MCP/plugins/user skills stay out
         # - no --ephemeral: session files must survive so the next task can resume
         command = [
             binary,
@@ -996,6 +1008,20 @@ def prepare_codex_home(
 
 
 def active_pathname_sockets() -> list[Path]:
+    """List pathname-bound AF_UNIX sockets visible to this process (Linux only).
+
+    Only meaningful under the bubblewrap backend: it feeds the loop that
+    ro-binds `/dev/null` over stray sockets left under a tmpfs-hidden root
+    (`/run`, `/tmp`, ...) so a writer provider cannot connect to a host
+    socket that leaked into its private mount namespace. On macOS the
+    seatbelt backend does not use bind-mount namespaces or tmpfs overlays at
+    all — sockets under /tmp are simply not reachable through any extra
+    mechanism this module sets up, and Seatbelt's own file-write* deny rules
+    already cover accidental writes — so no equivalent hiding is required,
+    and this reads /proc/net/unix which does not exist outside Linux.
+    """
+    if sys.platform != "linux":
+        return []
     sockets: set[Path] = set()
     try:
         lines = Path("/proc/net/unix").read_text(encoding="utf-8").splitlines()[1:]
@@ -1035,7 +1061,150 @@ def resolver_mount_args() -> list[str]:
     return mounts
 
 
+def _provider_writable_paths(
+    provider: str, *, home: Path, cwd: Path, provider_state_dir: Path | None
+) -> tuple[Path, ...]:
+    """Directories a provider's own CLI must be able to write to, plus cwd.
+
+    Shared verbatim between the bubblewrap and seatbelt backends so both
+    sandboxes enforce the exact same per-provider writable surface.
+    """
+    if provider == "agy":
+        return (home / ".gemini" / "antigravity-cli", cwd)
+    if provider == "grok":
+        return (home / ".grok", cwd)
+    if provider == "qwen":
+        return (home / ".qwen", cwd)
+    if provider == "kimi":
+        return (home / ".kimi-code", cwd)
+    if provider == "cursor":
+        return (home / ".cursor", cwd)
+    if provider == "opencode":
+        return (
+            home / ".local" / "share" / "opencode",
+            home / ".config" / "opencode",
+            cwd,
+        )
+    return tuple(path for path in (cwd, provider_state_dir) if path is not None)
+
+
+def _provider_hidden_paths(provider: str, *, home: Path) -> set[Path]:
+    """Other CLIs' state dirs (and any host ~/.codex / CODEX_HOME) to hide.
+
+    Shared verbatim between the bubblewrap and seatbelt backends. Bubblewrap
+    hides these with a tmpfs overlay (dirs) or a /dev/null ro-bind (files);
+    seatbelt instead denies file-read*/file-write* subpath/literal rules for
+    the same set (see sandbox_backend.build_seatbelt_profile).
+    """
+    hidden_paths: set[Path] = set()
+    if provider == "agy":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".grok").resolve(),
+                (home / ".kimi-code").resolve(),
+            }
+        )
+    elif provider == "grok":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".gemini").resolve(),
+                (home / ".kimi-code").resolve(),
+            }
+        )
+    elif provider == "qwen":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".gemini").resolve(),
+                (home / ".grok").resolve(),
+                (home / ".kimi-code").resolve(),
+            }
+        )
+    elif provider == "kimi":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".gemini").resolve(),
+                (home / ".grok").resolve(),
+                (home / ".qwen").resolve(),
+            }
+        )
+    elif provider == "cursor":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".gemini").resolve(),
+                (home / ".grok").resolve(),
+                (home / ".qwen").resolve(),
+                (home / ".kimi-code").resolve(),
+            }
+        )
+    elif provider == "opencode":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".gemini").resolve(),
+                (home / ".grok").resolve(),
+                (home / ".qwen").resolve(),
+                (home / ".kimi-code").resolve(),
+                (home / ".cursor").resolve(),
+            }
+        )
+    elif provider == "codex":
+        hidden_paths.update(
+            {
+                (home / ".codex").resolve(),
+                (home / ".gemini").resolve(),
+                (home / ".grok").resolve(),
+                (home / ".kimi-code").resolve(),
+            }
+        )
+    if provider in {"agy", "grok", "qwen", "kimi", "cursor", "opencode"}:
+        configured_codex_home = os.environ.get("CODEX_HOME")
+        if configured_codex_home:
+            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
+    return hidden_paths
+
+
 def sandbox_provider_command(
+    command: list[str],
+    *,
+    provider: str,
+    run_dir: Path,
+    cwd: Path,
+    home: Path,
+    provider_state_dir: Path | None = None,
+) -> list[str]:
+    """Wrap a provider argv behind the platform sandbox backend.
+
+    Backend is selected once at import time (SANDBOX_BACKEND, see
+    LANE_SANDBOX_BACKEND / sandbox_backend.select_backend). There is no
+    "unsandboxed" fallback: an unavailable backend binary fails closed.
+    """
+    if SANDBOX_BACKEND == "bubblewrap":
+        return _sandbox_provider_command_bubblewrap(
+            command,
+            provider=provider,
+            run_dir=run_dir,
+            cwd=cwd,
+            home=home,
+            provider_state_dir=provider_state_dir,
+        )
+    if SANDBOX_BACKEND == "seatbelt":
+        return _sandbox_provider_command_seatbelt(
+            command,
+            provider=provider,
+            run_dir=run_dir,
+            cwd=cwd,
+            home=home,
+            provider_state_dir=provider_state_dir,
+        )
+    raise RuntimeError(f"unsupported sandbox backend: {SANDBOX_BACKEND!r}")
+
+
+def _sandbox_provider_command_bubblewrap(
     command: list[str],
     *,
     provider: str,
@@ -1080,89 +1249,14 @@ def sandbox_provider_command(
         "/var/tmp",
     ]
     wrapped.extend(resolver_mount_args())
-    if provider == "agy":
-        writable_paths = (home / ".gemini" / "antigravity-cli", cwd)
-    elif provider == "grok":
-        writable_paths = (home / ".grok", cwd)
-    elif provider == "qwen":
-        writable_paths = (home / ".qwen", cwd)
-    elif provider == "kimi":
-        writable_paths = (home / ".kimi-code", cwd)
-    elif provider == "cursor":
-        writable_paths = (home / ".cursor", cwd)
-    elif provider == "opencode":
-        writable_paths = (
-            home / ".local" / "share" / "opencode",
-            home / ".config" / "opencode",
-            cwd,
-        )
-    else:
-        writable_paths = tuple(
-            path for path in (cwd, provider_state_dir) if path is not None
-        )
+    writable_paths = _provider_writable_paths(
+        provider, home=home, cwd=cwd, provider_state_dir=provider_state_dir
+    )
     for writable in writable_paths:
         if writable.exists():
             wrapped.extend(("--bind", str(writable), str(writable)))
     wrapped.extend(("--ro-bind", str(control_root), str(control_root)))
-    hidden_paths: set[Path] = set()
-    if provider == "agy":
-        hidden_paths.add((home / ".codex").resolve())
-        hidden_paths.add((home / ".grok").resolve())
-        hidden_paths.add((home / ".kimi-code").resolve())
-        configured_codex_home = os.environ.get("CODEX_HOME")
-        if configured_codex_home:
-            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
-    elif provider == "grok":
-        hidden_paths.add((home / ".codex").resolve())
-        hidden_paths.add((home / ".gemini").resolve())
-        hidden_paths.add((home / ".kimi-code").resolve())
-        configured_codex_home = os.environ.get("CODEX_HOME")
-        if configured_codex_home:
-            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
-    elif provider == "qwen":
-        hidden_paths.add((home / ".codex").resolve())
-        hidden_paths.add((home / ".gemini").resolve())
-        hidden_paths.add((home / ".grok").resolve())
-        hidden_paths.add((home / ".kimi-code").resolve())
-        configured_codex_home = os.environ.get("CODEX_HOME")
-        if configured_codex_home:
-            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
-    elif provider == "kimi":
-        hidden_paths.add((home / ".codex").resolve())
-        hidden_paths.add((home / ".gemini").resolve())
-        hidden_paths.add((home / ".grok").resolve())
-        hidden_paths.add((home / ".qwen").resolve())
-        configured_codex_home = os.environ.get("CODEX_HOME")
-        if configured_codex_home:
-            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
-    elif provider == "cursor":
-        hidden_paths.add((home / ".codex").resolve())
-        hidden_paths.add((home / ".gemini").resolve())
-        hidden_paths.add((home / ".grok").resolve())
-        hidden_paths.add((home / ".qwen").resolve())
-        hidden_paths.add((home / ".kimi-code").resolve())
-        configured_codex_home = os.environ.get("CODEX_HOME")
-        if configured_codex_home:
-            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
-    elif provider == "opencode":
-        hidden_paths.add((home / ".codex").resolve())
-        hidden_paths.add((home / ".gemini").resolve())
-        hidden_paths.add((home / ".grok").resolve())
-        hidden_paths.add((home / ".qwen").resolve())
-        hidden_paths.add((home / ".kimi-code").resolve())
-        hidden_paths.add((home / ".cursor").resolve())
-        configured_codex_home = os.environ.get("CODEX_HOME")
-        if configured_codex_home:
-            hidden_paths.add(Path(configured_codex_home).expanduser().resolve())
-    elif provider == "codex":
-        hidden_paths.update(
-            {
-                (home / ".codex").resolve(),
-                (home / ".gemini").resolve(),
-                (home / ".grok").resolve(),
-                (home / ".kimi-code").resolve(),
-            }
-        )
+    hidden_paths = _provider_hidden_paths(provider, home=home)
     for hidden in sorted(hidden_paths, key=str):
         if provider_state_dir is not None and hidden == provider_state_dir:
             continue
@@ -1201,6 +1295,81 @@ def sandbox_provider_command(
             )
     wrapped.extend(("--chdir", str(cwd), "--", *sandbox_command))
     return wrapped
+
+
+def _write_seatbelt_profile(run_dir: Path, *, provider: str, text: str) -> Path:
+    """Persist a generated SBPL profile under the run's artifacts tree.
+
+    Lives at <run_dir>/artifacts/.sandbox/, a dot-prefixed sibling of the
+    per-task artifact dirs (<run_dir>/artifacts/<task_id>/) — the same
+    convention lane-ctl already uses for internal bookkeeping such as
+    artifacts/.verification-pool/ — so it is never mistaken for writer
+    output tied to a task_id.
+    """
+    sandbox_dir = run_dir / "artifacts" / ".sandbox"
+    sandbox_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        sandbox_dir.chmod(0o700)
+    except OSError:
+        pass
+    profile_path = sandbox_dir / f"{provider}-{os.getpid()}-{uuid.uuid4().hex}.sb"
+    profile_path.write_text(text, encoding="utf-8")
+    try:
+        profile_path.chmod(0o600)
+    except OSError:
+        pass
+    return profile_path
+
+
+def _sandbox_provider_command_seatbelt(
+    command: list[str],
+    *,
+    provider: str,
+    run_dir: Path,
+    cwd: Path,
+    home: Path,
+    provider_state_dir: Path | None = None,
+) -> list[str]:
+    sandbox_exec = sandbox_backend.seatbelt_binary()
+    if not sandbox_exec:
+        raise RuntimeError(
+            "sandbox-exec is required to protect the .agents control plane"
+        )
+    control_root = control_plane_root(run_dir)
+    writable_paths = _provider_writable_paths(
+        provider, home=home, cwd=cwd, provider_state_dir=provider_state_dir
+    )
+    hidden_paths = _provider_hidden_paths(provider, home=home)
+    # Codex keeps its real binary path under seatbelt: unlike bubblewrap there
+    # is no bind-mount mechanism to present it under /opt/claude-lane-codex,
+    # and none is needed — the ephemeral CODEX_HOME env var already isolates
+    # the per-slot state directory regardless of the binary's own path. But
+    # some installs place the actual Codex binary under the (hidden) host
+    # ~/.codex tree with a symlink elsewhere; carve out an explicit read
+    # allowance for the resolved binary (and its codex-code-mode-host
+    # sibling) so exec still succeeds despite the ~/.codex deny rule.
+    readable_overrides: list[Path] = []
+    if provider == "codex":
+        try:
+            codex_binary = Path(command[0]).resolve(strict=True)
+        except OSError as exc:
+            raise RuntimeError(f"cannot resolve Codex binary: {command[0]}") from exc
+        if not codex_binary.is_file():
+            raise RuntimeError(f"Codex binary is not a regular file: {codex_binary}")
+        readable_overrides.append(codex_binary)
+        code_mode_host = codex_binary.parent / "codex-code-mode-host"
+        if code_mode_host.is_file():
+            readable_overrides.append(code_mode_host)
+    profile_text = sandbox_backend.build_seatbelt_profile(
+        cwd=cwd,
+        control_root=control_root,
+        writable_paths=writable_paths,
+        hidden_paths=hidden_paths,
+        provider_state_dir=provider_state_dir,
+        readable_overrides=readable_overrides,
+    )
+    profile_path = _write_seatbelt_profile(run_dir, provider=provider, text=profile_text)
+    return [sandbox_exec, "-f", str(profile_path), "--", *command]
 
 
 def runtime_attempt(output: Path) -> int | None:

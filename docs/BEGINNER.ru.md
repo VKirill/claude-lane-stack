@@ -73,6 +73,15 @@ export PATH="$HOME/.agents/bin:$PATH"
 > [!TIP]
 > Добавьте строку `export PATH=..` в свой `~/.bashrc` (или `~/.zshrc`) один раз — и каждый новый терминал будет работать сразу.
 
+### macOS
+
+- `flock` не входит в базовую систему: сначала `brew install flock`, иначе `./install.sh` остановится с подсказкой.
+- Python нужен с PyYAML и jsonschema: `pip3 install --break-system-packages pyyaml jsonschema`.
+- Cursor / AGY / Codex CLI ставятся отдельно, как и на Linux — `./install.sh` только подключает то, что уже есть на машине.
+- Песочница write-лейнов на macOS — встроенный `sandbox-exec` (Seatbelt), без дополнительной установки. Переключить можно через `LANE_SANDBOX_BACKEND=auto|bubblewrap|seatbelt`.
+- `install.sh` добавляет `export PATH=..` не только в `~/.bashrc`, но и в `~/.zshrc` (дефолтный логин-шелл на macOS).
+- `lane-bg` на macOS работает через обычный `nohup` — пользовательского systemd там нет.
+
 **Чек-лист станции 1 — готово, когда:**
 
 - [ ] `./install.sh` завершился без ошибок

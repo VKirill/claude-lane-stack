@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import site
 import socket
 import subprocess
 import tempfile
@@ -16,6 +17,24 @@ import jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = ROOT / "install.sh"
+
+# On some hosts (notably macOS Homebrew Python) PyYAML resolves via the
+# interpreter's user-site path, which is derived from $HOME. Tests below fake
+# HOME to a scratch directory to keep install.sh from touching the real
+# machine; capture the real user-site path up front (before any env dict
+# overrides HOME) so it can be restored via PYTHONPATH and install.sh's
+# `python3 -c 'import jsonschema, yaml'` preflight keeps passing.
+USER_SITE_PACKAGES = site.getusersitepackages()
+
+
+def _fake_home_env(home: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    if USER_SITE_PACKAGES and Path(USER_SITE_PACKAGES).is_dir():
+        env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (USER_SITE_PACKAGES, env.get("PYTHONPATH", "")) if part
+        )
+    return env
 
 
 class InstallTest(unittest.TestCase):
@@ -420,8 +439,7 @@ class InstallTest(unittest.TestCase):
             legacy_nested = home / ".agents" / "codex" / "instructions" / "instructions"
             legacy_nested.mkdir(parents=True)
             (legacy_nested / "reviewer.md").write_text("stale\n", encoding="utf-8")
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
@@ -473,8 +491,7 @@ class InstallTest(unittest.TestCase):
             work = tmp / "outside-repo"
             home.mkdir()
             work.mkdir()
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
             stale_agent = home / ".claude" / "agents" / "seo-specialist.md"
@@ -592,8 +609,7 @@ class InstallTest(unittest.TestCase):
             installed_cache.mkdir(parents=True)
             (installed_cache / "stale.pyc").write_bytes(b"cache")
             work.mkdir()
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
@@ -625,8 +641,7 @@ class InstallTest(unittest.TestCase):
             existing.write_text("#!/bin/sh\n", encoding="utf-8")
             existing.chmod(0o600)
             work.mkdir()
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
@@ -652,8 +667,7 @@ class InstallTest(unittest.TestCase):
             home.mkdir()
             project.mkdir()
             subprocess.run(["git", "init", "-q"], cwd=project, check=True)
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
@@ -746,8 +760,7 @@ class InstallTest(unittest.TestCase):
                 encoding="utf-8",
             )
             work.mkdir()
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
@@ -842,8 +855,7 @@ class InstallTest(unittest.TestCase):
             existing.mkdir(parents=True)
             work.mkdir()
             (existing / "user-note.txt").write_text("stale catalog copy\n", encoding="utf-8")
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
@@ -874,8 +886,7 @@ class InstallTest(unittest.TestCase):
             work = tmp / "outside-repo"
             home.mkdir()
             work.mkdir()
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env["LANE_INSTALL_LOCAL_MARKETPLACE"] = "1"
             env.pop("CODEX_HOME", None)
@@ -909,8 +920,7 @@ class InstallTest(unittest.TestCase):
             work = tmp / "outside-repo"
             home.mkdir()
             work.mkdir()
-            env = os.environ.copy()
-            env["HOME"] = str(home)
+            env = _fake_home_env(home)
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 
