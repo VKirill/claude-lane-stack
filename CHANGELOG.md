@@ -1,3 +1,11 @@
+## 1.31.1 — 2026-09-15
+
+### Changed
+- **`docs-web`** skips rewrite of unit pages, INDEX, `web.yaml`, and
+  backlinks when web keys and body are unchanged (same class as
+  `run-board` stamp noise).
+- Stack-fix ship rule: commit → `./install.sh` → `git push` (README).
+
 ## 1.31.0 — 2026-09-14
 
 ### Added

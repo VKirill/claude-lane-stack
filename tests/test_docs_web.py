@@ -56,6 +56,13 @@ class DocsWebTest(unittest.TestCase):
             )
             again = docs_web.merge_web(text, {"owns": ["packages/auth/**"], "id": "auth"})
             self.assertIn("TL;DR", again)
+            first_page = page.read_text(encoding="utf-8")
+            first_index = (repo / "docs" / "INDEX.md").read_text(encoding="utf-8")
+            first_web = (repo / "docs" / "web.yaml").read_text(encoding="utf-8")
+            docs_web.rebuild(repo)
+            self.assertEqual(page.read_text(encoding="utf-8"), first_page)
+            self.assertEqual((repo / "docs" / "INDEX.md").read_text(encoding="utf-8"), first_index)
+            self.assertEqual((repo / "docs" / "web.yaml").read_text(encoding="utf-8"), first_web)
 
     def test_pyproject_unit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.31.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.31.1** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -193,12 +193,14 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.31.0
+cd claude-lane-stack && git checkout v1.31.1
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
 
 Плагин: `lane-stack@claude-lane-stack`, marketplace сам обновляется с GitHub. Хост `~/.agents` — снова `./install.sh`. Живой чекаут: `LANE_INSTALL_LOCAL_MARKETPLACE=1 ./install.sh`.
+
+**После правки этого репо:** коммит → `./install.sh` (хост) → `git push`. Без пуша и install правка есть только в чекауте. Версию плагина подняли — тег + `gh release`.
 
 Нужно: Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`. Writers — по желанию.
 
@@ -264,6 +266,7 @@ lane-pm
 - UI-ран без `docs/DESIGN.md` / `apps/<app>/docs/DESIGN.md`
 - H1 копирайта без `audience.md`
 - Копировать агентов стека в `~/.claude/agents` — копии перебивают плагин
+- Чинить стек и оставлять только локальный дифф: нужен коммит, `./install.sh`, пуш
 
 Чат: русский. Файлы агентов: английский ([LANGUAGE.md](docs/LANGUAGE.md)). Merge делает PM, не вы.
 
