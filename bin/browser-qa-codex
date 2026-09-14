@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+"""browser-qa-codex — run live browser QA through Codex (OpenAI browser / computer-use plugins).
+
+The lane-stack `browser-qa` Claude agent delegates here when
+`stages.browser_qa.provider == codex` (adoc default). Codex drives the host's
+live Chrome through its bundled `browser` / `chrome` / `computer-use` plugins,
+so the writer of the QA evidence is the model configured in the profile
+(default `gpt-6-astra`, effort `low`), not Claude.
+
+Outputs under `<project_cwd>/.agents/qa/<slug>/`:
+  cases.md          one `## TC-00N` per case (written before the run)
+  REPORT.md         written by Codex from the skill template
+  shots/TC-00N-<w>.png
+  codex-run.json    receipt: model, effort, backend, exit code, verdict, timing
+  codex-last.md     last assistant message
+  codex-result.json structured verdict (output schema)
+
+Exit codes: 0 all cases passed · 1 at least one failed · 2 blocked / runner error.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+_BIN = Path(__file__).resolve().parent
+if str(_BIN) not in sys.path:
+    sys.path.insert(0, str(_BIN))
+
+DEFAULT_MODEL = "gpt-6-astra"
+DEFAULT_EFFORT = "low"
+DEFAULT_BACKEND = "live-chrome"
+BACKENDS = ("live-chrome", "chrome-qa", "headless")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+RESULT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["backend", "verdict", "cases", "notes"],
+    "properties": {
+        "backend": {"type": "string"},
+        "verdict": {"type": "string", "enum": ["pass", "fail", "blocked"]},
+        "cases": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "status", "evidence", "shots"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "status": {"type": "string", "enum": ["passed", "failed", "blocked"]},
+                    "evidence": {"type": "string"},
+                    "shots": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+        "notes": {"type": "string"},
+    },
+}
+
+
+def load_stage(project_cwd: Path) -> dict:
+    """Return stages.browser_qa from the nearest routing profile (defaults when absent)."""
+    stage = {
+        "enabled": True,
+        "provider": "codex",
+        "model": DEFAULT_MODEL,
+        "reasoning_effort": DEFAULT_EFFORT,
+        "backend": DEFAULT_BACKEND,
+        "approve": "auto",
+    }
+    try:
+        from routing_profile import load_routing_profile  # noqa: WPS433
+
+        profile = load_routing_profile(project_cwd)
+        raw = (profile.get("stages") or {}).get("browser_qa") or {}
+        if isinstance(raw, dict):
+            for key in stage:
+                if key in raw and str(raw[key]).strip() != "":
+                    stage[key] = raw[key]
+    except Exception:  # profile is optional; defaults are the contract
+        pass
+    stage["enabled"] = str(stage["enabled"]).strip().lower() in {"1", "true", "yes", "on"}
+    stage["provider"] = str(stage["provider"]).strip().lower() or "codex"
+    stage["model"] = str(stage["model"]).strip() or DEFAULT_MODEL
+    effort = str(stage["reasoning_effort"]).strip().lower()
+    stage["reasoning_effort"] = effort if effort in EFFORTS else DEFAULT_EFFORT
+    backend = str(stage["backend"]).strip().lower()
+    stage["backend"] = backend if backend in BACKENDS else DEFAULT_BACKEND
+    stage["approve"] = "never" if str(stage["approve"]).strip().lower() == "never" else "auto"
+    return stage
+
+
+def parse_cases(text: str) -> list[str]:
+    """Accept `- bullet` lines or `## TC-00N Title` headings; return case titles."""
+    cases: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            cases.append(stripped[2:].strip())
+        elif re.match(r"^##\s+TC-\d{3}\b", stripped):
+            cases.append(re.sub(r"^##\s+TC-\d{3}\s*", "", stripped).strip())
+    return [c for c in cases if c]
+
+
+def write_cases(qa_dir: Path, slug: str, cases: list[str], viewports: list[int]) -> Path:
+    lines = [f"# Cases `{slug}`", "", "Source: PM acceptance bullets.", "Surface for this run is `browser-ui`.", ""]
+    for index, case in enumerate(cases, start=1):
+        lines += [
+            f"## TC-{index:03d} {case}",
+            "- Surface: browser-ui",
+            "- Priority: high",
+            f"- Viewport: {', '.join(str(v) for v in viewports)}",
+            "- Preconditions: target reachable",
+            f"- Steps: perform the case as written: {case}",
+            "- Expected: as written",
+            "",
+        ]
+    path = qa_dir / "cases.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def backend_instructions(backend: str) -> str:
+    if backend == "chrome-qa":
+        return (
+            "Browser: a dedicated QA Chrome profile is running with DevTools on "
+            "http://127.0.0.1:9333 (started by `chrome-qa start`). Prefer attaching to it; "
+            "if your browser tool cannot attach to an external DevTools endpoint, use the "
+            "Chrome extension backend of the live Chrome instead and say so in `backend`."
+        )
+    if backend == "headless":
+        return (
+            "Browser: use your in-app / headless browser backend, not the user's Chrome window."
+        )
+    return (
+        "Browser: use the live Chrome on this machine through your Chrome extension backend "
+        "(computer-use is allowed for dialogs the extension cannot reach)."
+    )
+
+
+def build_prompt(
+    *,
+    slug: str,
+    url: str,
+    env_class: str,
+    cases: list[str],
+    viewports: list[int],
+    backend: str,
+    qa_rel: str,
+    authorized: bool,
+) -> str:
+    case_lines = "\n".join(f"TC-{i:03d}: {c}" for i, c in enumerate(cases, start=1))
+    vp = ", ".join(str(v) for v in viewports)
+    auth = (
+        "The PM wrote `authorized` for this target."
+        if authorized
+        else "Only read-only interactions plus the explicit steps below are approved; do not submit anything with external side effects."
+    )
+    return f"""You are the browser QA lane of Claude Lane Stack. Produce evidence, not opinions.
+
+Target: {url}  (class: {env_class}). {auth}
+{backend_instructions(backend)}
+Open your own tab for this work, never touch other tabs, close your tab at the end.
+
+Cases (from {qa_rel}/cases.md):
+{case_lines}
+
+For every case, at viewports {vp}px:
+1. Perform the steps live in the browser. A missing element/selector is a product FAIL, do not substitute a similar element.
+2. Save a screenshot per case and viewport to {qa_rel}/shots/TC-00N-<width>.png (create the directory).
+3. Record concrete evidence (observed text, class names, URLs).
+
+Then write {qa_rel}/REPORT.md in English with this shape:
+# QA `{slug}`
+- Target class: {env_class}
+- BASE_URL: {url}
+- Backend: <chrome-extension | in-app-browser | computer-use | chrome-qa>
+- Updated: <UTC timestamp>
+## Summary
+- Total / Passed / Failed / Blocked: n / n / n / n
+## Results
+### TC-00N <title>
+- Status: passed | failed | blocked
+- Viewports: ...
+- Shots: shots/TC-00N-<w>.png ...
+- Evidence: ...
+- First error: (only when failed/blocked)
+
+Do not edit product code, docs or anything outside {qa_rel}/.
+Final answer: the JSON object required by the output schema (backend, verdict, cases[]).
+"""
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--project-cwd", required=True)
+    parser.add_argument("--url", required=True)
+    parser.add_argument("--slug", default=None)
+    parser.add_argument("--cases-file", help="markdown with `- bullets` or `## TC-00N` headings")
+    parser.add_argument("--case", action="append", default=[], help="one acceptance bullet (repeatable)")
+    parser.add_argument("--env-class", default="local", choices=("local", "staging", "preview", "production", "unknown"))
+    parser.add_argument("--viewports", default="375,1280")
+    parser.add_argument("--authorized", action="store_true", help="PM wrote `authorized` (side-effect / non-local targets)")
+    parser.add_argument("--model", default=None, help="override stages.browser_qa.model")
+    parser.add_argument("--reasoning-effort", default=None, choices=EFFORTS)
+    parser.add_argument("--backend", default=None, choices=BACKENDS)
+    parser.add_argument("--codex-bin", default=os.environ.get("CODEX_BIN", "codex"))
+    parser.add_argument("--timeout", type=int, default=900, help="seconds for the codex run")
+    parser.add_argument("--dry-run", action="store_true", help="write cases/prompt and print the argv; do not run codex")
+    args = parser.parse_args(argv)
+
+    project_cwd = Path(args.project_cwd).expanduser().resolve()
+    if not project_cwd.is_dir():
+        print(f"browser-qa-codex: project_cwd does not exist: {project_cwd}", file=sys.stderr)
+        return 2
+    stage = load_stage(project_cwd)
+    if not stage["enabled"]:
+        print("browser-qa-codex: stages.browser_qa is disabled in the routing profile", file=sys.stderr)
+        return 2
+    model = args.model or stage["model"]
+    effort = args.reasoning_effort or stage["reasoning_effort"]
+    backend = args.backend or stage["backend"]
+    if args.env_class in {"production", "unknown"} and not args.authorized:
+        print("browser-qa-codex: production/unknown target needs --authorized", file=sys.stderr)
+        return 2
+
+    cases = list(args.case)
+    if args.cases_file:
+        cases += parse_cases(Path(args.cases_file).read_text(encoding="utf-8"))
+    if not cases:
+        print("browser-qa-codex: no cases (use --case or --cases-file)", file=sys.stderr)
+        return 2
+    try:
+        viewports = [int(v) for v in str(args.viewports).split(",") if v.strip()]
+    except ValueError:
+        print("browser-qa-codex: --viewports must be comma-separated integers", file=sys.stderr)
+        return 2
+
+    slug = args.slug or "qa-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    qa_rel = f".agents/qa/{slug}"
+    qa_dir = project_cwd / qa_rel
+    (qa_dir / "shots").mkdir(parents=True, exist_ok=True)
+    write_cases(qa_dir, slug, cases, viewports)
+    schema_path = qa_dir / "codex-result.schema.json"
+    schema_path.write_text(json.dumps(RESULT_SCHEMA, indent=2) + "\n", encoding="utf-8")
+    prompt = build_prompt(
+        slug=slug, url=args.url, env_class=args.env_class, cases=cases, viewports=viewports,
+        backend=backend, qa_rel=qa_rel, authorized=args.authorized,
+    )
+    (qa_dir / "codex-prompt.md").write_text(prompt, encoding="utf-8")
+
+    if backend == "chrome-qa":
+        chrome_qa = shutil.which("chrome-qa") or str(_BIN / "chrome-qa")
+        subprocess.run([chrome_qa, "start"], check=False, capture_output=True, text=True, timeout=60)
+
+    last_path = qa_dir / "codex-last.md"
+    result_path = qa_dir / "codex-result.json"
+    command = [
+        args.codex_bin, "exec",
+        "-m", model,
+        "-c", f"model_reasoning_effort={effort}",
+        "-C", str(project_cwd),
+        "--skip-git-repo-check",
+        "--output-schema", str(schema_path),
+        "-o", str(last_path),
+    ]
+    if stage["approve"] == "auto":
+        command.append("--approve-for-me")
+    else:
+        command += ["-s", "workspace-write"]
+    command.append(prompt)
+
+    receipt = {
+        "schema_version": 1,
+        "slug": slug,
+        "url": args.url,
+        "env_class": args.env_class,
+        "provider": "codex",
+        "model": model,
+        "reasoning_effort": effort,
+        "backend": backend,
+        "approve": stage["approve"],
+        "argv": command[:-1] + ["<prompt>"],
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if args.dry_run:
+        print(json.dumps(receipt, indent=2, ensure_ascii=False))
+        return 0
+
+    started = time.monotonic()
+    events_path = qa_dir / "codex-events.jsonl"
+    # `--json` streams Codex events; keep them on disk so a stalled run is
+    # diagnosable. stdin is closed: an inherited pipe can make codex wait forever.
+    command.insert(2, "--json")
+    try:
+        with events_path.open("w", encoding="utf-8") as events:
+            run = subprocess.run(
+                command, cwd=project_cwd, stdin=subprocess.DEVNULL, stdout=events,
+                stderr=subprocess.PIPE, text=True, timeout=args.timeout,
+            )
+        exit_code = run.returncode
+        stderr_tail = run.stderr[-4000:]
+    except subprocess.TimeoutExpired:
+        exit_code = 124
+        stderr_tail = f"timeout after {args.timeout}s (see {qa_rel}/codex-events.jsonl)"
+    receipt["exit_code"] = exit_code
+    receipt["duration_sec"] = round(time.monotonic() - started, 1)
+    receipt["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+    verdict = "blocked"
+    structured: dict | None = None
+    if last_path.is_file():
+        text = last_path.read_text(encoding="utf-8").strip()
+        match = re.search(r"\{.*\}", text, re.S)
+        if match:
+            try:
+                structured = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                structured = None
+    if isinstance(structured, dict) and structured.get("verdict") in {"pass", "fail", "blocked"}:
+        verdict = structured["verdict"]
+        result_path.write_text(json.dumps(structured, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    receipt["verdict"] = verdict
+    receipt["report"] = qa_rel + "/REPORT.md" if (qa_dir / "REPORT.md").is_file() else None
+    receipt["stderr_tail"] = stderr_tail
+    (qa_dir / "codex-run.json").write_text(json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    print(f"browser-qa-codex: verdict={verdict} model={model} effort={effort} backend={backend} exit={exit_code}")
+    print(f"  report: {receipt['report'] or 'missing'}")
+    print(f"  receipt: {qa_rel}/codex-run.json")
+    if verdict == "pass" and exit_code == 0:
+        return 0
+    if verdict == "fail":
+        return 1
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

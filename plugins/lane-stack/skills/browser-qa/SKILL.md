@@ -22,7 +22,9 @@ browser-qa — живой браузер, не writer.
   cases.md   REPORT.md   shots/   replay/TC-00N.js   replay/history/
 
 Дигесты: qa-digest cases|script|target
-Нет chrome-devtools / Playwright → blocked, не pass.
+Кто кликает: adoc → Stages → browser_qa. По умолчанию codex gpt-6-astra low
+в живом Chrome (browser-qa-codex); provider claude = Haiku + chrome-devtools MCP.
+Нет chrome-devtools / Playwright / codex → blocked, не pass.
 Свой Chrome для QA: chrome-qa start (профиль ~/.agents/chrome-qa, порт 9333, без диалогов)
 + chrome-devtools MCP --browserUrl http://127.0.0.1:9333. --autoConnect к личному Chrome —
 диалог при каждом подключении; работать только в своих вкладках.
@@ -108,6 +110,18 @@ async (page) => { /* goto("BASE_URL"+"/…"); asserts throw */ };
 8. `proven` means the script ran, not that the product passed.
 9. Discrete chrome-devtools actions: treat the file as the program; do not rewrite steps because the surface is MCP not `npx playwright`.
 10. After replay, at most one bounded exploratory pass when the change is cross-cutting (nav, auth, layout, shared state) or a replay needed repair. Skip when the fix is narrow and matching replay already covers it. New bug → REPORT only; add `## TC-00N` first, then a script.
+
+## Delegation (`stages.browser_qa`)
+
+| provider | Who clicks | Command |
+|----------|------------|---------|
+| `codex` (default) | Codex `model`/`reasoning_effort` (default `gpt-6-astra` / `low`) with its browser, Chrome-extension and computer-use plugins; `backend` = `live-chrome` \| `chrome-qa` \| `headless` | `browser-qa-codex --project-cwd . --url … --slug … --case "…"` |
+| `claude` | this agent via `chrome-devtools` MCP | steps below |
+
+`browser-qa-codex` writes `cases.md`, `REPORT.md`, `shots/TC-00N-<w>.png`,
+`codex-run.json` (model, effort, backend, exit) and `codex-result.json`
+(structured verdict). Replay scripts are not produced in codex mode; the
+receipt + shots are the proof. `approve: auto` passes `--approve-for-me`.
 
 ## Preflight
 

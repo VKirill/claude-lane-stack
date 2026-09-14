@@ -1,3 +1,16 @@
+## 1.31.0 — 2026-09-14
+
+### Added
+- **`stages.browser_qa`** (adoc → Stages): who clicks in the browser. Default
+  `provider: codex`, `model: gpt-6-astra`, `reasoning_effort: low`,
+  `backend: live-chrome`, `approve: auto`. New host command
+  **`browser-qa-codex`** runs `codex exec` with the OpenAI browser /
+  Chrome-extension / computer-use plugins on the host's live Chrome, writes
+  `cases.md`, `REPORT.md`, `shots/`, `codex-run.json`, `codex-result.json`
+  (output schema) and exits 0/1/2. The `browser-qa` Claude agent delegates
+  to it; `provider: claude` keeps the Haiku + chrome-devtools path.
+  `agents-doctor --browser-qa*` flags and a TUI row configure the stage.
+
 ## 1.30.0 — 2026-09-14
 
 ### Added

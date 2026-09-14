@@ -96,9 +96,17 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(s["docs"]["page_cap"], 0)
         self.assertEqual(s["docs"]["since"], "yesterday")
         self.assertEqual(s["docs"]["hour"], 5)
+        self.assertTrue(s["browser_qa"]["enabled"])
+        self.assertEqual(s["browser_qa"]["provider"], "codex")
+        self.assertEqual(s["browser_qa"]["model"], "gpt-6-astra")
+        self.assertEqual(s["browser_qa"]["reasoning_effort"], "low")
+        self.assertEqual(s["browser_qa"]["service_tier"], "standard")
+        self.assertEqual(s["browser_qa"]["backend"], "live-chrome")
+        self.assertEqual(s["browser_qa"]["approve"], "auto")
         yaml_text = "\n".join(stages_to_yaml_lines(s))
         self.assertIn("  memory:", yaml_text)
         self.assertIn("  docs:", yaml_text)
+        self.assertIn("  browser_qa:", yaml_text)
         self.assertIn("    page_cap: 0", yaml_text)
         self.assertIn("    enabled: false", yaml_text)
         self.assertIn("    maintain: true", yaml_text)
@@ -106,6 +114,8 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertIn("    provider: codex", yaml_text)
         self.assertIn("    audience: subagent", yaml_text)
         self.assertIn("    search_engine: auto", yaml_text)
+        self.assertIn("    backend: live-chrome", yaml_text)
+        self.assertIn("    approve: auto", yaml_text)
 
     def test_normalize_memory_knobs_and_yaml(self) -> None:
         s = normalize_stages(
@@ -175,6 +185,59 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(unlimited["docs"]["hour"], 5)
         neg = normalize_stages({"docs": {"page_cap": -3}}, write_provider="kimi")
         self.assertEqual(neg["docs"]["page_cap"], 0)
+
+    def test_normalize_browser_qa_knobs_and_yaml(self) -> None:
+        s = normalize_stages(
+            {
+                "browser_qa": {
+                    "enabled": False,
+                    "provider": "claude",
+                    "backend": "chrome-qa",
+                    "approve": "never",
+                }
+            },
+            write_provider="kimi",
+        )
+        self.assertFalse(s["browser_qa"]["enabled"])
+        self.assertEqual(s["browser_qa"]["provider"], "claude")
+        # claude: no external model/effort knob (Haiku drives chrome-devtools MCP).
+        self.assertEqual(s["browser_qa"]["model"], "")
+        self.assertEqual(s["browser_qa"]["reasoning_effort"], "")
+        self.assertEqual(s["browser_qa"]["backend"], "chrome-qa")
+        self.assertEqual(s["browser_qa"]["approve"], "never")
+        # service_tier is only meaningful for codex; claude always normalizes standard.
+        self.assertEqual(s["browser_qa"]["service_tier"], "standard")
+        yaml_text = "\n".join(stages_to_yaml_lines(s))
+        self.assertIn("  browser_qa:", yaml_text)
+        self.assertIn("    provider: claude", yaml_text)
+        self.assertIn("    backend: chrome-qa", yaml_text)
+        self.assertIn("    approve: never", yaml_text)
+        # claude has no service_tier line (not a SERVICE_TIER_STAGE_PROVIDER pairing here).
+        self.assertNotIn("    model:", yaml_text.split("  browser_qa:")[1])
+
+        # Bad enum values clamp back to defaults.
+        bad = normalize_stages(
+            {
+                "browser_qa": {
+                    "provider": "gpt5",
+                    "backend": "remote-vnc",
+                    "approve": "sometimes",
+                }
+            },
+            write_provider="kimi",
+        )
+        self.assertEqual(bad["browser_qa"]["provider"], "codex")
+        self.assertEqual(bad["browser_qa"]["backend"], "live-chrome")
+        self.assertEqual(bad["browser_qa"]["approve"], "auto")
+
+        # codex + fast service tier round-trips through YAML.
+        fast = normalize_stages(
+            {"browser_qa": {"provider": "codex", "service_tier": "fast"}},
+            write_provider="kimi",
+        )
+        self.assertEqual(fast["browser_qa"]["service_tier"], "fast")
+        fast_yaml = "\n".join(stages_to_yaml_lines(fast))
+        self.assertIn("    service_tier: fast", fast_yaml)
 
     def test_normalize_onboard_fast_and_yaml(self) -> None:
         s = normalize_stages(
@@ -301,6 +364,11 @@ class PipelineStagesTest(unittest.TestCase):
                         model: gpt-5.6-sol
                         reasoning_effort: high
                         service_tier: fast
+                      browser_qa:
+                        enabled: true
+                        provider: claude
+                        backend: chrome-qa
+                        approve: never
                     """
                 ),
                 encoding="utf-8",
@@ -311,6 +379,12 @@ class PipelineStagesTest(unittest.TestCase):
             self.assertEqual(stages["plan_critique"]["provider"], "qwen")
             self.assertTrue(stages["specialist"]["enabled"])
             self.assertEqual(stages["night_review"]["provider"], "qwen")
+            # New keys under stages.browser_qa (one nested level) survive the
+            # minimal YAML parser in routing_profile.load_routing_profile.
+            self.assertTrue(stages["browser_qa"]["enabled"])
+            self.assertEqual(stages["browser_qa"]["provider"], "claude")
+            self.assertEqual(stages["browser_qa"]["backend"], "chrome-qa")
+            self.assertEqual(stages["browser_qa"]["approve"], "never")
             self.assertEqual(stages["onboard"]["model"], "gpt-5.6-sol")
             self.assertEqual(stages["onboard"]["service_tier"], "fast")
             resolved = resolve_onboard(root)

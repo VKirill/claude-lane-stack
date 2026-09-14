@@ -1305,6 +1305,34 @@ def main(argv: list[str] | None = None) -> int:
         help="with --apply: structural engine + optional cheap model for LLM pass",
     )
     ap.add_argument(
+        "--browser-qa",
+        choices=("on", "off"),
+        default=None,
+        help="with --apply: enable browser_qa stage (default on)",
+    )
+    ap.add_argument(
+        "--browser-qa-provider",
+        choices=("codex", "claude"),
+        default=None,
+        help="with --apply: codex (host live Chrome via codex exec) or claude (Haiku + chrome-devtools MCP)",
+    )
+    ap.add_argument(
+        "--browser-qa-model",
+        default=None,
+        help="with --apply: browser_qa model id (e.g. gpt-6-astra)",
+    )
+    ap.add_argument(
+        "--browser-qa-effort",
+        default=None,
+        help="with --apply: browser_qa reasoning effort (codex: low|medium|high|xhigh|max)",
+    )
+    ap.add_argument(
+        "--browser-qa-backend",
+        choices=("live-chrome", "chrome-qa", "headless"),
+        default=None,
+        help="with --apply: live-chrome (host Chrome) | chrome-qa (dedicated profile, port 9333) | headless",
+    )
+    ap.add_argument(
         "--writer-model",
         default=None,
         help="with --apply: writer model id (e.g. gpt-5.6-luna)",
@@ -1399,6 +1427,25 @@ def main(argv: list[str] | None = None) -> int:
             if args.plan_critique_provider is not None:
                 pc["provider"] = args.plan_critique_provider
             stages_arg = {"plan_critique": pc}
+        if (
+            args.browser_qa is not None
+            or args.browser_qa_provider is not None
+            or args.browser_qa_model is not None
+            or args.browser_qa_effort is not None
+            or args.browser_qa_backend is not None
+        ):
+            bq: dict = {}
+            if args.browser_qa is not None:
+                bq["enabled"] = args.browser_qa == "on"
+            if args.browser_qa_provider is not None:
+                bq["provider"] = args.browser_qa_provider
+            if args.browser_qa_model is not None:
+                bq["model"] = args.browser_qa_model
+            if args.browser_qa_effort is not None:
+                bq["reasoning_effort"] = args.browser_qa_effort
+            if args.browser_qa_backend is not None:
+                bq["backend"] = args.browser_qa_backend
+            stages_arg = {**(stages_arg or {}), "browser_qa": bq}
         if args.night_review is not None:
             writer = lanes.get("main_write")
             provider = (

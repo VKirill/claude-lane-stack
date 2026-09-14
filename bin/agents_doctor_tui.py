@@ -11,7 +11,8 @@ Inspired by modern ops TUIs (k9s / lazygit style focus + badges):
   clear stages, radio cards, live conveyor strip, EN/RU.
 
 Coder UX: form + drill-down lists (↑↓ fields, Enter open list).
-Stages UX: customize plan_critique / write / night / specialist / onboard.
+Stages UX: customize plan_critique / write / night / specialist / onboard /
+browser_qa.
 Memory and Docs are their own tabs.
 UI language: en | ru (project ui.language + global ~/.agents/doctor.ui.yaml).
 """
@@ -39,6 +40,8 @@ from agents_doctor_tui_i18n import (  # type: ignore  # noqa: E402
     writer_blurb,
 )
 from pipeline_stages import (  # type: ignore  # noqa: E402
+    DEFAULT_BROWSER_QA_EFFORT,
+    DEFAULT_BROWSER_QA_MODEL,
     DEFAULT_MODELS,
     DEFAULT_OPENCODE_WRITE_AGENT,
     KNOWN_STAGE_PROVIDERS,
@@ -79,16 +82,23 @@ STAGE_IDS = (
     "night_review",
     "specialist",
     "onboard",
+    "browser_qa",
 )
 MODULE_TAB_IDS = ("memory", "docs")
 # Full agent catalog for stages (not limited to currently detected CLIs).
 ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex", "cursor", "opencode")
 CRITIQUE_PROVIDERS = ("structural",) + ALL_AGENTS
+# browser_qa is narrower than ALL_AGENTS: codex drives the host's live Chrome
+# via `codex exec`; claude has the Haiku agent drive chrome-devtools MCP itself.
+BROWSER_QA_PROVIDERS = ("codex", "claude")
+BROWSER_QA_BACKENDS = ("live-chrome", "chrome-qa", "headless")
+BROWSER_QA_APPROVALS = ("auto", "never")
 STAGE_FIELD_CRITIQUE = ("enabled", "mode", "provider", "model", "effort")
 STAGE_FIELD_WRITE = ("provider", "model", "effort")  # enabled always on
 STAGE_FIELD_NIGHT = ("enabled", "provider", "model", "effort")
 STAGE_FIELD_SPEC = ("enabled", "when", "provider", "model", "effort")
 STAGE_FIELD_ONBOARD = ("provider", "model", "effort", "fast", "depth")  # fast→tier+depth
+STAGE_FIELD_BROWSER_QA = ("enabled", "provider", "model", "effort", "backend", "approve")
 STAGE_FIELD_MEMORY = (
     "enabled",
     "maintain",
@@ -1470,6 +1480,13 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 lst = list(fields)
                 lst.insert(lst.index("effort") + 1, "fast")
                 fields = tuple(lst)
+        elif stage_id == "browser_qa":
+            prov = str((state.stages.get("browser_qa") or {}).get("provider") or "codex")
+            fields = STAGE_FIELD_BROWSER_QA
+            if _supports_fast(prov):
+                lst = list(fields)
+                lst.insert(lst.index("effort") + 1, "fast")
+                fields = tuple(lst)
         else:
             prov = str((state.stages.get("specialist") or {}).get("provider") or "")
             fields = STAGE_FIELD_SPEC
@@ -1498,6 +1515,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
         text = _t(state, key)
         return text if text != key else when
 
+    def _loc_backend(backend: str) -> str:
+        key = f"backend_{backend}"
+        text = _t(state, key)
+        return text if text != key else backend
+
+    def _loc_approve(approve: str) -> str:
+        key = f"approve_{approve}"
+        text = _t(state, key)
+        return text if text != key else approve
+
     def _loc_provider(provider: str) -> str:
         key = f"prov_{provider}"
         text = _t(state, key)
@@ -1507,10 +1534,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
         """Full catalog — user can pick any agent per stage."""
         if stage_id == "plan_critique":
             return list(CRITIQUE_PROVIDERS)
+        if stage_id == "browser_qa":
+            return list(BROWSER_QA_PROVIDERS)
         return list(ALL_AGENTS)
 
     def _models_for_provider(provider: str) -> list[str]:
         if provider == "structural":
+            return []
+        if provider == "claude":
             return []
         opts = _models_for(provider)
         return list(opts) if opts else [DEFAULT_MODEL.get(provider, provider)]
@@ -1518,6 +1549,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def _efforts_for_provider(provider: str, model: str = "") -> list[str]:
         if provider == "structural":
             return ["low", "medium", "high"]
+        if provider == "claude":
+            # browser_qa/claude: Haiku agent drives chrome-devtools MCP itself,
+            # no external reasoning_effort knob.
+            return []
         return _efforts_for(provider, model)
 
     def _stage_field_value(stage_id: str, field: str) -> str:
@@ -1543,15 +1578,22 @@ def run_tui(repo: Path, doctor: Any) -> int:
         if field == "provider":
             return _loc_provider(str(block.get("provider") or "—"))
         if field == "effort":
+            prov = str(block.get("provider") or "")
+            if prov == "claude":
+                return _t(state, "model_na")
             return str(block.get("reasoning_effort") or block.get("effort") or "—")
         if field == "fast":
             tier = str(block.get("service_tier") or "standard").strip().lower()
             return _t(state, "on") if tier == "fast" else _t(state, "off")
         if field == "depth":
             return str(block.get("depth") or "auto")
+        if field == "backend":
+            return _loc_backend(str(block.get("backend") or "live-chrome"))
+        if field == "approve":
+            return _loc_approve(str(block.get("approve") or "auto"))
         if field == "model":
             prov = str(block.get("provider") or "")
-            if prov == "structural":
+            if prov in {"structural", "claude"}:
                 return _t(state, "model_na")
             return str(block.get("model") or "—") or "—"
         if field == "hour":
@@ -1681,6 +1723,28 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state.message = _t(
                 state, "msg_stage_when", when=_loc_when(block["when"])
             )
+        elif field == "backend":
+            opts = BROWSER_QA_BACKENDS
+            cur = str(block.get("backend") or "live-chrome")
+            try:
+                i = opts.index(cur)
+            except ValueError:
+                i = 0
+            block["backend"] = opts[(i + delta) % len(opts)]
+            state.message = _t(
+                state, "msg_stage_backend", backend=_loc_backend(block["backend"])
+            )
+        elif field == "approve":
+            opts = BROWSER_QA_APPROVALS
+            cur = str(block.get("approve") or "auto")
+            try:
+                i = opts.index(cur)
+            except ValueError:
+                i = 0
+            block["approve"] = opts[(i + delta) % len(opts)]
+            state.message = _t(
+                state, "msg_stage_approve", approve=_loc_approve(block["approve"])
+            )
         elif field == "provider":
             opts = _providers_for_stage(sid)
             cur = str(block.get("provider") or opts[0])
@@ -1700,7 +1764,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 block["model"] = "gpt-5.6-luna"
                 block["reasoning_effort"] = "max"
                 block["service_tier"] = "fast"
-            if sid in {"onboard", "plan_critique", "memory", "docs"} and not _supports_fast(new_p):
+            if sid == "browser_qa" and new_p == "codex":
+                block["model"] = DEFAULT_BROWSER_QA_MODEL
+                block["reasoning_effort"] = DEFAULT_BROWSER_QA_EFFORT
+            if sid in {
+                "onboard",
+                "plan_critique",
+                "memory",
+                "docs",
+                "browser_qa",
+            } and not _supports_fast(new_p):
                 block["service_tier"] = "standard"
             state.message = _t(
                 state, "msg_stage_provider", provider=_loc_provider(new_p)
@@ -1943,6 +2016,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 )
                 depth_bit = f" · {depth}" if depth else ""
                 detail = f"{_loc_provider(prov)} · {model} · {effort}{fast_bit}{depth_bit}"
+            elif sid == "browser_qa":
+                backend = _loc_backend(str(block.get("backend") or "live-chrome"))
+                approve = _loc_approve(str(block.get("approve") or "auto"))
+                detail = f"{_loc_on(enabled)} · {_loc_provider(prov)} · {backend} · {approve}"
+                if prov != "claude" and model and model != "—":
+                    detail += f" · {model} · {effort}"
             else:
                 detail = (
                     f"{_loc_on(enabled)} · "
@@ -1960,6 +2039,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
         )
         lines.extend(_stage_settings_rows(sid))
         lines.append(("class:help", _t(state, "stages_tip")))
+        if sid == "browser_qa":
+            lines.append(("class:help", _t(state, "browser_qa_hint")))
         return lines
 
     def _stage_settings_rows(sid: str) -> list[tuple[str, str]]:
@@ -1980,10 +2061,15 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 prov = str((state.stages.get(sid) or {}).get("provider") or "")
                 n = len(_models_for_provider(prov))
                 hint = f"  ←→ {n}" if n else f"  ({_t(state, 'model_na')})"
+            elif focused and field == "effort":
+                prov = str((state.stages.get(sid) or {}).get("provider") or "")
+                n = len(_efforts_for_provider(prov, str((state.stages.get(sid) or {}).get("model") or "")))
+                hint = "  ←→" if n else f"  ({_t(state, 'model_na')})"
             elif focused and field in {
                 "mode",
                 "when",
-                "effort",
+                "backend",
+                "approve",
                 "enabled",
                 "fast",
                 "agent",

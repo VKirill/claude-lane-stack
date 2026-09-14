@@ -615,6 +615,58 @@ class AgentsDoctorTest(unittest.TestCase):
                 (repo / "CLAUDE.md").read_text(encoding="utf-8"),
             )
 
+    def test_apply_browser_qa_provider_and_backend_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            repo = root / "repo"
+            fake_bin.mkdir()
+            repo.mkdir()
+            for name in ("claude", "kimi", "codex"):
+                executable = fake_bin / name
+                executable.write_text(
+                    "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8"
+                )
+                executable.chmod(0o755)
+            env = os.environ.copy()
+            env.update(BUBBLEWRAP_ENV)
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+            result = subprocess.run(
+                [
+                    str(DOCTOR),
+                    "--apply",
+                    "--writer-provider",
+                    "kimi",
+                    "--browser-qa",
+                    "on",
+                    "--browser-qa-provider",
+                    "claude",
+                    "--browser-qa-backend",
+                    "chrome-qa",
+                    "--night-review",
+                    "off",
+                    str(repo),
+                ],
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            profile = (repo / ".agents" / "routing.profile.yaml").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("  browser_qa:", profile)
+            self.assertRegex(
+                profile,
+                r"(?m)^  browser_qa:\n(?:    .*\n)*    provider: claude\n",
+            )
+            self.assertRegex(
+                profile,
+                r"(?m)^  browser_qa:\n(?:    .*\n)*    backend: chrome-qa\n",
+            )
+            self.assertNotIn("approve: never", profile)  # default stays auto
+
     def test_auto_prefers_cursor_grok_46_medium_fast(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -774,6 +826,32 @@ class DoctorTuiCatalogTest(unittest.TestCase):
             "cursor-grok-4.6-xhigh-fast",
         ):
             self.assertIn(slug, tui.CURSOR_MODEL_FALLBACK)
+
+    def test_browser_qa_stage_card_and_i18n(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import agents_doctor_tui as tui  # noqa: E402
+        import agents_doctor_tui_i18n as i18n  # noqa: E402
+
+        # browser_qa is a card on the Stages tab (like plan_critique/specialist/
+        # onboard), not its own top-level module tab like memory/docs.
+        self.assertIn("browser_qa", tui.STAGE_IDS)
+        self.assertNotIn("browser_qa", tui.MODULE_TAB_IDS)
+        self.assertNotIn("browser_qa", tui.TAB_IDS)
+        self.assertEqual(tui.BROWSER_QA_PROVIDERS, ("codex", "claude"))
+        self.assertEqual(
+            tui.BROWSER_QA_BACKENDS, ("live-chrome", "chrome-qa", "headless")
+        )
+        self.assertEqual(tui.BROWSER_QA_APPROVALS, ("auto", "never"))
+        self.assertEqual(
+            tui.STAGE_FIELD_BROWSER_QA,
+            ("enabled", "provider", "model", "effort", "backend", "approve"),
+        )
+        for lang in ("en", "ru"):
+            self.assertIn("stage_browser_qa", i18n.STRINGS[lang])
+            self.assertIn("sfield_backend", i18n.STRINGS[lang])
+            self.assertIn("sfield_approve", i18n.STRINGS[lang])
+            self.assertIn("browser_qa_hint", i18n.STRINGS[lang])
+        self.assertEqual(set(i18n.STRINGS["en"]), set(i18n.STRINGS["ru"]))
 
     def test_opencode_catalog_refreshes_live(self) -> None:
         sys.path.insert(0, str(ROOT / "bin"))

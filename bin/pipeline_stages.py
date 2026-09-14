@@ -128,6 +128,17 @@ DEFAULT_DOCS_PAGE_CAP = 0
 DEFAULT_DOCS_SINCE = "yesterday"
 DEFAULT_DOCS_HOUR = 5
 DOCS_SINCE_CHOICES = ("yesterday", "24 hours ago", "7 days ago")
+# browser_qa — live browser QA of shipped UI (the browser-qa Claude agent
+# delegates here). provider is either `codex` (codex exec + browser/computer-use
+# plugins on the host's live Chrome) or `claude` (Haiku agent drives
+# chrome-devtools MCP itself) — a narrower set than KNOWN_STAGE_PROVIDERS.
+BROWSER_QA_PROVIDERS = frozenset({"codex", "claude"})
+BROWSER_QA_BACKENDS = frozenset({"live-chrome", "chrome-qa", "headless"})
+BROWSER_QA_APPROVALS = frozenset({"auto", "never"})
+DEFAULT_BROWSER_QA_MODEL = "gpt-6-astra"
+DEFAULT_BROWSER_QA_EFFORT = "low"
+DEFAULT_BROWSER_QA_BACKEND = "live-chrome"
+DEFAULT_BROWSER_QA_APPROVE = "auto"
 DEFAULT_OPENCODE_WRITE_AGENT = "lane-writer"
 DEFAULT_OPENCODE_CRITIQUE_AGENT = "lane-critic"
 DEFAULT_OPENCODE_REVIEW_AGENT = "lane-reviewer"
@@ -172,6 +183,7 @@ STAGE_ORDER = (
     "onboard",
     "memory",
     "docs",
+    "browser_qa",
 )
 
 
@@ -261,6 +273,15 @@ def default_stages(
             "since": DEFAULT_DOCS_SINCE,
             "hour": DEFAULT_DOCS_HOUR,
         },
+        "browser_qa": {
+            "enabled": True,
+            "provider": "codex",
+            "model": DEFAULT_BROWSER_QA_MODEL,
+            "reasoning_effort": DEFAULT_BROWSER_QA_EFFORT,
+            "service_tier": "standard",
+            "backend": DEFAULT_BROWSER_QA_BACKEND,
+            "approve": DEFAULT_BROWSER_QA_APPROVE,
+        },
     }
 
 
@@ -346,6 +367,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
     onboard = raw.get("onboard") if isinstance(raw.get("onboard"), dict) else {}
     memory = raw.get("memory") if isinstance(raw.get("memory"), dict) else {}
     docs = raw.get("docs") if isinstance(raw.get("docs"), dict) else {}
+    browser_qa = raw.get("browser_qa") if isinstance(raw.get("browser_qa"), dict) else {}
 
     # plan_critique
     pc_provider = str(pc.get("provider") or base["plan_critique"]["provider"]).strip()
@@ -556,6 +578,30 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
             else {}
         ),
     }
+
+    # browser_qa — live browser QA of shipped UI; on by default, the
+    # browser-qa Claude agent delegates its run here.
+    bq_provider = str(browser_qa.get("provider") or "codex").strip().lower()
+    if bq_provider not in BROWSER_QA_PROVIDERS:
+        bq_provider = "codex"
+    bq_default_model = DEFAULT_BROWSER_QA_MODEL if bq_provider == "codex" else ""
+    bq_effort_default = DEFAULT_BROWSER_QA_EFFORT if bq_provider == "codex" else ""
+    bq_backend = str(browser_qa.get("backend") or DEFAULT_BROWSER_QA_BACKEND).strip().lower()
+    if bq_backend not in BROWSER_QA_BACKENDS:
+        bq_backend = DEFAULT_BROWSER_QA_BACKEND
+    bq_approve = str(browser_qa.get("approve") or DEFAULT_BROWSER_QA_APPROVE).strip().lower()
+    if bq_approve not in BROWSER_QA_APPROVALS:
+        bq_approve = DEFAULT_BROWSER_QA_APPROVE
+    base["browser_qa"] = {
+        "enabled": _as_bool(browser_qa.get("enabled"), True),
+        "provider": bq_provider,
+        "model": str(browser_qa.get("model") or bq_default_model).strip(),
+        "reasoning_effort": _effort_from_block(browser_qa, bq_effort_default),
+        "service_tier": _normalize_service_tier(browser_qa, bq_provider),
+        "backend": bq_backend,
+        "approve": bq_approve,
+    }
+
     for block in base.values():
         if isinstance(block, dict) and str(block.get("provider") or "") == "agy":
             block["reasoning_effort"] = resolve_agy_effort(
@@ -702,6 +748,20 @@ def resolve_docs(start: Path) -> dict[str, Any]:
     profile = load_routing_profile(start)
     stages = load_stages_from_profile(profile)
     block = stages.get("docs") or {}
+    return {
+        **block,
+        "stages": stages,
+        "profile_path": profile.get("_path"),
+    }
+
+
+def resolve_browser_qa(start: Path) -> dict[str, Any]:
+    """Load stages.browser_qa (live browser QA of shipped UI). Default enabled=true."""
+    from routing_profile import load_routing_profile  # local import — same bin/
+
+    profile = load_routing_profile(start)
+    stages = load_stages_from_profile(profile)
+    block = stages.get("browser_qa") or {}
     return {
         **block,
         "stages": stages,

@@ -17,7 +17,13 @@ You collect browser evidence. You are not the PM and not a writer.
 
 ## Model
 
-Claude Haiku + `chrome-devtools` MCP. Host-level server `mcp__chrome-devtools__*` first (desktop hosts: `chrome-qa start` profile on `--browserUrl http://127.0.0.1:9333`, or `--autoConnect` to the user's real Chrome); MetaMCP `mcp_call` server `chrome-devtools` as fallback. Not Codex. Not Fable.
+Read `stages.browser_qa` from `.agents/routing.profile.yaml` (adoc → Stages). Default
+`provider: codex`, `model: gpt-6-astra`, `reasoning_effort: low`, `backend: live-chrome`:
+the clicking is done by **Codex** through its browser / Chrome-extension / computer-use
+plugins on the host's live Chrome, and you only orchestrate and relay. `provider: claude`
+means you drive the browser yourself with `chrome-devtools` MCP.
+
+Claude Haiku + `chrome-devtools` MCP (provider claude). Host-level server `mcp__chrome-devtools__*` first (desktop hosts: `chrome-qa start` profile on `--browserUrl http://127.0.0.1:9333`, or `--autoConnect` to the user's real Chrome); MetaMCP `mcp_call` server `chrome-devtools` as fallback. Not Codex. Not Fable.
 
 ## Inputs
 
@@ -27,6 +33,11 @@ Claude Haiku + `chrome-devtools` MCP. Host-level server `mcp__chrome-devtools__*
 
 1. Load skill `browser-qa`. Do not dump it.
 2. `cd "$PROJECT_CWD"`. English files only under `.agents/qa/<slug>/`.
+2a. **provider codex (default):** run once via Bash
+   `browser-qa-codex --project-cwd "$PROJECT_CWD" --url "$URL" --slug "$SLUG" --env-class "$ENV_CLASS" --viewports "$VIEWPORTS" --case "<bullet>" ...`
+   (add `--authorized` only when the PM wrote it). It writes `cases.md`, `REPORT.md`,
+   `shots/`, `codex-run.json`, `codex-result.json`. Exit 0 pass · 1 fail · 2 blocked.
+   Read `REPORT.md` + `codex-result.json`, then go to step 6. Do not click yourself.
 3. Follow skill `browser-qa` (AI Factory #154 adapted): `qa-digest`, stale rules, one script per case, first run is proof, missing selector is a product fail, no pass without a live browser. Use `references/` templates. Write secrets-free `.agents/qa/context.md` only for reusable setup.
 4. Browser tools, in order: host-level `mcp__chrome-devtools__list_pages` / `new_page` / `navigate_page` → `take_snapshot` → clicks → `take_screenshot`; else MetaMCP `mcp_call` server `chrome-devtools`. Not WebFetch. If the MCP has no browser: `chrome-qa start`, retry once. When attached to the user's real Chrome (`--autoConnect`): open your own page with `new_page`, work only in pages you created, never read or close the user's other tabs, close yours at the end.
 5. No Vue/TS/CSS. No `docs/DESIGN.md`. Taste/slop → tell PM to use `design-lead MODE=audit`.
