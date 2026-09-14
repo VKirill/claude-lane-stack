@@ -23,6 +23,9 @@ browser-qa — живой браузер, не writer.
 
 Дигесты: qa-digest cases|script|target
 Нет chrome-devtools / Playwright → blocked, не pass.
+Свой Chrome для QA: chrome-qa start (профиль ~/.agents/chrome-qa, порт 9333, без диалогов)
++ chrome-devtools MCP --browserUrl http://127.0.0.1:9333. --autoConnect к личному Chrome —
+диалог при каждом подключении; работать только в своих вкладках.
 ```
 
 ## Layout
@@ -109,7 +112,8 @@ async (page) => { /* goto("BASE_URL"+"/…"); asserts throw */ };
 ## Preflight
 
 1. Read `.agents/qa/context.md` if present (routes, how to start the app, test-user **role**). No secrets.
-2. Live browser: MetaMCP `chrome-devtools` (`navigate_page`, `take_snapshot`, `take_screenshot`) or existing project Playwright. No new dependency. Neither → every `browser-ui` case `blocked`. Do not write `pass`. WebFetch is not a browser.
+2. Live browser: host-level `chrome-devtools` MCP (`mcp__chrome-devtools__*`: `list_pages`, `new_page`, `navigate_page`, `take_snapshot`, `take_screenshot`), else MetaMCP `chrome-devtools`, else existing project Playwright. If the MCP reports no browser, run `chrome-qa start` (dedicated profile, fixed port, no consent dialog) and retry once. No new dependency. None → every `browser-ui` case `blocked`. Do not write `pass`. WebFetch is not a browser.
+   **Attached to the user's real Chrome** (macOS `--autoConnect`, or `--browserUrl`): the server exposes every open tab. Create your own page with `new_page`, act only in pages you created, never snapshot, navigate or close other tabs, close yours when done, and prefer a dedicated QA profile for sensitive sites.
 3. `production` or `unknown`, or any side-effect case: do not run until the PM wrote `authorized` in the spawn prompt. Deny → `blocked`.
 4. Auth: reuse a safe local fixture from context/docs. Never store prod/personal passwords, cookies, OTP. Disposable local users only if the repo already has a seed command.
 

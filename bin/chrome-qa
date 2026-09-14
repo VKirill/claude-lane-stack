@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# chrome-qa — dedicated Chrome profile for browser-qa with a fixed DevTools port.
+#
+# Why: chrome-devtools-mcp --autoConnect attaches to the user's real Chrome but
+# Chrome (144+) shows an "Allow remote debugging?" consent dialog on every client
+# connection, and the MCP client then sees every personal tab. A separate profile
+# started with --remote-debugging-port has no dialog, full control, and keeps the
+# user's own browser out of QA. Log in to test sites in this profile once; it
+# persists under $CHROME_QA_DIR.
+#
+# Usage:
+#   chrome-qa start [--headless]   # idempotent; prints browserUrl
+#   chrome-qa status               # exit 0 when the port answers
+#   chrome-qa stop
+#   chrome-qa url                  # print http://127.0.0.1:<port>
+#
+# Env: CHROME_QA_PORT (default 9333), CHROME_QA_DIR (default ~/.agents/chrome-qa),
+#      CHROME_QA_BIN (auto-detected per platform).
+set -euo pipefail
+
+PORT="${CHROME_QA_PORT:-9333}"
+DIR="${CHROME_QA_DIR:-$HOME/.agents/chrome-qa}"
+URL="http://127.0.0.1:${PORT}"
+PIDFILE="$DIR/chrome-qa.pid"
+LOG="$DIR/chrome-qa.log"
+
+detect_chrome() {
+  if [[ -n "${CHROME_QA_BIN:-}" ]]; then
+    printf '%s\n' "$CHROME_QA_BIN"
+    return
+  fi
+  local candidates=(
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    "$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    google-chrome google-chrome-stable chromium chromium-browser chrome
+  )
+  local c
+  for c in "${candidates[@]}"; do
+    if [[ -x "$c" ]]; then printf '%s\n' "$c"; return; fi
+    if command -v "$c" >/dev/null 2>&1; then command -v "$c"; return; fi
+  done
+  echo "chrome-qa: no Chrome binary found (set CHROME_QA_BIN)" >&2
+  exit 1
+}
+
+port_alive() {
+  curl -s -m 2 "$URL/json/version" >/dev/null 2>&1
+}
+
+cmd_status() {
+  if port_alive; then
+    echo "chrome-qa: running $URL (profile $DIR)"
+    return 0
+  fi
+  echo "chrome-qa: not running on $URL" >&2
+  return 1
+}
+
+cmd_start() {
+  local headless=0
+  [[ "${1:-}" == "--headless" ]] && headless=1
+  mkdir -p "$DIR"
+  if port_alive; then
+    echo "$URL"
+    return 0
+  fi
+  local bin
+  bin="$(detect_chrome)"
+  local args=(
+    "--user-data-dir=$DIR"
+    "--remote-debugging-port=$PORT"
+    "--no-first-run"
+    "--no-default-browser-check"
+    "--disable-background-networking"
+    "--window-size=1280,900"
+  )
+  if [[ "$headless" == 1 ]]; then
+    args+=("--headless=new")
+  fi
+  nohup "$bin" "${args[@]}" "about:blank" >"$LOG" 2>&1 &
+  echo $! >"$PIDFILE"
+  local i
+  for i in $(seq 1 40); do
+    if port_alive; then
+      echo "$URL"
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "chrome-qa: Chrome did not open $URL within 10s (see $LOG)" >&2
+  exit 1
+}
+
+cmd_stop() {
+  if [[ -f "$PIDFILE" ]]; then
+    local pid
+    pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PIDFILE"
+  fi
+  # Fallback: any Chrome bound to this profile directory.
+  pkill -f -- "--user-data-dir=$DIR" 2>/dev/null || true
+  echo "chrome-qa: stopped"
+}
+
+case "${1:-status}" in
+  start) shift; cmd_start "$@" ;;
+  status) cmd_status ;;
+  stop) cmd_stop ;;
+  url) echo "$URL" ;;
+  -h|--help|help) sed -n '2,20p' "$0" ;;
+  *) echo "chrome-qa: unknown command: $1" >&2; exit 2 ;;
+esac

@@ -1,3 +1,17 @@
+## 1.30.0 — 2026-09-14
+
+### Added
+- **`browser-qa` on a real Chrome.** The agent now prefers a host-level
+  `chrome-devtools` MCP (`mcp__chrome-devtools__*`) and falls back to MetaMCP.
+  On macOS register `chrome-devtools-mcp --autoConnect` (Chrome 144+, remote
+  debugging enabled in `chrome://inspect`) and the agent drives the user's
+  real Chrome profile; it must open its own page with `new_page`, never touch
+  other tabs, and close its pages. `docs/MCP-HYBRID.md` documents the setup.
+- **`chrome-qa`** host command: dedicated Chrome profile (`~/.agents/chrome-qa`,
+  port 9333) with `--remote-debugging-port`, so `chrome-devtools-mcp
+  --browserUrl` attaches with no consent dialog and never sees personal tabs.
+  `install.sh` allows `mcp__chrome-devtools` in Claude permissions.
+
 ## 1.29.0 — 2026-09-14
 
 ### Added

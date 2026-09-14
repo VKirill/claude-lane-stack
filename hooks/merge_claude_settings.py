@@ -303,6 +303,8 @@ STACK_PERMISSION_ALLOW_EXTRA = (
     "Monitor",
     "Artifact",
     "mcp__metamcp",
+    # browser-qa: host-level chrome-devtools MCP (chrome-qa profile / autoConnect).
+    "mcp__chrome-devtools",
 )
 
 
