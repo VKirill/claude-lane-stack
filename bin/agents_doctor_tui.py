@@ -87,7 +87,7 @@ STAGE_IDS = (
 MODULE_TAB_IDS = ("memory", "docs")
 # Full agent catalog for stages (not limited to currently detected CLIs).
 ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex", "cursor", "opencode")
-CRITIQUE_PROVIDERS = ("structural",) + ALL_AGENTS
+CRITIQUE_PROVIDERS = ("structural", "jev") + ALL_AGENTS
 # browser_qa is narrower than ALL_AGENTS: codex drives the host's live Chrome
 # via `codex exec`; claude has the Haiku agent drive chrome-devtools MCP itself.
 BROWSER_QA_PROVIDERS = ("codex", "claude")
@@ -257,6 +257,7 @@ DEFAULT_MODEL = {
     "codex": "gpt-5.6-luna",
     "cursor": "cursor-grok-4.6-medium",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
+    "jev": "typesafe/jev-1.13",
     "auto": "(stack default)",
 }
 
@@ -1541,6 +1542,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def _models_for_provider(provider: str) -> list[str]:
         if provider == "structural":
             return []
+        if provider == "jev":
+            return [DEFAULT_MODEL.get("jev", "typesafe/jev-1.13")]
         if provider == "claude":
             return []
         opts = _models_for(provider)
@@ -1549,6 +1552,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def _efforts_for_provider(provider: str, model: str = "") -> list[str]:
         if provider == "structural":
             return ["low", "medium", "high"]
+        if provider == "jev":
+            return []
         if provider == "claude":
             # browser_qa/claude: Haiku agent drives chrome-devtools MCP itself,
             # no external reasoning_effort knob.
@@ -1579,7 +1584,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return _loc_provider(str(block.get("provider") or "—"))
         if field == "effort":
             prov = str(block.get("provider") or "")
-            if prov == "claude":
+            if prov in {"claude", "jev"}:
                 return _t(state, "model_na")
             return str(block.get("reasoning_effort") or block.get("effort") or "—")
         if field == "fast":
@@ -1595,6 +1600,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
             prov = str(block.get("provider") or "")
             if prov in {"structural", "claude"}:
                 return _t(state, "model_na")
+            if prov == "jev":
+                return str(block.get("model") or "typesafe/jev-1.13")
             return str(block.get("model") or "—") or "—"
         if field == "hour":
             try:

@@ -31,8 +31,20 @@ if str(_BIN) not in sys.path:
 from routing_profile import resolve_agy_effort  # noqa: E402
 
 KNOWN_STAGE_PROVIDERS = frozenset(
-    {"structural", "kimi", "qwen", "agy", "grok", "codex", "cursor", "opencode"}
+    {
+        "structural",
+        "jev",
+        "kimi",
+        "qwen",
+        "agy",
+        "grok",
+        "codex",
+        "cursor",
+        "opencode",
+    }
 )
+# Jev answers typed decisions; it cannot write or review code.
+WRITE_STAGE_PROVIDERS = KNOWN_STAGE_PROVIDERS - {"structural", "jev"}
 CRITIQUE_MODES = frozenset({"advisory", "gate"})
 CRITIQUE_DECISIONS = frozenset({"ship", "revise", "revise_required"})
 SPECIALIST_WHEN = frozenset({"high_risk", "always"})
@@ -79,6 +91,7 @@ DEFAULT_MODELS = {
     "codex": "gpt-5.6-luna",
     "cursor": "cursor-grok-4.6-medium",
     "opencode": "alibaba-token-plan/qwen3.8-max-preview",
+    "jev": "typesafe/jev-1.13",
     "structural": "",
 }
 # Write-lane defaults (daytime implementer).
@@ -100,6 +113,7 @@ DEFAULT_CRITIQUE_EFFORTS = {
     "cursor": "low",
     "codex": "low",
     "opencode": "low",
+    "jev": "low",
     "structural": "low",
 }
 DEFAULT_EFFORTS = DEFAULT_CRITIQUE_EFFORTS  # alias for critique
@@ -196,14 +210,14 @@ def default_stages(
     night_provider: str = "qwen",
 ) -> dict[str, Any]:
     """Return the full stages map with sensible defaults."""
-    wp = write_provider if write_provider in KNOWN_STAGE_PROVIDERS - {"structural"} else "kimi"
+    wp = write_provider if write_provider in WRITE_STAGE_PROVIDERS else "kimi"
     return {
         "plan_critique": {
             "enabled": True,
             "mode": "advisory",
-            "provider": "agy",
-            "model": DEFAULT_MODELS.get("agy", "gemini-3.7-flash-high"),
-            "reasoning_effort": DEFAULT_CRITIQUE_EFFORTS.get("agy", "high"),
+            "provider": "jev",
+            "model": DEFAULT_MODELS.get("jev", "typesafe/jev-1.13"),
+            "reasoning_effort": DEFAULT_CRITIQUE_EFFORTS.get("jev", "low"),
             "min_score": 7,
             "min_write_tasks": 3,
             "on_high_risk": True,
@@ -218,17 +232,17 @@ def default_stages(
         "night_review": {
             "enabled": bool(night_enabled),
             "provider": night_provider
-            if night_provider in (KNOWN_STAGE_PROVIDERS - {"structural"})
+            if night_provider in WRITE_STAGE_PROVIDERS
             else "qwen",
             "model": DEFAULT_MODELS.get(
                 night_provider
-                if night_provider in (KNOWN_STAGE_PROVIDERS - {"structural"})
+                if night_provider in WRITE_STAGE_PROVIDERS
                 else "qwen",
                 "",
             ),
             "reasoning_effort": DEFAULT_WRITE_EFFORTS.get(
                 night_provider
-                if night_provider in (KNOWN_STAGE_PROVIDERS - {"structural"})
+                if night_provider in WRITE_STAGE_PROVIDERS
                 else "qwen",
                 "medium",
             ),
@@ -396,10 +410,14 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
     }
     if pc_provider == "structural":
         base["plan_critique"]["model"] = ""
+    if pc_provider == "jev":
+        base["plan_critique"]["model"] = str(
+            pc.get("model") or DEFAULT_MODELS["jev"]
+        ).strip() or DEFAULT_MODELS["jev"]
 
     # write
     w_provider = str(write.get("provider") or write_provider or "kimi").strip()
-    if w_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+    if w_provider not in (WRITE_STAGE_PROVIDERS):
         w_provider = "kimi"
     base["write"] = {
         "provider": w_provider,
@@ -418,7 +436,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
 
     # night
     n_provider = str(night.get("provider") or base["night_review"]["provider"]).strip()
-    if n_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+    if n_provider not in (WRITE_STAGE_PROVIDERS):
         n_provider = "qwen"
     base["night_review"] = {
         "enabled": _as_bool(night.get("enabled"), False),
@@ -438,7 +456,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
 
     # specialist
     s_provider = str(spec.get("provider") or "codex").strip()
-    if s_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+    if s_provider not in (WRITE_STAGE_PROVIDERS):
         s_provider = "codex"
     s_when = str(spec.get("when") or "high_risk").strip().lower()
     if s_when not in SPECIALIST_WHEN:
@@ -462,7 +480,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
 
     # onboard (project passport — not part of daytime conveyor)
     o_provider = str(onboard.get("provider") or "codex").strip()
-    if o_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+    if o_provider not in (WRITE_STAGE_PROVIDERS):
         o_provider = "codex"
     o_default_model = (
         DEFAULT_ONBOARD_MODEL
@@ -488,7 +506,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
 
     # memory — SMA-style fact corpus; off unless the project opts in
     m_provider = str(memory.get("provider") or "codex").strip()
-    if m_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+    if m_provider not in (WRITE_STAGE_PROVIDERS):
         m_provider = "codex"
     m_default_model = (
         DEFAULT_ONBOARD_MODEL
@@ -534,7 +552,7 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
 
     # docs — living docs/; off unless the project opts in
     d_provider = str(docs.get("provider") or "codex").strip()
-    if d_provider not in (KNOWN_STAGE_PROVIDERS - {"structural"}):
+    if d_provider not in (WRITE_STAGE_PROVIDERS):
         d_provider = "codex"
     d_default_model = (
         DEFAULT_DOCS_MODEL
@@ -1758,6 +1776,50 @@ def run_full_critique(
         return merge_llm_into_critique(
             structural, None, provider="structural", model=""
         )
+
+    if provider == "jev":
+        try:
+            from plan_critique_jev import (  # type: ignore  # noqa: WPS433
+                JevCritiqueError,
+                invoke_jev_critique,
+                overlay_jev,
+            )
+        except ImportError:
+            bin_dir = str(Path(__file__).resolve().parent)
+            if bin_dir not in sys.path:
+                sys.path.insert(0, bin_dir)
+            from plan_critique_jev import (  # type: ignore
+                JevCritiqueError,
+                invoke_jev_critique,
+                overlay_jev,
+            )
+        try:
+            jev_payload = invoke_jev_critique(run_dir, structural, timeout=min(timeout, 30))
+            merged = merge_llm_into_critique(
+                structural,
+                jev_payload,
+                provider="jev",
+                model=str(jev_payload.get("model") or model or "typesafe/jev-1.13"),
+            )
+            merged["llm_pass"]["confidence"] = jev_payload.get("confidence")
+            merged["llm_pass"]["risk"] = jev_payload.get("risk")
+            return overlay_jev(merged, jev_payload)
+        except JevCritiqueError as exc:
+            return merge_llm_into_critique(
+                structural,
+                None,
+                provider="jev",
+                model=model or "typesafe/jev-1.13",
+                llm_error=str(exc),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return merge_llm_into_critique(
+                structural,
+                None,
+                provider="jev",
+                model=model or "typesafe/jev-1.13",
+                llm_error=f"{type(exc).__name__}: {exc}",
+            )
 
     try:
         from plan_critique_llm import (  # type: ignore  # noqa: WPS433

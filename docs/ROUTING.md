@@ -7,7 +7,7 @@
 | Role | Who | Default model |
 |------|-----|----------------|
 | Conductor (PM) | Claude **Fable / Opus** (`dev-orchestrator`) | never Sonnet as PM |
-| Plan critique | **Structural** + optional one-shot LLM (Qwen/Codex/Kimi/Grok/AGY/Cursor/OpenCode) → PM `decision` | `stages.plan_critique` in adoc |
+| Plan critique | **Structural** + **Jev** (default) or one-shot LLM (Qwen/Codex/Kimi/Grok/AGY/Cursor/OpenCode) → PM `decision` | `stages.plan_critique` in adoc |
 | Write (all risks) | **Kimi K3-256k** (default), Qwen 3.8, Grok 4.6/4.5, or AGY 3.6 | selected programmer lane |
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
@@ -24,7 +24,7 @@ Configured under `stages:` in `.agents/routing.profile.yaml`:
 
 | Stage | Default | Purpose |
 |-------|---------|---------|
-| `plan_critique` | on · `advisory` · `structural` | Pre-dispatch PLAN/SPEC/task quality; when provider ≠ structural, **invokes** that model and writes PM `decision` |
+| `plan_critique` | on · `advisory` · **`jev`** | Structural extracts owns/verify/DAG. **Jev** (`typesafe/jev-1.13` via OpenRouter Decisions) sets `ship/revise/revise_required` and can demote soft warns. Other providers (AGY/Qwen/…) still work. `structural` skips the model. |
 | `write` | mirrors `main_write` | Daytime implementer |
 | `night_review` | from night-shift | Codex review + fix budget |
 | `specialist` | off · `high_risk` | Optional read-only domain pass (auth/pay/schema) |
