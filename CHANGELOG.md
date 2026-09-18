@@ -1,3 +1,10 @@
+## 1.32.1 — 2026-09-18
+
+### Changed
+- Leftover `stages.plan_critique.provider: agy` (factory default ≤1.31) remaps
+  to Jev at load and on `migrate_profile_stages` / `./install.sh`. No `adoc`
+  required. Write-lane still cannot use Jev.
+
 ## 1.32.0 — 2026-09-18
 
 ### Added

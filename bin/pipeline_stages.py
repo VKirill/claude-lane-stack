@@ -385,6 +385,10 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
 
     # plan_critique
     pc_provider = str(pc.get("provider") or base["plan_critique"]["provider"]).strip()
+    remapped_agy = pc_provider == "agy"
+    if remapped_agy:
+        # leftover factory default from ≤1.31 — Jev is the critique judge
+        pc_provider = "jev"
     if pc_provider not in KNOWN_STAGE_PROVIDERS:
         pc_provider = "structural"
     pc_mode = str(pc.get("mode") or base["plan_critique"]["mode"]).strip().lower()
@@ -394,9 +398,15 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
         "enabled": _as_bool(pc.get("enabled"), True),
         "mode": pc_mode,
         "provider": pc_provider,
-        "model": str(pc.get("model") or DEFAULT_MODELS.get(pc_provider, "")).strip(),
-        "reasoning_effort": _effort_from_block(
-            pc, DEFAULT_EFFORTS.get(pc_provider, "low")
+        "model": (
+            DEFAULT_MODELS["jev"]
+            if remapped_agy
+            else str(pc.get("model") or DEFAULT_MODELS.get(pc_provider, "")).strip()
+        ),
+        "reasoning_effort": (
+            DEFAULT_CRITIQUE_EFFORTS.get("jev", "low")
+            if remapped_agy
+            else _effort_from_block(pc, DEFAULT_EFFORTS.get(pc_provider, "low"))
         ),
         "min_score": max(0, _as_int(pc.get("min_score"), 7)),
         "min_write_tasks": max(1, _as_int(pc.get("min_write_tasks"), 3)),
@@ -411,9 +421,12 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
     if pc_provider == "structural":
         base["plan_critique"]["model"] = ""
     if pc_provider == "jev":
-        base["plan_critique"]["model"] = str(
-            pc.get("model") or DEFAULT_MODELS["jev"]
-        ).strip() or DEFAULT_MODELS["jev"]
+        base["plan_critique"]["model"] = (
+            DEFAULT_MODELS["jev"]
+            if remapped_agy
+            else str(pc.get("model") or DEFAULT_MODELS["jev"]).strip()
+            or DEFAULT_MODELS["jev"]
+        )
 
     # write
     w_provider = str(write.get("provider") or write_provider or "kimi").strip()
@@ -661,7 +674,9 @@ def migrate_profile_stages(profile_path: Path) -> list[str]:
     data = load_routing_profile(profile_path.parent)
     raw = data.get("stages") if isinstance(data.get("stages"), dict) else {}
     missing = [name for name in STAGE_ORDER if name not in raw]
-    if not missing:
+    raw_pc = raw.get("plan_critique") if isinstance(raw.get("plan_critique"), dict) else {}
+    legacy_agy = str(raw_pc.get("provider") or "").strip() == "agy"
+    if not missing and not legacy_agy:
         return []
     writer = data.get("writer") if isinstance(data.get("writer"), dict) else {}
     lanes = data.get("lanes") if isinstance(data.get("lanes"), dict) else {}
@@ -678,7 +693,7 @@ def migrate_profile_stages(profile_path: Path) -> list[str]:
     if new_text == text:
         return []
     profile_path.write_text(new_text, encoding="utf-8")
-    return missing
+    return missing if missing else ["plan_critique"]
 
 
 def stages_to_yaml_lines(stages: dict[str, Any]) -> list[str]:

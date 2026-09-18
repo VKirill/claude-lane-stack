@@ -383,6 +383,21 @@ temporary.write_text(json.dumps({
 os.replace(temporary, path)
 PY
 
+if [[ -f "$DEST/routing.profile.yaml" ]]; then
+  python3 - "$DEST" <<'PY'
+import sys
+from pathlib import Path
+
+dest = Path(sys.argv[1])
+sys.path.insert(0, str(dest / "bin"))
+from pipeline_stages import migrate_profile_stages
+
+changed = migrate_profile_stages(dest / "routing.profile.yaml")
+if changed:
+    print(f"==> Host profile remapped: {', '.join(changed)}")
+PY
+fi
+
 echo ""
 if [[ -n "$APPLY_PROJECT" ]]; then
   echo "==> Applying agents-doctor profile to: $APPLY_PROJECT"

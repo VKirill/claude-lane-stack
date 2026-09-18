@@ -957,6 +957,60 @@ class DoctorTuiCatalogTest(unittest.TestCase):
             self.assertIn("docs:", text)
             self.assertRegex(text, r"(?m)^  memory:\n(?:    .*\n)*    enabled: true")
 
+    def test_migrate_rewrites_legacy_agy_plan_critique(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        from pipeline_stages import migrate_profile_stages  # noqa: E402
+
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / ".agents" / "routing.profile.yaml"
+            profile.parent.mkdir()
+            profile.write_text(
+                "\n".join(
+                    [
+                        "lanes:",
+                        "  main_write: kimi",
+                        "writer:",
+                        "  provider: kimi",
+                        "stages:",
+                        "  plan_critique:",
+                        "    enabled: true",
+                        "    mode: advisory",
+                        "    provider: agy",
+                        "    model: gemini-3.7-flash-high",
+                        "    reasoning_effort: high",
+                        "  write:",
+                        "    provider: kimi",
+                        "  night_review:",
+                        "    enabled: false",
+                        "    provider: qwen",
+                        "  specialist:",
+                        "    enabled: false",
+                        "    provider: codex",
+                        "  onboard:",
+                        "    provider: codex",
+                        "  memory:",
+                        "    enabled: false",
+                        "    provider: codex",
+                        "  docs:",
+                        "    enabled: false",
+                        "    provider: codex",
+                        "  browser_qa:",
+                        "    enabled: true",
+                        "    provider: codex",
+                        "notes:",
+                        "  - []",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            changed = migrate_profile_stages(profile)
+            self.assertEqual(changed, ["plan_critique"])
+            text = profile.read_text(encoding="utf-8")
+            self.assertIn("provider: jev", text)
+            self.assertIn("typesafe/jev-1.13", text)
+            self.assertNotIn("provider: agy", text)
+
     def test_adoc_prefers_source_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"

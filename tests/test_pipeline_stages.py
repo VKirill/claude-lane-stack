@@ -320,7 +320,10 @@ class PipelineStagesTest(unittest.TestCase):
             },
             write_provider="agy",
         )
+        self.assertEqual(s["plan_critique"]["provider"], "jev")
+        self.assertEqual(s["plan_critique"]["model"], "typesafe/jev-1.13")
         self.assertEqual(s["plan_critique"]["reasoning_effort"], "low")
+        self.assertEqual(s["write"]["provider"], "agy")
         self.assertEqual(s["write"]["reasoning_effort"], "medium")
         self.assertEqual(s["night_review"]["reasoning_effort"], "high")
 
