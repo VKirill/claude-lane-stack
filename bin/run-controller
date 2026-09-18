@@ -903,6 +903,7 @@ def run_controller(args: argparse.Namespace) -> int:
                         # immediately — retry wastes the day path attempt budget.
                         if (
                             failure_class in CONTRACT_NO_RETRY_CLASSES
+                            or failure_class == "verification_env"
                             or task_state["retries"] >= 1
                         ):
                             mark_task_blocked(

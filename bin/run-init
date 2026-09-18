@@ -153,6 +153,22 @@ def create_run(args: argparse.Namespace) -> Path:
         base_sha = git_head(repo)
     created_at = datetime.now(timezone.utc).isoformat()
 
+    jev_risk = None
+    brief = (getattr(args, "brief", None) or "").strip()
+    if brief:
+        try:
+            from jev_slots import score_brief
+        except ImportError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from jev_slots import score_brief
+        try:
+            scored = score_brief(brief)
+            jev_risk = scored.get("risk")
+            if not args.score:
+                args.score = int(scored.get("score") or 0)
+        except Exception:
+            jev_risk = None
+
     # agents-doctor routing.profile.yaml is source of truth for task.lane + workspace
     try:
         from routing_profile import resolve_writer, resolve_workspace  # type: ignore
@@ -204,6 +220,8 @@ def create_run(args: argparse.Namespace) -> Path:
             "worktree_on_multi_write": workspace["worktree_on_multi_write"],
         },
     }
+    if jev_risk in {"low", "medium", "high"}:
+        data["risk"] = jev_risk
     validate_generated(data)
     try:
         import yaml
@@ -258,6 +276,11 @@ def main() -> int:
     parser.add_argument("repo")
     parser.add_argument("slug")
     parser.add_argument("--score", type=nonnegative_score, default=0)
+    parser.add_argument(
+        "--brief",
+        default="",
+        help="optional task brief; Jev sets score/risk when --score is 0",
+    )
     parser.add_argument("--project-cwd", default="")
     parser.add_argument(
         "--adopt-worktree",

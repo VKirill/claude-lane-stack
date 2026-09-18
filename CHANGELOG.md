@@ -1,3 +1,16 @@
+## 1.32.0 — 2026-09-18
+
+### Added
+- **Jev judges** on the conveyor (OpenRouter Decisions, `typesafe/jev-1.13`).
+  Not a writer. Fail-open without `OPENROUTER_API_KEY` or with `LANE_JEV=0`.
+  - `plan_critique` default stays Jev: fat-task split + `risk` written to `run.yaml`
+  - night-fix compile dismisses gold-plate / out-of-scope findings
+  - leftover `verification_failed` may become `verification_flake` (retry) or
+    `verification_env` (no retry)
+  - `run-init --brief` sets score/risk when `--score` is 0
+  - `jev-intent <query>` for SEO classify (not an OpenRouter writer)
+  - `browser-qa-codex` writes `jev-qa.json` from REPORT.md (Codex verdict stays)
+
 ## 1.31.1 — 2026-09-15
 
 ### Changed

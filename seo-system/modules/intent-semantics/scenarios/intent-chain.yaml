@@ -9,7 +9,7 @@ steps:
     run: "Search Demand Mapper v3"
   - id: classify
     action: agent
-    run: "Search Intent Classifier v3 on demand areas"
+    run: "Search Intent Classifier v3 on demand areas; optional CLI `jev-intent '<query>'` (Jev choice, not an OpenRouter writer)"
   - id: modifiers
     action: agent
     run: "Query Modifier Extractor"

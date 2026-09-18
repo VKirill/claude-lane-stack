@@ -20,6 +20,7 @@ RUN_VALIDATE = ROOT / "bin" / "run-validate"
 
 class NightReviewTest(unittest.TestCase):
     def setUp(self) -> None:
+        os.environ["LANE_JEV"] = "0"
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)

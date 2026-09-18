@@ -1107,6 +1107,19 @@ def compile_fix_tasks(
         )
 
     generated: list[tuple[Path, dict[str, Any]]] = []
+    try:
+        from jev_slots import triage_night_findings
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from jev_slots import triage_night_findings
+    try:
+        for fingerprint in triage_night_findings(findings):
+            atomic_write_json(
+                repo / ".agents" / "findings" / f"{fingerprint}.json",
+                findings[fingerprint],
+            )
+    except Exception:
+        pass
     candidates = sorted(
         (
             finding

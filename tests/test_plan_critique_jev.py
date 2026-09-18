@@ -167,6 +167,25 @@ class PlanCritiqueJevTest(unittest.TestCase):
         )
         self.assertEqual(payload["findings"][0]["code"], "missing_invariant")
 
+    def test_fat_task_becomes_finding(self) -> None:
+        payload = answers_to_payload(
+            {
+                "answers": {
+                    "verdict": {
+                        "type": "choice",
+                        "choice": "revise",
+                        "confidence": 0.7,
+                    },
+                    "warns_actionable": {"type": "noul", "noul": 0.4},
+                    "spec_contradicts_plan": {"type": "noul", "noul": 0.1},
+                    "fat_task": {"type": "noul", "noul": 0.81},
+                    "risk": {"type": "choice", "choice": "medium", "confidence": 1},
+                }
+            }
+        )
+        self.assertEqual(payload["findings"][0]["code"], "fat_task")
+        self.assertEqual(payload["findings"][0]["action"], "split_task")
+
 
 if __name__ == "__main__":
     unittest.main()

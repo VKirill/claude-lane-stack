@@ -65,6 +65,14 @@ def classify_verify_failure(detail: str) -> str:
         return "lane_profile_mismatch"
     if "verification[" in low and "must" in low:
         return "contract_invalid"
+    try:
+        from jev_slots import classify_verify_tail
+
+        refined = classify_verify_tail(detail)
+        if refined:
+            return refined
+    except Exception:
+        pass
     return "verification_failed"
 
 
@@ -75,6 +83,10 @@ def next_act_for_failure(failure_class: str | None) -> str:
         return "fix_control_plane"
     if failure_class == "verification_failed":
         return "inspect_verify"
+    if failure_class == "verification_flake":
+        return "retry_or_fallback"
+    if failure_class == "verification_env":
+        return "operator_intervention"
     if failure_class in {"provider_failed", "provider_exit_nonzero"}:
         return "retry_or_fallback"
     return "operator_intervention"

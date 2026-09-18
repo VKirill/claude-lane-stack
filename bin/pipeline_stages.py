@@ -1803,7 +1803,14 @@ def run_full_critique(
             )
             merged["llm_pass"]["confidence"] = jev_payload.get("confidence")
             merged["llm_pass"]["risk"] = jev_payload.get("risk")
-            return overlay_jev(merged, jev_payload)
+            over = overlay_jev(merged, jev_payload)
+            try:
+                from jev_slots import persist_run_risk
+
+                persist_run_risk(run_dir, str(jev_payload.get("risk") or ""))
+            except Exception:
+                pass
+            return over
         except JevCritiqueError as exc:
             return merge_llm_into_critique(
                 structural,

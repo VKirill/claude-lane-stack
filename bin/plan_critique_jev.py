@@ -6,15 +6,18 @@ whether soft warns are actionable, SPEC↔PLAN conflict. No generated prose.
 """
 from __future__ import annotations
 
-import json
-import os
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
-JEV_MODEL = "typesafe/jev-1.13"
-DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
+from jev_decisions import (  # noqa: F401 — re-export for pipeline_stages
+    JEV_MODEL,
+    JevCritiqueError,
+    call_jev,
+    choice as _choice,
+    clip as _clip,
+    noul as _noul,
+)
+
 HARD_CODES = frozenset(
     {
         "plan_missing",
@@ -34,17 +37,6 @@ UNCERTAIN_CUT = 0.5
 _PLAN_CHARS = 4000
 _SPEC_CHARS = 2000
 _OBJECTIVE_CHARS = 400
-
-
-class JevCritiqueError(RuntimeError):
-    """OpenRouter / Jev invoke or parse failure."""
-
-
-def _clip(text: str, limit: int) -> str:
-    raw = text or ""
-    if len(raw) <= limit:
-        return raw
-    return raw[: limit - 16] + "\n…[truncated]"
 
 
 def _read(path: Path, limit: int) -> str:
@@ -135,74 +127,14 @@ def jev_questions() -> dict[str, Any]:
                 "high": "Payments, auth, wallet, gates that can lock users out",
             },
         },
-    }
-
-
-def _openrouter_key() -> str:
-    env = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
-    if env:
-        return env
-    try:
-        from usage_ledger import openrouter_api_key
-
-        return (openrouter_api_key() or "").strip()
-    except Exception:
-        return ""
-
-
-def call_jev(state: object, questions: dict[str, Any], *, timeout: int = 20) -> dict[str, Any]:
-    key = _openrouter_key()
-    if not key:
-        raise JevCritiqueError("OPENROUTER_API_KEY missing")
-    body = json.dumps(
-        {"model": JEV_MODEL, "state": state, "questions": questions}
-    ).encode()
-    req = urllib.request.Request(
-        DECISIONS_URL,
-        data=body,
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/local/claude-lane-stack",
-            "X-Title": "lane-stack plan-critique",
+        "fat_task": {
+            "type": "noul",
+            "instructions": (
+                "Does any item in `tasks` mix unrelated files or two "
+                "independent user-visible changes that should be split?"
+            ),
         },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            payload = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:400]
-        raise JevCritiqueError(f"HTTP {exc.code}: {detail}") from exc
-    except (OSError, json.JSONDecodeError, TimeoutError) as exc:
-        raise JevCritiqueError(str(exc)) from exc
-    if not isinstance(payload, dict) or not isinstance(payload.get("answers"), dict):
-        raise JevCritiqueError("Jev response missing answers")
-    return payload
-
-
-def _noul(answers: dict[str, Any], key: str) -> float:
-    raw = answers.get(key)
-    if not isinstance(raw, dict):
-        return 0.0
-    try:
-        return float(raw.get("noul") or 0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _choice(answers: dict[str, Any], key: str, allowed: set[str], default: str) -> tuple[str, float]:
-    raw = answers.get(key)
-    if not isinstance(raw, dict):
-        return default, 0.0
-    choice = str(raw.get("choice") or default).strip().lower()
-    if choice not in allowed:
-        choice = default
-    try:
-        conf = float(raw.get("confidence") or 0)
-    except (TypeError, ValueError):
-        conf = 0.0
-    return choice, conf
+    }
 
 
 def answers_to_payload(raw: dict[str, Any]) -> dict[str, Any]:
@@ -212,6 +144,7 @@ def answers_to_payload(raw: dict[str, Any]) -> dict[str, Any]:
     )
     warns_actionable = _noul(answers, "warns_actionable")
     spec_contradicts = _noul(answers, "spec_contradicts_plan")
+    fat_task = _noul(answers, "fat_task")
     risk, _risk_conf = _choice(
         answers, "risk", {"low", "medium", "high"}, "medium"
     )
@@ -234,6 +167,20 @@ def answers_to_payload(raw: dict[str, Any]) -> dict[str, Any]:
                 "action": "fix_spec",
             }
         )
+    if fat_task >= 0.7:
+        findings.append(
+            {
+                "severity": "warn",
+                "code": "fat_task",
+                "title": "Task mixes unrelated work",
+                "detail": (
+                    f"Jev noul fat_task={fat_task:.2f}. Split into "
+                    "separate tasks before dispatch."
+                ),
+                "path": "tasks/",
+                "action": "split_task",
+            }
+        )
     summaries = {
         "ship": "Jev: dispatch. Soft structural warns look like noise.",
         "revise": (
@@ -251,6 +198,7 @@ def answers_to_payload(raw: dict[str, Any]) -> dict[str, Any]:
         "confidence": confidence,
         "warns_actionable": warns_actionable,
         "spec_contradicts": spec_contradicts,
+        "fat_task": fat_task,
         "risk": risk,
         "uncertain": uncertain,
         "model": str(raw.get("model") or JEV_MODEL),
@@ -311,7 +259,9 @@ def invoke_jev_critique(
     timeout: int = 20,
 ) -> dict[str, Any]:
     state = pack_jev_state(run_dir, structural)
-    raw = call_jev(state, jev_questions(), timeout=timeout)
+    raw = call_jev(
+        state, jev_questions(), timeout=timeout, title="lane-stack plan-critique"
+    )
     payload = answers_to_payload(raw)
     _record_usage(raw, payload)
     return payload

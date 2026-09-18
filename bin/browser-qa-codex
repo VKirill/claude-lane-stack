@@ -331,6 +331,22 @@ def main(argv: list[str] | None = None) -> int:
     receipt["verdict"] = verdict
     receipt["report"] = qa_rel + "/REPORT.md" if (qa_dir / "REPORT.md").is_file() else None
     receipt["stderr_tail"] = stderr_tail
+    report_path = qa_dir / "REPORT.md"
+    if report_path.is_file():
+        try:
+            from jev_slots import judge_qa_report
+
+            jev_qa = judge_qa_report(
+                report_path.read_text(encoding="utf-8", errors="replace"),
+                verdict,
+            )
+            (qa_dir / "jev-qa.json").write_text(
+                json.dumps(jev_qa, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            receipt["jev"] = jev_qa
+        except Exception:
+            pass
     (qa_dir / "codex-run.json").write_text(json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print(f"browser-qa-codex: verdict={verdict} model={model} effort={effort} backend={backend} exit={exit_code}")
