@@ -144,8 +144,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_backend": "Browser QA backend → {backend}",
         "msg_stage_approve": "Browser QA approve → {approve}",
         "browser_qa_hint": (
-            "  Live browser QA of shipped UI — codex drives the host's real "
-            "Chrome, claude has the Haiku agent drive chrome-devtools MCP.\n"
+            "  Live browser QA — jev clicks via CDP (DOM table), "
+            "codex uses the host Chrome plugins, claude is Haiku + chrome-devtools.\n"
         ),
         "audience_owner": "owner",
         "audience_subagent": "subagent",
@@ -556,8 +556,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "msg_stage_backend": "Backend Browser QA → {backend}",
         "msg_stage_approve": "Подтверждение Browser QA → {approve}",
         "browser_qa_hint": (
-            "  Живая QA-проверка интерфейса — codex ведёт настоящий Chrome "
-            "хоста, claude — Haiku-агент сам работает через chrome-devtools MCP.\n"
+            "  Живая QA — jev кликает через CDP (таблица DOM), "
+            "codex — плагины Chrome хоста, claude — Haiku + chrome-devtools.\n"
         ),
         "audience_owner": "владелец",
         "audience_subagent": "субагент",

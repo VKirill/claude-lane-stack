@@ -837,7 +837,7 @@ class DoctorTuiCatalogTest(unittest.TestCase):
         self.assertIn("browser_qa", tui.STAGE_IDS)
         self.assertNotIn("browser_qa", tui.MODULE_TAB_IDS)
         self.assertNotIn("browser_qa", tui.TAB_IDS)
-        self.assertEqual(tui.BROWSER_QA_PROVIDERS, ("codex", "claude"))
+        self.assertEqual(tui.BROWSER_QA_PROVIDERS, ("jev", "codex", "claude"))
         self.assertEqual(
             tui.BROWSER_QA_BACKENDS, ("live-chrome", "chrome-qa", "headless")
         )
@@ -1005,11 +1005,15 @@ class DoctorTuiCatalogTest(unittest.TestCase):
                 encoding="utf-8",
             )
             changed = migrate_profile_stages(profile)
-            self.assertEqual(changed, ["plan_critique"])
+            self.assertEqual(set(changed), {"plan_critique", "browser_qa"})
             text = profile.read_text(encoding="utf-8")
             self.assertIn("provider: jev", text)
             self.assertIn("typesafe/jev-1.13", text)
             self.assertNotIn("provider: agy", text)
+            self.assertRegex(
+                text,
+                r"(?m)^  browser_qa:\n(?:    .*\n)*    provider: jev\n",
+            )
 
     def test_adoc_prefers_source_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

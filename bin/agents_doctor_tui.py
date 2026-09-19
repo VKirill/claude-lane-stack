@@ -90,7 +90,7 @@ ALL_AGENTS = ("kimi", "qwen", "grok", "agy", "codex", "cursor", "opencode")
 CRITIQUE_PROVIDERS = ("structural", "jev") + ALL_AGENTS
 # browser_qa is narrower than ALL_AGENTS: codex drives the host's live Chrome
 # via `codex exec`; claude has the Haiku agent drive chrome-devtools MCP itself.
-BROWSER_QA_PROVIDERS = ("codex", "claude")
+BROWSER_QA_PROVIDERS = ("jev", "codex", "claude")
 BROWSER_QA_BACKENDS = ("live-chrome", "chrome-qa", "headless")
 BROWSER_QA_APPROVALS = ("auto", "never")
 STAGE_FIELD_CRITIQUE = ("enabled", "mode", "provider", "model", "effort")
@@ -1482,7 +1482,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 lst.insert(lst.index("effort") + 1, "fast")
                 fields = tuple(lst)
         elif stage_id == "browser_qa":
-            prov = str((state.stages.get("browser_qa") or {}).get("provider") or "codex")
+            prov = str((state.stages.get("browser_qa") or {}).get("provider") or "jev")
             fields = STAGE_FIELD_BROWSER_QA
             if _supports_fast(prov):
                 lst = list(fields)
@@ -1772,8 +1772,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 block["reasoning_effort"] = "max"
                 block["service_tier"] = "fast"
             if sid == "browser_qa" and new_p == "codex":
+                block["model"] = "gpt-6-astra"
+                block["reasoning_effort"] = "low"
+            if sid == "browser_qa" and new_p == "jev":
                 block["model"] = DEFAULT_BROWSER_QA_MODEL
-                block["reasoning_effort"] = DEFAULT_BROWSER_QA_EFFORT
+                block["reasoning_effort"] = "low"
             if sid in {
                 "onboard",
                 "plan_critique",

@@ -20,7 +20,7 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `seo-specialist` | SEO | DrMax harness, `.agents/seo/`, `seo-*` CLI | Claude |
 | `copy-lead` | Copy | Audience + pages, `.agents/copy/` | Claude |
 | `tavily` | Search | Tavily REST, `.agents/research/` | Claude |
-| `browser-qa` | Browser QA | Live click + replay under `.agents/qa/` | Claude Haiku + chrome-devtools |
+| `browser-qa` | Browser QA | Live click + replay under `.agents/qa/` | Jev + chrome-qa (CDP) |
 
 Removed brand aliases (`codex-implementer`, `grok-implementer`, …). Dispatch
 the function name only.

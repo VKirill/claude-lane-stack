@@ -1,3 +1,13 @@
+## 1.33.0 — 2026-09-20
+
+### Added
+- **`browser-qa-jev`**: Chrome QA driver in the jev-ultrafast pattern (DOM
+  table → Jev Choice → click/type). Default `stages.browser_qa` is now `jev`
+  + `chrome-qa`. Leftover factory `provider: codex` + `gpt-6-astra` +
+  `live-chrome` remaps on `./install.sh`. Codex / Claude remain as explicit
+  picks. No Browser Harness vendor; our CDP. `DONE` is checked against
+  Expected. TYPE_TEXT uses a small OpenRouter model.
+
 ## 1.32.1 — 2026-09-18
 
 ### Changed

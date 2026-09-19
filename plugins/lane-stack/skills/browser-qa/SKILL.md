@@ -22,8 +22,8 @@ browser-qa — живой браузер, не writer.
   cases.md   REPORT.md   shots/   replay/TC-00N.js   replay/history/
 
 Дигесты: qa-digest cases|script|target
-Кто кликает: adoc → Stages → browser_qa. По умолчанию codex gpt-6-astra low
-в живом Chrome (browser-qa-codex); provider claude = Haiku + chrome-devtools MCP.
+Кто кликает: adoc → Stages → browser_qa. По умолчанию jev (browser-qa-jev:
+CDP + таблица контролов). provider codex = gpt-6-astra; claude = Haiku + chrome-devtools.
 Нет chrome-devtools / Playwright / codex → blocked, не pass.
 Свой Chrome для QA: chrome-qa start (профиль ~/.agents/chrome-qa, порт 9333, без диалогов)
 + chrome-devtools MCP --browserUrl http://127.0.0.1:9333. --autoConnect к личному Chrome —
@@ -115,13 +115,13 @@ async (page) => { /* goto("BASE_URL"+"/…"); asserts throw */ };
 
 | provider | Who clicks | Command |
 |----------|------------|---------|
-| `codex` (default) | Codex `model`/`reasoning_effort` (default `gpt-6-astra` / `low`) with its browser, Chrome-extension and computer-use plugins; `backend` = `live-chrome` \| `chrome-qa` \| `headless` | `browser-qa-codex --project-cwd . --url … --slug … --case "…"` |
+| `jev` (default) | CDP snapshot → Jev Choice (click/type/done). `backend` = `chrome-qa` \| `live-chrome` \| `headless` | `browser-qa-jev --project-cwd . --url … --slug … --case "…"` |
+| `codex` | Codex `gpt-6-astra` / `low` + browser plugins | `browser-qa-codex --project-cwd . --url … --slug … --case "…"` |
 | `claude` | this agent via `chrome-devtools` MCP | steps below |
 
-`browser-qa-codex` writes `cases.md`, `REPORT.md`, `shots/TC-00N-<w>.png`,
-`codex-run.json` (model, effort, backend, exit) and `codex-result.json`
-(structured verdict). Replay scripts are not produced in codex mode; the
-receipt + shots are the proof. `approve: auto` passes `--approve-for-me`.
+`browser-qa-jev` writes `cases.md`, `REPORT.md`, `shots/`, `jev-run.json`.
+`browser-qa-codex` writes `codex-run.json` / `codex-result.json`. Replay scripts
+are not produced in jev/codex mode; receipt + shots are the proof.
 
 ## Preflight
 

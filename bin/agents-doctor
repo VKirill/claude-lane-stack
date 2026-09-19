@@ -1312,9 +1312,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--browser-qa-provider",
-        choices=("codex", "claude"),
+        choices=("jev", "codex", "claude"),
         default=None,
-        help="with --apply: codex (host live Chrome via codex exec) or claude (Haiku + chrome-devtools MCP)",
+        help="with --apply: jev (CDP + DOM table), codex (host Chrome plugins), or claude (Haiku + chrome-devtools MCP)",
     )
     ap.add_argument(
         "--browser-qa-model",

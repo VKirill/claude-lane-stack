@@ -143,16 +143,17 @@ DEFAULT_DOCS_SINCE = "yesterday"
 DEFAULT_DOCS_HOUR = 5
 DOCS_SINCE_CHOICES = ("yesterday", "24 hours ago", "7 days ago")
 # browser_qa — live browser QA of shipped UI (the browser-qa Claude agent
-# delegates here). provider is either `codex` (codex exec + browser/computer-use
-# plugins on the host's live Chrome) or `claude` (Haiku agent drives
-# chrome-devtools MCP itself) — a narrower set than KNOWN_STAGE_PROVIDERS.
-BROWSER_QA_PROVIDERS = frozenset({"codex", "claude"})
+# delegates here). provider `jev` drives Chrome via CDP + TypeSafe Jev
+# (jev-ultrafast pattern). `codex` uses gpt-6-astra computer-use. `claude`
+# is Haiku + chrome-devtools MCP.
+BROWSER_QA_PROVIDERS = frozenset({"jev", "codex", "claude"})
 BROWSER_QA_BACKENDS = frozenset({"live-chrome", "chrome-qa", "headless"})
 BROWSER_QA_APPROVALS = frozenset({"auto", "never"})
-DEFAULT_BROWSER_QA_MODEL = "gpt-6-astra"
+DEFAULT_BROWSER_QA_MODEL = "typesafe/jev-1.13"
 DEFAULT_BROWSER_QA_EFFORT = "low"
-DEFAULT_BROWSER_QA_BACKEND = "live-chrome"
+DEFAULT_BROWSER_QA_BACKEND = "chrome-qa"
 DEFAULT_BROWSER_QA_APPROVE = "auto"
+DEFAULT_BROWSER_QA_CODEX_MODEL = "gpt-6-astra"
 DEFAULT_OPENCODE_WRITE_AGENT = "lane-writer"
 DEFAULT_OPENCODE_CRITIQUE_AGENT = "lane-critic"
 DEFAULT_OPENCODE_REVIEW_AGENT = "lane-reviewer"
@@ -289,7 +290,7 @@ def default_stages(
         },
         "browser_qa": {
             "enabled": True,
-            "provider": "codex",
+            "provider": "jev",
             "model": DEFAULT_BROWSER_QA_MODEL,
             "reasoning_effort": DEFAULT_BROWSER_QA_EFFORT,
             "service_tier": "standard",
@@ -612,11 +613,20 @@ def normalize_stages(raw: dict[str, Any] | None, *, write_provider: str = "kimi"
 
     # browser_qa — live browser QA of shipped UI; on by default, the
     # browser-qa Claude agent delegates its run here.
-    bq_provider = str(browser_qa.get("provider") or "codex").strip().lower()
+    bq_provider = str(
+        browser_qa.get("provider") or base["browser_qa"]["provider"]
+    ).strip().lower()
     if bq_provider not in BROWSER_QA_PROVIDERS:
-        bq_provider = "codex"
-    bq_default_model = DEFAULT_BROWSER_QA_MODEL if bq_provider == "codex" else ""
-    bq_effort_default = DEFAULT_BROWSER_QA_EFFORT if bq_provider == "codex" else ""
+        bq_provider = "jev"
+    if bq_provider == "jev":
+        bq_default_model = DEFAULT_BROWSER_QA_MODEL
+        bq_effort_default = "low"
+    elif bq_provider == "codex":
+        bq_default_model = DEFAULT_BROWSER_QA_CODEX_MODEL
+        bq_effort_default = DEFAULT_BROWSER_QA_EFFORT
+    else:
+        bq_default_model = ""
+        bq_effort_default = ""
     bq_backend = str(browser_qa.get("backend") or DEFAULT_BROWSER_QA_BACKEND).strip().lower()
     if bq_backend not in BROWSER_QA_BACKENDS:
         bq_backend = DEFAULT_BROWSER_QA_BACKEND
@@ -675,9 +685,25 @@ def migrate_profile_stages(profile_path: Path) -> list[str]:
     raw = data.get("stages") if isinstance(data.get("stages"), dict) else {}
     missing = [name for name in STAGE_ORDER if name not in raw]
     raw_pc = raw.get("plan_critique") if isinstance(raw.get("plan_critique"), dict) else {}
+    raw_bq = raw.get("browser_qa") if isinstance(raw.get("browser_qa"), dict) else {}
     legacy_agy = str(raw_pc.get("provider") or "").strip() == "agy"
-    if not missing and not legacy_agy:
+    # leftover factory default from 1.31 (codex + astra + live-chrome)
+    bq_model = str(raw_bq.get("model") or "").strip()
+    bq_backend = str(raw_bq.get("backend") or "").strip().lower()
+    legacy_bq = (
+        str(raw_bq.get("provider") or "").strip() == "codex"
+        and bq_model in {"", "gpt-6-astra"}
+        and bq_backend in {"", "live-chrome"}
+    )
+    if not missing and not legacy_agy and not legacy_bq:
         return []
+    if legacy_bq:
+        patched = dict(raw_bq)
+        patched["provider"] = "jev"
+        patched["model"] = DEFAULT_BROWSER_QA_MODEL
+        if bq_backend in {"", "live-chrome"}:
+            patched["backend"] = DEFAULT_BROWSER_QA_BACKEND
+        raw = {**raw, "browser_qa": patched}
     writer = data.get("writer") if isinstance(data.get("writer"), dict) else {}
     lanes = data.get("lanes") if isinstance(data.get("lanes"), dict) else {}
     write_provider = str(lanes.get("main_write") or writer.get("provider") or "kimi")
@@ -693,7 +719,12 @@ def migrate_profile_stages(profile_path: Path) -> list[str]:
     if new_text == text:
         return []
     profile_path.write_text(new_text, encoding="utf-8")
-    return missing if missing else ["plan_critique"]
+    changed = list(missing)
+    if legacy_agy and "plan_critique" not in changed:
+        changed.append("plan_critique")
+    if legacy_bq and "browser_qa" not in changed:
+        changed.append("browser_qa")
+    return changed
 
 
 def stages_to_yaml_lines(stages: dict[str, Any]) -> list[str]:

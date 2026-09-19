@@ -97,11 +97,11 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertEqual(s["docs"]["since"], "yesterday")
         self.assertEqual(s["docs"]["hour"], 5)
         self.assertTrue(s["browser_qa"]["enabled"])
-        self.assertEqual(s["browser_qa"]["provider"], "codex")
-        self.assertEqual(s["browser_qa"]["model"], "gpt-6-astra")
+        self.assertEqual(s["browser_qa"]["provider"], "jev")
+        self.assertEqual(s["browser_qa"]["model"], "typesafe/jev-1.13")
         self.assertEqual(s["browser_qa"]["reasoning_effort"], "low")
         self.assertEqual(s["browser_qa"]["service_tier"], "standard")
-        self.assertEqual(s["browser_qa"]["backend"], "live-chrome")
+        self.assertEqual(s["browser_qa"]["backend"], "chrome-qa")
         self.assertEqual(s["browser_qa"]["approve"], "auto")
         yaml_text = "\n".join(stages_to_yaml_lines(s))
         self.assertIn("  memory:", yaml_text)
@@ -114,7 +114,7 @@ class PipelineStagesTest(unittest.TestCase):
         self.assertIn("    provider: codex", yaml_text)
         self.assertIn("    audience: subagent", yaml_text)
         self.assertIn("    search_engine: auto", yaml_text)
-        self.assertIn("    backend: live-chrome", yaml_text)
+        self.assertIn("    backend: chrome-qa", yaml_text)
         self.assertIn("    approve: auto", yaml_text)
 
     def test_normalize_memory_knobs_and_yaml(self) -> None:
@@ -226,8 +226,8 @@ class PipelineStagesTest(unittest.TestCase):
             },
             write_provider="kimi",
         )
-        self.assertEqual(bad["browser_qa"]["provider"], "codex")
-        self.assertEqual(bad["browser_qa"]["backend"], "live-chrome")
+        self.assertEqual(bad["browser_qa"]["provider"], "jev")
+        self.assertEqual(bad["browser_qa"]["backend"], "chrome-qa")
         self.assertEqual(bad["browser_qa"]["approve"], "auto")
 
         # codex + fast service tier round-trips through YAML.

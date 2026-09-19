@@ -317,6 +317,8 @@ class InstallTest(unittest.TestCase):
             (ROOT / "plugins" / "lane-stack" / "skills" / "browser-qa" / "references" / "REPORT.md").is_file()
         )
         self.assertTrue((ROOT / "bin" / "qa-digest").is_file())
+        self.assertTrue((ROOT / "bin" / "browser-qa-jev").is_file())
+        self.assertIn("browser-qa-jev", skill)
         self.assertIn("## NEVER", skill)
         link = ROOT / "agents" / "claude" / "browser-qa.md"
         self.assertTrue(link.is_symlink() or link.is_file())

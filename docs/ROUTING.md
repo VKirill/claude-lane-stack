@@ -28,11 +28,11 @@ Configured under `stages:` in `.agents/routing.profile.yaml`:
 | `write` | mirrors `main_write` | Daytime implementer |
 | `night_review` | from night-shift | Codex review + fix budget |
 | `specialist` | off · `high_risk` | Optional read-only domain pass (auth/pay/schema) |
-| `browser_qa` | on · `codex` · `gpt-6-astra` · `low` · `live-chrome` · `auto` | Live browser QA of shipped UI; the `browser-qa` Claude agent delegates its run here |
+| `browser_qa` | on · **`jev`** · `typesafe/jev-1.13` · `chrome-qa` · `auto` | Live browser QA: DOM table → Jev click/type (`browser-qa-jev`). `codex` / `claude` still available |
 
-`browser_qa` provider is either `codex` (`codex exec` drives the host's real Chrome
-via the browser/computer-use plugins) or `claude` (the Haiku `browser-qa` agent drives
-`chrome-devtools` MCP itself — `model`/`reasoning_effort` do not apply there). `backend`
+`browser_qa` provider is `jev` (`browser-qa-jev`: CDP snapshot → Jev Choice → click;
+TYPE_TEXT via a small OpenRouter model; DONE checked against Expected), `codex`
+(`codex exec` + browser plugins), or `claude` (Haiku + `chrome-devtools` MCP). `backend`
 picks which Chrome it drives: `live-chrome` (user's own browser via the Codex Chrome
 extension / `chrome-devtools --autoConnect`), `chrome-qa` (dedicated profile from
 `chrome-qa start`, port 9333), or `headless`. `approve` is `auto` (`codex exec

@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""browser-qa-jev — live Chrome QA driven by Jev (DOM table, not screenshots)."""
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+_BIN = Path(__file__).resolve().parent
+if str(_BIN) not in sys.path:
+    sys.path.insert(0, str(_BIN))
+
+from browser_qa_jev import (
+    close_tab,
+    discover_devtools,
+    open_tab,
+    run_case,
+    screenshot_png,
+    set_viewport,
+)
+from jev_decisions import JEV_MODEL
+
+BACKENDS = ("live-chrome", "chrome-qa", "headless")
+
+
+def load_stage(project_cwd: Path) -> dict:
+    from routing_profile import load_routing_profile
+
+    stage = {"enabled": True, "backend": "chrome-qa"}
+    try:
+        raw = ((load_routing_profile(project_cwd).get("stages") or {}).get("browser_qa") or {})
+        if isinstance(raw, dict):
+            stage["enabled"] = str(raw.get("enabled", True)).strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+            }
+            if raw.get("backend"):
+                stage["backend"] = str(raw["backend"]).strip().lower()
+    except Exception:
+        pass
+    return stage
+
+
+def parse_cases(text: str) -> list[str]:
+    import re
+
+    cases: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            cases.append(stripped[2:].strip())
+        elif re.match(r"^##\s+TC-\d{3}\b", stripped):
+            cases.append(re.sub(r"^##\s+TC-\d{3}\s*", "", stripped).strip())
+    return [c for c in cases if c]
+
+
+def write_cases(qa_dir: Path, slug: str, cases: list[str], viewports: list[int]) -> None:
+    lines = [f"# Cases `{slug}`", "", "Surface: browser-ui.", ""]
+    for index, case in enumerate(cases, start=1):
+        lines += [
+            f"## TC-{index:03d} {case}",
+            "- Surface: browser-ui",
+            f"- Viewport: {', '.join(str(v) for v in viewports)}",
+            f"- Steps: {case}",
+            "- Expected: as written",
+            "",
+        ]
+    (qa_dir / "cases.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def ensure_devtools(backend: str) -> str:
+    found = discover_devtools(9333 if backend in {"chrome-qa", "headless"} else None)
+    if found:
+        return found
+    chrome_qa = shutil.which("chrome-qa") or str(_BIN / "chrome-qa")
+    args = [chrome_qa, "start"]
+    if backend == "headless":
+        args.append("--headless")
+    subprocess.run(args, check=False, capture_output=True, text=True, timeout=60)
+    found = discover_devtools(9333)
+    if not found:
+        raise RuntimeError("Chrome DevTools not reachable (chrome-qa start failed)")
+    return found
+
+
+def write_report(
+    qa_dir: Path,
+    *,
+    slug: str,
+    url: str,
+    env_class: str,
+    results: list[dict],
+) -> None:
+    passed = sum(1 for r in results if r["status"] == "passed")
+    failed = sum(1 for r in results if r["status"] == "failed")
+    blocked = sum(1 for r in results if r["status"] == "blocked")
+    now = datetime.now(timezone.utc).isoformat()
+    lines = [
+        f"# QA `{slug}`",
+        f"- Target class: {env_class}",
+        f"- BASE_URL: {url}",
+        "- Backend: jev-cdp",
+        f"- Updated: {now}",
+        "",
+        "## Summary",
+        f"- Total / Passed / Failed / Blocked: {len(results)} / {passed} / {failed} / {blocked}",
+        "",
+        "## Results",
+    ]
+    for row in results:
+        lines += [
+            f"### {row['id']} {row['title']}",
+            f"- Status: {row['status']}",
+            f"- Viewports: {row['viewport']}",
+            f"- Shots: {row.get('shot') or 'n/a'}",
+            f"- Evidence: {row['evidence']}",
+            "",
+        ]
+    (qa_dir / "REPORT.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--project-cwd", required=True)
+    parser.add_argument("--url", required=True)
+    parser.add_argument("--slug", default=None)
+    parser.add_argument("--cases-file")
+    parser.add_argument("--case", action="append", default=[])
+    parser.add_argument(
+        "--env-class",
+        default="local",
+        choices=("local", "staging", "preview", "production", "unknown"),
+    )
+    parser.add_argument("--viewports", default="1280")
+    parser.add_argument("--authorized", action="store_true")
+    parser.add_argument("--backend", default=None, choices=BACKENDS)
+    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+
+    project_cwd = Path(args.project_cwd).expanduser().resolve()
+    if not project_cwd.is_dir():
+        print(f"browser-qa-jev: project_cwd does not exist: {project_cwd}", file=sys.stderr)
+        return 2
+    stage = load_stage(project_cwd)
+    if not stage["enabled"]:
+        print("browser-qa-jev: stages.browser_qa is disabled", file=sys.stderr)
+        return 2
+    if args.env_class in {"production", "unknown"} and not args.authorized:
+        print("browser-qa-jev: production/unknown target needs --authorized", file=sys.stderr)
+        return 2
+    cases = list(args.case)
+    if args.cases_file:
+        cases += parse_cases(Path(args.cases_file).read_text(encoding="utf-8"))
+    if not cases:
+        print("browser-qa-jev: no cases (use --case or --cases-file)", file=sys.stderr)
+        return 2
+    try:
+        viewports = [int(v) for v in str(args.viewports).split(",") if v.strip()] or [1280]
+    except ValueError:
+        print("browser-qa-jev: --viewports must be integers", file=sys.stderr)
+        return 2
+    backend = args.backend or stage.get("backend") or "chrome-qa"
+    slug = args.slug or "qa-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    qa_rel = f".agents/qa/{slug}"
+    qa_dir = project_cwd / qa_rel
+    (qa_dir / "shots").mkdir(parents=True, exist_ok=True)
+    write_cases(qa_dir, slug, cases, viewports)
+    receipt = {
+        "schema_version": 1,
+        "slug": slug,
+        "url": args.url,
+        "env_class": args.env_class,
+        "provider": "jev",
+        "model": JEV_MODEL,
+        "backend": backend,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if args.dry_run:
+        print(json.dumps(receipt, indent=2, ensure_ascii=False))
+        return 0
+
+    started = time.monotonic()
+    try:
+        devtools = ensure_devtools(backend)
+        cdp, target = open_tab(devtools, args.url)
+    except Exception as exc:
+        print(f"browser-qa-jev: blocked: {exc}", file=sys.stderr)
+        receipt["verdict"] = "blocked"
+        receipt["error"] = str(exc)
+        (qa_dir / "jev-run.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        return 2
+
+    results: list[dict] = []
+    try:
+        width = viewports[0]
+        set_viewport(cdp, width)
+        for index, title in enumerate(cases, start=1):
+            cid = f"TC-{index:03d}"
+            goal = f"{title}. Expected: {title}"
+            row = run_case(cdp, goal=goal, expected=title)
+            shot_rel = ""
+            try:
+                png = screenshot_png(cdp)
+                shot_rel = f"shots/{cid}-{width}.png"
+                (qa_dir / shot_rel).write_bytes(png)
+            except Exception:
+                shot_rel = ""
+            results.append(
+                {
+                    "id": cid,
+                    "title": title,
+                    "status": row["status"],
+                    "evidence": row["evidence"],
+                    "viewport": width,
+                    "shot": shot_rel,
+                    "steps": row.get("steps") or [],
+                }
+            )
+    finally:
+        cdp.close()
+        close_tab(devtools, target)
+
+    write_report(qa_dir, slug=slug, url=args.url, env_class=args.env_class, results=results)
+    passed = all(r["status"] == "passed" for r in results)
+    failed = any(r["status"] == "failed" for r in results)
+    verdict = "pass" if passed else ("fail" if failed else "blocked")
+    receipt.update(
+        {
+            "verdict": verdict,
+            "cases": results,
+            "duration_sec": round(time.monotonic() - started, 1),
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "report": qa_rel + "/REPORT.md",
+        }
+    )
+    report_path = qa_dir / "REPORT.md"
+    try:
+        from jev_slots import judge_qa_report
+
+        jev_qa = judge_qa_report(report_path.read_text(encoding="utf-8"), verdict)
+        (qa_dir / "jev-qa.json").write_text(json.dumps(jev_qa, indent=2) + "\n")
+        receipt["jev"] = jev_qa
+    except Exception:
+        pass
+    (qa_dir / "jev-run.json").write_text(
+        json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    print(f"browser-qa-jev: verdict={verdict} backend={backend} cases={len(results)}")
+    print(f"  report: {qa_rel}/REPORT.md")
+    print(f"  receipt: {qa_rel}/jev-run.json")
+    if verdict == "pass":
+        return 0
+    if verdict == "fail":
+        return 1
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
