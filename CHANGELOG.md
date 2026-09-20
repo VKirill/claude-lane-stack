@@ -1,3 +1,12 @@
+## 1.34.0 — 2026-09-20
+
+### Added
+- **`jev-review`**: staged git-diff review (jev-review workflow). Code parses
+  hunks; Jev screens correctness/security/reliability/compatibility/testGap,
+  then locates evidence and scores severity. CLI writes JSON. Accept hook is
+  advisory when `TYPESAFE_API_KEY` is present (`LANE_JEV_REVIEW=gate` blocks
+  `request_changes`). Native TypeSafe API is preferred over OpenRouter.
+
 ## 1.33.0 — 2026-09-20
 
 ### Added

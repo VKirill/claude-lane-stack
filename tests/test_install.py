@@ -318,6 +318,7 @@ class InstallTest(unittest.TestCase):
         )
         self.assertTrue((ROOT / "bin" / "qa-digest").is_file())
         self.assertTrue((ROOT / "bin" / "browser-qa-jev").is_file())
+        self.assertTrue((ROOT / "bin" / "jev-review").is_file())
         self.assertIn("browser-qa-jev", skill)
         self.assertIn("## NEVER", skill)
         link = ROOT / "agents" / "claude" / "browser-qa.md"

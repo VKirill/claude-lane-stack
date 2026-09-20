@@ -3180,6 +3180,15 @@ def _cmd_accept_impl(args: argparse.Namespace, gate_ctx: dict) -> int:
                 "accept requires current verification passed for the immutable task"
             )
 
+        try:
+            from jev_review import JevReviewBlock, maybe_accept_review
+
+            maybe_accept_review(context.project_cwd, artifact)
+        except JevReviewBlock as exc:
+            raise ContractError(str(exc)) from exc
+        except Exception:
+            pass
+
         if review_is_required(context.task, run_contract):
             review_path = safe_child_file(artifact, "review.json")
             review = read_json(review_path)
