@@ -405,10 +405,33 @@ def locate_signal(
     }
 
 
-def review_changes(repo: Path, *, base: str | None = None) -> dict[str, Any]:
+def path_owned(path: str, owns: list[str] | None) -> bool:
+    """Prefix/glob-prefix match against task owns_paths. Empty owns = everything."""
+    if not owns:
+        return True
+    norm = path.replace("\\", "/").lstrip("./")
+    for rule in owns:
+        raw = str(rule).replace("\\", "/").strip()
+        if raw.endswith("/**"):
+            raw = raw[:-3]
+        raw = raw.rstrip("/")
+        if not raw:
+            continue
+        if norm == raw or norm.startswith(raw + "/"):
+            return True
+    return False
+
+
+def review_changes(
+    repo: Path, *, base: str | None = None, owns_paths: list[str] | None = None
+) -> dict[str, Any]:
     files = [item for item in parse_changed_files(collect_diff(repo, base)) if not skip_path(item["path"])]
     tests = [item for item in files if TEST_FILE.search(item["path"])]
-    sources = [item for item in files if not TEST_FILE.search(item["path"])][:MAX_FILES]
+    sources = [
+        item
+        for item in files
+        if not TEST_FILE.search(item["path"]) and path_owned(item["path"], owns_paths)
+    ][:MAX_FILES]
     empty = {
         "schema_version": 1,
         "mode": "changes",
@@ -483,31 +506,111 @@ def review_changes(repo: Path, *, base: str | None = None) -> dict[str, Any]:
     }
 
 
+AUDIT_MARK = "<!-- jev-review-audit -->"
+
+
 def accept_review_mode() -> str:
     raw = (os.environ.get("LANE_JEV_REVIEW") or "").strip().lower()
     if raw in {"0", "off", "false", "no"}:
         return "off"
-    if raw in {"gate", "advisory"}:
-        return raw
+    if raw == "advisory":
+        return "advisory"
+    if raw in {"gate", "retry"}:
+        return "retry"
     if "unittest" in sys.modules:
         return "off"
     if typesafe_key():
-        return "advisory"
+        return "retry"
     return "off"
 
 
-def maybe_accept_review(project_cwd: Path, artifact: Path) -> dict[str, Any] | None:
-    """Write jev-review.json. Raise JevReviewBlock only in gate mode."""
+def render_audit(report: dict[str, Any]) -> str:
+    """Template from typed findings. Jev does not generate issue text."""
+    lines = [
+        AUDIT_MARK,
+        "",
+        "## Jev review — fix these, then stop",
+        "",
+        f"Verdict: {report.get('verdict')}",
+        "Same session, one rewrite. Do not expand scope.",
+        "",
+    ]
+    blocking = [
+        item
+        for item in (report.get("findings") or [])
+        if item.get("action") == "request_changes"
+        or float(item.get("severity") or 0) >= BLOCKING_SEVERITY
+    ]
+    if not blocking:
+        lines.append("Blocking verdict without a located hunk. Re-read jev-review.json.")
+    for index, item in enumerate(blocking[:8], 1):
+        lines.append(
+            f"{index}. {item.get('dimension')} / {item.get('mechanism')} "
+            f"@ {item.get('file')}:{item.get('line')} sev={item.get('severity')}"
+        )
+        hunk = item.get("hunk") or item.get("patch") or ""
+        if hunk:
+            lines.append("```")
+            lines.append(clip(str(hunk), 800))
+            lines.append("```")
+    lines.append("")
+    lines.append("Do not argue the review. Change the code or add a targeted test.")
+    return "\n".join(lines) + "\n"
+
+
+def apply_accept_review(
+    project_cwd: Path,
+    artifact: Path,
+    *,
+    attempt: int = 1,
+    owns_paths: list[str] | None = None,
+) -> dict[str, Any]:
+    """Write jev-review.json. next=accept|jev_retry|blocked. Fail-open."""
     mode = accept_review_mode()
     if mode == "off" or not jev_enabled():
-        return None
-    report = review_changes(Path(project_cwd))
+        return {"verdict": "skip", "next": "accept", "mode": mode}
+    try:
+        report = review_changes(Path(project_cwd), owns_paths=owns_paths)
+    except Exception:
+        return {"verdict": "error", "next": "accept", "mode": mode}
     out = Path(artifact) / "jev-review.json"
     out.write_text(__import__("json").dumps(report, indent=2, ensure_ascii=False) + "\n")
-    if mode == "gate" and report.get("verdict") == "request_changes":
-        top = (report.get("findings") or [{}])[0]
-        raise JevReviewBlock(
-            f"jev-review {top.get('dimension')} {top.get('file')}:{top.get('line')} "
-            f"severity={top.get('severity')}"
-        )
-    return report
+    decision = {**report, "mode": mode, "next": "accept"}
+    if report.get("verdict") != "request_changes" or mode == "advisory":
+        return decision
+    used = int(attempt or 1) >= 2 or (Path(artifact) / "jev-audit.applied.md").is_file()
+    if used:
+        decision["next"] = "blocked"
+        return decision
+    (Path(artifact) / "jev-audit.md").write_text(render_audit(report), encoding="utf-8")
+    decision["next"] = "jev_retry"
+    return decision
+
+
+def merge_audit_into_prompt(prompt: bytes, artifact: Path) -> bytes:
+    """Append jev-audit.md once. Idempotent if AUDIT_MARK already in prompt."""
+    audit_path = Path(artifact) / "jev-audit.md"
+    if not audit_path.is_file():
+        return prompt
+    text = prompt.decode("utf-8")
+    if AUDIT_MARK in text:
+        return prompt
+    audit = audit_path.read_text(encoding="utf-8")
+    (Path(artifact) / "jev-audit.applied.md").write_text(audit, encoding="utf-8")
+    return (text.rstrip() + "\n\n" + audit).encode("utf-8")
+
+
+def maybe_accept_review(
+    project_cwd: Path,
+    artifact: Path,
+    *,
+    attempt: int = 1,
+    owns_paths: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Accept hook. Does not raise; apply_accept_review owns gate/retry."""
+    decision = apply_accept_review(
+        project_cwd, artifact, attempt=attempt, owns_paths=owns_paths
+    )
+    if decision.get("verdict") in {"skip", "disabled"}:
+        return None
+    return decision

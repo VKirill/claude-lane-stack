@@ -408,7 +408,17 @@ def prompt_for(context: TaskContext) -> str:
         f"ARTIFACT_DIR: {context.artifact_dir}\n"
         "--- RAW TASK YAML (verbatim) ---\n"
     )
-    return writer.rstrip() + header + context.raw_task
+    body = writer.rstrip() + header + context.raw_task
+    try:
+        from jev_slots import skill_prompt_block, suggest_write_skills
+
+        skills = suggest_write_skills(context.task)
+        extra = skill_prompt_block(skills)
+        if extra:
+            body += extra
+    except Exception:
+        pass
+    return body
 
 
 def append_event(run_dir: Path, event_type: str, task_id: str, **fields: object) -> None:
@@ -2034,6 +2044,12 @@ def cmd_retry_v2(
         raise ContractError(f"cannot read recorded prompt: {exc}") from exc
     if hashlib.sha256(prompt_bytes).hexdigest() != old_control.get("prompt_sha256"):
         raise ContractError("recorded prompt checksum mismatch")
+    try:
+        from jev_review import merge_audit_into_prompt
+
+        prompt_bytes = merge_audit_into_prompt(prompt_bytes, artifact)
+    except Exception:
+        pass
 
     next_attempt = attempt + 1
     new_dir = attempt_dir_for(artifact, next_attempt, create=True)
@@ -2055,6 +2071,7 @@ def cmd_retry_v2(
             "attempt": next_attempt,
             "attempt_dir": str(new_dir),
             "prompt_file": str(new_prompt),
+            "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
             "argv": new_argv,
             "argv_sha256": command_hash(new_argv),
             "created_at": utc_now(),
@@ -3181,13 +3198,30 @@ def _cmd_accept_impl(args: argparse.Namespace, gate_ctx: dict) -> int:
             )
 
         try:
-            from jev_review import JevReviewBlock, maybe_accept_review
+            from jev_review import apply_accept_review
 
-            maybe_accept_review(context.project_cwd, artifact)
-        except JevReviewBlock as exc:
-            raise ContractError(str(exc)) from exc
+            owns = context.task.get("owns_paths")
+            owns_paths = owns if isinstance(owns, list) else None
+            jev_decision = apply_accept_review(
+                context.project_cwd,
+                artifact,
+                attempt=int(attempt),
+                owns_paths=owns_paths,
+            )
         except Exception:
-            pass
+            jev_decision = {"next": "accept"}
+        next_step = str(jev_decision.get("next") or "accept")
+        if next_step in {"jev_retry", "blocked"}:
+            payload = {
+                "accepted": False,
+                "next": next_step,
+                "verdict": jev_decision.get("verdict"),
+                "blocking": jev_decision.get("blocking"),
+                "task_id": task_id,
+                "attempt": attempt,
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
 
         if review_is_required(context.task, run_contract):
             review_path = safe_child_file(artifact, "review.json")

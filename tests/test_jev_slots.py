@@ -14,6 +14,7 @@ from jev_slots import (  # noqa: E402
     judge_qa_report,
     persist_run_risk,
     score_brief,
+    suggest_write_skills,
     triage_night_findings,
 )
 from handoff_lib import next_act_for_failure  # noqa: E402
@@ -99,6 +100,9 @@ class JevSlotsTest(unittest.TestCase):
             persist_run_risk(run_dir, "high")
             text = (run_dir / "run.yaml").read_text()
         self.assertIn("risk: high", text)
+
+    def test_suggest_write_skills_skips_jev_under_unittest(self) -> None:
+        self.assertEqual(suggest_write_skills({"title": "fix auth"}), [])
 
 
 if __name__ == "__main__":

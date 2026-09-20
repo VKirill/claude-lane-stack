@@ -962,7 +962,36 @@ def run_controller(args: argparse.Namespace) -> int:
                     continue
 
                 if phase == "accept":
-                    decode_action_result(result, label=f"accept {task_id}")
+                    payload = decode_action_result(result, label=f"accept {task_id}")
+                    nxt = str(payload.get("next") or "")
+                    if nxt == "jev_retry":
+                        task_state["last_failure_class"] = "jev_review"
+                        task_state["retry_not_before"] = (
+                            datetime.now(timezone.utc) - timedelta(seconds=1)
+                        ).isoformat()
+                        transition(
+                            receipt_path,
+                            receipt,
+                            "task_retry_scheduled",
+                            task_id=task_id,
+                            stage="retry_wait",
+                            detail="jev_review",
+                        )
+                        progress = True
+                        continue
+                    if nxt == "blocked":
+                        mark_task_blocked(
+                            receipt_path,
+                            receipt,
+                            tasks,
+                            task_id,
+                            f"jev_review: {payload.get('verdict') or 'request_changes'}",
+                        )
+                        progress = True
+                        terminal = finalize_if_run_terminal(receipt_path, receipt)
+                        if terminal is not None:
+                            return terminal
+                        continue
                     transition(
                         receipt_path,
                         receipt,

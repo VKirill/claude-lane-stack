@@ -24,7 +24,7 @@ Configured under `stages:` in `.agents/routing.profile.yaml`:
 
 | Stage | Default | Purpose |
 |-------|---------|---------|
-| `plan_critique` | on · `advisory` · **`jev`** | Structural extracts owns/verify/DAG. **Jev** (`typesafe/jev-1.13` via OpenRouter Decisions) sets `ship/revise/revise_required`, fat-task split, risk on `run.yaml`, and can demote soft warns. Leftover yaml `provider: agy` is remapped to Jev at load (no `adoc` needed). `structural` skips the model. Qwen/Codex/… still work if set explicitly. Night-fix compile, leftover verify class, `run-init --brief`, `jev-intent`, `jev-review` (git diff hunks), and `browser-qa` REPORT also call Jev as a typed judge — never as a writer. |
+| `plan_critique` | on · `advisory` · **`jev`** | Structural extracts owns/verify/DAG. **Jev** (`typesafe/jev-1.13` via OpenRouter Decisions) sets `ship/revise/revise_required`, fat-task split, risk on `run.yaml`, and can demote soft warns. Leftover yaml `provider: agy` is remapped to Jev at load (no `adoc` needed). `structural` skips the model. Qwen/Codex/… still work if set explicitly. Night-fix compile, leftover verify class, `run-init --brief`, `jev-intent`, `jev-review` (git diff hunks; accept retries the same session once, then blocks), and `browser-qa` REPORT also call Jev as a typed judge — never as a writer. |
 | `write` | mirrors `main_write` | Daytime implementer |
 | `night_review` | from night-shift | Codex review + fix budget |
 | `specialist` | off · `high_risk` | Optional read-only domain pass (auth/pay/schema) |

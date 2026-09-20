@@ -1,3 +1,16 @@
+## 1.35.0 — 2026-09-20
+
+### Changed
+- **Jev accept chain:** `request_changes` no longer fails the run. Accept
+  writes `jev-review.json` + `jev-audit.md`, controller retries the same
+  warm session once with the audit appended to `prompt.md`, then **blocks**
+  on a second hit. Default when a TypeSafe key is present is `retry`
+  (`LANE_JEV_REVIEW=advisory` keeps the old write-only hook). `gate` is an
+  alias of `retry`. Fail-open without a key.
+- Optional task `skills:` (max 3) is injected into `prompt.md`. If omitted,
+  Jev may pick one write skill (`writer-practices`, `impeccable-ui`,
+  `ru-text`, `karpathy-guidelines`). Not a tool router.
+
 ## 1.34.0 — 2026-09-20
 
 ### Added

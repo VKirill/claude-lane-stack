@@ -225,9 +225,30 @@ class RunControllerTest(unittest.TestCase):
                         record("accept")
                         print("forced accept failure", file=sys.stderr)
                         raise SystemExit(7)
-                    state[task_id]["status"] = "accepted"
-                    record("accept")
-                    payload = {"status": "accepted", "task_id": task_id, "accepted": True}
+                    item = state[task_id]
+                    if task_id in plan.get("accept_jev_retry_first", []) and item.get("attempt", 1) == 1:
+                        record("accept")
+                        payload = {
+                            "accepted": False,
+                            "next": "jev_retry",
+                            "verdict": "request_changes",
+                            "task_id": task_id,
+                        }
+                    elif task_id in plan.get("accept_jev_block", []) or (
+                        task_id in plan.get("accept_jev_block_second", [])
+                        and item.get("attempt", 1) >= 2
+                    ):
+                        record("accept")
+                        payload = {
+                            "accepted": False,
+                            "next": "blocked",
+                            "verdict": "request_changes",
+                            "task_id": task_id,
+                        }
+                    else:
+                        item["status"] = "accepted"
+                        record("accept")
+                        payload = {"status": "accepted", "task_id": task_id, "accepted": True}
                 else:
                     raise SystemExit(2)
                 lock_path = state_path.with_suffix(".lock")
@@ -1559,6 +1580,52 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(receipt["stage"], "failed")
         self.assertEqual(receipt["last_event"]["event"], "controller_failed")
         self.assertIn("accept 001 failed", receipt["last_event"]["detail"])
+
+    def test_jev_review_retries_same_lane_then_accepts(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.fake_plan.write_text(
+            json.dumps(
+                {"finish_after": {"001": 1}, "accept_jev_retry_first": ["001"]}
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            [action["action"] for action in self.actions()],
+            ["start", "owns", "verify", "accept", "retry", "owns", "verify", "accept"],
+        )
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["stage"], "accepted")
+        self.assertEqual(receipt["tasks"]["001"]["retries"], 1)
+        self.assertNotEqual(receipt["last_event"]["event"], "controller_failed")
+
+    def test_jev_review_second_request_changes_blocks_not_fails(self) -> None:
+        self.write_run(provider_slots=1)
+        self.write_task("001")
+        self.fake_plan.write_text(
+            json.dumps(
+                {
+                    "finish_after": {"001": 1},
+                    "accept_jev_retry_first": ["001"],
+                    "accept_jev_block_second": ["001"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 1)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["stage"], "blocked")
+        self.assertEqual(receipt["tasks"]["001"]["stage"], "blocked")
+        self.assertEqual(receipt["last_event"]["event"], "task_blocked")
+        self.assertIn("jev_review", receipt["last_event"]["detail"])
+        self.assertNotEqual(receipt["last_event"]["event"], "controller_failed")
 
     def test_pre_merge_review_gate_fails_before_provider_dispatch(self) -> None:
         self.write_run(provider_slots=1, gate="pre-merge")

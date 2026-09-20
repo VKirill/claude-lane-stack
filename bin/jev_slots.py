@@ -168,6 +168,62 @@ def judge_qa_report(report: str, verdict: str) -> dict[str, Any]:
     return {"kind": kind, "confidence": conf}
 
 
+WRITE_SKILLS = {
+    "none": "No extra skill; the writer contract is enough",
+    "writer-practices": "General code change: smallest correct diff",
+    "impeccable-ui": "UI, layout, CSS, or React visual polish",
+    "ru-text": "Russian user-facing copy",
+    "karpathy-guidelines": "Model, training, or data-pipeline code quality",
+}
+
+
+def suggest_write_skills(task: dict[str, Any]) -> list[str]:
+    """Declared task.skills win. Else one Jev Choice. Fail-open."""
+    declared = task.get("skills") if isinstance(task, dict) else None
+    if isinstance(declared, list) and declared:
+        names = [str(item).strip() for item in declared if str(item).strip()]
+        return [name for name in names if name != "none"][:3]
+    if "unittest" in __import__("sys").modules:
+        return []
+    from jev_decisions import jev_enabled
+
+    if not jev_enabled():
+        return []
+    try:
+        raw = call_jev(
+            {
+                "title": task.get("title"),
+                "objective": clip(str(task.get("objective") or ""), 400),
+                "owns": (task.get("owns_paths") or [])[:8],
+            },
+            {
+                "skill": {
+                    "type": "choice",
+                    "instructions": "Which write skill should the implementer follow for this task?",
+                    "criteria": WRITE_SKILLS,
+                }
+            },
+            title="lane-stack skill-jev",
+        )
+    except JevCritiqueError:
+        return []
+    pick, conf = choice(
+        raw.get("answers") or {}, "skill", set(WRITE_SKILLS), "none"
+    )
+    if pick == "none" or conf < 0.55:
+        return []
+    return [pick]
+
+
+def skill_prompt_block(names: list[str]) -> str:
+    if not names:
+        return ""
+    lines = ["\n---\nWRITE SKILLS (read SKILL.md and follow):\n"]
+    for name in names[:3]:
+        lines.append(f"- {name}: ~/.agents/skills/{name}/SKILL.md\n")
+    return "".join(lines)
+
+
 def persist_run_risk(run_dir: Path, risk: str) -> None:
     if risk not in {"low", "medium", "high"}:
         return

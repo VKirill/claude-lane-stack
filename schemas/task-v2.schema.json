@@ -48,6 +48,16 @@
     "verification": {
       "type": "array",
       "items": {"$ref": "#/$defs/verificationCommand"}
+    },
+    "skills": {
+      "type": "array",
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+      },
+      "description": "Optional write skills to inject into prompt.md (e.g. impeccable-ui)."
     }
   },
   "$defs": {
