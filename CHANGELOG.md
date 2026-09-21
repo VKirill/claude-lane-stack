@@ -1,3 +1,12 @@
+## 1.36.0 — 2026-09-21
+
+### Changed
+- **Grok effort from plan risk:** `lane-ctl start` maps `run.yaml` risk
+  (`low`/`medium`/`high`/`critical`) to `--reasoning-effort` for Grok only.
+  Same-session retry bumps one notch (cap `high`). No risk or
+  `LANE_JEV_EFFORT=0` keeps the profile default (`medium`). Model stays
+  grok-4.5/4.6; Kimi/Qwen/AGY/Codex unchanged.
+
 ## 1.35.0 — 2026-09-20
 
 ### Changed

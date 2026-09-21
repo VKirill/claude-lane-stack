@@ -89,7 +89,7 @@ into lane writers (ephemeral bare profile).
 
 | Signal | Lane | Model notes |
 |--------|------|-------------|
-| `risk: low` UI/wiring | **kimi** by default; `qwen`/`grok`/`agy` selectable | Kimi K3-256k (effort via `KIMI_MODEL_THINKING_EFFORT`), Qwen 3.8 max, Grok 4.6/4.5 medium, or Gemini 3.6 Flash high |
+| `risk: low` UI/wiring | **kimi** by default; `qwen`/`grok`/`agy` selectable | Kimi K3-256k (effort via `KIMI_MODEL_THINKING_EFFORT`), Qwen 3.8 max, Grok 4.6/4.5 effort from `run.yaml` risk (`low`/`medium`/`high`; retry +1 notch, cap `high`; `LANE_JEV_EFFORT=0` keeps profile), or Gemini 3.6 Flash high |
 | `risk: medium` | selected writer → Codex night shift | same receipt chain + gpt-5.6-sol xhigh nightly |
 | `risk: high` auth/pay/schema | selected writer solo → Codex night shift | no silent daytime reviewer |
 | Selected model/catalog/quota/auth unavailable | persisted retry once, then integrated **Sol high** fallback | same receipts; no daytime review |

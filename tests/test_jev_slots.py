@@ -9,8 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin"))
 
 from jev_slots import (  # noqa: E402
+    bump_grok_effort,
     classify_intent,
     classify_verify_tail,
+    grok_effort_from_run,
     judge_qa_report,
     persist_run_risk,
     score_brief,
@@ -103,6 +105,31 @@ class JevSlotsTest(unittest.TestCase):
 
     def test_suggest_write_skills_skips_jev_under_unittest(self) -> None:
         self.assertEqual(suggest_write_skills({"title": "fix auth"}), [])
+
+    def test_grok_effort_from_run_maps_risk(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "run.yaml").write_text("schema_version: 2\nrisk: high\n")
+            self.assertEqual(grok_effort_from_run(run_dir, "medium"), "high")
+            (run_dir / "run.yaml").write_text("schema_version: 2\nrisk: low\n")
+            self.assertEqual(grok_effort_from_run(run_dir, "medium"), "low")
+            (run_dir / "run.yaml").write_text("schema_version: 2\nslug: demo\n")
+            self.assertEqual(grok_effort_from_run(run_dir, "medium"), "medium")
+
+    def test_grok_effort_fail_open_and_disable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            self.assertEqual(grok_effort_from_run(run_dir, "medium"), "medium")
+            (run_dir / "run.yaml").write_text("schema_version: 2\nrisk: high\n")
+            with patch.dict("os.environ", {"LANE_JEV_EFFORT": "0"}):
+                self.assertEqual(grok_effort_from_run(run_dir, "medium"), "medium")
+                self.assertEqual(bump_grok_effort("medium"), "medium")
+
+    def test_bump_grok_effort(self) -> None:
+        self.assertEqual(bump_grok_effort("low"), "medium")
+        self.assertEqual(bump_grok_effort("medium"), "high")
+        self.assertEqual(bump_grok_effort("high"), "high")
+        self.assertEqual(bump_grok_effort("xhigh"), "medium")
 
 
 if __name__ == "__main__":

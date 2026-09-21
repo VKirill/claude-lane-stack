@@ -2,6 +2,7 @@
 """Jev judges for night findings, verify tail, brief risk, intent, QA report."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -245,3 +246,56 @@ def persist_run_risk(run_dir: Path, risk: str) -> None:
         yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
     )
+
+
+GROK_EFFORTS = ("low", "medium", "high")
+RISK_TO_GROK_EFFORT = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "critical": "high",
+}
+
+
+def _jev_effort_enabled() -> bool:
+    return os.environ.get("LANE_JEV_EFFORT", "1") not in {"0", "off", "false"}
+
+
+def read_run_risk(run_dir: Path) -> str | None:
+    path = run_dir / "run.yaml"
+    if not path.is_file():
+        return None
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    risk = data.get("risk")
+    if isinstance(risk, str) and risk in RISK_TO_GROK_EFFORT:
+        return risk
+    return None
+
+
+def grok_effort_from_run(run_dir: Path, current: str) -> str:
+    """Map plan_critique risk on run.yaml to Grok --reasoning-effort."""
+    fallback = current if current in GROK_EFFORTS else "medium"
+    if not _jev_effort_enabled():
+        return fallback
+    risk = read_run_risk(run_dir)
+    if risk is None:
+        return fallback
+    return RISK_TO_GROK_EFFORT[risk]
+
+
+def bump_grok_effort(current: str) -> str:
+    """Retry +1 notch, cap high. Fail-open medium if current is unknown."""
+    if current not in GROK_EFFORTS:
+        return "medium"
+    if not _jev_effort_enabled():
+        return current
+    return GROK_EFFORTS[min(GROK_EFFORTS.index(current) + 1, len(GROK_EFFORTS) - 1)]

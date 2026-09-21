@@ -1509,6 +1509,15 @@ def cmd_start(args: argparse.Namespace) -> int:
         project_cwd_value=args.project_cwd,
         create_artifact=True,
     )
+    if args.provider == "grok":
+        try:
+            from jev_slots import grok_effort_from_run
+
+            args.reasoning_effort = grok_effort_from_run(
+                context.run_dir, str(args.reasoning_effort or "medium")
+            )
+        except Exception:
+            pass
     if getattr(args, "max_tasks", None) is None:
         from routing_profile import resolve_session_max_tasks
 
@@ -2056,6 +2065,17 @@ def cmd_retry_v2(
     new_prompt = safe_child_file(new_dir, "prompt.md")
     atomic_write(new_prompt, prompt_bytes)
     new_argv = relocate_attempt_argv(old_argv, old_dir, new_dir)
+    grok_effort = None
+    if old_control.get("provider") == "grok":
+        try:
+            from jev_slots import bump_grok_effort
+
+            grok_effort = bump_grok_effort(
+                str(old_control.get("reasoning_effort") or "medium")
+            )
+            replace_recorded_option(new_argv, "--reasoning-effort", grok_effort)
+        except Exception:
+            grok_effort = None
     control = dict(old_control)
     for key in (
         "launcher_exit_code",
@@ -2078,6 +2098,8 @@ def cmd_retry_v2(
             "retry_of_attempt": attempt,
         }
     )
+    if grok_effort:
+        control["reasoning_effort"] = grok_effort
     validate_recorded_argv(
         new_argv,
         artifact=new_dir,
