@@ -74,6 +74,7 @@ Jev only supplies a typed judgment.
 | Write-skill hint | Plugin | `skill-hint.ts` |
 | Acceptance vs last tool | Plugin | `evidence.ts` |
 | Failure telemetry | Plugin | `log.ts` → `opencode-lane.jsonl` |
+| All-tool progress | Plugin | `budget.ts` + `telemetry.ts`: full input/output fingerprints, call-ID deduplication, advisory repeat hints |
 
 A judgment that **changes accept/retry/merge** belongs in `lane-ctl`,
 not here. The plugin may only append a `[opencode-lane …]` note and a
@@ -100,6 +101,10 @@ OpenCode hooks this plugin uses:
 - `chat.message` — remember prompt, skill-hint
 - `chat.params` — Jev effort
 - `tool.execute.after` — winnow, diagnose
+- All tool events, including glob/MCP/edit/write/errors, feed progress diagnostics;
+  Winnow still filters only read/grep/bash/shell. Novel output is evidence to
+  inspect, not proof of task completion. `first_edit_callback_ms` measures a
+  callback, not a verified file change.
 - `experimental.chat.messages.transform` — evidence, sticky; no extra history compaction
 
 If OpenCode grows a new hook, handle it in `index.ts`, not a sibling plugin.

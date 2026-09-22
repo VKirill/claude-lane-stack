@@ -33,6 +33,10 @@ export function redactText(value: string): string {
     }
   }
   return text
+    .replace(
+      /((?:^|[,{\s])["']?(?:authorization|access[_-]?token|refresh[_-]?token|api[_-]?key|token|password|secret|credential)["']?\s*[:=]\s*)(?:Bearer\s+\S+|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,}&]+)/gi,
+      "$1[REDACTED]",
+    )
     .replace(/(Bearer\s+)\S+/gi, "$1[REDACTED]")
     .replace(/((?:responseBody|requestBody|headers)["']?\s*[:=]\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
     .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization|cookie|set-cookie)[\s"']*[:=][\s"']*)[^\s"'&,}]+/gi, "$1[REDACTED]")

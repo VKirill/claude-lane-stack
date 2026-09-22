@@ -35,6 +35,7 @@ if str(BIN_DIR) not in sys.path:
 from verification_safety import verification_argv, verification_error
 from sandbox_backend import KNOWN_RUNTIME_SANDBOX_PROFILES
 from path_utils import same_path
+from execution_packet import refresh_execution_packet
 
 try:
     from gate_log import record_gate_event
@@ -418,7 +419,7 @@ def prompt_for(context: TaskContext) -> str:
             body += extra
     except Exception:
         pass
-    return body
+    return refresh_execution_packet(body, context.project_cwd, context.task, context.task_file)
 
 
 def append_event(run_dir: Path, event_type: str, task_id: str, **fields: object) -> None:
@@ -2126,6 +2127,9 @@ def cmd_retry_v2(
         raise ContractError(f"cannot read recorded prompt: {exc}") from exc
     if hashlib.sha256(prompt_bytes).hexdigest() != old_control.get("prompt_sha256"):
         raise ContractError("recorded prompt checksum mismatch")
+    prompt_bytes = refresh_execution_packet(
+        prompt_bytes.decode("utf-8"), context.project_cwd, context.task, context.task_file
+    ).encode("utf-8")
     try:
         from jev_review import merge_audit_into_prompt
 
@@ -2265,6 +2269,10 @@ def cmd_fallback_v2(
     if hashlib.sha256(prompt_bytes).hexdigest() != old_control.get("prompt_sha256"):
         raise ContractError("recorded prompt checksum mismatch")
 
+    prompt_bytes = refresh_execution_packet(
+        prompt_bytes.decode("utf-8"), context.project_cwd, context.task, context.task_file
+    ).encode("utf-8")
+
     next_attempt = attempt + 1
     if next_attempt > MAX_ATTEMPTS:
         raise ContractError(f"fallback limit reached: maximum {MAX_ATTEMPTS} attempts")
@@ -2301,6 +2309,7 @@ def cmd_fallback_v2(
             "attempt_dir": str(new_dir),
             "prompt_file": str(new_prompt),
             "provider": "codex",
+            "prompt_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
             "model": CODEX_FALLBACK_MODEL,
             "reasoning_effort": CODEX_FALLBACK_REASONING,
             "argv": new_argv,
@@ -2412,6 +2421,24 @@ def cmd_retry(args: argparse.Namespace) -> int:
         project_cwd = Path(str(control.get("project_cwd", ""))).resolve()
         if not project_cwd.is_dir():
             raise ContractError(f"recorded project_cwd is unavailable: {project_cwd}")
+
+        # Keep the recorded specification. Only source context is refreshed;
+        # argv stays identical and changed task YAML is rejected.
+        recorded_prompt = prompt_path.read_text(encoding="utf-8")
+        marker = "\n--- RAW TASK YAML (verbatim) ---\n"
+        if marker in recorded_prompt:
+            raw = recorded_prompt.split(marker, 1)[1]
+            # Skill appendices are outside the original YAML document.
+            raw = raw.split("\n---\nWRITE SKILLS (read SKILL.md and follow):\n", 1)[0]
+            task_path = Path(str(control.get("task_file", "")))
+            task, current_raw = load_task_yaml(task_path)
+            if raw != current_raw:
+                raise ContractError("task YAML changed after first start")
+            refreshed = refresh_execution_packet(
+                recorded_prompt, project_cwd, task, task_path
+            )
+            atomic_write(prompt_path, refreshed)
+            control["prompt_sha256"] = hashlib.sha256(refreshed.encode("utf-8")).hexdigest()
 
         for stale in (
             "lane-bg.exit",

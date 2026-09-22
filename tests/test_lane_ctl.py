@@ -484,6 +484,36 @@ class LaneCtlTest(unittest.TestCase):
         )
         self.assertEqual(verified["status"], "verified")
 
+    def test_retry_refreshes_source_context_and_preserves_task(self) -> None:
+        for version in (1, 2):
+            with self.subTest(version=version):
+                task_id = f"packet-{version}"
+                task_file = (
+                    self.write_task(task_id) if version == 1
+                    else self.write_v2_task(task_id, verify="none")
+                )
+                source = self.project_cwd / "example.txt"
+                source.write_text("SOURCE_BEFORE_RETRY\n")
+                original_task = task_file.read_bytes()
+                self.start(task_file, task_id=task_id)
+                self.assertEqual(self.wait_status(task_id)["status"], "awaiting_verification")
+                artifact = self.run_dir / "artifacts" / task_id
+                first_dir = artifact if version == 1 else artifact / "attempts" / "01"
+                first_prompt = (first_dir / "prompt.md").read_bytes()
+                self.assertIn(b"SOURCE_BEFORE_RETRY", first_prompt)
+                source.write_text("SOURCE_AFTER_RETRY\n")
+                self.run_ctl("retry", "--run-dir", str(self.run_dir), "--task-id", task_id)
+                self.assertEqual(self.wait_status(task_id)["status"], "awaiting_verification")
+                second_dir = artifact if version == 1 else artifact / "attempts" / "02"
+                second_prompt = (second_dir / "prompt.md").read_bytes()
+                self.assertIn(b"SOURCE_AFTER_RETRY", second_prompt)
+                self.assertNotIn(b"SOURCE_BEFORE_RETRY", second_prompt)
+                self.assertEqual(task_file.read_bytes(), original_task)
+                control = json.loads((second_dir / "control.json").read_text())
+                self.assertEqual(control["prompt_sha256"], hashlib.sha256(second_prompt).hexdigest())
+                if version == 2:
+                    self.assertEqual((first_dir / "prompt.md").read_bytes(), first_prompt)
+
     def test_retry_replays_recorded_argv_vector(self) -> None:
         task_file = self.write_task()
         self.start(task_file)

@@ -1,0 +1,871 @@
+#!/usr/bin/env python3
+"""Benchmark fresh Cursor and OpenCode lane-session writer runs.
+
+The default action is a dry run. ``--run`` creates independent temporary
+scratch arms, runs the real lane-session transport, and keeps raw logs plus a
+JSON metrics report for inspection.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import selectors
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+LANE_SESSION = ROOT / "bin" / "lane-session"
+MODEL = "grok-4.7-medium"
+EFFORT = "medium"
+TASK_ID = "pricing-block-copy"
+ARM_CONFIG = (
+    ("cursor", "grok-4.7-medium"),
+    ("opencode", "cursor-acp/grok-4.7-medium"),
+)
+
+
+def _fixture_files() -> dict[str, str]:
+    return {
+        "pricing.py": """\
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class PricingBlock:
+    formal: str
+    default: str
+""",
+        "invoice.py": """\
+from pricing import PricingBlock
+
+
+def copy_for_invoice(block: PricingBlock) -> PricingBlock:
+    # Intentional fixture defect: the formal wording is lost.
+    return PricingBlock(formal="", default=block.default)
+""",
+        "quote.py": """\
+from pricing import PricingBlock
+
+
+def copy_for_quote(block: PricingBlock) -> PricingBlock:
+    # Intentional fixture defect: the default wording is lost.
+    return PricingBlock(formal=block.formal, default="")
+""",
+    }
+
+
+def _task_spec(writer: Path, checker: Path) -> dict[str, Any]:
+    return {
+        "schema_version": 2,
+        "id": TASK_ID,
+        "title": "Preserve both PricingBlock copy fields",
+        "risk": "low",
+        "lane": "grok",
+        "project_cwd": str(writer.resolve()),
+        "read_first": ["pricing.py", "invoice.py", "quote.py"],
+        "interfaces": [
+            "PricingBlock(formal: str, default: str)",
+            "copy_for_invoice(block: PricingBlock)",
+            "copy_for_quote(block: PricingBlock)",
+        ],
+        "invariants": [
+            "Each copier returns a fresh PricingBlock.",
+            "Both formal and default values are preserved.",
+        ],
+        "out_of_scope": [
+            "Production repositories",
+            "GitNexus discovery",
+            "pricing.py",
+            "Tests or files outside owns_paths",
+        ],
+        "expected_outputs": ["invoice.py", "quote.py"],
+        "owns_paths": ["invoice.py", "quote.py"],
+        "never_touch": [
+            "pricing.py",
+            ".agents/**",
+            ".benchmark-provider-*",
+        ],
+        "objective": (
+            "Fix copy_for_invoice and copy_for_quote so each returns a fresh "
+            "PricingBlock preserving both formal and default values."
+        ),
+        "acceptance": [
+            f"python3 -B {checker.resolve()} --writer-dir . exits 0",
+            "No paths outside owns_paths are changed.",
+        ],
+        "depends_on": [],
+        "verify": "tests",
+        "verification": [
+            {
+                "command": f"python3 -B {checker.resolve()} --writer-dir .",
+                "cwd": str(writer.resolve()),
+                "timeout_sec": 30,
+            }
+        ],
+    }
+
+
+def _render_writer_prompt(writer: Path, task: dict[str, Any], task_file: Path) -> str:
+    sys.path.insert(0, str(ROOT / "bin"))
+    from execution_packet import refresh_execution_packet
+
+    contract = (ROOT / "agents" / "grok" / "writer.md").read_text(encoding="utf-8")
+    header = (
+        "\n\n---\n"
+        f"PROJECT_CWD: {writer.resolve()}\n"
+        f"TASK_FILE: {task_file.resolve()}\n"
+        f"ARTIFACT_DIR: {task_file.parent.parent / 'artifacts' / TASK_ID}\n"
+        "--- RAW TASK YAML (verbatim) ---\n"
+    )
+    return refresh_execution_packet(
+        contract.rstrip() + header + task_file.read_text(encoding="utf-8"),
+        writer,
+        task,
+        task_file,
+    )
+
+
+def _checker_text() -> str:
+    return """\
+from __future__ import annotations
+
+import argparse
+import importlib
+import json
+import sys
+from pathlib import Path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--writer-dir", required=True, type=Path)
+    args = parser.parse_args()
+    writer = args.writer_dir.resolve()
+    if not writer.is_dir():
+        raise AssertionError(f"writer directory missing: {writer}")
+    for name in ("pricing.py", "invoice.py", "quote.py"):
+        source = writer / name
+        if not source.is_file():
+            raise AssertionError(f"fixture file missing: {source}")
+        compile(source.read_text(encoding="utf-8"), str(source), "exec")
+    sys.path.insert(0, str(writer))
+    for name in ("pricing", "invoice", "quote"):
+        sys.modules.pop(name, None)
+    pricing = importlib.import_module("pricing")
+    invoice = importlib.import_module("invoice")
+    quote = importlib.import_module("quote")
+    original = pricing.PricingBlock(formal="FORMAL", default="DEFAULT")
+    copies = {
+        "invoice": invoice.copy_for_invoice(original),
+        "quote": quote.copy_for_quote(original),
+    }
+    for name, copy in copies.items():
+        assert copy is not original, f"{name} returned the input object"
+        assert (copy.formal, copy.default) == ("FORMAL", "DEFAULT"), (
+            f"{name} lost a field: {copy!r}"
+        )
+    print(json.dumps({name: copy.__dict__ for name, copy in copies.items()}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (AssertionError, ImportError, OSError, SyntaxError) as exc:
+        print(f"acceptance: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+"""
+
+
+def _tee_proxy_text(actual_binary: Path, stdout_path: Path, stderr_path: Path) -> str:
+    # Paths are generated by this process and embedded as repr literals. The
+    # proxy stays in the scratch arm and is only used to retain provider JSON.
+    return f"""\
+#!/usr/bin/env python3
+import os
+import selectors
+import subprocess
+import sys
+
+ACTUAL = {str(actual_binary)!r}
+RAW_STDOUT = {str(stdout_path)!r}
+RAW_STDERR = {str(stderr_path)!r}
+
+if "--version" in sys.argv[1:]:
+    os.execv(ACTUAL, [ACTUAL, *sys.argv[1:]])
+
+child = subprocess.Popen(
+    [ACTUAL, *sys.argv[1:]],
+    stdin=sys.stdin.buffer,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+selector = selectors.DefaultSelector()
+assert child.stdout is not None and child.stderr is not None
+selector.register(
+    child.stdout,
+    selectors.EVENT_READ,
+    (child.stdout, sys.stdout.buffer, open(RAW_STDOUT, "ab", buffering=0)),
+)
+selector.register(
+    child.stderr,
+    selectors.EVENT_READ,
+    (child.stderr, sys.stderr.buffer, open(RAW_STDERR, "ab", buffering=0)),
+)
+try:
+    while selector.get_map():
+        for key, _ in selector.select():
+            source, forwarded, raw = key.data
+            data = os.read(source.fileno(), 65536)
+            if not data:
+                selector.unregister(source)
+                source.close()
+                raw.close()
+                continue
+            raw.write(data)
+            raw.flush()
+            forwarded.write(data)
+            forwarded.flush()
+finally:
+    selector.close()
+return_code = child.wait()
+raise SystemExit(return_code)
+"""
+
+
+def _write_executable(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o700)
+
+
+def _stage_binary(binary: Path, writer: Path) -> Path:
+    """Make a provider path visible through lane-session's private /tmp."""
+    source = binary if binary.is_file() else Path(shutil.which(str(binary)) or "")
+    if not source.is_file():
+        raise FileNotFoundError(f"provider binary not found: {binary}")
+    source = source.resolve()
+    staged = writer / f".benchmark-provider-{source.name}"
+    if source.is_relative_to(Path("/tmp")) or source.is_relative_to(Path("/var/tmp")):
+        shutil.copy2(source, staged)
+    else:
+        staged.symlink_to(source)
+    return staged
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _scope_snapshot(arm: Path) -> dict[str, str]:
+    snapshot: dict[str, str] = {}
+    for path in arm.rglob("*"):
+        try:
+            relative = path.relative_to(arm)
+            if _scope_allowed(relative.as_posix()):
+                continue
+            if path.is_symlink():
+                snapshot[relative.as_posix()] = f"symlink:{path.readlink()}"
+            elif path.is_file():
+                snapshot[relative.as_posix()] = _sha256(path)
+        except (OSError, RuntimeError):
+            snapshot[relative.as_posix()] = "unreadable"
+    return snapshot
+
+
+def _scope_allowed(relative: str) -> bool:
+    parts = Path(relative).parts
+    if relative in {"writer/invoice.py", "writer/quote.py"}:
+        return True
+    if parts and parts[0] == "writer":
+        name = parts[-1]
+        return (
+            name.startswith(".provider.")
+            or name == ".benchmark-provider-proxy"
+            or name.startswith(".benchmark-provider-")
+            or "__pycache__" in parts
+        )
+    if relative in {
+        "lane-session.stdout.log",
+        "lane-session.stderr.log",
+        "provider.log",
+        "provider.stdout.jsonl",
+        "provider.stderr.log",
+        "provider.events.jsonl",
+        "runtime.json",
+    }:
+        return True
+    control = Path(".agents/runs/benchmark")
+    try:
+        control_relative = Path(relative).relative_to(control)
+    except ValueError:
+        return False
+    if not control_relative.parts:
+        return True
+    if control_relative.parts[0] in {"artifacts", "locks", ".locks", ".sandbox"}:
+        return True
+    if control_relative.as_posix() == "sessions.json":
+        return True
+    # The checker has its own integrity result; classify its mutation there.
+    if control_relative.as_posix() == "acceptance_checker.py":
+        return True
+    return False
+
+
+def _scope_violations(
+    arm: Path, baseline: dict[str, str]
+) -> list[str]:
+    current = _scope_snapshot(arm)
+    changed = {
+        relative
+        for relative in set(baseline) | set(current)
+        if baseline.get(relative) != current.get(relative)
+        and not _scope_allowed(relative)
+    }
+    return sorted(changed)
+
+
+def _run_checker(checker: Path, writer: Path) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        result = subprocess.run(
+            [sys.executable, "-B", str(checker), "--writer-dir", str(writer)],
+            cwd=checker.parent,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=2,
+            check=False,
+        )
+        return {
+            "passed": result.returncode == 0,
+            "returncode": result.returncode,
+            "stdout": result.stdout[-4096:],
+            "stderr": result.stderr[-4096:],
+            "elapsed_seconds": round(time.monotonic() - started, 6),
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "passed": False,
+            "returncode": None,
+            "stdout": (exc.stdout or "")[-4096:] if isinstance(exc.stdout, str) else "",
+            "stderr": "acceptance checker timeout",
+            "elapsed_seconds": round(time.monotonic() - started, 6),
+        }
+
+
+def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait(timeout=3)
+
+
+def _clean_benchmark_env() -> dict[str, str]:
+    env = os.environ.copy()
+    # lane-session forwards these to OpenCode's sticky plugin when present.
+    # A benchmark arm must use the explicit CLI effort, independent of Jev.
+    for key in (
+        "JEV_API_KEY",
+        "LANE_JEV_EFFORT",
+        "LANE_OPENCODE_JEV",
+        "LANE_STACK_ROOT",
+    ):
+        env.pop(key, None)
+    env["LANE_JEV_EFFORT"] = "0"
+    return env
+
+
+_TRANSPORT_KEYS = frozenset(
+    {
+        "call_id",
+        "callId",
+        "callID",
+        "conversationId",
+        "messageID",
+        "model_call_id",
+        "requestId",
+        "sessionID",
+        "session_id",
+        "startedAtMs",
+        "timestamp",
+        "timestamp_ms",
+        "toolCallId",
+        "tool_use_id",
+    }
+)
+
+
+def _semantic_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _semantic_value(item)
+            for key, item in sorted(value.items())
+            if key not in _TRANSPORT_KEYS and key not in {"time", "duration"}
+        }
+    if isinstance(value, list):
+        return [_semantic_value(item) for item in value]
+    return value
+
+
+def _toolresult_records(event: dict[str, Any]) -> list[tuple[str | None, Any]]:
+    """Return completed tool results as (transport id, stable semantics)."""
+    event_type = str(event.get("type") or "").lower()
+    if event_type == "tool_call" and str(event.get("subtype") or "").lower() == "completed":
+        tool_call = event.get("tool_call") if isinstance(event.get("tool_call"), dict) else {}
+        call_id = tool_call.get("toolCallId") or event.get("call_id")
+        for name, payload in tool_call.items():
+            if name.endswith("ToolCall") and isinstance(payload, dict):
+                return [
+                    (
+                        str(call_id) if call_id is not None else None,
+                        _semantic_value({"tool": name, **payload}),
+                    )
+                ]
+        return [(str(call_id) if call_id is not None else None, _semantic_value(tool_call))]
+    if event_type != "tool_use":
+        return []
+    part = event.get("part") if isinstance(event.get("part"), dict) else {}
+    state = part.get("state") if isinstance(part.get("state"), dict) else {}
+    status = str(state.get("status") or "").lower()
+    if status not in {"completed", "complete", "error"}:
+        return []
+    call_id = part.get("callID") or part.get("call_id")
+    semantics = {
+        "tool": part.get("tool"),
+        "input": state.get("input"),
+        "output": state.get("output"),
+        "error": state.get("error"),
+    }
+    return [(str(call_id) if call_id is not None else None, _semantic_value(semantics))]
+
+
+def _toolresult_metrics(*raw_paths: Path) -> dict[str, int]:
+    identities: list[str] = []
+    fingerprints: list[str] = []
+    seen_call_ids: set[str] = set()
+    for path in raw_paths:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            for call_id, semantics in _toolresult_records(event):
+                if call_id is not None and call_id in seen_call_ids:
+                    continue
+                if call_id is not None:
+                    seen_call_ids.add(call_id)
+                    identities.append(call_id)
+                fingerprint = json.dumps(semantics, sort_keys=True, ensure_ascii=True)
+                fingerprints.append(fingerprint)
+    counts = Counter(fingerprints)
+    return {
+        "toolresult_events": len(fingerprints),
+        "repeated_toolresults": sum(max(0, count - 1) for count in counts.values()),
+        "unique_toolresult_calls": len(identities),
+    }
+
+
+def _prepare_arm(root: Path, provider: str, requested_model: str) -> dict[str, Any]:
+    arm = root / provider
+    writer = arm / "writer"
+    control = arm / ".agents" / "runs" / "benchmark"
+    artifact = control / "artifacts" / TASK_ID
+    tasks = control / "tasks"
+    writer.mkdir(parents=True)
+    artifact.mkdir(parents=True)
+    tasks.mkdir(parents=True)
+    for name, content in _fixture_files().items():
+        (writer / name).write_text(content, encoding="utf-8")
+    checker = control / "acceptance_checker.py"
+    checker.write_text(_checker_text(), encoding="utf-8")
+    task = _task_spec(writer, checker)
+    task_file = tasks / f"{TASK_ID}.yaml"
+    task_file.write_text(json.dumps(task, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    capture_stdout = writer / ".provider.stdout.jsonl"
+    capture_stderr = writer / ".provider.stderr.log"
+    raw_stdout = arm / "provider.stdout.jsonl"
+    raw_stderr = arm / "provider.stderr.log"
+    proxy = writer / ".benchmark-provider-proxy"
+    _write_executable(
+        proxy, _tee_proxy_text(Path("/dev/null"), capture_stdout, capture_stderr)
+    )
+    prompt = arm / "prompt.md"
+    prompt.write_text(_render_writer_prompt(writer, task, task_file), encoding="utf-8")
+    return {
+        "root": arm,
+        "writer": writer,
+        "control": control,
+        "artifact": artifact,
+        "checker": checker,
+        "checker_sha256": _sha256(checker),
+        "task_file": task_file,
+        "prompt": prompt,
+        "raw_stdout": raw_stdout,
+        "raw_stderr": raw_stderr,
+        "capture_stdout": capture_stdout,
+        "capture_stderr": capture_stderr,
+        "proxy": proxy,
+        "requested_model": requested_model,
+        "provider": provider,
+    }
+
+
+def _run_arm(
+    arm: dict[str, Any],
+    *,
+    binary: Path,
+    timeout_seconds: float,
+    iteration: int,
+) -> dict[str, Any]:
+    proxy = arm["proxy"]
+    staged_binary = _stage_binary(binary, arm["writer"])
+    _write_executable(
+        proxy,
+        _tee_proxy_text(
+            staged_binary, arm["capture_stdout"], arm["capture_stderr"]
+        ),
+    )
+    scope_baseline = _scope_snapshot(arm["root"])
+    lane_stdout = arm["root"] / "lane-session.stdout.log"
+    lane_stderr = arm["root"] / "lane-session.stderr.log"
+    provider_log = arm["root"] / "provider.log"
+    command = [
+        sys.executable,
+        str(LANE_SESSION),
+        "run",
+        "--provider",
+        arm["provider"],
+        "--run-dir",
+        str(arm["control"]),
+        "--task-id",
+        TASK_ID,
+        "--role",
+        "lane-benchmark",
+        "--cwd",
+        str(arm["writer"]),
+        "--prompt-file",
+        str(arm["prompt"]),
+        "--output",
+        str(provider_log),
+        "--binary",
+        str(proxy),
+        "--model",
+        arm["requested_model"],
+        "--reasoning-effort",
+        EFFORT,
+        "--pool-size",
+        "1",
+        "--max-tasks",
+        "1",
+    ]
+    started = time.monotonic()
+    first_correct: float | None = None
+    last_check: dict[str, Any] | None = None
+    checker_tampered = False
+    scope_violation = False
+    scope_violation_paths: list[str] = []
+
+    def record_scope_paths(paths: list[str]) -> None:
+        if paths:
+            scope_violation_paths.extend(paths)
+
+    def checker_changed() -> bool:
+        try:
+            return _sha256(arm["checker"]) != arm["checker_sha256"]
+        except OSError:
+            return True
+
+    def tamper_result() -> dict[str, Any]:
+        return {
+            "passed": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "acceptance checker changed during benchmark",
+            "elapsed_seconds": 0.0,
+            "tampered": True,
+        }
+
+    with lane_stdout.open("wb") as stdout, lane_stderr.open("wb") as stderr:
+        process = subprocess.Popen(
+            command,
+            cwd=arm["root"],
+            env=_clean_benchmark_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=stdout,
+            stderr=stderr,
+            start_new_session=True,
+        )
+        timed_out = False
+        while process.poll() is None:
+            current_scope_paths = _scope_violations(arm["root"], scope_baseline)
+            record_scope_paths(current_scope_paths)
+            if current_scope_paths:
+                scope_violation = True
+                last_check = {
+                    "passed": False,
+                    "returncode": None,
+                    "stdout": "",
+                    "stderr": "unauthorized scope changes: " + ", ".join(current_scope_paths[:20]),
+                    "elapsed_seconds": 0.0,
+                    "scope_violation": True,
+                }
+                _terminate_process_group(process)
+                break
+            if checker_changed():
+                checker_tampered = True
+                last_check = tamper_result()
+                _terminate_process_group(process)
+                break
+            last_check = _run_checker(arm["checker"], arm["writer"])
+            if last_check["passed"] and first_correct is None:
+                first_correct = time.monotonic() - started
+            if time.monotonic() - started >= timeout_seconds:
+                timed_out = True
+                _terminate_process_group(process)
+                break
+            time.sleep(0.05)
+        if process.poll() is None:
+            _terminate_process_group(process)
+        return_code = process.wait()
+    record_scope_paths(_scope_violations(arm["root"], scope_baseline))
+    scope_violation_paths = sorted(set(scope_violation_paths))
+    scope_violation = scope_violation or bool(scope_violation_paths)
+    if scope_violation:
+        first_correct = None
+    checker_tampered = checker_tampered or checker_changed()
+    if scope_violation:
+        last_check = {
+            "passed": False,
+            "returncode": None,
+            "stdout": "",
+            "stderr": "unauthorized scope changes: " + ", ".join(scope_violation_paths[:20]),
+            "elapsed_seconds": 0.0,
+            "scope_violation": True,
+        }
+    elif checker_tampered:
+        last_check = tamper_result()
+    else:
+        last_check = _run_checker(arm["checker"], arm["writer"])
+    if last_check["passed"] and first_correct is None:
+        first_correct = time.monotonic() - started
+    total_elapsed = time.monotonic() - started
+    for source, target in (
+        (arm["capture_stdout"], arm["raw_stdout"]),
+        (arm["capture_stderr"], arm["raw_stderr"]),
+    ):
+        if source.is_file():
+            shutil.copyfile(source, target)
+    receipt_path = provider_log.with_name("runtime.json")
+    receipt: dict[str, Any] | None = None
+    if receipt_path.is_file():
+        try:
+            parsed = json.loads(receipt_path.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                receipt = parsed
+        except json.JSONDecodeError:
+            receipt = None
+    if checker_tampered:
+        outcome = "checker_tampered"
+    elif scope_violation:
+        outcome = "scope_violation"
+    elif timed_out:
+        outcome = "timeout"
+    elif return_code != 0:
+        outcome = "provider_error"
+    elif not last_check["passed"]:
+        outcome = "acceptance_failed"
+    else:
+        outcome = "accepted"
+    metrics = {
+        "first_correct_edit_elapsed_seconds": (
+            round(first_correct, 6) if first_correct is not None else None
+        ),
+        "total_elapsed_seconds": round(total_elapsed, 6),
+        "test_outcome": (
+            "tampered"
+            if checker_tampered
+            else "scope_violation"
+            if scope_violation
+            else ("passed" if last_check["passed"] else "failed")
+        ),
+        "checker_sha256": arm["checker_sha256"],
+        "checker_unchanged": not checker_tampered,
+        "scope_unchanged": not scope_violation,
+        "scope_violations": scope_violation_paths,
+        **_toolresult_metrics(arm["raw_stdout"], arm["raw_stderr"]),
+    }
+    return {
+        "iteration": iteration,
+        "provider": arm["provider"],
+        "model": arm["requested_model"],
+        "requested_model": arm["requested_model"],
+        "resolved_model": arm["requested_model"],
+        "runtime_model": receipt.get("model") if receipt else None,
+        "reasoning_effort": EFFORT,
+        "jev_effort": "0",
+        "outcome": outcome,
+        "timed_out": timed_out,
+        "exit_code": return_code,
+        "acceptance": last_check,
+        "metrics": metrics,
+        "runtime_receipt": receipt,
+        "paths": {
+            "writer": str(arm["writer"]),
+            "lane_stdout": str(lane_stdout),
+            "lane_stderr": str(lane_stderr),
+            "provider_log": str(provider_log),
+            "provider_raw_stdout": str(arm["raw_stdout"]),
+            "provider_raw_stderr": str(arm["raw_stderr"]),
+            "acceptance_checker": str(arm["checker"]),
+            "task_file": str(arm["task_file"]),
+            "prompt": str(arm["prompt"]),
+            "report": str(arm["artifact"] / "report.md"),
+        },
+    }
+
+
+def _default_output_dir() -> Path:
+    return Path(tempfile.mkdtemp(prefix="lane-benchmark-"))
+
+
+def _dry_run_config(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "mode": "dry-run",
+        "lane_session": str(LANE_SESSION),
+        "task_id": TASK_ID,
+        "model": MODEL,
+        "effort": EFFORT,
+        "jev_effort": "0",
+        "arms": [
+            {
+                "provider": provider,
+                "model": model,
+                "resolved_model": model,
+                "binary": str(getattr(args, f"{provider}_binary")),
+            }
+            for provider, model in ARM_CONFIG
+        ],
+        "repeat": args.repeat,
+        "timeout_seconds": args.timeout,
+        "run_command": "bin/lane-benchmark --run",
+    }
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Benchmark fresh Cursor and OpenCode lane-session runs on an isolated "
+            "PricingBlock scratch fixture (dry-run by default)."
+        )
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--run", action="store_true", help="run both provider arms")
+    mode.add_argument(
+        "--dry-run",
+        action="store_false",
+        dest="run",
+        help="print resolved benchmark config without launching providers (default)",
+    )
+    parser.set_defaults(run=False)
+    parser.add_argument("--repeat", type=int, default=1, help="fresh benchmark iterations (default: 1)")
+    parser.add_argument("--timeout", type=float, default=300.0, help="per-arm timeout in seconds (default: 300)")
+    parser.add_argument("--output-dir", type=Path, help="directory to retain logs and metrics")
+    parser.add_argument("--cursor-binary", type=Path, default=Path("cursor-agent"), help="Cursor executable (default: cursor-agent)")
+    parser.add_argument("--opencode-binary", type=Path, default=Path("opencode"), help="OpenCode executable (default: opencode)")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.repeat < 1 or args.repeat > 20:
+        parser.error("--repeat must be between 1 and 20")
+    if args.timeout <= 0 or args.timeout > 3600:
+        parser.error("--timeout must be greater than 0 and at most 3600")
+    if not args.run:
+        print(json.dumps(_dry_run_config(args), indent=2, sort_keys=True))
+        return 0
+    binaries = {
+        "cursor": args.cursor_binary,
+        "opencode": args.opencode_binary,
+    }
+    for provider, binary in binaries.items():
+        if shutil.which(str(binary)) is None and not binary.is_file():
+            parser.error(f"{provider} binary not found: {binary}")
+    output = args.output_dir.resolve() if args.output_dir else _default_output_dir()
+    output.mkdir(parents=True, exist_ok=True)
+    runs: list[dict[str, Any]] = []
+    for iteration in range(1, args.repeat + 1):
+        iteration_root = output / f"run-{iteration:03d}"
+        iteration_root.mkdir(parents=True, exist_ok=False)
+        for provider, model in ARM_CONFIG:
+            arm = _prepare_arm(iteration_root, provider, model)
+            runs.append(
+                _run_arm(
+                    arm,
+                    binary=binaries[provider],
+                    timeout_seconds=args.timeout,
+                    iteration=iteration,
+                )
+            )
+    report = {
+        "schema_version": 1,
+        "mode": "run",
+        "output_dir": str(output),
+        "task_id": TASK_ID,
+        "model": MODEL,
+        "effort": EFFORT,
+        "arms": [
+            {
+                "provider": provider,
+                "model": model,
+                "resolved_model": model,
+                "effort": EFFORT,
+                "jev_effort": "0",
+            }
+            for provider, model in ARM_CONFIG
+        ],
+        "repeat": args.repeat,
+        "timeout_seconds": args.timeout,
+        "jev_effort": "0",
+        "runs": runs,
+    }
+    report_path = output / "metrics.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps({"metrics": str(report_path), "runs": len(runs)}, sort_keys=True))
+    return 0 if all(run["outcome"] == "accepted" for run in runs) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { markToolStarted, observeToolProgress, recordTool } from "./budget.ts"
 import { laneLog } from "./log.ts"
 
 type EventInput = { event?: unknown }
@@ -85,7 +86,19 @@ function messageData(info: AnyRecord): AnyRecord {
   return data
 }
 
-export type Telemetry = { event(input: EventInput): Promise<void> }
+type ToolAfterInput = { tool: string; sessionID: string; callID?: string; args: unknown }
+type ToolAfterOutput = { output: unknown; metadata?: { exit?: unknown } }
+
+function failedExit(value: unknown): boolean {
+  if (typeof value === "number") return value !== 0
+  if (typeof value === "string") return value !== "" && value !== "0"
+  return false
+}
+
+export type Telemetry = {
+  event(input: EventInput): Promise<void>
+  after(input: ToolAfterInput, output: ToolAfterOutput): Promise<{ n: number; deduped: boolean; skipped: boolean }>
+}
 
 export function createTelemetry(): Telemetry {
   const seen = new Map<string, true>()
@@ -162,6 +175,9 @@ export function createTelemetry(): Telemetry {
         duration(state.time) ?? "",
       ].join("|")
       if (!once(key)) return
+      if (status === "running") {
+        markToolStarted(sessionID)
+      }
       const data: AnyRecord = {
         event: type,
         message_id: typeof part.messageID === "string" ? part.messageID : "",
@@ -181,6 +197,18 @@ export function createTelemetry(): Telemetry {
       const elapsed = duration(state.time)
       if (elapsed !== undefined) data.duration_ms = elapsed
       emit(sessionID, status !== "error", data, status === "error" ? error : undefined)
+      if (status !== "running") {
+        const observed = observeToolProgress(
+          sessionID,
+          typeof part.tool === "string" ? part.tool : "",
+          input,
+          status === "error" ? error : output,
+          status === "error" ? "error" : "completed",
+          "event",
+          typeof part.callID === "string" ? part.callID : "",
+        )
+        if (!observed.deduped) recordTool(sessionID, typeof part.tool === "string" ? part.tool : "", input, status === "error" ? error : output)
+      }
       return
     }
 
@@ -213,7 +241,9 @@ export function createTelemetry(): Telemetry {
 
     if (type === "session.created" || type === "session.updated" || type === "session.deleted") {
       const info = record(props.info)
-      emit(sessionOf({ ...props, info }), true, {
+      const sessionID = sessionOf({ ...props, info })
+      if (type === "session.created") markToolStarted(sessionID)
+      emit(sessionID, true, {
         event: type,
         session_id: typeof info.id === "string" ? info.id : session,
       })
@@ -225,5 +255,12 @@ export function createTelemetry(): Telemetry {
     }
   }
 
-  return { event }
+  async function after(input: ToolAfterInput, output: ToolAfterOutput): Promise<{ n: number; deduped: boolean; skipped: boolean }> {
+    const sessionID = input.sessionID || "unknown"
+    const status = failedExit(output.metadata?.exit) ? "error" : "completed"
+    const observed = observeToolProgress(sessionID, input.tool || "", input.args, output.output, status, "after", input.callID || "")
+    return { n: observed.n, deduped: observed.deduped, skipped: observed.skipped }
+  }
+
+  return { event, after }
 }

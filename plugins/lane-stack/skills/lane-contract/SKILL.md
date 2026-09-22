@@ -102,7 +102,7 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 
 ## Lane must (writer)
 
-1. Read TASK_FILE completely.  
+1. Read the complete raw task YAML supplied in the prompt; open TASK_FILE if absent or uncertain.
 2. Work only in `PROJECT_CWD`.  
 3. Edit **only** `owns_paths`. Honor `never_touch`.  
 4. Do not write `.agents`.  
@@ -121,6 +121,21 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 `verification` (`command`, absolute `cwd`; **`timeout_sec` optional** — default 900).
 
 No mutable `status` / free-form verify strings on new runs.
+
+### Prepared execution context
+
+`lane-ctl` supplies fresh source data from explicit `read_first` and owned paths,
+with hashes, constraints and focused verification. Keep related tests in
+`read_first`. Use precise context selectors for known relevant ranges; do not
+cut content by character budgets. The original task remains immutable.
+
+Writers reuse unchanged supplied code and batch independent missing reads.
+An impact receipt can replace rediscovery only for its covered target, with
+matching source/index state and project permission. Declare `impact_receipt`
+and exact owned `impact_targets: [path::symbol]` before dispatch; capture must
+cover every declared target. UNKNOWN, partial, stale or
+truncated evidence requires a fresh check. Preserve a single coherent outcome
+per task; a read count or timer alone is not grounds for splitting it.
 
 ---
 

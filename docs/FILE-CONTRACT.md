@@ -61,7 +61,7 @@ When the user says implement → **promote** into `.agents/runs/<slug>/` with `o
         attempts/
           01/
             control.json # immutable argv + task hash + attempt metadata
-            prompt.md # canonical writer contract + raw immutable task YAML
+            prompt.md # writer contract + fresh execution packet + raw immutable task YAML
             provider.out
             runtime.json # sanitized Grok protocol/model/usage receipt
             verification.json # independent command evidence for attempt 01
@@ -79,6 +79,71 @@ changes only for operator visibility. Provider lanes remain detached and no
 Claude model is the lifecycle decision loop. See [LANE-EXEC.md](LANE-EXEC.md).
 The receipt follows `schemas/run-controller-v1.schema.json`; consumers must
 fail closed on unknown run/task stages instead of inferring success.
+
+### Execution packet
+
+`lane-ctl` prepares source context at start and refreshes it for each retry or
+fallback. The task YAML stays immutable, previous attempt artifacts stay intact,
+and each attempt binds its own prompt hash. Explicit `read_first`/owned files
+are supplied with SHA-256 hashes; missing, binary or excluded files are reported.
+Ownership patterns/directories are reported as deferred context; declare their
+relevant source files in `read_first` or `context_selectors`. Ownership alone
+does not trigger an indiscriminate repository-wide source dump.
+There is no arbitrary character cut. Source contents are data, not instructions.
+
+Optional `context_selectors` choose exact ranges instead of entire files:
+
+```yaml
+context_selectors:
+  - path: app/components/PricingBlock.vue
+    start_line: 12
+    end_line: 48
+impact_receipt: .agents/runs/example/artifacts/001/impact.json
+impact_targets:
+  - app/example.ts::changedFunction
+```
+
+Writers compare hashes before editing, reuse unchanged context and batch only
+the missing independent reads. Receipt reuse requires matching task, target,
+source and GitNexus index state; stale or incomplete evidence does not satisfy
+an impact check. Project instructions remain authoritative.
+
+The orchestrator captures reusable evidence with actual indexing and impact
+commands (saved old reports cannot be rebound to new source snapshots):
+
+```bash
+python3 ~/.agents/bin/execution_packet.py capture \
+  --task-file .agents/runs/example/tasks/001.yaml \
+  --target app/example.ts::changedFunction
+```
+
+Declare the receipt path and exact owned `path::symbol` targets in the task
+before its first dispatch. Capture rejects bare/ambiguous symbols and evidence
+for other targets; all declared targets must be covered. Capture writes
+only under `.agents`. A writer can run the same command with `validate` instead
+of `capture` before editing; validation is read-only and returns covered targets
+and complete impact evidence. Changes to source files, including new callers,
+or to index metadata invalidate the receipt. Unresolved/partial analysis remains
+a required fresh check; it is never described as safe.
+
+For CLIs that accept prompts through argv, packets over 96 KiB are passed by
+reference to the complete `prompt.md`. This avoids the operating system's
+argument-size limit without removing source content. Codex stdin and Grok's
+native prompt-file transport keep their existing behavior.
+
+### Transport benchmark
+
+`~/.agents/bin/lane-benchmark` prints the proposed comparison without launching
+models. Add `--run --output-dir /tmp/lane-benchmark` to run fresh Cursor and
+OpenCode sessions on identical prepared PricingBlock fixtures, with Grok Medium
+fixed in both arms. Jev effort routing is disabled only for these benchmark
+processes. Production tasks and sessions are not used.
+
+`metrics.json` retains first passing behavioral check time, total elapsed time,
+semantic repeated tool results, provider completion, checker integrity and raw
+log paths. A timeout can coexist with passing source checks: correct code and
+successful lane completion are separate measurements. Use `--repeat` for more
+trials; one synthetic comparison does not establish production speed or quality.
 
 **Run stages:** `running` (work in flight), `degraded` (some tasks blocked,
 others still runnable), terminal `accepted` / `blocked` / `failed`. Task stage

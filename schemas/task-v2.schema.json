@@ -35,6 +35,30 @@
     "lane": {"type": "string", "minLength": 1},
     "project_cwd": {"type": "string", "pattern": "^/"},
     "read_first": {"$ref": "#/$defs/stringList"},
+    "context_selectors": {
+      "type": "array",
+      "description": "Explicit source ranges for the execution packet; selected content is never character-truncated.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "start_line", "end_line"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "start_line": {"type": "integer", "minimum": 1},
+          "end_line": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "impact_receipt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project-relative GitNexus impact receipt path; freshness and scope are revalidated at dispatch."
+    },
+    "impact_targets": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^.+::[^:]+$"},
+      "description": "Exact owned path::symbol targets that a reusable impact receipt must cover."
+    },
     "interfaces": {"$ref": "#/$defs/stringList"},
     "invariants": {"$ref": "#/$defs/stringList"},
     "out_of_scope": {"$ref": "#/$defs/stringList"},
@@ -89,6 +113,10 @@
     }
   },
   "allOf": [
+    {
+      "if": {"required": ["impact_receipt"]},
+      "then": {"required": ["impact_targets"]}
+    },
     {
       "if": {"properties": {"verify": {"enum": ["smoke", "tests"]}}},
       "then": {"properties": {"verification": {"minItems": 1}}}

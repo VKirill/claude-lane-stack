@@ -949,6 +949,60 @@ class LaneSessionTest(unittest.TestCase):
             "KIMI_MODEL_THINKING_EFFORT", module.provider_environment("qwen")
         )
 
+    def test_large_execution_packet_uses_complete_file_without_argv_overflow(self) -> None:
+        module = runpy.run_path(str(LANE_SESSION), run_name="lane_session_packet_transport")
+        packet = self.root / "large prompt.md"
+        content = "Ж" * 100_000 + "\nLAST_REQUIRED_SOURCE_LINE\n"
+        packet.write_text(content, encoding="utf-8")
+        forwarded = module["command_prompt"](packet)
+        self.assertLess(len(forwarded.encode("utf-8")), 1024)
+        self.assertIn(str(packet), forwarded)
+        self.assertIn("complete", forwarded)
+        self.assertEqual(packet.read_text(encoding="utf-8"), content)
+        packet.write_text("small complete task")
+        self.assertEqual(module["command_prompt"](packet), "small complete task")
+
+    def test_large_packet_pointer_is_complete_and_readonly_inside_provider_sandbox(self) -> None:
+        from types import SimpleNamespace
+
+        module = runpy.run_path(str(LANE_SESSION), run_name="lane_session_packet_sandbox")
+        packet = self.run_dir / "artifacts" / "packet" / "prompt.md"
+        packet.parent.mkdir(parents=True)
+        content = ("Ж" * 100_000 + "LAST_REQUIRED_SOURCE_LINE").encode()
+        packet.write_bytes(content)
+        probe = self.cwd / "packet-reader"
+        probe.write_text("""#!/usr/bin/env python3
+import hashlib, json, sys
+from pathlib import Path
+name, _ = json.JSONDecoder().raw_decode(sys.argv[-1].split(' at ', 1)[1])
+path = Path(name)
+data = path.read_bytes()
+try:
+    path.write_bytes(b'forbidden')
+    readonly = False
+except OSError:
+    readonly = True
+print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readonly}))
+""")
+        probe.chmod(0o700)
+        for provider in ("cursor", "opencode"):
+            args = SimpleNamespace(provider=provider, binary=str(probe), prompt_file=packet,
+                                   task_id="packet", cwd=self.cwd, model="grok-4.7-medium",
+                                   reasoning_effort="medium", role="writer")
+            command = module["provider_command"](
+                args, SimpleNamespace(is_new=True, record={}),
+                prompt_sha256=hashlib.sha256(content).hexdigest(),
+            )
+            wrapped = module["sandbox_provider_command"](
+                command, provider=provider, run_dir=self.run_dir,
+                cwd=self.cwd, home=self.fake_home,
+            )
+            result = subprocess.run(wrapped, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            observed = json.loads(result.stdout)
+            self.assertEqual(observed["sha256"], hashlib.sha256(content).hexdigest())
+            self.assertTrue(observed["readonly"])
+
     def test_cursor_uses_stream_json_force_and_reuses_session(self) -> None:
         for task_id in ("cursor-001", "cursor-002"):
             result = self._run(

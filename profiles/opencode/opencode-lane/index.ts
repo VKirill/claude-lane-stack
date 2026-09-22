@@ -24,7 +24,7 @@ export { askCacheKey } from "./jev.ts"
 export { sessionKey, pickSessionID } from "./session.ts"
 
 const WINNOW = "http://127.0.0.1:47311/hook/post-tool-use"
-const TOOLS = new Set(["read", "grep", "bash", "shell"])
+const WINNOW_TOOLS = new Set(["read", "grep", "bash", "shell"])
 
 function claudeTool(name: string): string {
   const lower = name.toLowerCase()
@@ -257,20 +257,22 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
       }
     },
     "tool.execute.after": async (
-      input: { tool: string; sessionID: string; args: unknown },
+      input: { tool: string; sessionID: string; callID?: string; args: unknown },
       output: { output: string; metadata?: { exit?: unknown } },
     ) => {
       const sessionID = sessionKey(input)
       await withLaneSession(sessionID, async () => {
         setLaneSession(sessionID)
         const name = (input.tool || "").toLowerCase()
-        if (!TOOLS.has(name) || typeof output.output !== "string") return
+        if (typeof output.output !== "string") return
         const task = lastPrompt.get(sessionID) || ""
         const original = output.output
-        try {
-          output.output = await winnowOutput(input.tool, input.args, original, sessionID, task)
-        } catch (err) {
-          laneLog({ mod: "winnow", ok: false, session: sessionID, err: String(err) })
+        if (WINNOW_TOOLS.has(name)) {
+          try {
+            output.output = await winnowOutput(input.tool, input.args, original, sessionID, task)
+          } catch (err) {
+            laneLog({ mod: "winnow", ok: false, session: sessionID, err: String(err) })
+          }
         }
         try {
           const note = await diagnoseFailure(task, original, output.metadata?.exit)
@@ -282,11 +284,14 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
           laneLog({ mod: "diagnose", ok: false, session: sessionID, err: String(err) })
         }
         try {
-          const { n } = recordTool(sessionID, input.tool, input.args, original)
-          const note = await repeatHint(task, input.tool, original, n, sessionID)
-          if (note) {
-            pushNote(sessionID, note)
-            output.output = `${output.output}\n${note}`
+          const observed = await telemetry.after(input, { output: original, metadata: output.metadata })
+          if (!observed.skipped) {
+            const n = observed.deduped ? observed.n : recordTool(sessionID, input.tool, input.args, original).n
+            const note = await repeatHint(task, input.tool, original, n, sessionID)
+            if (note) {
+              pushNote(sessionID, note)
+              output.output = `${output.output}\n${note}`
+            }
           }
         } catch (err) {
           laneLog({ mod: "budget", ok: false, session: sessionID, err: String(err) })

@@ -630,6 +630,21 @@ def _resolve_opencode_agent(args: argparse.Namespace) -> str:
     return DEFAULT_OPENCODE_WRITE_AGENT
 
 
+def command_prompt(prompt_file: Path) -> str:
+    prompt = prompt_file.read_text(encoding="utf-8")
+    # Linux limits each argv entry to 128 KiB. Keep the complete packet on disk
+    # and request one read instead of truncating code or failing before launch.
+    if len(prompt.encode("utf-8")) > 96 * 1024:
+        return (
+            f"Read the complete assembled task at {json.dumps(str(prompt_file.resolve()))} "
+            "before acting. It contains the writer contract, prepared source context, "
+            "and authoritative raw task YAML. Read it once without clipping; "
+            "reuse its source context and follow its instructions. "
+            "If your read tool paginates, fetch every remaining page."
+        )
+    return prompt
+
+
 def provider_command(
     args: argparse.Namespace, lease: Lease, *, prompt_sha256: str
 ) -> list[str]:
@@ -733,7 +748,7 @@ def provider_command(
         )
         return command
     if args.provider == "qwen":
-        prompt = args.prompt_file.read_text(encoding="utf-8")
+        prompt = command_prompt(args.prompt_file)
         boundary = lane_report_boundary(
             task_id=args.task_id,
             cwd=args.cwd,
@@ -754,7 +769,7 @@ def provider_command(
             command[1:1] = ["--resume", lease.record["session_id"]]
         return command
     if args.provider == "kimi":
-        prompt = args.prompt_file.read_text(encoding="utf-8")
+        prompt = command_prompt(args.prompt_file)
         boundary = lane_report_boundary(
             task_id=args.task_id,
             cwd=args.cwd,
@@ -776,7 +791,7 @@ def provider_command(
             command[1:1] = ["-r", lease.record["session_id"]]
         return command
     if args.provider == "cursor":
-        prompt = args.prompt_file.read_text(encoding="utf-8")
+        prompt = command_prompt(args.prompt_file)
         boundary = lane_report_boundary(
             task_id=args.task_id,
             cwd=args.cwd,
@@ -809,7 +824,7 @@ def provider_command(
             command[1:1] = ["--resume", str(lease.record["session_id"])]
         return command
     if args.provider == "opencode":
-        prompt = args.prompt_file.read_text(encoding="utf-8")
+        prompt = command_prompt(args.prompt_file)
         boundary = lane_report_boundary(
             task_id=args.task_id,
             cwd=args.cwd,
@@ -847,7 +862,7 @@ def provider_command(
     from routing_profile import resolve_agy_effort
 
     args.reasoning_effort = resolve_agy_effort(args.model, args.reasoning_effort)
-    prompt = args.prompt_file.read_text(encoding="utf-8")
+    prompt = command_prompt(args.prompt_file)
     boundary = lane_report_boundary(
         task_id=args.task_id,
         cwd=args.cwd,

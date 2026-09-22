@@ -446,7 +446,7 @@ class JevRouteTest(unittest.TestCase):
                 assert.equal(await repeatHint('task', tool, 'same output', 2, 'session'), '');
                 assert.match(await repeatHint('task', tool, 'same output', 3, 'session'), /report the concrete blocker/);
             }}
-            assert.equal(await repeatHint('task', 'write', '', 4, 'session'), '');
+            assert.match(await repeatHint('task', 'write', '', 4, 'session'), /Identical write result/);
         """)
         self.assertEqual(out.returncode, 0, out.stderr)
 
