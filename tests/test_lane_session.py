@@ -1062,6 +1062,8 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(env["CURSOR_ACP_LOG_CONSOLE"], "1")
         self.assertEqual(env["CURSOR_ACP_LOG_LEVEL"], "warn")
         self.assertIn('"task":"deny"', env["OPENCODE_PERMISSION"])
+        self.assertEqual(json.loads(env["OPENCODE_CONFIG_CONTENT"]), {"snapshot": False})
+        self.assertNotIn("OPENCODE_CONFIG_CONTENT", module.provider_environment("qwen"))
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
         module = self._load_lane_session()

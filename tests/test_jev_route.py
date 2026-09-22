@@ -27,6 +27,37 @@ def _node(script: str) -> subprocess.CompletedProcess[str]:
 
 
 class JevRouteTest(unittest.TestCase):
+    def test_diagnosis_requires_failed_exit_not_error_words(self) -> None:
+        diagnose = ROOT / "profiles/opencode/opencode-lane/diagnose.ts"
+        out = _node(f"""
+            import {{ diagnoseFailure }} from {diagnose.as_uri()!r};
+            import assert from 'node:assert/strict';
+            process.env.LANE_OPENCODE_JEV = '1';
+            process.env.TYPESAFE_API_KEY = 'fixture-key';
+            process.env.TEST_SECRET = 'private-env-value';
+            process.env.LANE_STACK_ROOT = {str(ROOT)!r};
+            let calls = 0;
+            globalThis.fetch = async (_url, request) => {{
+                calls++;
+                for (const secret of ['private-env-value', 'private-password']) {{
+                    assert.ok(!request.body.includes(secret), 'credential reached Jev');
+                }}
+                return new Response(JSON.stringify({{ answers: {{
+                    kind: {{ choice: 'code', confidence: 0.9 }}
+                }} }}));
+            }};
+            const source = 'expect(result.error).toBe("failed"); // AssertionError';
+            for (const exit of [undefined, null, 0, '1', NaN, Infinity, 1.5]) {{
+                assert.equal(await diagnoseFailure('fix test', source, exit), '');
+            }}
+            assert.equal(await diagnoseFailure('fix test', 'private document contents', 1), '');
+            assert.equal(calls, 0, 'successful reads must not spend tokens on diagnosis');
+            assert.match(await diagnoseFailure('fix private-env-value',
+                'AssertionError: expected 1, got 2 password=private-password', 1), /diagnose.*code/);
+            assert.equal(calls, 1);
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
+
     def test_lane_log_preserves_async_session_and_redacts_errors(self) -> None:
         log = ROOT / "profiles/opencode/opencode-lane/log.ts"
         out = _node(f"""

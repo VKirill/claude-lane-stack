@@ -1,5 +1,5 @@
 import { askJev, choiceOf, extraJevEnabled } from "./jev.ts"
-import { laneLog } from "./log.ts"
+import { laneLog, sanitizeLog } from "./log.ts"
 
 const KINDS = new Set(["code", "env", "contract", "context", "unclear"])
 
@@ -9,10 +9,12 @@ export function looksFailed(text: string): boolean {
   )
 }
 
-export async function diagnoseFailure(task: string, output: string): Promise<string> {
+export async function diagnoseFailure(task: string, output: string, exitCode?: unknown): Promise<string> {
+  // Read/grep results can contain error examples. Text alone is not failure evidence.
+  if (typeof exitCode !== "number" || !Number.isInteger(exitCode) || exitCode === 0) return ""
   if (!extraJevEnabled() || !looksFailed(output)) return ""
   const answers = await askJev(
-    { task: task.slice(0, 1500), output: output.slice(0, 2500) },
+    { task: String(sanitizeLog(task)).slice(0, 1500), output: String(sanitizeLog(output)).slice(0, 2500) },
     {
       kind: {
         type: "choice",

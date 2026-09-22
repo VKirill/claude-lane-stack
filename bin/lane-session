@@ -940,6 +940,9 @@ def provider_environment(
                 "OPENCODE_DISABLE_CLAUDE_CODE": "1",
                 "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
                 "OPENCODE_PERMISSION": '{"task":"deny"}',
+                # Parallel writers share cwd: OpenCode's snapshot git index
+                # races across processes. Lane owns change tracking/acceptance.
+                "OPENCODE_CONFIG_CONTENT": '{"snapshot":false}',
                 # The ACP file logger lives outside writable sandbox mounts.
                 # Forward warnings/errors through our redacted stderr journal.
                 "CURSOR_ACP_LOG_CONSOLE": "1",

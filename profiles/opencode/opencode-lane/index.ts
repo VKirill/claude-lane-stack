@@ -350,7 +350,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
     },
     "tool.execute.after": async (
       input: { tool: string; sessionID: string; args: unknown },
-      output: { output: string },
+      output: { output: string; metadata?: { exit?: unknown } },
     ) => {
       const sessionID = sessionKey(input)
       await withLaneSession(sessionID, async () => {
@@ -365,7 +365,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
           laneLog({ mod: "winnow", ok: false, session: sessionID, err: String(err) })
         }
         try {
-          const note = await diagnoseFailure(task, original)
+          const note = await diagnoseFailure(task, original, output.metadata?.exit)
           if (note) {
             pushNote(sessionID, note)
             output.output = `${output.output}\n${note}`

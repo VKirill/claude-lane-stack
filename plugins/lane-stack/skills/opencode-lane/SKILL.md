@@ -147,6 +147,20 @@ Cursor ACP warnings/errors are forwarded to the same stderr journal via
 `CURSOR_ACP_LOG_CONSOLE=1` and `CURSOR_ACP_LOG_LEVEL=warn`, because its
 default `~/.opencode-cursor` file logger is outside the sandbox's writable mounts.
 
+Lane writers set `OPENCODE_CONFIG_CONTENT={"snapshot":false}`. Parallel
+writers in the same checkout otherwise race on OpenCode's shared snapshot
+Git index; stale root-owned snapshot objects can also reject writes.
+This disables OpenCode UI undo for lane writers only. Lane's own change
+tracking, owns/verify/accept gates, and interactive OpenCode config stay intact.
+See https://opencode.ai/docs/config/#snapshot.
+
+Jev failure diagnosis requires a nonzero integer `metadata.exit` from the
+tool result. Successful reads/grep and results without an exit code are
+not failure evidence, even if their text contains `error` or `failed`.
+The existing failure-text gate still applies; known credentials are redacted
+from the task/output excerpt before it is sent to Jev.
+Actual tool errors remain in event telemetry regardless of Jev diagnosis.
+
 The plugin uses OpenCode's documented `event` hook and mirrors its errors
 through `client.app.log()`. Native logs live under
 `~/.local/share/opencode/log/`. Find full tool arguments/results by session
