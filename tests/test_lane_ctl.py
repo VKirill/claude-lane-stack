@@ -1069,6 +1069,55 @@ class LaneCtlTest(unittest.TestCase):
                 self.assertTrue((attempt_dir / name).is_file(), f"{attempt_dir}/{name}")
         self.assertFalse((artifact / "control.json").exists())
 
+    def test_v2_retry_rejects_opencode_lane_same_loop(self) -> None:
+        task_file = self.write_v2_task(
+            verification=[{"command": "true", "cwd": ".", "timeout_sec": 5}]
+        )
+        self.start(task_file, env={"FAKE_EXIT": "1"})
+        first = self.wait_status()
+        self.assertEqual(first["status"], "failed")
+        self.assertIs(first["recovery"]["retry_ok"], True)
+        attempt_one = self.run_dir / "artifacts" / "001" / "attempts" / "01"
+        (attempt_one / "opencode-lane.jsonl").write_text(
+            json.dumps(
+                {
+                    "t": "2026-01-01T00:00:00Z",
+                    "mod": "budget",
+                    "ok": True,
+                    "data": {"kind": "same_loop", "conf": 0.9, "n": 4},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        status = json.loads(
+            self.run_ctl(
+                "status",
+                "--run-dir",
+                str(self.run_dir),
+                "--task-id",
+                "001",
+                "--json",
+            ).stdout
+        )
+        self.assertIs(status["recovery"]["retry_ok"], False)
+        self.assertEqual(status["recovery"]["kind"], "same_loop")
+        self.assertIn("same_loop", status["recovery"]["reason"])
+        self.assertEqual(status["next_action"], "inspect")
+        rejected = self.run_ctl(
+            "retry",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-id",
+            "001",
+            check=False,
+        )
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("same_loop", rejected.stderr)
+        self.assertFalse(
+            (self.run_dir / "artifacts" / "001" / "attempts" / "02").exists()
+        )
+
     def test_v2_codex_sol_high_fallback_keeps_normal_acceptance_chain(self) -> None:
         self.init_git_project()
         task_file = self.write_v2_task(
@@ -2041,6 +2090,78 @@ class PidHelpersTest(unittest.TestCase):
         finally:
             proc.kill()
             proc.wait(timeout=5)
+
+
+class OpenCodeLaneRetryBlockTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.lane_ctl = _load_lane_ctl()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.attempt = Path(self.tmp.name) / "01"
+        self.attempt.mkdir()
+
+    def _write(self, records: list[dict]) -> None:
+        (self.attempt / "opencode-lane.jsonl").write_text(
+            "".join(json.dumps(rec) + "\n" for rec in records),
+            encoding="utf-8",
+        )
+
+    def test_missing_jsonl_fail_open(self) -> None:
+        self.assertIsNone(self.lane_ctl.opencode_lane_retry_block(self.attempt))
+
+    def test_same_loop_blocks(self) -> None:
+        self._write(
+            [
+                {
+                    "mod": "budget",
+                    "ok": True,
+                    "data": {"kind": "same_loop", "n": 3, "conf": 0.8},
+                }
+            ]
+        )
+        reason = self.lane_ctl.opencode_lane_retry_block(self.attempt)
+        self.assertIsNotNone(reason)
+        self.assertIn("same_loop", reason)
+
+    def test_diagnose_env_blocks(self) -> None:
+        self._write(
+            [{"mod": "diagnose", "ok": True, "data": {"kind": "env", "conf": 0.7}}]
+        )
+        reason = self.lane_ctl.opencode_lane_retry_block(self.attempt)
+        self.assertIsNotNone(reason)
+        self.assertIn("diagnose=env", reason)
+
+    def test_new_evidence_clears_same_loop(self) -> None:
+        self._write(
+            [
+                {
+                    "mod": "budget",
+                    "ok": True,
+                    "data": {"kind": "same_loop", "n": 3, "conf": 0.9},
+                },
+                {
+                    "mod": "budget",
+                    "ok": True,
+                    "data": {"kind": "new_evidence", "n": 4, "conf": 0.8},
+                },
+            ]
+        )
+        self.assertIsNone(self.lane_ctl.opencode_lane_retry_block(self.attempt))
+
+    def test_last_relevant_wins_env_over_new_evidence(self) -> None:
+        self._write(
+            [
+                {
+                    "mod": "budget",
+                    "ok": True,
+                    "data": {"kind": "new_evidence", "n": 2, "conf": 0.9},
+                },
+                {"mod": "diagnose", "ok": True, "data": {"kind": "env", "conf": 0.8}},
+            ]
+        )
+        reason = self.lane_ctl.opencode_lane_retry_block(self.attempt)
+        self.assertIsNotNone(reason)
+        self.assertIn("diagnose=env", reason)
 
 
 if __name__ == "__main__":

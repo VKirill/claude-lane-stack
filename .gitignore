@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+plugins/lane-stack/winnow/sidecar/.venv/
 .DS_Store
 .agents/capabilities.json
 .agents/routing.profile.yaml

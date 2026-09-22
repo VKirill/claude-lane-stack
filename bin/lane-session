@@ -816,10 +816,11 @@ def provider_command(
             prompt_file=args.prompt_file,
             prompt_sha256=prompt_sha256,
         )
+        # No --pure: opencode-lane.ts must load so compact can re-pin TASK_FILE.
+        # Default marketplace plugins stay off via OPENCODE_DISABLE_DEFAULT_PLUGINS.
         command = [
             binary,
             "run",
-            "--pure",
             "--format",
             "json",
             "--dir",
@@ -939,6 +940,30 @@ def provider_environment(
             }
         )
     return environment
+
+
+def attach_lane_contract_env(
+    environment: dict[str, str],
+    *,
+    prompt_file: Path,
+    run_dir: Path,
+    task_id: str,
+) -> None:
+    """Pin task YAML for opencode-lane sticky restore after compact."""
+    environment["LANE_PROMPT_FILE"] = str(prompt_file.resolve())
+    candidate = run_dir / "tasks" / f"{task_id}.yaml"
+    if candidate.is_file():
+        environment["LANE_TASK_FILE"] = str(candidate.resolve())
+    for key in (
+        "LANE_STACK_ROOT",
+        "TYPESAFE_API_KEY",
+        "JEV_API_KEY",
+        "LANE_JEV_EFFORT",
+        "LANE_OPENCODE_JEV",
+    ):
+        value = os.environ.get(key)
+        if value is not None and value != "":
+            environment[key] = value
 
 
 def lane_writer_config_text() -> str:
@@ -3717,6 +3742,13 @@ def run_provider(args: argparse.Namespace) -> int:
         provider_env = provider_environment(
             args.provider, reasoning_effort=args.reasoning_effort
         )
+        if args.provider == "opencode":
+            attach_lane_contract_env(
+                provider_env,
+                prompt_file=args.prompt_file,
+                run_dir=run_dir,
+                task_id=args.task_id,
+            )
         if provider_state_dir is not None:
             provider_env["CODEX_HOME"] = str(provider_state_dir)
         provider_home = Path(provider_env.get("HOME", str(Path.home()))).resolve()

@@ -85,6 +85,12 @@ resume ──► onboard? ──► туду / план ──► архитек
 
 `/lane-stack:copy-project-life` · агент `copy-lead` · `/lane-stack:ru-text` · `/lane-stack:ru-check` · `/lane-stack:ru-score` · `/lane-stack:tavily` · `/lane-stack:site-copy-audience` · `/lane-stack:site-copy-headlines` · `/lane-stack:site-copy-ux` · шпаргалка: `/lane-stack:copy-project-life info`
 
+### 9. `opencode-lane` — OpenCode-половина конвейера
+
+Нововведения OpenCode только в этот плагин. Не второй plugin-файл. YAML задач — `lane-contract`. Диагноз прогона: «делай диагноз».
+
+Claude: `/lane-stack:opencode-lane info`. OpenCode TUI: `/opencode-lane` (не `/lane-stack:`).
+
 ---
 
 ## Агенты

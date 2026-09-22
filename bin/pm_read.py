@@ -260,15 +260,18 @@ def should_block_read(
         f"effort={settings.get('reasoning_effort') or DEFAULT_EFFORT}"
     )
     cmd = (
-        f"{pm_read_cli()} --path {path} --question "
-        f"\"<what the planner needs from this file>\""
+        f"{pm_read_cli()} --path {shlex.quote(str(path))} "
+        "--question \"WHAT_YOU_NEED\""
     )
     reason = (
-        f"File is {lines} lines (pm_read.min_lines={min_lines}). "
-        f"Use the /bulk-reader skill: {cmd}  "
-        f"(worker: {reader}; stdout is {BRIEF_MARK}). "
-        "Do not cat/head/tail/sed/Read the whole file. "
-        "For an edit, Read with offset+limit on a hotspot."
+        "Redirect, not a failure. "
+        f"This file is {lines} lines, above the full-read limit of {min_lines}. "
+        "Follow /bulk-reader. Run this command and use stdout as the file map:\n"
+        f"{cmd}\n"
+        "Replace WHAT_YOU_NEED with the question you are answering. "
+        f"Stdout starts with {BRIEF_MARK}. Worker: {reader}. "
+        "Do not Read, cat, head, tail, or sed the whole file. "
+        "To edit, Read one hotspot from the map with offset and limit."
     )
     return True, lines, reason
 
@@ -555,7 +558,7 @@ def _hook_body() -> int:
             cfg,
         )
         if path is not None:
-            emit_deny(client, reason)
+            emit_deny(client, reason, block_exit=0)
             return 2
         emit_allow(client)
         return 0
@@ -576,7 +579,7 @@ def _hook_body() -> int:
         cfg=cfg,
     )
     if block:
-        emit_deny(client, reason)
+        emit_deny(client, reason, block_exit=0)
         return 2
     emit_allow(client)
     return 0

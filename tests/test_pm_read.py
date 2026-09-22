@@ -92,6 +92,8 @@ class PmReadTest(unittest.TestCase):
             self.assertIn("pm_read --path", reason)
             self.assertIn("/bulk-reader", reason)
             self.assertIn(BRIEF_MARK, reason)
+            self.assertIn("Redirect, not a failure", reason)
+            self.assertIn("WHAT_YOU_NEED", reason)
 
             small = Path(tmp) / "small.py"
             small.write_text("x\n" * 10, encoding="utf-8")

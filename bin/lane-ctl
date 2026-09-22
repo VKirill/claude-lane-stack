@@ -803,6 +803,61 @@ def trusted_provider_report(
     }
 
 
+_OPENCODE_LANE_JSONL_MAX = 2_000_000
+
+
+def opencode_lane_retry_block(attempt_dir: Path) -> str | None:
+    """If the attempt-local jsonl says same_loop / diagnose=env, refuse same argv.
+
+    Fail-open: missing, symlink, or unreadable file never blocks. Last relevant
+    record wins: same_loop and diagnose=env block, budget new_evidence allows.
+    """
+    path = attempt_dir / "opencode-lane.jsonl"
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if len(raw) > _OPENCODE_LANE_JSONL_MAX:
+        raw = raw[-_OPENCODE_LANE_JSONL_MAX:]
+    text = raw.decode("utf-8", errors="replace")
+    relevant: list[tuple[str, object]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        data = rec.get("data")
+        if not isinstance(data, dict):
+            continue
+        mod = rec.get("mod")
+        kind = data.get("kind")
+        if mod == "budget" and kind in {"same_loop", "new_evidence"}:
+            relevant.append((kind, data.get("n", "?")))
+        elif mod == "diagnose" and kind == "env":
+            relevant.append((kind, None))
+    for kind, n in reversed(relevant):
+        if kind == "new_evidence":
+            return None
+        if kind == "same_loop":
+            return (
+                f"opencode-lane same_loop x{n}: "
+                "do not retry the same argv; change the patch or fix env"
+            )
+        if kind == "env":
+            return (
+                "opencode-lane diagnose=env: do not retry the same argv; "
+                "fix the environment first"
+            )
+    return None
+
+
 def recovery_advice(
     *,
     status: str,
@@ -1022,6 +1077,27 @@ def task_status_v2(
         "failure_retryable": runtime.get("failure_retryable"),
         "fallback_eligible": runtime.get("fallback_eligible"),
     }
+    recovery = recovery_advice(
+        status=status,
+        reason=reason,
+        report_trusted=bool(report_evidence.get("trusted")),
+        report_status=report_status if isinstance(report_status, str) else None,
+        fallback_eligible=runtime.get("fallback_eligible"),
+    )
+    loop_reason = opencode_lane_retry_block(attempt_dir)
+    if loop_reason:
+        recovery = dict(recovery)
+        recovery["retry_ok"] = False
+        recovery["reason"] = loop_reason
+        recovery["kind"] = (
+            "env" if "diagnose=env" in loop_reason else "same_loop"
+        )
+        if recovery.get("next") in {"retry", "retry_or_fallback"}:
+            recovery["next"] = (
+                "fallback" if recovery.get("fallback_ok") else "inspect"
+            )
+        if next_action == "retry":
+            next_action = "inspect"
     return {
         "schema_version": 2,
         "task_id": task_id,
@@ -1048,13 +1124,7 @@ def task_status_v2(
             "status": report_status,
             "path": str(report_path),
         },
-        "recovery": recovery_advice(
-            status=status,
-            reason=reason,
-            report_trusted=bool(report_evidence.get("trusted")),
-            report_status=report_status if isinstance(report_status, str) else None,
-            fallback_eligible=runtime.get("fallback_eligible"),
-        ),
+        "recovery": recovery,
         "verification": {
             "exists": verification_path.is_file(),
             "verified": bool(
@@ -2037,6 +2107,9 @@ def cmd_retry_v2(
         )
 
     old_dir, old_control = load_control_for(run_dir, task_id)
+    loop_reason = opencode_lane_retry_block(old_dir)
+    if loop_reason:
+        raise ContractError(loop_reason)
     if old_control.get("provider", "qwen") not in PRIMARY_MODELS:
         raise ContractError("retry replays primary writers only; Codex fallback is one-shot")
     old_argv = validate_recorded_argv(
@@ -2317,6 +2390,9 @@ def cmd_retry(args: argparse.Namespace) -> int:
             raise ContractError(
                 f"writer retry limit reached: maximum {MAX_PRIMARY_ATTEMPTS} attempts"
             )
+        loop_reason = opencode_lane_retry_block(artifact)
+        if loop_reason:
+            raise ContractError(loop_reason)
         argv = validate_recorded_argv(
             control.get("argv"),
             artifact=artifact,

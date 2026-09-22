@@ -48,6 +48,16 @@ class InstallTest(unittest.TestCase):
             self.assertIn("Do **not** invent a", text, rel)
             self.assertIn("gitnexus analyze", text, rel)
 
+    def test_gitnexus_reindex_hook_is_wired(self) -> None:
+        script = ROOT / "githooks" / "gitnexus-reindex"
+        self.assertTrue(script.is_file())
+        text = script.read_text(encoding="utf-8")
+        self.assertIn('"$root/.gitnexus/run.cjs" analyze', text)
+        install = INSTALL.read_text(encoding="utf-8")
+        self.assertIn("githooks/gitnexus-reindex", install)
+        self.assertIn("post-commit", install)
+        self.assertIn("post-merge", install)
+
     def test_lane_pm_does_not_resubmit_initial_prompt(self) -> None:
         text = (ROOT / "bin" / "lane-pm").read_text(encoding="utf-8")
         self.assertNotIn("extract_boot", text)
@@ -332,6 +342,25 @@ class InstallTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("browser-qa", orch)
 
+    def test_opencode_lane_skill_is_pm_only(self) -> None:
+        skill = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "opencode-lane" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("name: opencode-lane", skill)
+        self.assertIn("profiles/opencode/opencode-lane.ts", skill)
+        self.assertIn("lane-ctl", skill)
+        self.assertIn("делай диагноз", skill)
+        install = (ROOT / "install.sh").read_text(encoding="utf-8")
+        self.assertIn("opencode-lane", install.split("PM_ONLY_SKILLS=", 1)[1].split("\n", 1)[0])
+        info = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "info" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("`opencode-lane`", info)
+        self.assertTrue(
+            (ROOT / "profiles" / "opencode" / "commands" / "opencode-lane.md").is_file()
+        )
+        self.assertIn("commands/opencode-lane.md", install)
+
     def test_seo_specialist_pack_is_shipped(self) -> None:
         agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"
         self.assertTrue(agent.is_file())
@@ -569,6 +598,10 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(ours["source"]["repo"], "VKirill/claude-lane-stack")
             self.assertTrue(ours["autoUpdate"])
             self.assertTrue(settings["enabledPlugins"]["lane-stack@claude-lane-stack"])
+            self.assertNotIn(
+                "fast-jev-compaction@claude-lane-stack", settings["enabledPlugins"]
+            )
+            self.assertEqual(settings["env"]["CLAUDE_CODE_ENABLE_FUNCTION_HOOKS"], "1")
             self.assertEqual(settings["env"]["CLAUDE_CODE_SUBAGENT_MODEL"], "sonnet")
             self.assertTrue(
                 (ROOT / "plugins" / "lane-stack" / ".claude-plugin" / "plugin.json").is_file()
@@ -579,11 +612,13 @@ class InstallTest(unittest.TestCase):
             self.assertTrue((home / ".agents" / "pm-skills" / "info" / "SKILL.md").is_file())
             self.assertTrue((home / ".agents" / "pm-skills" / "app-architect" / "SKILL.md").is_file())
             self.assertTrue((home / ".agents" / "pm-skills" / "bulk-reader" / "SKILL.md").is_file())
+            self.assertTrue((home / ".agents" / "pm-skills" / "opencode-lane" / "SKILL.md").is_file())
             self.assertFalse((home / ".agents" / "skills" / "bulk-reader").exists())
             self.assertEqual((home / ".agents" / "bin" / "pm_read").stat().st_mode & 0o777, 0o755)
             self.assertFalse((home / ".agents" / "skills" / "info").exists())
             self.assertFalse((home / ".agents" / "skills" / "app-architect").exists())
             self.assertFalse((home / ".agents" / "skills" / "orchestrator-lanes").exists())
+            self.assertFalse((home / ".agents" / "skills" / "opencode-lane").exists())
             self.assertFalse((home / ".claude" / "skills" / "orchestrator-lanes").exists())
             self.assertFalse((home / ".claude" / "skills" / "lane-contract").exists())
             self.assertTrue((home / ".agents" / "skills" / "lane-contract" / "SKILL.md").is_file())
@@ -915,6 +950,10 @@ class InstallTest(unittest.TestCase):
             ours = settings["extraKnownMarketplaces"]["claude-lane-stack"]
             self.assertEqual(ours["source"]["path"], str(ROOT))
             self.assertNotIn("autoUpdate", ours)
+            self.assertNotIn(
+                "fast-jev-compaction@fast-jev-compaction", settings["enabledPlugins"]
+            )
+            self.assertEqual(settings["env"]["CLAUDE_CODE_ENABLE_FUNCTION_HOOKS"], "1")
 
     def test_installs_dedicated_codex_night_review_profile(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

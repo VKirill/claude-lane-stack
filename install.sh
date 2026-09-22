@@ -86,6 +86,84 @@ fi
 if ! command -v claude >/dev/null 2>&1; then
   echo "warning: Claude Code is not installed; install it before starting dev-orchestrator" >&2
 fi
+if ! command -v uv >/dev/null 2>&1; then
+  echo "warning: uv is not installed; winnow will pass tool results through" >&2
+  echo "  install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+fi
+# Sidecar reads ~/.winnow/env; Claude settings.json is not in that process.
+python3 - <<'PY'
+from pathlib import Path
+dest = Path.home() / ".winnow" / "env"
+if dest.exists():
+    raise SystemExit
+key = ""
+root = Path.home() / "secrets"
+for name in ("typesafe.env", "jev.env"):
+    path = root / name
+    if not path.is_file():
+        continue
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        k, _, v = stripped.partition("=")
+        if k.strip() in ("TYPESAFE_API_KEY", "JEV_API_KEY"):
+            key = v.strip().strip('"').strip("'")
+            break
+    if key:
+        break
+if key:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(f"TYPESAFE_API_KEY={key}\n", encoding="utf-8")
+    dest.chmod(0o600)
+PY
+# SkillRanker advice. Do not clobber a config the user already edited.
+python3 - <<'PY'
+from pathlib import Path
+path = Path.home() / ".config" / "sr" / "config.toml"
+if not path.exists():
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[network]\nenabled = true\n\n[hook]\nmode = \"advisory\"\n", encoding="utf-8")
+PY
+if ! command -v sr >/dev/null 2>&1 && [[ ! -x "${HOME}/.agents/bin/sr" ]]; then
+  echo "warning: sr is not installed; skill suggestions stay quiet until ~/.agents/bin/sr exists" >&2
+fi
+# OpenCode → Cursor subscription models. Skip when this home has no OpenCode config
+# (install.sh tests) or the CLIs are missing.
+if [[ -f "$HOME/.config/opencode/opencode.json" ]] \
+  && command -v opencode >/dev/null 2>&1 \
+  && command -v cursor-agent >/dev/null 2>&1 \
+  && command -v npm >/dev/null 2>&1; then
+  if ! command -v open-cursor >/dev/null 2>&1; then
+    npm install -g @rama_nigg/open-cursor || echo "warning: npm install open-cursor failed" >&2
+  fi
+  if command -v open-cursor >/dev/null 2>&1; then
+    open-cursor install || echo "warning: open-cursor install failed; Cursor models stay unavailable in OpenCode" >&2
+  fi
+fi
+if [[ -f "$HOME/.config/opencode/opencode.json" && -f "$STACK_ROOT/profiles/opencode/opencode-lane.ts" ]]; then
+  mkdir -p "$HOME/.config/opencode/plugins/opencode-lane"
+  install -m 0644 "$STACK_ROOT/profiles/opencode/opencode-lane.ts" "$HOME/.config/opencode/plugins/opencode-lane.ts"
+  rm -f "$HOME/.config/opencode/plugins/lane-context.ts"
+  cp -a "$STACK_ROOT/profiles/opencode/opencode-lane/"*.ts "$HOME/.config/opencode/plugins/opencode-lane/"
+  mkdir -p "$HOME/.config/opencode/commands"
+  install -m 0644 "$STACK_ROOT/profiles/opencode/commands/opencode-lane.md" \
+    "$HOME/.config/opencode/commands/opencode-lane.md"
+  python3 - <<'PY'
+import json
+from pathlib import Path
+path = Path.home() / ".config" / "opencode" / "opencode.json"
+data = json.loads(path.read_text(encoding="utf-8"))
+plugins = data.get("plugin")
+if not isinstance(plugins, list):
+    plugins = []
+new = "./plugins/opencode-lane.ts"
+plugins = [item for item in plugins if item not in ("./plugins/lane-context.ts", new)]
+plugins.append(new)
+data["plugin"] = plugins
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PY
+fi
 if [[ -f "$CLAUDE/settings.json" ]]; then
   python3 "$STACK_ROOT/hooks/merge_claude_settings.py" --check "$CLAUDE/settings.json"
 fi
@@ -102,7 +180,7 @@ mkdir -p "$CODEX"
 
 # Writer CLIs (Grok/Codex/Kimi/Qwen) scan ~/.agents/skills. Keep the PM
 # playbook out of that catalog. Claude Code still gets a ~/.claude/skills link.
-PM_ONLY_SKILLS="orchestrator-lanes orchestrator-workflow info app-architect bulk-reader"
+PM_ONLY_SKILLS="orchestrator-lanes orchestrator-workflow info app-architect bulk-reader opencode-lane"
 # User-kept copies (do not wipe on install; they override the plugin).
 # Cloud (~/.claude/skills) owns google/ yandex/ seo-tools trees; do not rm them.
 KEEP_CLAUDE_SKILLS="project-life google yandex seo-tools"
@@ -126,6 +204,10 @@ if [[ -d "$STACK_ROOT/seo-system" ]]; then
   rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/seo-system/" "$DEST/seo-system/"
 fi
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/hooks/" "$DEST/hooks/"
+if [[ -d "$STACK_ROOT/.git/hooks" && -f "$STACK_ROOT/githooks/gitnexus-reindex" ]]; then
+  install -m 0755 "$STACK_ROOT/githooks/gitnexus-reindex" "$STACK_ROOT/.git/hooks/post-commit"
+  install -m 0755 "$STACK_ROOT/githooks/gitnexus-reindex" "$STACK_ROOT/.git/hooks/post-merge"
+fi
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/templates/" "$DEST/templates/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/schemas/" "$DEST/schemas/"
 find "$DEST/hooks" "$DEST/board" -type f -name '*.py[co]' -delete
@@ -181,7 +263,7 @@ import sys
 path = Path(sys.argv[1])
 if not path.is_file():
     raise SystemExit(0)
-names = ["orchestrator-lanes", "orchestrator-workflow", "info", "app-architect", "bulk-reader"]
+names = ["orchestrator-lanes", "orchestrator-workflow", "info", "app-architect", "bulk-reader", "opencode-lane"]
 ignore_path = "~/.agents/pm-skills"
 text = path.read_text(encoding="utf-8")
 original = text
@@ -235,9 +317,11 @@ MARKETPLACE_LINK="$CLAUDE/plugins/marketplaces/claude-lane-stack"
 MARKETPLACE_GITHUB="VKirill/claude-lane-stack"
 mkdir -p "$CLAUDE/plugins/marketplaces" "$CLAUDE/agents" "$CLAUDE/commands" "$CLAUDE/skills"
 if [[ "$PLUGIN_LOCAL" == 1 ]]; then
-  if [[ -L "$MARKETPLACE_LINK" || ! -e "$MARKETPLACE_LINK" ]]; then
-    ln -sfn "$STACK_ROOT" "$MARKETPLACE_LINK"
+  # A GitHub clone already at this path is not the checkout. Replace it.
+  if [[ -e "$MARKETPLACE_LINK" && ! -L "$MARKETPLACE_LINK" ]]; then
+    rm -rf "$MARKETPLACE_LINK"
   fi
+  ln -sfn "$STACK_ROOT" "$MARKETPLACE_LINK"
   MARKETPLACE_ADD="$MARKETPLACE_LINK"
 else
   if [[ -L "$MARKETPLACE_LINK" ]]; then
@@ -312,6 +396,11 @@ PY
   if ! claude plugin install lane-stack@claude-lane-stack -y -s user; then
     echo "warning: claude plugin install lane-stack@claude-lane-stack failed; enable after next Claude launch" >&2
   fi
+  # Compaction hook is inside lane-stack. Drop the standalone plugin if a
+  # previous install left it, so /compact is not hooked twice.
+  claude plugin uninstall fast-jev-compaction@fast-jev-compaction -y -s user >/dev/null 2>&1 || true
+  claude plugin uninstall fast-jev-compaction@claude-lane-stack -y -s user >/dev/null 2>&1 || true
+  claude plugin marketplace remove fast-jev-compaction --scope user >/dev/null 2>&1 || true
 fi
 
 #  discovery (optional)

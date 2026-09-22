@@ -1,0 +1,29 @@
+[project]
+name = "winnow"
+version = "0.5.0"
+description = "A calibrated context sieve for Claude Code: judge every tool result before it enters context."
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Ghaleb Dweikat", email = "ghalebdweikat@gmail.com" }]
+dependencies = [
+  "typesafe-sdk>=0.6.0",
+  "system-one-adapter[anthropic]",
+  "anthropic>=1.0",
+  "mcp>=2.0",
+]
+
+[project.scripts]
+winnow = "winnow.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/winnow"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

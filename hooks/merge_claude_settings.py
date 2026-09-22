@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -110,6 +111,18 @@ TEAMMATE_IDLE_RE = re.compile(r"teammate_idle_sentinel\.py")
 SESSION_LEDGER_RE = re.compile(r"session_ledger\.py")
 PM_STOP_RE = re.compile(r"pm_stop_sentinel\.py")
 PM_BULK_READ_RE = re.compile(r"pm_bulk_read\.py")
+GITNEXUS_HOOK_RE = re.compile(r"gitnexus-hook")
+GITNEXUS_HOOK_FILES = (
+    "gitnexus-hook.cjs",
+    "hook-lock.cjs",
+    "hook-db-lock-probe.cjs",
+    "resolve-analyze-cmd.cjs",
+    "registry-query.cjs",
+    "win-rm-list-json.ps1",
+)
+GITNEXUS_CLI_PATH_LITERAL = (
+    "let cliPath = path.resolve(__dirname, '..', '..', 'dist', 'cli', 'index.js');"
+)
 
 
 def _replace_event_hooks(
@@ -280,6 +293,86 @@ def merge_pm_bulk_read(settings: dict[str, Any], hook_path: Path) -> dict[str, A
     return settings
 
 
+def gitnexus_claude_src() -> Path | None:
+    roots = (
+        Path("/usr/lib/node_modules/gitnexus"),
+        Path("/usr/local/lib/node_modules/gitnexus"),
+        Path.home() / ".npm-global" / "lib" / "node_modules" / "gitnexus",
+    )
+    for root in roots:
+        src = root / "hooks" / "claude"
+        if (src / "gitnexus-hook.cjs").is_file():
+            return src
+    return None
+
+
+def install_gitnexus_claude_files(
+    dest_dir: Path, src: Path | None = None
+) -> Path | None:
+    """Copy official GitNexus Claude hooks and pin cliPath like `gitnexus setup`."""
+    src = src if src is not None else gitnexus_claude_src()
+    if src is None or not (src / "gitnexus-hook.cjs").is_file():
+        return None
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for name in GITNEXUS_HOOK_FILES:
+        path = src / name
+        if path.is_file():
+            shutil.copy2(path, dest_dir / name)
+    hook = dest_dir / "gitnexus-hook.cjs"
+    cli = src.parent.parent / "dist" / "cli" / "index.js"
+    if cli.is_file():
+        text = hook.read_text(encoding="utf-8")
+        pinned = f"let cliPath = {json.dumps(str(cli.resolve()))};"
+        if GITNEXUS_CLI_PATH_LITERAL in text:
+            hook.write_text(
+                text.replace(GITNEXUS_CLI_PATH_LITERAL, pinned, 1), encoding="utf-8"
+            )
+    return hook if hook.is_file() else None
+
+
+def merge_gitnexus_hooks(settings: dict[str, Any], hook_cjs: Path) -> dict[str, Any]:
+    """Official GitNexus Claude hooks: PreToolUse enrich + PostToolUse stale notify."""
+    cmd = f"node {shlex.quote(str(hook_cjs.expanduser().resolve()))}"
+    _drop_command_hooks(settings, "PreToolUse", GITNEXUS_HOOK_RE)
+    _drop_command_hooks(settings, "PostToolUse", GITNEXUS_HOOK_RE)
+    hooks = settings.setdefault("hooks", {})
+    pre = hooks.setdefault("PreToolUse", [])
+    post = hooks.setdefault("PostToolUse", [])
+    if not isinstance(pre, list):
+        pre = []
+        hooks["PreToolUse"] = pre
+    if not isinstance(post, list):
+        post = []
+        hooks["PostToolUse"] = post
+    pre.append(
+        {
+            "matcher": "Grep|Glob|Bash",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": cmd,
+                    "timeout": 10,
+                    "statusMessage": "Enriching with GitNexus graph context...",
+                }
+            ],
+        }
+    )
+    post.append(
+        {
+            "matcher": "Bash",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": cmd,
+                    "timeout": 10,
+                    "statusMessage": "Checking GitNexus index freshness...",
+                }
+            ],
+        }
+    )
+    return settings
+
+
 # Stack env keys we own (setdefaults only — never clobber user overrides).
 STACK_ENV_DEFAULTS: dict[str, str] = {
     # Agent teams + tool search (Claude Code 2.1.x capability surface)
@@ -292,6 +385,8 @@ STACK_ENV_DEFAULTS: dict[str, str] = {
     "MCP_TIMEOUT": "60000",
     # Keep attribution noise out of git
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    # fast-jev-compaction function hook (session.compact replaces /compact).
+    "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1",
 }
 
 # Tools the solo PM + supervisors need for correct close / peer messaging
@@ -303,6 +398,7 @@ STACK_PERMISSION_ALLOW_EXTRA = (
     "Monitor",
     "Artifact",
     "mcp__metamcp",
+    "mcp__gitnexus",
     # browser-qa: host-level chrome-devtools MCP (chrome-qa profile / autoConnect).
     "mcp__chrome-devtools",
 )
@@ -357,6 +453,54 @@ def merge_stack_capabilities(settings: dict[str, Any]) -> dict[str, Any]:
 MARKETPLACE_NAME = "claude-lane-stack"
 PLUGIN_ID = "lane-stack@claude-lane-stack"
 GITHUB_MARKETPLACE_REPO = "VKirill/claude-lane-stack"
+# Standalone copies. The hook now lives inside lane-stack.
+STALE_FAST_JEV_IDS = (
+    "fast-jev-compaction@claude-lane-stack",
+    "fast-jev-compaction@fast-jev-compaction",
+)
+
+
+def _env_file_value(path: Path, names: tuple[str, ...]) -> str:
+    # ponytail: same KEY=value scan as jev_decisions; one shared helper if a third caller appears.
+    if not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, _, value = stripped.partition("=")
+        if key.strip() in names:
+            return value.strip().strip('"').strip("'")
+    return ""
+
+
+def merge_typesafe_key(
+    settings: dict[str, Any], secrets_dir: Path | None = None
+) -> dict[str, Any]:
+    """Copy TYPESAFE_API_KEY into Claude env so session.compact can call Jev.
+
+    Reads ~/secrets/typesafe.env (then jev.env). Leaves an existing settings
+    value alone. Does not read the process environment: a shell key must not
+    land in settings.json during tests that fake HOME.
+    """
+    env = settings.setdefault("env", {})
+    if not isinstance(env, dict):
+        env = {}
+        settings["env"] = env
+    current = env.get("TYPESAFE_API_KEY")
+    if isinstance(current, str) and current.strip():
+        return settings
+    root = secrets_dir if secrets_dir is not None else Path.home() / "secrets"
+    for name in ("typesafe.env", "jev.env"):
+        found = _env_file_value(root / name, ("TYPESAFE_API_KEY", "JEV_API_KEY"))
+        if found:
+            env["TYPESAFE_API_KEY"] = found
+            return settings
+    return settings
 
 
 def marketplace_spec(*, local: bool, stack_root: Path | None = None) -> dict[str, Any]:
@@ -397,6 +541,8 @@ def merge_plugin_marketplace(
         enabled = {}
         settings["enabledPlugins"] = enabled
     enabled[PLUGIN_ID] = True
+    for stale in STALE_FAST_JEV_IDS:
+        enabled.pop(stale, None)
     return settings
 
 
@@ -494,6 +640,7 @@ def main() -> int:
         parser.error("guard path is required unless --check is used")
     settings = merge_guard(settings, args.guard)
     settings = merge_stack_capabilities(settings)
+    settings = merge_typesafe_key(settings)
     plugin_local = args.plugin_local or os.environ.get(
         "LANE_INSTALL_LOCAL_MARKETPLACE", "0"
     ) not in {"", "0"}
@@ -533,6 +680,11 @@ def main() -> int:
     bulk = hooks_dir / "pm_bulk_read.py"
     if bulk.is_file():
         settings = merge_pm_bulk_read(settings, bulk)
+    gn_hook = install_gitnexus_claude_files(
+        args.settings.parent / "hooks" / "gitnexus"
+    )
+    if gn_hook is not None:
+        settings = merge_gitnexus_hooks(settings, gn_hook)
     ledger = hooks_dir / "session_ledger.py"
     if ledger.is_file():
         settings = merge_subagent_usage(settings, ledger)

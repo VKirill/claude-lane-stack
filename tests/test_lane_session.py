@@ -14,6 +14,7 @@ import textwrap
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 LANE_SESSION = ROOT / "bin" / "lane-session"
@@ -984,7 +985,7 @@ class LaneSessionTest(unittest.TestCase):
 
         first, second = self._calls()
         self.assertEqual(first[0], "run")
-        self.assertIn("--pure", first)
+        self.assertNotIn("--pure", first)
         self.assertEqual(first[first.index("--format") + 1], "json")
         self.assertEqual(first[first.index("--agent") + 1], "lane-writer")
         self.assertEqual(
@@ -1018,6 +1019,34 @@ class LaneSessionTest(unittest.TestCase):
         self.assertEqual(env["OPENCODE_DISABLE_CLAUDE_CODE"], "1")
         self.assertEqual(env["OPENCODE_DISABLE_DEFAULT_PLUGINS"], "1")
         self.assertIn('"task":"deny"', env["OPENCODE_PERMISSION"])
+
+    def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
+        module = self._load_lane_session()
+        tasks = self.run_dir / "tasks"
+        tasks.mkdir()
+        yaml_path = tasks / "001.yaml"
+        yaml_path.write_text("id: '001'\nowns_paths: [src]\n", encoding="utf-8")
+        prompt = self.cwd / "prompt.md"
+        prompt.write_text("writer\n", encoding="utf-8")
+        env: dict[str, str] = {}
+        module.attach_lane_contract_env(
+            env, prompt_file=prompt, run_dir=self.run_dir, task_id="001"
+        )
+        self.assertEqual(env["LANE_PROMPT_FILE"], str(prompt.resolve()))
+        self.assertEqual(env["LANE_TASK_FILE"], str(yaml_path.resolve()))
+
+    def test_attach_lane_contract_env_keeps_jev_off_flag(self) -> None:
+        module = self._load_lane_session()
+        prompt = self.cwd / "prompt.md"
+        prompt.write_text("writer\n", encoding="utf-8")
+        env: dict[str, str] = {}
+        with patch.dict("os.environ", {"LANE_OPENCODE_JEV": "0"}, clear=False):
+            module.attach_lane_contract_env(
+                env, prompt_file=prompt, run_dir=self.run_dir, task_id="missing"
+            )
+        self.assertEqual(env["LANE_OPENCODE_JEV"], "0")
+        self.assertEqual(env["LANE_PROMPT_FILE"], str(prompt.resolve()))
+        self.assertNotIn("LANE_TASK_FILE", env)
 
     def test_cursor_fast_tier_appends_model_suffix(self) -> None:
         module = self._load_lane_session()

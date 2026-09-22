@@ -1,3 +1,17 @@
+## 1.37.0 — 2026-09-22
+
+### Added
+- **OpenCode `opencode-lane` plugin:** sticky contract, winnow, Jev effort,
+  diagnose, skill-hint, evidence, budget/`same_loop`. One branded plugin;
+  `install.sh` copies it into `~/.config/opencode` when `opencode.json` exists.
+- **Claude hooks** in `lane-stack`: winnow sidecar, fast-jev compact, Jev
+  effort router, SkillRanker/`skill_hint.py` fallback. Same `./install.sh`
+  reinstalls `lane-stack@claude-lane-stack`.
+- **`lane-ctl retry` gate:** attempt-local `opencode-lane.jsonl` with last
+  `same_loop` or `diagnose=env` refuses the same argv (`retry_ok=false`).
+  Fingerprint hashes the full tool output. Extra Jev is cached 15s in
+  `askJev`. `LANE_LOG=0` keeps tests out of the live jsonl.
+
 ## 1.36.0 — 2026-09-21
 
 ### Changed

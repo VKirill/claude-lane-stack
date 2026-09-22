@@ -1,5 +1,6 @@
 {
   "description": "Default host Claude settings the conveyor needs",
+  "modules": ["./lane-mods.ts"],
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +9,28 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ensure_subagent_model.py\"",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run -q --project \"${CLAUDE_PLUGIN_ROOT}/winnow/sidecar\" python -m winnow serve --ensure",
+            "timeout": 600,
+            "statusMessage": "winnow: starting sidecar"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/skillranker-hook.sh\"",
+            "timeout": 4
           }
         ]
       }

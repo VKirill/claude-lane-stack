@@ -1,0 +1,13 @@
+#!/bin/sh
+# Reindex GitNexus after local commit/merge. Index is local; GitHub push cannot
+# update MCP. Official Claude/Codex hook only *notifies*; this actually runs.
+# ponytail: mkdir lock — overlapping analyze can corrupt Kuzu. Upgrade: gitnexus watch.
+root=$(git rev-parse --show-toplevel) || exit 0
+[ -f "$root/.gitnexus/run.cjs" ] || exit 0
+lock="$root/.gitnexus/analyze.lockdir"
+mkdir "$lock" 2>/dev/null || exit 0
+(
+  trap 'rmdir "$lock" 2>/dev/null' EXIT
+  node "$root/.gitnexus/run.cjs" analyze >>"$root/.gitnexus/analyze.log" 2>&1
+) &
+exit 0

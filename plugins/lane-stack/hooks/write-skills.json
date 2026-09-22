@@ -1,0 +1,7 @@
+{
+  "none": "No extra skill; the writer contract is enough",
+  "writer-practices": "General code change: smallest correct diff",
+  "impeccable-ui": "UI, layout, CSS, or React visual polish",
+  "ru-text": "Russian user-facing copy",
+  "karpathy-guidelines": "Model, training, or data-pipeline code quality"
+}

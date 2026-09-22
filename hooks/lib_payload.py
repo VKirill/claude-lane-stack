@@ -98,14 +98,15 @@ def emit_allow(client: str) -> None:
     # Claude/Codex: silent allow via exit 0 is fine
     sys.exit(0)
 
-def emit_deny(client: str, reason: str) -> None:
+def emit_deny(client: str, reason: str, *, block_exit: int = 2) -> None:
     if client == "":
         print(json.dumps({"decision": "deny", "reason": reason}, ensure_ascii=False))
         sys.exit(0)
     if client == "grok":
         print(json.dumps({"decision": "deny", "reason": reason}, ensure_ascii=False))
         sys.exit(2)
-    # Claude + Codex compatible
+    # Exit 2 makes Claude prefix "hook error". pm_read passes block_exit=0:
+    # the JSON deny still blocks the tool, without looking like a crash.
     print(json.dumps({
         "decision": "block",
         "reason": reason,
@@ -115,7 +116,7 @@ def emit_deny(client: str, reason: str) -> None:
             "permissionDecisionReason": reason,
         },
     }, ensure_ascii=False))
-    sys.exit(2)
+    sys.exit(block_exit)
 
 def emit_post_block(client: str, reason: str) -> None:
     """PostToolUse quality feedback (Claude guardian style)."""
