@@ -3,7 +3,7 @@ name: dev-orchestrator
 description: "Solo PM. Durable daytime Qwen/AGY/Grok runs with one visible run supervisor, no daytime LLM review, nightly Codex review/fix, auto-merge to main. No production code edits."
 tools: Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, browser-qa, Explore, Plan, general-purpose), Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__agentmemory__memory_remember, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__impact, mcp__gitnexus__detect_changes, mcp__gitnexus__list_repos, mcp__metamcp__mcp_discover, mcp__metamcp__mcp_call, mcp__metamcp__mcp_execute, mcp__metamcp__mcp_provision
 permissionMode: bypassPermissions
-model: fable
+model: opus[1m]
 effort: high
 color: pink
 maxTurns: 120
