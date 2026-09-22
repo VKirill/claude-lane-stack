@@ -25,14 +25,6 @@ export { sessionKey, pickSessionID } from "./session.ts"
 
 const WINNOW = "http://127.0.0.1:47311/hook/post-tool-use"
 const TOOLS = new Set(["read", "grep", "bash", "shell"])
-const PRUNE_CHARS = 40_000
-
-type ToolPart = {
-  type: string
-  callID: string
-  tool?: string
-  state?: { status?: string; input?: Record<string, unknown>; output?: string }
-}
 
 function claudeTool(name: string): string {
   const lower = name.toLowerCase()
@@ -189,98 +181,6 @@ async function winnowOutput(
   return next
 }
 
-function toolChars(messages: OcMessage[]): number {
-  let total = 0
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const item = part as ToolPart
-      if (item.type === "tool" && typeof item.state?.output === "string") total += item.state.output.length
-    }
-  }
-  return total
-}
-
-async function pruneMessages(messages: OcMessage[], sessionID: string): Promise<void> {
-  const key = typesafeKey()
-  if (!key || toolChars(messages) < PRUNE_CHARS) return
-  const root = stackRoot()
-  const [{ compact }, request] = await Promise.all([
-    import(`${root}/plugins/lane-stack/fast-jev/src/compact.ts`),
-    import(`${root}/plugins/lane-stack/fast-jev/src/request.ts`),
-  ])
-  const mapped = messages.map((message) => {
-    const toolUses: { tool_use_id: string; tool: string; input: Record<string, unknown> }[] = []
-    const toolResults: { tool_use_id: string; text: string }[] = []
-    let text = ""
-    for (const part of message.parts ?? []) {
-      const item = part as ToolPart & { text?: string }
-      if (item.type === "text" && item.text) text += item.text
-      if (item.type === "tool" && item.state?.status === "completed" && item.callID) {
-        toolUses.push({
-          tool_use_id: item.callID,
-          tool: item.tool || "tool",
-          input: item.state.input || {},
-        })
-        toolResults.push({ tool_use_id: item.callID, text: item.state.output || "" })
-      }
-    }
-    return {
-      role: message.info?.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      text,
-      toolUses,
-      toolResults,
-    }
-  })
-  const result = await compact(
-    mapped,
-    {
-      async ask(state: unknown, questions: unknown) {
-        const built = request.buildJevRequest({ apiKey: key, model: request.DEFAULT_MODEL }, state, questions)
-        const response = await fetch(built.url, {
-          method: built.method,
-          headers: built.headers,
-          body: built.body,
-          signal: AbortSignal.timeout(30_000),
-        })
-        return request.parseJevResponse(response.status, response.ok, await response.text())
-      },
-    },
-    { preserveRecentMessages: 6, goal: lastPrompt.get(sessionID) || undefined },
-  )
-  const byShort = new Map<string, string>()
-  let n = 0
-  for (const message of mapped) {
-    for (const item of message.toolResults) {
-      n += 1
-      byShort.set(`t${n}`, item.tool_use_id)
-    }
-  }
-  const dropped = new Map<string, string>()
-  for (const decision of result.decisions) {
-    if (decision.action === "keep") continue
-    const callID = byShort.get(decision.id)
-    if (!callID) continue
-    const original = mapped.flatMap((message) => message.toolResults).find((item) => item.tool_use_id === callID)
-    const note =
-      decision.action === "drop_call"
-        ? `[fast-jev] ${decision.tool} removed`
-        : `[fast-jev] ${decision.tool} result truncated`
-    dropped.set(callID, decision.action === "drop_result" ? `${(original?.text || "").slice(0, 300)}\n${note}` : note)
-  }
-  if (dropped.size === 0) return
-  for (const message of messages) {
-    for (const part of message.parts ?? []) {
-      const item = part as ToolPart
-      if (item.type !== "tool" || item.state?.status !== "completed") continue
-      const next = dropped.get(item.callID)
-      if (next !== undefined && item.state) item.state.output = next
-    }
-  }
-  laneLog({ mod: "compact", ok: true, session: sessionID, data: { dropped: dropped.size } })
-}
-
-let pruning = new Set<string>()
-
 type PluginContext = {
   client?: { app?: { log?: (input: { body: Record<string, unknown> }) => Promise<unknown> } }
 }
@@ -299,7 +199,12 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
     )
   }
   const telemetry = createTelemetry()
-  laneLog({ mod: "startup", ok: true, session: "", data: { event: "plugin.startup" } })
+  laneLog({
+    mod: "startup",
+    ok: true,
+    session: "",
+    data: { event: "plugin.startup", history_compaction: "off" },
+  })
   void ensureSidecar().then(
     (ready) => {
       if (!ready) laneLog({ mod: "winnow", ok: false, session: "", err: "sidecar unavailable" })
@@ -410,15 +315,6 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
           pushNote(sessionID, evidence)
         } catch (err) {
           laneLog({ mod: "evidence", ok: false, session: sessionID, err: String(err) })
-        }
-        if (pruning.has(sessionID)) return
-        pruning.add(sessionID)
-        try {
-          await pruneMessages(output.messages, sessionID)
-        } catch (err) {
-          laneLog({ mod: "compact", ok: false, session: sessionID, err: String(err) })
-        } finally {
-          pruning.delete(sessionID)
         }
         try {
           ensureStickyMessages(

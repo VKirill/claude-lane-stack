@@ -78,6 +78,69 @@ class JevRouteTest(unittest.TestCase):
         """)
         self.assertEqual(out.returncode, 0, out.stderr)
 
+    def test_opencode_transform_preserves_large_history_without_compaction(self) -> None:
+        env = os.environ.copy()
+        env["LANE_LOG"] = "0"
+        env["LANE_LOG_SRC"] = "test"
+        out = subprocess.run(
+            ["bun", "-e", f"""
+            import {{ OpenCodeLanePlugin }} from {INDEX.as_uri()!r};
+            import {{ mkdtempSync, writeFileSync, rmSync }} from 'node:fs';
+            import assert from 'node:assert/strict';
+            process.env.LANE_OPENCODE_JEV = '1';
+            process.env.TYPESAFE_API_KEY = 'fixture-key';
+            process.env.LANE_STACK_ROOT = {str(ROOT)!r};
+            const dir = mkdtempSync('/tmp/opencode-no-history-compact-');
+            process.env.LANE_TASK_FILE = dir + '/task.yaml';
+            writeFileSync(process.env.LANE_TASK_FILE, 'acceptance:\\n  - preserve tool output\\n');
+            const requests = [];
+            globalThis.fetch = async (url, request) => {{
+                if (String(url).endsWith('/health')) return new Response('ok');
+                requests.push(JSON.parse(request.body));
+                return new Response(JSON.stringify({{ answers: {{
+                    c0: {{ choice: 'supports', confidence: 1 }},
+                    call_t1: {{ noul: 0 }}, result_t1: {{ noul: 0 }}
+                }} }}));
+            }};
+            try {{
+                const hooks = await OpenCodeLanePlugin();
+                const toolOutput = 'tool output\\n'.repeat(5000);
+                const messages = Array.from({{ length: 10 }}, (_, i) => ({{
+                    info: {{ role: i % 2 ? 'assistant' : 'user' }},
+                    parts: [{{ type: 'text', text: 'history ' + i }}]
+                }}));
+                messages[1] = {{
+                    info: {{ role: 'assistant' }},
+                    parts: [{{
+                        type: 'tool', tool: 'bash', callID: 'call-large-history',
+                        state: {{ status: 'completed', input: {{ command: 'printf x' }}, output: toolOutput }}
+                    }}]
+                }};
+                const before = JSON.stringify(messages.slice(0, 10));
+                const originalToolOutput = messages[1].parts[0].state.output;
+                await hooks['experimental.chat.messages.transform'](
+                    {{ sessionID: 'large-history-no-compact' }}, {{ messages }}
+                );
+                assert.equal(JSON.stringify(messages.slice(0, 10)), before);
+                assert.equal(messages[1].parts[0].state.output, originalToolOutput);
+                assert.equal(requests.length, 1, 'evidence may ask Jev, history compaction must not');
+                assert.ok(requests[0].state.criteria);
+                assert.ok(messages.some(message => message.parts.some(part =>
+                    part.synthetic && part.text.includes('LANE CONTRACT (live)'))));
+                assert.ok(messages.some(message => message.parts.some(part =>
+                    typeof part.text === 'string' &&
+                    part.text.includes('all listed acceptance criteria have supporting tool output'))));
+            }} finally {{
+                rmSync(dir, {{ recursive: true, force: true }});
+            }}
+        """],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(out.returncode, 0, out.stderr)
+
     def test_diagnosis_requires_failed_exit_not_error_words(self) -> None:
         diagnose = ROOT / "profiles/opencode/opencode-lane/diagnose.ts"
         out = _node(f"""

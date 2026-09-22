@@ -66,10 +66,10 @@ Jev only supplies a typed judgment.
 | Task YAML, owns, acceptance | PM | `.agents/runs/` + **lane-contract** |
 | Dispatch, retry, session id | Controller | `bin/lane-session`, `lane-ctl` |
 | L1 verify / accept | Controller | `lane-ctl` — never the plugin |
-| Sticky YAML after compact | Plugin | `sticky.ts` |
+| Sticky YAML contract | Plugin | `sticky.ts` |
 | Winnow large tool output | Plugin | `index.ts` → sidecar `:47311` |
 | Effort route | Plugin | `chat.params` + `jev-route-core.ts` |
-| Compact old tool results | Plugin | `fast-jev` `compact.ts` |
+| History compaction | OpenCode | No extra plugin compaction; message transforms preserve tool history |
 | Diagnose a failed tool | Plugin | `diagnose.ts` (hint only) |
 | Write-skill hint | Plugin | `skill-hint.ts` |
 | Acceptance vs last tool | Plugin | `evidence.ts` |
@@ -100,7 +100,7 @@ OpenCode hooks this plugin uses:
 - `chat.message` — remember prompt, skill-hint
 - `chat.params` — Jev effort
 - `tool.execute.after` — winnow, diagnose
-- `experimental.chat.messages.transform` — evidence, compact, sticky
+- `experimental.chat.messages.transform` — evidence, sticky; no extra history compaction
 
 If OpenCode grows a new hook, handle it in `index.ts`, not a sibling plugin.
 
@@ -120,7 +120,7 @@ tail -n 40 "$f"
 
 2. Filter by `task`, `session`, and `log_origin` (the fallback is shared).
    Classify rows by `mod`: `startup` `telemetry` `jev` `route` `winnow`
-   `compact` `sticky` `diagnose` `skill-hint` `evidence` `budget`.
+   `sticky` `diagnose` `skill-hint` `evidence` `budget`.
    `ok: false` is an error or retry. `telemetry` records session errors,
    assistant errors, tool running/completed/error, permission events, and
    lifecycle events. `budget` rows with `dup: true` are repeated results.

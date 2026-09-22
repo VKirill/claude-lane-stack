@@ -7,6 +7,7 @@ Jev receives complete task text and evidence: no character, item-count, or local
 request-size truncation before classification, review, or context selection.
 Credential redaction and post-decision semantic pruning remain enabled. Provider
 errors use each integration's existing fallback; they never trigger input clipping.
+The OpenCode lane does not add history compaction during message transforms.
 Loaded Claude/OpenCode hooks require a new process to pick up plugin updates.
 
 ## Roles (full stack)
