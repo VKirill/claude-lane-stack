@@ -22,7 +22,14 @@ Shell-out only. Do not implement product code yourself.
 
 Read the project's `emergency_writer` settings through `routing_profile.resolve_emergency_writer`.
 Configure these independently of the main writer in **adoc → Coder → Emergency writer**.
-Default: **Codex `gpt-6-luna`, reasoning `high`, Fast**. Explicit task overrides win.
+Default: **Codex `gpt-6-luna`, fallback reasoning `high`, always Fast**.
+For emergency Codex launches, `lane-session` calls Jev once before starting the
+writer and selects **medium / high / xhigh** for the actual task complexity.
+No enable/disable or auto-mode setting is needed: with a configured API key,
+Jev runs automatically. Missing key, timeout or invalid response preserves the
+configured model and effort; Jev never switches models. Explicit model overrides
+remain supported; configured effort is the fallback. The chosen effort and
+fallback reason are recorded in `effort-route.json` beside the provider log.
 Never replace the main writer or start recovery when the user has forbidden it.
 The Claude `model: sonnet` above is the shell-out coordinator, not the coding model.
 

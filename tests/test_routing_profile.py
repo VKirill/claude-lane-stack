@@ -29,6 +29,11 @@ class RoutingProfileTest(unittest.TestCase):
                 "provider": "codex", "model": "gpt-6-luna",
                 "reasoning_effort": "high", "service_tier": "fast",
             })
+            self.assertEqual(resolve_emergency_writer(root, settings={
+                "provider": "codex", "model": "gpt-6-luna",
+                "reasoning_effort": "xhigh", "service_tier": "standard",
+            }), {"provider": "codex", "model": "gpt-6-luna",
+                 "reasoning_effort": "xhigh", "service_tier": "fast"})
             (root / ".agents").mkdir()
             profile = root / ".agents/routing.profile.yaml"
             profile.write_text("lanes:\n  main_write: grok\nwriter:\n  model: grok-custom\n"

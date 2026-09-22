@@ -301,7 +301,9 @@ def resolve_emergency_writer(start: Path, *, settings: dict | None = None) -> di
     effort = str(block.get("reasoning_effort") or block.get("effort") or "high")
     tier = normalize_service_tier(block.get("service_tier"),
                                   default="fast" if provider == "codex" else "standard")
-    if provider not in SERVICE_TIER_PROVIDERS:
+    if provider == "codex":
+        tier = "fast"
+    elif provider not in SERVICE_TIER_PROVIDERS:
         tier = "standard"
     if provider == "cursor":
         model = resolve_cursor_model(model, service_tier=tier)

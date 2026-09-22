@@ -1257,7 +1257,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
         emergency0.get("service_tier")
         or ("fast" if emergency_provider0 == "codex" else "standard")
     ).lower()
-    if emergency_tier0 not in {"standard", "fast"} or emergency_provider0 not in {"codex", "cursor"}:
+    if emergency_provider0 == "codex":
+        emergency_tier0 = "fast"
+    elif emergency_tier0 not in {"standard", "fast"} or emergency_provider0 not in {"codex", "cursor"}:
         emergency_tier0 = "standard"
 
     state = SetupState(
@@ -1520,7 +1522,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             )
         if kind == "emergency_fast":
             provider = str(state.emergency_writer.get("provider") or EMERGENCY_DEFAULT["provider"])
-            return ["off", "on"] if _supports_fast(provider) else []
+            return ["off", "on"] if provider == "cursor" else []
         if kind == "emergency_effort":
             block = state.emergency_writer
             return _efforts_for(
@@ -1713,11 +1715,16 @@ def run_tui(repo: Path, doctor: Any) -> int:
         for i, (_kind, label, value, hint) in enumerate(rows):
             if _kind == "emergency_provider":
                 lines.append(("class:h2", _t(state, "emergency_writer_h2")))
+            if emergency_provider == "codex" and _kind == "emergency_effort":
+                value = f"Jev · {_t(state, 'emergency_fallback')}: {value}"
+                hint = _t(state, "emergency_jev_hint")
+            if emergency_provider == "codex" and _kind == "emergency_fast":
+                hint = _t(state, "emergency_fast_hint")
             coder_rows[sum(text.count("\n") for _, text in lines)] = i
             focused = state.field_i == i and state.view == "form"
             st = "class:row-on-focus" if focused else "class:row-on"
             caret = "▸" if focused else " "
-            open_hint = _t(state, "coder_open_list") if focused else ""
+            open_hint = _t(state, "coder_open_list") if focused and not (_kind == "emergency_fast" and emergency_provider == "codex") else ""
             lines.append((st, f"  {caret} {label:<10}  {value}{open_hint}\n"))
             if focused and hint:
                 lines.append(("class:row-detail", f"      {hint}\n"))
@@ -2938,7 +2945,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 state.emergency_writer["service_tier"] = "standard"
                 state.message = _t(state, "msg_stage_fast_na")
                 return
-            state.emergency_writer["service_tier"] = "fast" if chosen == "on" else "standard"
+            state.emergency_writer["service_tier"] = "fast" if state.emergency_writer.get("provider") == "codex" or chosen == "on" else "standard"
             state.message = _t(
                 state,
                 "msg_fast",

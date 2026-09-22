@@ -2,6 +2,7 @@
 """Jev judges for night findings, verify tail, brief risk, intent, QA report."""
 from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -255,6 +256,86 @@ RISK_TO_GROK_EFFORT = {
     "high": "high",
     "critical": "high",
 }
+
+EMERGENCY_EFFORTS = {"medium", "high", "xhigh"}
+
+
+def classify_emergency_effort(
+    task_prompt: str, configured_effort: str
+) -> dict[str, Any]:
+    """Pick one Codex effort for the emergency writer; fail open to config."""
+    configured = str(configured_effort)
+
+    def fallback(reason: str) -> dict[str, Any]:
+        return {
+            "chosen_effort": configured,
+            "configured_effort": configured,
+            "source": "configured",
+            "fallback_reason": reason,
+            "confidence": 0.0,
+        }
+
+    try:
+        raw = call_jev(
+            {"task_prompt": clip(task_prompt, 8000)},
+            {
+                "effort": {
+                    "type": "choice",
+                    "instructions": "Which reasoning effort matches this task's complexity?",
+                    "criteria": {
+                        "medium": "A focused, local change with a clear implementation path",
+                        "high": "A multi-file change or task requiring meaningful debugging and verification",
+                        "xhigh": "A complex, risky, or deeply ambiguous task requiring extensive reasoning",
+                    },
+                }
+            },
+            timeout=3,
+            title="lane-stack emergency-effort-jev",
+        )
+    except JevCritiqueError as exc:
+        marker = str(exc).lower()
+        if "api key missing" in marker or (
+            marker.startswith("typesafe_api_key or openrouter_api_key")
+            and marker.endswith("missing")
+        ):
+            return fallback("missing_api_key")
+        return fallback("request_failed")
+    except Exception:
+        return fallback("request_failed")
+
+    if not isinstance(raw, dict) or not isinstance(raw.get("answers"), dict):
+        return fallback("invalid_response")
+    answer = raw["answers"].get("effort")
+    if not isinstance(answer, dict) or answer.get("type") != "choice":
+        return fallback("invalid_response")
+    answer_choice = answer.get("choice")
+    if (
+        not isinstance(answer_choice, str)
+        or answer_choice.strip().lower() not in EMERGENCY_EFFORTS
+    ):
+        return fallback("invalid_response")
+    raw_confidence = answer.get("confidence")
+    if (
+        isinstance(raw_confidence, bool)
+        or not isinstance(raw_confidence, (int, float))
+    ):
+        return fallback("invalid_response")
+    picked, confidence = choice(
+        raw["answers"], "effort", EMERGENCY_EFFORTS, configured
+    )
+    if (
+        picked not in EMERGENCY_EFFORTS
+        or not math.isfinite(confidence)
+        or not 0 <= confidence <= 1
+    ):
+        return fallback("invalid_response")
+    return {
+        "chosen_effort": picked,
+        "configured_effort": configured,
+        "source": "jev",
+        "fallback_reason": None,
+        "confidence": confidence,
+    }
 
 
 def _jev_effort_enabled() -> bool:

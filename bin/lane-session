@@ -3846,6 +3846,20 @@ def run_provider(args: argparse.Namespace) -> int:
         signal.signal(signum, handle_signal)
     try:
         prompt_sha256 = hashlib.sha256(args.prompt_file.read_bytes()).hexdigest()
+        if args.role == "emergency-writer" and args.provider == "codex":
+            from jev_slots import classify_emergency_effort
+
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            route = classify_emergency_effort(
+                args.prompt_file.read_text(encoding="utf-8"),
+                args.reasoning_effort,
+            )
+            args.reasoning_effort = route["chosen_effort"]
+            args.service_tier = "fast"
+            args.output.with_name("effort-route.json").write_text(
+                json.dumps(route, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         provider_argv = provider_command(args, lease, prompt_sha256=prompt_sha256)
         stdin_payload = provider_input(args, prompt_sha256=prompt_sha256)
         provider_state_dir = prepare_codex_home(

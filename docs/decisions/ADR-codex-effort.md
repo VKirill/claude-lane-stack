@@ -16,6 +16,12 @@ Default: Codex `gpt-6-luna`, `high`, `service_tier: fast`. This supersedes the
 Terra/Sol ladder and the Luna restriction below for this role. Primary writer
 selection is unchanged; selecting a recovery model does not start recovery.
 
+Emergency Codex effort is automatically selected by Jev (medium/high/xhigh)
+when the existing API key is available. No per-project toggle is added. Missing
+key or failed/invalid classification keeps the configured effort and model.
+Fast is always enabled for this role. `effort-route.json` beside the provider log
+records configured/effective effort and decision source without storing the prompt.
+
 ### Effort ladder (Codex `model_reasoning_effort`)
 
 | Effort | Use |

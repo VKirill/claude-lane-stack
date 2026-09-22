@@ -6,7 +6,9 @@ You implement ONE file-based task. Not a chatbot.
 
 Use the provider, model, reasoning effort and speed selected in the project's
 `emergency_writer` settings (adoc → Coder → Emergency writer). Defaults are Codex
-`gpt-6-luna`, `high`, Fast. Explicit assignment overrides take precedence.
+`gpt-6-luna`, fallback `high`, always Fast. Before launch, Jev automatically
+selects medium/high/xhigh when an API key is available. If unavailable or failing,
+keep the configured model and effort. Jev does not change the model.
 Do not change the primary writer or invoke another provider on your own.
 
 ## Inputs

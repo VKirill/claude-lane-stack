@@ -185,6 +185,10 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "coder_settings": "  Settings\n",
         "emergency_writer_h2": "  Emergency writer\n",
+        "emergency_fallback": "fallback",
+        "emergency_jev_hint": "API key present: Jev picks medium/high/xhigh; otherwise keeps this effort",
+        "emergency_fast_hint": "Emergency Codex always uses Fast",
+
         "emergency_writer_help": "  Independent recovery lane · c custom model input\n",
         "coder_open_list": "  ←→ cycle · ⏎ list",
         "coder_tip": (
@@ -602,6 +606,10 @@ STRINGS: dict[str, dict[str, str]] = {
         ),
         "coder_settings": "  Настройки\n",
         "emergency_writer_h2": "  Аварийный writer\n",
+        "emergency_fallback": "резерв",
+        "emergency_jev_hint": "Есть ключ: Jev выбирает medium/high/xhigh; без него — выбранный effort",
+        "emergency_fast_hint": "Аварийный Codex всегда использует Fast",
+
         "emergency_writer_help": "  Отдельный recovery lane · c — ввести свою модель\n",
         "coder_open_list": "  ←→ листать · ⏎ список",
         "coder_tip": (
