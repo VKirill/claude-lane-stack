@@ -455,6 +455,14 @@ def finalize_if_run_terminal(
 def persist(receipt_path: Path, receipt: dict[str, Any]) -> None:
     receipt["counts"] = counts(receipt)
     receipt["next_action"] = next_action(receipt)
+    if receipt_path.is_file():
+        previous = load_json(receipt_path)
+        # Polling is not a state change; liveness has its own heartbeat/PID.
+        if {key: value for key, value in receipt.items() if key != "updated_at"} == {
+            key: value for key, value in previous.items() if key != "updated_at"
+        }:
+            receipt["updated_at"] = previous["updated_at"]
+            return
     receipt["updated_at"] = utc_now()
     atomic_json(receipt_path, receipt)
 

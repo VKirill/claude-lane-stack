@@ -67,6 +67,11 @@ function taskContent(task) {
       ...task.runtime,
     }).map(([key, value]) => [key, value ?? "—"]));
     content.append(section("Runtime lifecycle", scalarMeta(runtimeMeta)));
+    const usage = task.runtime.usage;
+    content.append(section("Provider token usage",
+      usage && typeof usage === "object" && Object.keys(usage).length > 0
+        ? scalarMeta(usage)
+        : element("p", "", "Not reported by the provider.")));
   }
 
   if (task.objective) {

@@ -13,7 +13,7 @@ export function stickySourcePath(): string {
 
 export function formatStickyContract(raw: string, sourcePath: string): string {
   return (
-    `${STICKY_MARK}\nRe-read ${sourcePath}. owns_paths / never_touch / acceptance in this file win over chat.\n\n` +
+    `${STICKY_MARK}\nThe complete current contract from ${sourcePath} is supplied below. Use it directly; open the file only if this copy is missing or uncertain. owns_paths / never_touch / acceptance in this contract win over chat.\n\n` +
     raw
   )
 }

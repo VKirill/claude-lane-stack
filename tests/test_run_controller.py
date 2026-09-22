@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
 import textwrap
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -17,6 +19,31 @@ CONTROLLER = ROOT / "bin" / "run-controller"
 
 
 class RunControllerTest(unittest.TestCase):
+    def test_unchanged_poll_preserves_receipt_bytes_mtime_and_timestamp(self) -> None:
+        controller = runpy.run_path(str(CONTROLLER))
+        receipt = controller["initial_receipt"](
+            self.run_dir, self.project,
+            [{"id": "001", "path": str(self.tasks_dir / "001.yaml"), "depends_on": []}],
+            provider="opencode", model="test-model",
+        )
+        path = self.run_dir / "controller.json"
+        persist = controller["persist"]
+        with patch.dict(persist.__globals__, utc_now=lambda: "2026-09-23T00:00:00+00:00"):
+            persist(path, receipt)
+        original = path.read_bytes()
+        original_mtime = path.stat().st_mtime_ns
+        with patch.dict(persist.__globals__, utc_now=lambda: "2026-09-23T00:01:00+00:00"):
+            receipt["updated_at"] = "poll-only"
+            persist(path, receipt)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(path.stat().st_mtime_ns, original_mtime)
+            self.assertEqual(receipt["updated_at"], "2026-09-23T00:00:00+00:00")
+            receipt["tasks"]["001"]["stage"] = "running"
+            persist(path, receipt)
+        changed = json.loads(path.read_text())
+        self.assertEqual(changed["updated_at"], "2026-09-23T00:01:00+00:00")
+        self.assertEqual(changed["counts"]["running"], 1)
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

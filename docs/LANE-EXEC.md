@@ -251,6 +251,9 @@ supervisor cleanup.
 Registered state and events distinguish live work from immutable task YAML.
 `STATUS.md` is rebuilt from state/acceptance by `run-board`; heartbeat never
 appends to it. A run with merge.json/MERGE.md is terminal and is not stalled.
+`controller.json` is rewritten only when its state changes; `updated_at` means
+state change, not last poll. Controller heartbeat output and PID/exit receipts
+provide liveness separately. `status` and `watch` do not edit the receipt.
 
 ## Gate observability
 

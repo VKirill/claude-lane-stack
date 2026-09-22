@@ -155,7 +155,7 @@ async function trustedProviderReport({ artifactPath, attemptPath, state, taskId,
     && control.attempt === attempt
     && control.task_sha256 === state.task_sha256;
   const expectedProvider = control.provider ?? 'qwen';
-  const providerIdentityValid = ['agy', 'grok', 'codex', 'qwen', 'kimi'].includes(runtime.provider)
+  const providerIdentityValid = ['agy', 'grok', 'codex', 'qwen', 'kimi', 'opencode'].includes(runtime.provider)
     && runtime.provider === expectedProvider
     && runtime.model === (control.model ?? runtime.model)
     && runtime.reasoning_effort === (control.reasoning_effort ?? runtime.reasoning_effort);
@@ -186,6 +186,11 @@ async function trustedProviderReport({ artifactPath, attemptPath, state, taskId,
     && runtime.stop_reason === 'TurnCompleted'
     && runtime.provider_sandbox === 'off'
     && runtime.permission_mode === 'headless-auto'
+  ) || (
+    runtime.provider === 'opencode'
+    && runtime.stop_reason === 'TurnCompleted'
+    && runtime.provider_sandbox === 'off'
+    && runtime.permission_mode === 'skip-permissions'
   );
   const runtimeIdentityValid = controlIdentityValid
     && providerIdentityValid
@@ -398,6 +403,9 @@ async function readTaskRuntime(runPath, taskId, taskSha256) {
     permission_mode: report.runtime?.permission_mode ?? null,
     control_plane_read_only: report.runtime?.control_plane_read_only ?? null,
     prompt_sha256: report.runtime?.prompt_sha256 ?? null,
+    ...(report.runtime && Object.hasOwn(report.runtime, 'usage') ? { usage: report.runtime.usage } : {}),
+    ...(report.runtime && Object.hasOwn(report.runtime, 'model_usage') ? { model_usage: report.runtime.model_usage } : {}),
+    ...(report.runtime && Object.hasOwn(report.runtime, 'total_cost_usd') ? { total_cost_usd: report.runtime.total_cost_usd } : {}),
     reason: lifecycle.reason,
     next_action: lifecycle.next_action,
   };

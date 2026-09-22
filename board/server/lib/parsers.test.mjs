@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { after, test } from 'node:test';
-import { mkdtemp, mkdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -36,8 +36,14 @@ async function writeTrustedProviderReport({
     ? 'gpt-5.6-sol'
     : provider === 'agy'
       ? 'gemini-3.6-flash-high'
-      : provider === 'qwen' ? 'qwen3.8-max-preview' : 'grok-4.5',
+      : provider === 'qwen'
+        ? 'qwen3.8-max-preview'
+        : provider === 'opencode' ? 'alibaba-token-plan/qwen3.8-max-preview' : 'grok-4.5',
   reasoningEffort = provider === 'codex' || provider === 'agy' ? 'high' : 'medium',
+  usage,
+  modelUsage,
+  totalCostUsd,
+  protocolValid = true,
 }) {
   const attemptDirectory = path.join(artifactDirectory, 'attempts', String(attempt).padStart(2, '0'));
   const taskSha256 = createHash('sha256').update(taskSource).digest('hex');
@@ -69,7 +75,7 @@ async function writeTrustedProviderReport({
     attempt,
     provider_exit_code: 0,
     exit_code: 0,
-    protocol_valid: true,
+    protocol_valid: protocolValid,
     stop_reason: provider === 'grok' ? 'EndTurn' : 'TurnCompleted',
     sandbox: 'bubblewrap-workspace',
     provider_sandbox: provider === 'codex' ? 'workspace-write' : 'off',
@@ -77,12 +83,20 @@ async function writeTrustedProviderReport({
       ? 'never'
       : provider === 'agy'
         ? 'always-proceed'
-        : provider === 'qwen' ? 'yolo' : 'bypassPermissions',
+        : provider === 'qwen'
+          ? 'yolo'
+          : provider === 'opencode' ? 'skip-permissions' : 'bypassPermissions',
     subagents_enabled: false,
     control_plane_read_only: true,
     prompt_sha256: promptSha256,
     report_sha256: reportSha256,
   }));
+  const runtimePath = path.join(attemptDirectory, 'runtime.json');
+  const runtime = JSON.parse(await readFile(runtimePath, 'utf8'));
+  if (usage !== undefined) runtime.usage = usage;
+  if (modelUsage !== undefined) runtime.model_usage = modelUsage;
+  if (totalCostUsd !== undefined) runtime.total_cost_usd = totalCostUsd;
+  await writeFile(runtimePath, JSON.stringify(runtime));
   await writeFile(path.join(artifactDirectory, 'report.md'), report);
   return { attemptDirectory, reportSha256, taskSha256 };
 }
@@ -500,6 +514,118 @@ test('Qwen writer runtime is trusted and visible', async () => {
   assert.equal(tasks[0].runtime.report_trusted, true);
   assert.equal(tasks[0].runtime.provider, 'qwen');
   assert.equal(tasks[0].runtime.model, 'qwen3.8-max-preview');
+});
+
+test('OpenCode runtime is trusted and projects receipt usage without reaggregation', async () => {
+  const project = await fixtureDirectory('lane-board-opencode-');
+  const runPath = path.join(project, '.agents', 'runs', 'opencode-run');
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  await mkdir(tasksDirectory, { recursive: true });
+  const taskSource = ['schema_version: 2', 'id: "001"', 'title: OpenCode writer'].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const trusted = await writeTrustedProviderReport({
+    artifactDirectory,
+    taskId: '001',
+    taskSource,
+    provider: 'opencode',
+    usage: { input_tokens: 671, output_tokens: 8, reasoning_tokens: 2 },
+    modelUsage: { 'alibaba-token-plan/qwen3.8-max-preview': { input_tokens: 671, output_tokens: 8 } },
+    totalCostUsd: 0,
+  });
+  await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: trusted.taskSha256,
+    status: 'awaiting_verification',
+    current_attempt: 1,
+  }));
+
+  const [task] = await readTasks(tasksDirectory, 'opencode-run');
+
+  assert.equal(task.runtime.report_trusted, true);
+  assert.equal(task.runtime.provider, 'opencode');
+  assert.deepEqual(task.runtime.usage, { input_tokens: 671, output_tokens: 8, reasoning_tokens: 2 });
+  assert.deepEqual(task.runtime.model_usage, {
+    'alibaba-token-plan/qwen3.8-max-preview': { input_tokens: 671, output_tokens: 8 },
+  });
+  assert.equal(task.runtime.total_cost_usd, 0);
+});
+
+test('missing runtime usage stays unknown instead of becoming an estimate', async () => {
+  const project = await fixtureDirectory('lane-board-runtime-no-usage-');
+  const runPath = path.join(project, '.agents', 'runs', 'missing-usage');
+  const tasksDirectory = path.join(runPath, 'tasks');
+  const artifactDirectory = path.join(runPath, 'artifacts', '001');
+  await mkdir(tasksDirectory, { recursive: true });
+  const taskSource = ['schema_version: 2', 'id: "001"', 'title: Missing usage'].join('\n');
+  await writeFile(path.join(tasksDirectory, '001.yaml'), taskSource);
+  const trusted = await writeTrustedProviderReport({ artifactDirectory, taskId: '001', taskSource });
+  await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+  await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+    schema_version: 2,
+    task_id: '001',
+    task_sha256: trusted.taskSha256,
+    status: 'awaiting_verification',
+    current_attempt: 1,
+  }));
+
+  const [task] = await readTasks(tasksDirectory, 'missing-usage');
+
+  assert.equal(task.runtime.report_trusted, true);
+  assert.equal(Object.hasOwn(task.runtime, 'usage'), false);
+  assert.equal(Object.hasOwn(task.runtime, 'model_usage'), false);
+  assert.equal(Object.hasOwn(task.runtime, 'total_cost_usd'), false);
+});
+
+test('invalid runtime identity, protocol, and report hash remain fail-closed', async () => {
+  const project = await fixtureDirectory('lane-board-runtime-invalid-');
+  const runPath = path.join(project, '.agents', 'runs', 'invalid-runtime');
+  const tasksDirectory = path.join(runPath, 'tasks');
+  await mkdir(tasksDirectory, { recursive: true });
+
+  async function writeCase(id, options = {}) {
+    const artifactDirectory = path.join(runPath, 'artifacts', id);
+    const taskSource = ['schema_version: 2', `id: "${id}"`, `title: Invalid ${id}`].join('\n');
+    await writeFile(path.join(tasksDirectory, `${id}.yaml`), taskSource);
+    const trusted = await writeTrustedProviderReport({
+      artifactDirectory,
+      taskId: id,
+      taskSource,
+      usage: { input_tokens: 99, output_tokens: 1 },
+      protocolValid: options.protocolValid ?? true,
+    });
+    await writeFile(path.join(trusted.attemptDirectory, 'lane-bg.exit'), '0\n');
+    await writeFile(path.join(artifactDirectory, 'state.json'), JSON.stringify({
+      schema_version: 2,
+      task_id: id,
+      task_sha256: trusted.taskSha256,
+      status: 'awaiting_verification',
+      current_attempt: 1,
+    }));
+    if (options.identityInvalid) {
+      const runtimePath = path.join(trusted.attemptDirectory, 'runtime.json');
+      const runtime = JSON.parse(await readFile(runtimePath, 'utf8'));
+      runtime.provider = 'spoofed';
+      await writeFile(runtimePath, JSON.stringify(runtime));
+    }
+    if (options.hashInvalid) await writeFile(path.join(artifactDirectory, 'report.md'), 'tampered report\n');
+  }
+
+  await writeCase('identity', { identityInvalid: true });
+  await writeCase('protocol', { protocolValid: false });
+  await writeCase('hash', { hashInvalid: true });
+
+  const tasks = await readTasks(tasksDirectory, 'invalid-runtime');
+  const runtimeById = Object.fromEntries(tasks.map((task) => [task.id, task.runtime]));
+  assert.equal(runtimeById.identity.report_trusted, false);
+  assert.equal(runtimeById.identity.report_reason, 'runtime_identity_mismatch');
+  assert.equal(runtimeById.protocol.report_trusted, false);
+  assert.equal(runtimeById.protocol.report_reason, 'runtime_identity_mismatch');
+  assert.equal(runtimeById.hash.report_trusted, false);
+  assert.equal(runtimeById.hash.report_reason, 'report_digest_mismatch');
+  assert.deepEqual(runtimeById.identity.usage, { input_tokens: 99, output_tokens: 1 });
 });
 
 test('accepted v2 task has identical done status in list and detail views', async () => {
