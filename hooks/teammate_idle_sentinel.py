@@ -4,7 +4,7 @@
 Exit 0  — allow idle (sentinel present, or hook disabled).
 Exit 2  — keep teammate working; stderr is fed back as the next instruction.
 
-Stack one-shot Agents (run-supervisor, …) do not fire TeammateIdle.
+run-supervisor may run as a teammate; it must not park with WAIT.
 Disable: LANE_TEAMMATE_IDLE_SENTINEL=0
 """
 from __future__ import annotations
@@ -152,6 +152,20 @@ def decide(payload: dict) -> tuple[int, str]:
     if event and event not in {"TeammateIdle", "teammate_idle"}:
         return 0, ""
     text = last_assistant_text(payload)
+    name = _payload_str(payload, "teammate_name", "teammateName")
+    role = _payload_str(payload, "agent_type", "agentType").rsplit(":", 1)[-1]
+    if role == "run-supervisor" or name.startswith("rs-"):
+        matches = list(SENTINEL_RE.finditer(text[-TAIL_CHARS:]))
+        if matches and matches[-1].group(1).upper() in {"DONE", "FAILED"}:
+            return 0, ""
+        return 2, (
+            "lane teammate_idle_sentinel: run-supervisor must keep watching; WAIT is forbidden. "
+            "Use Bash with run_in_background=false and timeout=45000 to run "
+            "`run-controller watch --run-dir RUN_DIR --timeout 30` directly (not through GitNexus). "
+            "Exit 2 means still running: repeat. Do not create Python/shell background monitors. "
+            "End with DONE only after terminal controller status, or FAILED for an actual "
+            "watch-command failure you cannot resolve."
+        )
     if has_sentinel(text):
         return 0, ""
     name = payload.get("teammate_name") or payload.get("agent_type") or "teammate"

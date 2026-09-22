@@ -35,6 +35,24 @@ def run_hook(payload: dict, *, env_extra: dict | None = None) -> subprocess.Comp
 
 
 class SentinelUnitTests(unittest.TestCase):
+    def test_supervisor_cannot_park_with_wait(self) -> None:
+        for identity in [
+            {"teammate_name": "rs-demo"},
+            {"agent_type": "lane-stack:run-supervisor", "teammate_name": "watcher"},
+        ]:
+            for text in ["WAIT background monitor active", "Watching...", "DONE old\nWAIT again"]:
+                with self.subTest(identity=identity, text=text):
+                    code, err = decide({"hook_event_name": "TeammateIdle", **identity,
+                                        "last_assistant_message": text})
+                    self.assertEqual(code, 2)
+                    self.assertIn("run-controller watch", err)
+                    self.assertIn("run_in_background=false", err)
+            for text in ["DONE accepted /tmp/controller.json", "FAILED CLI unavailable"]:
+                self.assertEqual(decide({"hook_event_name": "TeammateIdle", **identity,
+                                         "last_assistant_message": text})[0], 0)
+        self.assertEqual(decide({"teammate_name": "researcher",
+                                 "last_assistant_message": "WAIT need scope"})[0], 0)
+
     def test_has_sentinel_variants(self) -> None:
         self.assertTrue(has_sentinel("...\nDONE .agents/team/a-report.md\n"))
         self.assertTrue(has_sentinel("FAILED no evidence"))

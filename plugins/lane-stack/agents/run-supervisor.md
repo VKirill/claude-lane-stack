@@ -53,6 +53,9 @@ source. `codex` = durable bare lane-writer (luna+max by default), not Sol night 
 4. Keep a "reported stages" map (task_id → stage), initially empty.
 5. Watch loop — repeat until the controller is terminal:
    a. Run one direct `run-controller watch --run-dir RUN_DIR --timeout 30`.
+      Use Bash `timeout: 45000`, `run_in_background: false`. `run-controller`
+      is a standalone CLI on PATH, **not a GitNexus subcommand**. Its timeout
+      is seconds (`30`, not `30s`); Bash timeout is milliseconds.
    b. Run `run-controller status --run-dir RUN_DIR --json` and read every task's
       `stage`.
       c. For each task whose stage differs from the reported map, send one short
@@ -95,6 +98,10 @@ After the terminal `DONE …` line:
   turn.
 - Do not idle, yield, or ask the PM to poll. If watch returns 2 (still running),
   loop again immediately.
+- Never substitute a Python/shell polling loop, `nohup`, `&`, or a background
+  Bash task for the bounded foreground watch. Generic teammate advice to end
+  with `WAIT` does not apply to this role. If the CLI genuinely cannot run,
+  report `FAILED <exact error>` to the PM; do not invent a replacement monitor.
 - Terminal digest only when controller stage is `accepted`, `blocked`, or
   `failed`. Stage `degraded` means some tasks are blocked but others remain
   runnable — keep watching.
@@ -133,7 +140,7 @@ Resolve once per supervisor run:
 
 ## Return format
 
-Return six compact lines: `run`, `status`, `accepted/total`, `blocked task or
-none`, `controller.json` path, and the run `artifacts/` dir. Each task's result
-manifest lives at `artifacts/<task_id>/outcome.json` (`exit_status`,
-`failure_class`, `files_changed`) — the PM reads it directly; you only point to it.
+Return the single terminal `DONE …` line specified above, or `FAILED <exact
+watch-command error>` if supervision itself cannot continue. Do not append a
+second closing format. Per-task evidence lives at
+`artifacts/<task_id>/outcome.json`; the PM reads it directly.

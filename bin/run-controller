@@ -1005,7 +1005,7 @@ def run_controller(args: argparse.Namespace) -> int:
                 raise ControllerError(f"unsupported action phase for {task_id}: {phase}")
 
             for task_id, task_state in receipt["tasks"].items():
-                if task_state["stage"] in {"accepted", "blocked"} or task_id in pipelines:
+                if task_state["stage"] == "accepted" or task_id in pipelines:
                     continue
                 task = task_by_id[task_id]
                 if task_state["stage"] == "retry_wait":
@@ -1061,6 +1061,10 @@ def run_controller(args: argparse.Namespace) -> int:
                     label=f"status {task_id}",
                 )
                 lane_status = status.get("status")
+                # A manual recovery may have been accepted outside this loop.
+                # Only lane-ctl's validated acceptance can release a block.
+                if task_state["stage"] == "blocked" and lane_status != "accepted":
+                    continue
                 task_state["last_status"] = lane_status
                 provider = status.get("provider")
                 if not isinstance(provider, dict):

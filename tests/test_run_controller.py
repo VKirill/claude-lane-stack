@@ -87,6 +87,12 @@ class RunControllerTest(unittest.TestCase):
                         print("forced status failure", file=sys.stderr)
                         raise SystemExit(7)
                     item = state.get(task_id, {"status": "not_started", "attempt": 0, "polls": 0})
+                    if task_id in plan.get("manual_accept_when_blocked", []):
+                        run_dir = Path(args[args.index("--run-dir") + 1])
+                        receipt = json.loads((run_dir / "controller.json").read_text())
+                        if receipt["tasks"][task_id]["stage"] == "blocked":
+                            item.update(status="accepted", attempt=2)
+                            record("manual_accept")
                     if item["status"] == "running":
                         item["polls"] += 1
                         if task_id in plan.get("lose_state_after_start", []):
@@ -1677,6 +1683,29 @@ class RunControllerTest(unittest.TestCase):
         receipt = json.loads((self.run_dir / "controller.json").read_text())
         self.assertEqual(receipt["stage"], "accepted")
 
+
+    def test_blocked_task_reconciles_manual_acceptance_while_sibling_runs(self) -> None:
+        self.write_run(provider_slots=2)
+        self.write_task("001")
+        self.write_task("002")
+        self.fake_plan.write_text(json.dumps({
+            "finish_after": {"001": 1, "002": 8},
+            "partial_always": ["001"],
+            "manual_accept_when_blocked": ["001"],
+        }))
+
+        result = self.run_controller()
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        receipt = json.loads((self.run_dir / "controller.json").read_text())
+        self.assertEqual(receipt["stage"], "accepted")
+        self.assertEqual(receipt["tasks"]["001"]["last_status"], "accepted")
+        self.assertEqual(receipt["counts"]["accepted"], 2)
+        actions = self.actions()
+        self.assertIn({"action": "manual_accept", "task_id": "001"}, actions)
+        self.assertFalse(any(a["task_id"] == "001" and a["action"] in {
+            "retry", "fallback", "verify_begin", "accept",
+        } for a in actions))
 
     def test_partial_block_sibling_continues_after_owns_fail(self) -> None:
         """One task owns-blocks; independent sibling still accepts; run not frozen early."""
