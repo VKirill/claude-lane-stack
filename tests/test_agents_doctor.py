@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import importlib.machinery
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -775,6 +777,140 @@ class AgentsDoctorTest(unittest.TestCase):
 
 
 class DoctorTuiCatalogTest(unittest.TestCase):
+    def test_emergency_writer_defaults_and_codex_cache_catalog(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import agents_doctor_tui as tui  # noqa: E402
+
+        self.assertEqual(
+            tui.EMERGENCY_DEFAULT,
+            {
+                "provider": "codex",
+                "model": "gpt-6-luna",
+                "reasoning_effort": "high",
+                "service_tier": "fast",
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "models.json"
+            cache.write_text(
+                '{"models": [{"slug": "gpt-6-luna", '
+                '"supported_reasoning_levels": [{"effort": "low"}, '
+                '{"effort": "high"}], "service_tiers": [{"id": "priority"}], '
+                '"api_key": "must-not-be-read"}]}'
+            )
+            with patch.dict(os.environ, {"CODEX_MODELS_CACHE": str(cache)}):
+                models, efforts = tui._codex_catalog_from_cache()
+                self.assertEqual(
+                    tui._ensure_model("codex", "legacy-project-model"),
+                    "legacy-project-model",
+                )
+        self.assertEqual(models, ["gpt-6-luna"])
+        self.assertEqual(efforts, {"gpt-6-luna": ["low", "high"]})
+
+    def test_emergency_profile_load_preserves_explicit_custom_model(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import agents_doctor_tui as tui  # noqa: E402
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            profile = repo / ".agents" / "routing.profile.yaml"
+            profile.parent.mkdir()
+            profile.write_text(
+                "lanes:\n  emergency_write: grok\n"
+                "writer:\n  provider: grok\n"
+                "emergency_writer:\n  provider: codex\n"
+                "  model: vendor/private-recovery\n"
+                "  reasoning_effort: xhigh\n  service_tier: fast\n",
+                encoding="utf-8",
+            )
+            loaded = tui._load_existing(repo)
+        self.assertEqual(
+            loaded["emergency_writer"],
+            {
+                "provider": "codex",
+                "model": "vendor/private-recovery",
+                "reasoning_effort": "xhigh",
+                "service_tier": "fast",
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            profile = repo / ".agents" / "routing.profile.yaml"
+            profile.parent.mkdir()
+            profile.write_text("lanes:\n  emergency_write: grok\n", encoding="utf-8")
+            loaded = tui._load_existing(repo)
+        self.assertNotIn("emergency_writer", loaded)
+
+    def test_emergency_writer_round_trips_actual_write_outputs(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import agents_doctor_tui as tui  # noqa: E402
+
+        loader = importlib.machinery.SourceFileLoader(
+            "agents_doctor_cli_roundtrip", str(ROOT / "bin" / "agents-doctor")
+        )
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        doctor = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(doctor)
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            doctor.write_outputs(
+                repo,
+                {},
+                "claude-grok-codex",
+                {"main_write": "grok", "emergency_write": "opencode"},
+                [],
+                writer_model="grok-4.5",
+                writer_effort="medium",
+                emergency_writer={
+                    "provider": "opencode",
+                    "model": "vendor/private-recovery",
+                    "reasoning_effort": "high",
+                    "service_tier": "fast",
+                },
+                quiet=True,
+            )
+            loaded = tui._load_existing(repo)
+        self.assertEqual(
+            loaded["emergency_writer"],
+            {
+                "provider": "opencode",
+                "model": "vendor/private-recovery",
+                "reasoning_effort": "high",
+                "service_tier": "standard",
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            doctor.write_outputs(
+                repo,
+                {},
+                "claude-grok-codex",
+                {"main_write": "grok", "emergency_write": "codex"},
+                [],
+                writer_model="grok-4.5",
+                writer_effort="medium",
+                emergency_writer={
+                    "provider": "codex",
+                    "model": "gpt-6-luna",
+                    "reasoning_effort": "high",
+                    "service_tier": "fast",
+                },
+                quiet=True,
+            )
+            loaded = tui._load_existing(repo)
+        self.assertEqual(
+            loaded["emergency_writer"],
+            {
+                "provider": "codex",
+                "model": "gpt-6-luna",
+                "reasoning_effort": "high",
+                "service_tier": "fast",
+            },
+        )
+
     def test_grok_46_is_selectable(self) -> None:
         sys.path.insert(0, str(ROOT / "bin"))
         import agents_doctor_tui as tui  # noqa: E402
@@ -801,6 +937,7 @@ class DoctorTuiCatalogTest(unittest.TestCase):
 
         self.assertEqual(set(i18n.STRINGS["en"]), set(i18n.STRINGS["ru"]))
         self.assertIn("pm_read_h2", i18n.STRINGS["en"])
+        self.assertIn("emergency_writer_h2", i18n.STRINGS["en"])
         self.assertIn("tab_info", i18n.STRINGS["en"])
         self.assertIn("tab_info", i18n.STRINGS["ru"])
         self.assertIn("tab_memory", i18n.STRINGS["ru"])

@@ -1,6 +1,7 @@
 # Model routing (Fable conductor — solo)
 
-**No GPT-5.5.** Codex side uses **GPT-5.6 only**: `gpt-5.6-sol` | `gpt-5.6-terra` | `gpt-5.6-luna` (optional trivia).
+**No GPT-5.5.** Codex model choices in adoc come from the local Codex catalog,
+including GPT-6 Astra/Sol/Luna. Existing project model settings are preserved.
 
 ## Roles (full stack)
 
@@ -12,7 +13,7 @@
 | Review (all shipped work) | Codex Sol night shift | gpt-5.6-sol + xhigh, read-only |
 | Nightly review | Codex Sol | dedicated `night-review` profile: sol xhigh |
 | Specialist (optional) | Codex Sol / other | `stages.specialist` when high_risk |
-| Fallback write | Codex | see claude-codex table |
+| Emergency write | Independent adoc selection | `gpt-6-luna` + high + Fast by default |
 | Onboard **fast** / docs maintain | Codex **Terra** | `gpt-5.6-terra` + `high` |
 | Onboard **deep** (default on full) | Codex **Sol** | `gpt-5.6-sol` + `high` |
 | Run visibility wrapper | Claude **Haiku** `run-supervisor` | typed start/watch/status only |
@@ -53,7 +54,7 @@ Artifacts: `artifacts/critique.json` (includes `decision`, `pm_action`, `llm_pas
 re-running critique before `run-controller` / writers.
 `run-validate --phase pre-dispatch` auto-runs critique when the artifact is missing.
 
-## GPT-5.6 Sol / Terra / Luna (Codex)
+## Existing GPT-5.6 profiles (Codex)
 
 | Model | Use | Avoid |
 |-------|-----|--------|
@@ -118,7 +119,7 @@ Daytime write is still the **conveyor**: `run-supervisor` → process `codex exe
 | onboard (fast) | `project-onboarder` | **terra** | high |
 | onboard (deep) | `project-onboarder` | **sol** | high |
 | docs-maintain | `docs-maintainer` | **terra** | high |
-| emergency_write | `emergency-writer` | **sol** | high (xhigh escalate) |
+| emergency_write | `emergency-writer` | adoc `emergency_writer` (default `gpt-6-luna`) | high, Fast |
 
 PM remains **Claude Fable/Opus**. Role wrappers stay **Sonnet/Haiku**.
 

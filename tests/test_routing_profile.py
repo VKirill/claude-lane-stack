@@ -17,10 +17,34 @@ from routing_profile import (  # noqa: E402
     resolve_session_max_tasks,
     resolve_workspace,
     resolve_writer,
+    resolve_emergency_writer,
 )
 
 
 class RoutingProfileTest(unittest.TestCase):
+    def test_emergency_writer_is_independent_and_preserves_custom_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(resolve_emergency_writer(root), {
+                "provider": "codex", "model": "gpt-6-luna",
+                "reasoning_effort": "high", "service_tier": "fast",
+            })
+            (root / ".agents").mkdir()
+            profile = root / ".agents/routing.profile.yaml"
+            profile.write_text("lanes:\n  main_write: grok\nwriter:\n  model: grok-custom\n"
+                               "emergency_writer:\n  provider: opencode\n  model: local/custom\n"
+                               "  reasoning_effort: low\n  service_tier: fast\n")
+            self.assertEqual(resolve_writer(root)["model"], "grok-custom")
+            self.assertEqual(resolve_emergency_writer(root), {
+                "provider": "opencode", "model": "local/custom",
+                "reasoning_effort": "low", "service_tier": "standard",
+            })
+            profile.write_text("lanes:\n  main_write: grok\n  emergency_write: qwen\n")
+            self.assertEqual(resolve_emergency_writer(root)["provider"], "codex")
+            with self.assertRaisesRegex(ValueError, "Unsupported emergency"):
+                resolve_emergency_writer(root, settings={"provider": "invalid"})
+
+
     def test_resolve_from_agents_doctor_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

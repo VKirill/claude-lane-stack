@@ -47,6 +47,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_agent": "Agent",
         "coder_fast_hint": "Codex/Cursor · service_tier=fast (Codex credits or Cursor *-fast model). Independent of Effort.",
         "msg_fast": "Fast mode → {value}",
+        "msg_emergency_provider": "Emergency provider → {provider}",
+        "msg_emergency_model": "Emergency model → {model}",
         "stages_h1": "  Conveyor stages\n",
         "stages_help": (
             "  Each stage has its own agent + model. ↑↓ fields (wraps stages) ·\n"
@@ -182,6 +184,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "  One level at a time: ↑↓ fields → Enter list → Enter confirm.\n\n"
         ),
         "coder_settings": "  Settings\n",
+        "emergency_writer_h2": "  Emergency writer\n",
+        "emergency_writer_help": "  Independent recovery lane · c custom model input\n",
         "coder_open_list": "  ←→ cycle · ⏎ list",
         "coder_tip": (
             "\n  Shortcuts: p provider · m model · e effort (open that list).\n"
@@ -262,6 +266,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "apply_coder": "  coder     {title}  ({writer})\n",
         "apply_model": "  model     {model}\n",
         "apply_effort": "  effort    {effort}\n",
+        "apply_emergency": "  emergency {provider}/{model}  {effort}  {fast}\n",
         "apply_fast": "  fast mode {value}\n",
         "apply_pm_read": "  pm_read   {sw}  >{n}  {provider}/{model}  {effort}\n",
         "apply_workspace": "  workspace {ws}\n",
@@ -459,6 +464,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "field_agent": "Агент",
         "coder_fast_hint": "Codex/Cursor · service_tier=fast (кредиты Codex или модель Cursor *-fast). Не зависит от Effort.",
         "msg_fast": "Fast mode → {value}",
+        "msg_emergency_provider": "Аварийный провайдер → {provider}",
+        "msg_emergency_model": "Аварийная модель → {model}",
         "stages_h1": "  Этапы конвейера\n",
         "stages_help": (
             "  У каждого этапа свой агент и модель. ↑↓ поля (переходит между этапами) ·\n"
@@ -594,6 +601,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "  Один уровень: ↑↓ поля → Enter список → Enter выбрать.\n\n"
         ),
         "coder_settings": "  Настройки\n",
+        "emergency_writer_h2": "  Аварийный writer\n",
+        "emergency_writer_help": "  Отдельный recovery lane · c — ввести свою модель\n",
         "coder_open_list": "  ←→ листать · ⏎ список",
         "coder_tip": (
             "\n  Ярлыки: p провайдер · m модель · e effort (открыть список).\n"
@@ -671,6 +680,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "apply_coder": "  кодер     {title}  ({writer})\n",
         "apply_model": "  модель    {model}\n",
         "apply_effort": "  effort    {effort}\n",
+        "apply_emergency": "  emergency {provider}/{model}  {effort}  {fast}\n",
         "apply_fast": "  fast mode {value}\n",
         "apply_pm_read": "  pm_read   {sw}  >{n}  {provider}/{model}  {effort}\n",
         "apply_workspace": "  workspace {ws}\n",

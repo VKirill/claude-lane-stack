@@ -1,4 +1,4 @@
-# Claude + Codex only (no Grok). GPT-5.6 family only — no 5.5.
+# Claude + Codex only (no Grok). Emergency writer defaults to GPT-6 Luna.
 # Agent names are **roles**. Daytime write still goes through run-supervisor +
 # durable codex process (lane-writer), not emergency-writer.
 pm: claude # Fable/Opus in dev-orchestrator frontmatter
@@ -26,9 +26,10 @@ lanes:
     reasoning: high
   emergency_write:
     agent: emergency-writer
-    model: gpt-5.6-sol
+    model: gpt-6-luna
     reasoning: high
+    service_tier: fast
 notes:
   - "Daytime coder = durable codex process via run-controller, not a Claude subagent brand"
-  - "Escalate emergency-writer effort to xhigh only after high fails"
+  - "Emergency writer is configured independently in adoc; default Luna/high/Fast"
   - "Prefer role agent names; see agents/claude/README.md for deprecated aliases"

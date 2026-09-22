@@ -9,6 +9,13 @@ Light recovery and docs work do not need max reasoning cost.
 
 ## Decision
 
+### Emergency writer override (2026-09-22)
+
+Emergency recovery uses the independently configured `emergency_writer` in adoc.
+Default: Codex `gpt-6-luna`, `high`, `service_tier: fast`. This supersedes the
+Terra/Sol ladder and the Luna restriction below for this role. Primary writer
+selection is unchanged; selecting a recovery model does not start recovery.
+
 ### Effort ladder (Codex `model_reasoning_effort`)
 
 | Effort | Use |

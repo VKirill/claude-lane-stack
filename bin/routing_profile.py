@@ -130,6 +130,7 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
     result: dict[str, Any] = {
         "lanes": {},
         "writer": {},
+        "emergency_writer": {},
         "workspace": {},
         "pm_read": {},
         "stages": {},
@@ -147,7 +148,7 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
             section = (
                 key
                 if key
-                in {"lanes", "writer", "workspace", "pm_read", "stages", "notes", "ui"}
+                in {"lanes", "writer", "emergency_writer", "workspace", "pm_read", "stages", "notes", "ui"}
                 else None
             )
             stage_name = None
@@ -172,8 +173,8 @@ def _parse_simple_yaml_map(text: str) -> dict[str, Any]:
         value = value.strip("\"'")
         if section == "lanes" and indent >= 2:
             result["lanes"][key] = value
-        elif section == "writer" and indent >= 2:
-            result["writer"][key] = value
+        elif section in {"writer", "emergency_writer"} and indent >= 2:
+            result[section][key] = value
         elif section == "workspace" and indent >= 2:
             result["workspace"][key] = value
         elif section == "pm_read" and indent >= 2:
@@ -284,6 +285,30 @@ def resolve_writer(
         "profile_path": profile.get("_path"),
         "profile": profile,
     }
+
+
+def resolve_emergency_writer(start: Path, *, settings: dict | None = None) -> dict[str, str]:
+    """Independent recovery writer; never inherits the main writer's model."""
+    profile = load_routing_profile(start)
+    block = settings if settings is not None else profile.get("emergency_writer", {})
+    block = block if isinstance(block, dict) else {}
+    provider = str(block.get("provider") or "codex")
+    if provider not in KNOWN_WRITERS:
+        raise ValueError(f"Unsupported emergency writer provider: {provider}")
+    model = str(block.get("model") or (
+        "gpt-6-luna" if provider == "codex" else DEFAULT_MODELS[provider]
+    ))
+    effort = str(block.get("reasoning_effort") or block.get("effort") or "high")
+    tier = normalize_service_tier(block.get("service_tier"),
+                                  default="fast" if provider == "codex" else "standard")
+    if provider not in SERVICE_TIER_PROVIDERS:
+        tier = "standard"
+    if provider == "cursor":
+        model = resolve_cursor_model(model, service_tier=tier)
+    if provider == "agy":
+        effort = resolve_agy_effort(model, effort)
+    return {"provider": provider, "model": model,
+            "reasoning_effort": effort, "service_tier": tier}
 
 
 def lane_matches_profile(task_lane: str, main_write: str | None) -> bool:

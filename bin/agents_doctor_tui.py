@@ -262,6 +262,55 @@ DEFAULT_MODEL = {
     "auto": "(stack default)",
 }
 
+# Emergency recovery writer is independent from the daytime writer.  Keep its
+# defaults explicit so a Grok main writer never changes the recovery lane.
+EMERGENCY_WRITER_FIELDS = (
+    "emergency_provider",
+    "emergency_model",
+    "emergency_effort",
+    "emergency_fast",
+)
+EMERGENCY_DEFAULT = {
+    "provider": "codex",
+    "model": "gpt-6-luna",
+    "reasoning_effort": "high",
+    "service_tier": "fast",
+}
+
+
+def _codex_catalog_from_cache() -> tuple[list[str], dict[str, list[str]]]:
+    """Read only public model metadata from the local Codex model cache."""
+    path = Path(
+        os.environ.get("CODEX_MODELS_CACHE", str(Path.home() / ".codex" / "models_cache.json"))
+    )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return [], {}
+    models: list[str] = []
+    efforts: dict[str, list[str]] = {}
+    for item in payload.get("models", []) if isinstance(payload, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        slug = str(item.get("slug") or "").strip()
+        if not slug or slug in models:
+            continue
+        levels = item.get("supported_reasoning_levels")
+        names = [
+            str(level.get("effort") or "").strip()
+            for level in levels
+            if isinstance(level, dict) and str(level.get("effort") or "").strip()
+        ] if isinstance(levels, list) else []
+        models.append(slug)
+        if names:
+            efforts[slug] = list(dict.fromkeys(names))
+    return models, efforts
+
+
+_CODEX_MODELS, _CODEX_EFFORTS = _codex_catalog_from_cache()
+if _CODEX_MODELS:
+    WRITER_MODELS["codex"] = _CODEX_MODELS
+
 DEFAULT_EFFORT = {
     "qwen": "medium",
     "kimi": "medium",
@@ -314,6 +363,7 @@ class SetupState:
         pm_read_provider: str = PM_READ_DEFAULT_PROVIDER,
         pm_read_model: str = PM_READ_DEFAULT_MODEL,
         pm_read_effort: str = PM_READ_DEFAULT_EFFORT,
+        emergency_writer: dict[str, str] | None = None,
         lang: str = "en",
         message: str = "",
         last_apply: str = "",
@@ -348,6 +398,10 @@ class SetupState:
         self.pm_read_provider = pm_read_provider
         self.pm_read_model = pm_read_model
         self.pm_read_effort = pm_read_effort
+        self.emergency_writer = {
+            **EMERGENCY_DEFAULT,
+            **(emergency_writer or {}),
+        }
         self.pm_field_i = 0
         self.lang = normalize_lang(lang)
         self.message = message
@@ -412,6 +466,10 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                 if s == "writer:" or s.startswith("writer:"):
                     section = "writer"
                     continue
+                if s == "emergency_writer:" or s.startswith("emergency_writer:"):
+                    section = "emergency_writer"
+                    out.setdefault("emergency_writer", {})
+                    continue
                 if s == "workspace:" or s.startswith("workspace:"):
                     section = "workspace"
                     continue
@@ -437,6 +495,17 @@ def _load_existing(repo: Path) -> dict[str, Any]:
                         out["fast_mode"] = "true" in s.lower()
                     elif s.startswith("agent:"):
                         out["agent"] = s.split(":", 1)[1].strip().split()[0].strip("\"'")
+                if section == "emergency_writer":
+                    if raw and not raw.startswith(" ") and not raw.startswith("\t"):
+                        section = None
+                    elif s.startswith("provider:"):
+                        out["emergency_writer"]["provider"] = s.split(":", 1)[1].strip().strip("\"'")
+                    elif s.startswith("model:"):
+                        out["emergency_writer"]["model"] = s.split(":", 1)[1].strip().strip("\"'")
+                    elif s.startswith("reasoning_effort:") or s.startswith("effort:"):
+                        out["emergency_writer"]["reasoning_effort"] = s.split(":", 1)[1].strip().strip("\"'")
+                    elif s.startswith("service_tier:"):
+                        out["emergency_writer"]["service_tier"] = s.split(":", 1)[1].strip().strip("\"'").lower()
                 if section == "workspace":
                     if raw and not raw.startswith(" ") and not raw.startswith("\t"):
                         section = None
@@ -648,6 +717,10 @@ def _models_for(writer: str) -> list[str]:
         return _probe_agy_models()
     if writer == "opencode":
         return _probe_opencode_models()
+    if writer == "codex":
+        models, _ = _codex_catalog_from_cache()
+        if models:
+            return models
     return list(WRITER_MODELS.get(writer, ["(default)"]))
 
 
@@ -929,6 +1002,10 @@ def _preferred_effort(opts: list[str]) -> str:
 
 
 def _efforts_for(writer: str, model: str = "") -> list[str]:
+    if writer == "codex":
+        _, efforts = _codex_catalog_from_cache()
+        if model in efforts:
+            return list(efforts[model])
     if writer == "opencode":
         if _OPENCODE_LIVE.get("models") is None:
             refresh_opencode_catalog()
@@ -947,7 +1024,32 @@ def _ensure_model(writer: str, model: str) -> str:
     opts = _models_for(writer)
     if model in opts:
         return model
+    if str(model or "").strip():
+        return str(model).strip()
     return DEFAULT_MODEL.get(writer, opts[0])
+
+
+def _emergency_models(provider: str, current: str = "") -> list[str]:
+    opts = list(_models_for(provider))
+    if current and current not in opts:
+        opts.append(current)
+    return opts or ([current] if current else [DEFAULT_MODEL.get(provider, provider)])
+
+
+def _ensure_emergency_model(provider: str, model: str) -> str:
+    value = str(model or "").strip()
+    return value or (
+        EMERGENCY_DEFAULT["model"] if provider == "codex" else DEFAULT_MODEL.get(provider, provider)
+    )
+
+
+def _ensure_emergency_effort(provider: str, effort: str, model: str) -> str:
+    opts = _efforts_for(provider, model)
+    if not opts:
+        return str(effort or "")
+    if effort in opts:
+        return effort
+    return "high" if provider == "codex" and "high" in opts else _preferred_effort(opts)
 
 
 def _ensure_effort(writer: str, effort: str, model: str = "") -> str:
@@ -964,9 +1066,13 @@ def _ensure_effort(writer: str, effort: str, model: str = "") -> str:
 def _field_label(state: SetupState, kind: str) -> str:
     return {
         "writer": _t(state, "field_provider"),
+        "emergency_provider": _t(state, "field_provider"),
         "model": _t(state, "field_model"),
+        "emergency_model": _t(state, "field_model"),
         "effort": _t(state, "field_effort"),
+        "emergency_effort": _t(state, "field_effort"),
         "fast": _t(state, "field_fast"),
+        "emergency_fast": _t(state, "field_fast"),
         "agent": _t(state, "field_agent"),
         "pm_enabled": _t(state, "field_enabled"),
         "pm_min_lines": _t(state, "pm_read_field_lines"),
@@ -1132,6 +1238,27 @@ def run_tui(repo: Path, doctor: Any) -> int:
             ),
         }
     )
+    emergency0 = dict(existing.get("emergency_writer") or {})
+    emergency_provider0 = str(
+        emergency0.get("provider") or EMERGENCY_DEFAULT["provider"]
+    )
+    if emergency_provider0 not in ALL_AGENTS:
+        emergency_provider0 = EMERGENCY_DEFAULT["provider"]
+    emergency_model0 = _ensure_emergency_model(
+        emergency_provider0,
+        str(emergency0.get("model") or ""),
+    )
+    emergency_effort0 = _ensure_emergency_effort(
+        emergency_provider0,
+        str(emergency0.get("reasoning_effort") or EMERGENCY_DEFAULT["reasoning_effort"]),
+        emergency_model0,
+    )
+    emergency_tier0 = str(
+        emergency0.get("service_tier")
+        or ("fast" if emergency_provider0 == "codex" else "standard")
+    ).lower()
+    if emergency_tier0 not in {"standard", "fast"} or emergency_provider0 not in {"codex", "cursor"}:
+        emergency_tier0 = "standard"
 
     state = SetupState(
         repo=repo,
@@ -1166,6 +1293,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
         pm_read_provider=str(pr0["provider"]),
         pm_read_model=str(pr0["model"]),
         pm_read_effort=str(pr0["reasoning_effort"]),
+        emergency_writer={
+            "provider": emergency_provider0,
+            "model": emergency_model0,
+            "reasoning_effort": emergency_effort0,
+            "service_tier": emergency_tier0,
+        },
         lang=lang0,
         message=tr(lang0, "msg_boot"),
         cursor=max(0, writers.index(writer0) if writer0 in writers else 0),
@@ -1181,6 +1314,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
 
     tab_i = {"i": 0}
     pick_view = {"start": 0, "header": 3}
+    coder_rows: dict[int, int] = {}
     work_hit: dict[int, str] = {}
     pane = {"col": "main"}  # "nav" | "main"
 
@@ -1362,17 +1496,37 @@ def run_tui(repo: Path, doctor: Any) -> int:
             fields.append("effort")
         if _supports_fast(state.writer):
             fields.append("fast")
-        return tuple(fields)
+        return tuple([*fields, *EMERGENCY_WRITER_FIELDS])
 
     def _options_for(kind: str) -> list[str]:
         if kind == "writer":
             return list(state.writers)
         if kind == "model":
-            return _models_for(state.writer)
+            opts = _models_for(state.writer)
+            if state.model and state.model not in opts:
+                opts.append(state.model)
+            return opts
         if kind == "agent":
             return _probe_opencode_agents()
         if kind == "fast":
             return ["off", "on"]
+        if kind == "emergency_provider":
+            return list(ALL_AGENTS)
+        if kind == "emergency_model":
+            block = state.emergency_writer
+            return _emergency_models(
+                str(block.get("provider") or EMERGENCY_DEFAULT["provider"]),
+                str(block.get("model") or ""),
+            )
+        if kind == "emergency_fast":
+            provider = str(state.emergency_writer.get("provider") or EMERGENCY_DEFAULT["provider"])
+            return ["off", "on"] if _supports_fast(provider) else []
+        if kind == "emergency_effort":
+            block = state.emergency_writer
+            return _efforts_for(
+                str(block.get("provider") or EMERGENCY_DEFAULT["provider"]),
+                str(block.get("model") or ""),
+            )
         if kind == "pm_enabled":
             return ["off", "on"]
         if kind == "pm_min_lines":
@@ -1394,6 +1548,14 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return state.agent
         if kind == "fast":
             return "on" if state.fast_mode else "off"
+        if kind == "emergency_provider":
+            return str(state.emergency_writer.get("provider") or EMERGENCY_DEFAULT["provider"])
+        if kind == "emergency_model":
+            return str(state.emergency_writer.get("model") or EMERGENCY_DEFAULT["model"])
+        if kind == "emergency_effort":
+            return str(state.emergency_writer.get("reasoning_effort") or EMERGENCY_DEFAULT["reasoning_effort"])
+        if kind == "emergency_fast":
+            return "on" if state.emergency_writer.get("service_tier") == "fast" else "off"
         if kind == "pm_enabled":
             return "on" if state.pm_read_enabled else "off"
         if kind == "pm_min_lines":
@@ -1407,12 +1569,12 @@ def run_tui(repo: Path, doctor: Any) -> int:
         return state.effort
 
     def _display_value(kind: str, value: str) -> str:
-        if kind == "writer":
+        if kind in {"writer", "emergency_provider"}:
             meta = WRITER_META.get(value, {})
             title = meta.get("title", value)
             badge = meta.get("badge", "")
             return f"{title:<10}  {badge}" if badge else title
-        if kind in {"fast", "pm_enabled"}:
+        if kind in {"fast", "emergency_fast", "pm_enabled"}:
             return _t(state, "on") if value == "on" else _t(state, "off")
         if kind == "pm_provider":
             meta = WRITER_META.get(value, {})
@@ -1422,6 +1584,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         return value
 
     def body_coder_form() -> list[tuple[str, str]]:
+        coder_rows.clear()
         meta = WRITER_META.get(state.writer, {})
         models = _models_for(state.writer)
         efforts = _efforts_for(state.writer, state.model)
@@ -1493,7 +1656,64 @@ def run_tui(repo: Path, doctor: Any) -> int:
                     _t(state, "coder_fast_hint"),
                 )
             )
+        emergency = state.emergency_writer
+        emergency_provider = str(emergency.get("provider") or EMERGENCY_DEFAULT["provider"])
+        emergency_model = str(emergency.get("model") or EMERGENCY_DEFAULT["model"])
+        emergency_efforts = _efforts_for(emergency_provider, emergency_model)
+        emergency_models = _emergency_models(emergency_provider, emergency_model)
+        try:
+            emergency_mi = emergency_models.index(emergency_model)
+        except ValueError:
+            emergency_mi = 0
+        rows.extend(
+            [
+                (
+                    "emergency_provider",
+                    _t(state, "field_provider"),
+                    f"{WRITER_META.get(emergency_provider, {}).get('title', emergency_provider)}  · emergency",
+                    _t(state, "emergency_writer_help"),
+                ),
+                (
+                    "emergency_model",
+                    _t(state, "field_model"),
+                    emergency_model,
+                    _t(
+                        state,
+                        "coder_models_of",
+                        n=emergency_mi + 1,
+                        total=len(emergency_models),
+                        writer="emergency",
+                    ),
+                ),
+                (
+                    "emergency_effort",
+                    _t(state, "field_effort"),
+                    str(emergency.get("reasoning_effort") or ""),
+                    " · ".join(
+                        (f"[{x}]" if x == emergency.get("reasoning_effort") else x)
+                        for x in emergency_efforts
+                    ),
+                ),
+                (
+                    "emergency_fast",
+                    _t(state, "field_fast"),
+                    (
+                        _t(state, "on")
+                        if emergency.get("service_tier") == "fast"
+                        else _t(state, "off")
+                    )
+                    if _supports_fast(emergency_provider)
+                    else _t(state, "model_na"),
+                    _t(state, "coder_fast_hint")
+                    if _supports_fast(emergency_provider)
+                    else _t(state, "model_na"),
+                ),
+            ]
+        )
         for i, (_kind, label, value, hint) in enumerate(rows):
+            if _kind == "emergency_provider":
+                lines.append(("class:h2", _t(state, "emergency_writer_h2")))
+            coder_rows[sum(text.count("\n") for _, text in lines)] = i
             focused = state.field_i == i and state.view == "form"
             st = "class:row-on-focus" if focused else "class:row-on"
             caret = "▸" if focused else " "
@@ -1509,7 +1729,9 @@ def run_tui(repo: Path, doctor: Any) -> int:
         opts = _options_for(kind)
         label = _field_label(state, kind)
         parent = ""
-        if kind != "writer":
+        if kind.startswith("emergency_"):
+            parent = " · emergency writer"
+        elif kind != "writer":
             parent = f" · {WRITER_META.get(state.writer, {}).get('title', state.writer)}"
         lines: list[tuple[str, str]] = [
             ("class:h1", _t(state, "pick_h1", label=label, parent=parent)),
@@ -2510,6 +2732,17 @@ def run_tui(repo: Path, doctor: Any) -> int:
             ),
             ("class:row-on", _t(state, "apply_model", model=state.model)),
             ("class:row-on", _t(state, "apply_effort", effort=state.effort)),
+            (
+                "class:row-on",
+                _t(
+                    state,
+                    "apply_emergency",
+                    provider=state.emergency_writer.get("provider"),
+                    model=state.emergency_writer.get("model"),
+                    effort=state.emergency_writer.get("reasoning_effort"),
+                    fast=state.emergency_writer.get("service_tier"),
+                ),
+            ),
             *(
                 [
                     (
@@ -2633,6 +2866,18 @@ def run_tui(repo: Path, doctor: Any) -> int:
             state, "msg_coder", name=WRITER_META.get(w, {}).get("title", w)
         )
 
+    def set_emergency_provider(provider: str) -> None:
+        block = state.emergency_writer
+        block["provider"] = provider
+        block["model"] = _ensure_emergency_model(provider, "")
+        block["reasoning_effort"] = _ensure_emergency_effort(
+            provider,
+            "high" if provider == "codex" else "",
+            block["model"],
+        )
+        block["service_tier"] = "fast" if provider == "codex" else "standard"
+        state.message = _t(state, "msg_emergency_provider", provider=provider)
+
     def open_pick(kind: str) -> None:
         if kind == "fast":
             state.fast_mode = not state.fast_mode
@@ -2677,12 +2922,58 @@ def run_tui(repo: Path, doctor: Any) -> int:
                 "msg_fast",
                 value=_t(state, "on") if state.fast_mode else _t(state, "off"),
             )
+        elif kind == "emergency_provider":
+            set_emergency_provider(chosen)
+        elif kind == "emergency_model":
+            block = state.emergency_writer
+            block["model"] = chosen
+            block["reasoning_effort"] = _ensure_emergency_effort(
+                str(block.get("provider") or EMERGENCY_DEFAULT["provider"]),
+                str(block.get("reasoning_effort") or ""),
+                chosen,
+            )
+            state.message = _t(state, "msg_emergency_model", model=chosen)
+        elif kind == "emergency_fast":
+            if not _supports_fast(str(state.emergency_writer.get("provider") or "")):
+                state.emergency_writer["service_tier"] = "standard"
+                state.message = _t(state, "msg_stage_fast_na")
+                return
+            state.emergency_writer["service_tier"] = "fast" if chosen == "on" else "standard"
+            state.message = _t(
+                state,
+                "msg_fast",
+                value=_t(state, "on") if chosen == "on" else _t(state, "off"),
+            )
+        elif kind == "emergency_effort":
+            block = state.emergency_writer
+            block["reasoning_effort"] = _ensure_emergency_effort(
+                str(block.get("provider") or EMERGENCY_DEFAULT["provider"]),
+                chosen,
+                str(block.get("model") or EMERGENCY_DEFAULT["model"]),
+            )
+            state.message = _t(state, "msg_effort", name=block["reasoning_effort"])
         elif kind in PM_READ_PICK:
             _apply_pm_value(kind, chosen)
         else:
             state.effort = _ensure_effort(state.writer, chosen, state.model)
             state.message = _t(state, "msg_effort", name=state.effort)
             _sync_stages_from_coder_night()
+
+    def edit_emergency_model(app: Any | None) -> None:
+        if app is None:
+            return
+
+        def ask() -> None:
+            try:
+                chosen = input("Emergency model: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return
+            if chosen:
+                _apply_coder_value("emergency_model", chosen)
+
+        from prompt_toolkit.application import run_in_terminal
+
+        run_in_terminal(ask)
 
     def _pm_kinds() -> tuple[str, ...]:
         return ("pm_enabled", "pm_min_lines", "pm_provider", "pm_model", "pm_effort")
@@ -2797,7 +3088,10 @@ def run_tui(repo: Path, doctor: Any) -> int:
         else:
             state.message = _t(state, "msg_cancelled")
         state.view = "form"
-        state.field_i = max(0, min(state.field_i, len(fields) - 1))
+        if kind in fields:
+            state.field_i = fields.index(kind)
+        else:
+            state.field_i = max(0, min(state.field_i, len(fields) - 1))
         state.focus = fields[state.field_i]
 
     def move_form_field(delta: int) -> None:
@@ -3019,6 +3313,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
                             "model": state.pm_read_model,
                             "reasoning_effort": state.pm_read_effort,
                         },
+                        emergency_writer=dict(state.emergency_writer),
                         quiet=True,
                     )
                 except TypeError:
@@ -3082,6 +3377,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
             "writer": state.writer,
             "model": state.model,
             "effort": state.effort,
+            "emergency_writer": dict(state.emergency_writer),
             "service_tier": (
                 ("fast" if state.fast_mode else "standard")
                 if _supports_fast(state.writer)
@@ -3349,8 +3645,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
         if tid == "stages":
             _move_stage(-1)
         elif tid == "coder":
-            state.field_i = 0
-            open_pick("writer")
+            if state.focus == "emergency_provider":
+                open_pick("emergency_provider")
+            else:
+                state.field_i = 0
+                open_pick("writer")
         elif tid == "work":
             _cycle_pm_read_provider()
 
@@ -3407,8 +3706,11 @@ def run_tui(repo: Path, doctor: Any) -> int:
     def _(event) -> None:
         tid = TAB_IDS[tab_i["i"]]
         if tid == "coder":
-            state.field_i = 1
-            open_pick("model")
+            if state.focus == "emergency_model":
+                open_pick("emergency_model")
+            else:
+                state.field_i = 1
+                open_pick("model")
         elif tid == "work":
             state.worktree_on_multi_write = not state.worktree_on_multi_write
             state.message = _t(
@@ -3420,8 +3722,20 @@ def run_tui(repo: Path, doctor: Any) -> int:
     @kb.add("e")
     def _(event) -> None:
         if TAB_IDS[tab_i["i"]] == "coder":
-            state.field_i = 2
-            open_pick("effort")
+            if state.focus == "emergency_effort":
+                open_pick("emergency_effort")
+            else:
+                state.field_i = 2
+                open_pick("effort")
+
+    @kb.add("c")
+    def _(event) -> None:
+        if TAB_IDS[tab_i["i"]] != "coder":
+            return
+        if state.view == "pick" and state.pick_kind == "emergency_model":
+            edit_emergency_model(event.app)
+        elif state.view == "form" and state.focus == "emergency_model":
+            edit_emergency_model(event.app)
 
     @kb.add(" ")
     def _(event) -> None:
@@ -3577,8 +3891,8 @@ def run_tui(repo: Path, doctor: Any) -> int:
             return
         if tid == "coder" and state.view == "form" and y >= 3:
             fields = _coder_fields()
-            i = y - 3
-            if 0 <= i < len(fields):
+            i = coder_rows.get(y)
+            if i is not None and 0 <= i < len(fields):
                 state.field_i = i
                 state.focus = fields[i]
                 open_pick(fields[i])

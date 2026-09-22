@@ -572,6 +572,7 @@ def write_outputs(
     stages: dict | None = None,
     writer_agent: str | None = None,
     pm_read: dict | None = None,
+    emergency_writer: dict | None = None,
     quiet: bool = False,
 ) -> None:
     try:
@@ -646,7 +647,19 @@ def write_outputs(
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from pm_read import normalize_pm_read, resolve_pm_read
         from routing_profile import load_routing_profile as _load_profile
-    prev_pr = _load_profile(repo).get("pm_read")
+    from routing_profile import KNOWN_WRITERS, resolve_emergency_writer
+
+    previous = _load_profile(repo)
+    emergency_seed = emergency_writer if emergency_writer is not None else previous.get("emergency_writer")
+    if not emergency_seed:
+        emergency_seed = {"provider": "claude-worker" if lanes.get("emergency_write") == "claude-worker" else "codex"}
+    # Preserve legacy Claude-only profiles; external emergency writers use the
+    # same supported provider set as lane-session.
+    emergency = (resolve_emergency_writer(repo, settings=emergency_seed)
+                 if emergency_seed.get("provider", "codex") in KNOWN_WRITERS else None)
+    if emergency is not None:
+        lanes = {**lanes, "emergency_write": emergency["provider"]}
+    prev_pr = previous.get("pm_read")
     pr_seed = dict(prev_pr) if isinstance(prev_pr, dict) else {}
     if isinstance(pm_read, dict):
         pr_seed.update({k: v for k, v in pm_read.items() if v is not None})
@@ -663,6 +676,7 @@ def write_outputs(
         "lanes": lanes,
         "notes": notes,
         "pm": "claude",
+        **({"emergency_writer": emergency} if emergency is not None else {}),
         "writer": {
             "provider": main_write,
             "model": writer_model,
@@ -742,6 +756,10 @@ def write_outputs(
                 else "Cursor -fast model sibling"
             )
             lines.append(f"  service_tier: {tier}  # standard | fast ({hint})")
+    if emergency is not None:
+        lines.append("emergency_writer:")
+        for key, value in emergency.items():
+            lines.append(f"  {key}: {json.dumps(value, ensure_ascii=False)}")
     # Workspace: where writers edit (main checkout vs isolated worktree).
     lines.append("workspace:")
     lines.append(

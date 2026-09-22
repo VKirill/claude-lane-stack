@@ -11,7 +11,7 @@ writes product code. Daytime writer provider comes from **adoc** /
 | `dev-orchestrator` | PM | Plans, dispatches, merges | Claude (Fable) |
 | `run-supervisor` | Watch | Starts + watches `run-controller` for **any** provider | Claude Haiku + Bash |
 | `lane-supervisor` | One action | Single `lane-ctl` status/retry/verify/accept | Claude + lane-ctl |
-| `emergency-writer` | Emergency write | Shell-out write **after** terminal block | Codex Terra/Sol |
+| `emergency-writer` | Emergency write | Shell-out write **after** terminal block | adoc emergency writer (default GPT-6 Luna/high/Fast) |
 | `night-reviewer` | Review | Night/branch read-only review | Codex Sol |
 | `project-onboarder` | Onboard | CLAUDE.md / docs pack | Codex Terra/Sol |
 | `docs-maintainer` | Docs | INIT + nightly living docs/ | Codex Luna max fast |

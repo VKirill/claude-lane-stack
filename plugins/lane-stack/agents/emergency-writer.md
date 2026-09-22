@@ -1,6 +1,6 @@
 ---
 name: emergency-writer
-description: "Emergency write lane after terminal block (shell-out to Codex Terra/Sol). Not the daytime adoc writer — that is run-supervisor + lane process."
+description: "Emergency write lane after terminal block (shell-out to the adoc emergency writer). Not the daytime adoc writer — that is run-supervisor + lane process."
 model: sonnet
 background: true
 maxTurns: 40
@@ -18,31 +18,20 @@ skills:
 
 Shell-out only. Do not implement product code yourself.
 
-## Model + effort (token-aware)
+## Provider, model and speed
 
-| Trigger | Model | Effort |
-|---------|-------|--------|
-| `risk: low` and ≤3 `owns_paths` entries | `gpt-5.6-terra` | **`medium`** |
-| `risk: medium` / default | `gpt-5.6-terra` | **`high`** |
-| `risk: high` / `high_risk_paths` / emergency / terminal recovery | `gpt-5.6-sol` | **`high`** |
-| Only if PM sets `CODEX_REASONING=xhigh` or a prior high attempt failed | same | **`xhigh`** |
-| override | `CODEX_MODEL` / `CODEX_REASONING` | — |
-| forbidden | gpt-5.5; luna for multi-file | — |
-
-**No `fast_write` lane.** Do not burn high/xhigh "because fast".
-
-See `docs/decisions/ADR-codex-effort.md`.
-
-```bash
-# Defaults — compute from TASK_FILE unless env override
-CODEX_MODEL="${CODEX_MODEL:-}"
-CODEX_REASONING="${CODEX_REASONING:-}"
-```
+Read the project's `emergency_writer` settings through `routing_profile.resolve_emergency_writer`.
+Configure these independently of the main writer in **adoc → Coder → Emergency writer**.
+Default: **Codex `gpt-6-luna`, reasoning `high`, Fast**. Explicit task overrides win.
+Never replace the main writer or start recovery when the user has forbidden it.
+The Claude `model: sonnet` above is the shell-out coordinator, not the coding model.
 
 ## Inputs
 
 `PROJECT_CWD`, `TASK_FILE`, `ARTIFACT_DIR`, **`RUN_DIR`** (required for multi-task),
-optional `RUN_SLUG`, `TASK_ID`, `MODE: start|finish|full`, `CODEX_MODEL`, `CODEX_REASONING`
+optional `RUN_SLUG`, `TASK_ID`, `MODE: start|finish|full`, `EMERGENCY_PROVIDER`,
+`EMERGENCY_MODEL`, `EMERGENCY_REASONING`, `EMERGENCY_SERVICE_TIER`.
+Legacy `CODEX_MODEL` / `CODEX_REASONING` overrides apply only when provider is Codex.
 
 **MODE default (if omitted):** smart — multi-task (≥2 YAML) → `start`; single-task → `full`.  
 Multi-task PM **must** use `start` then `finish`. Never N× `MODE=full` in one turn.
@@ -70,65 +59,66 @@ if ! lane-mode-check --run-dir "$RUN_DIR" --mode "$MODE" --task "$SESSION_TASK_I
   echo "STATUS: refused_full_on_multi_task"
   exit 0
 fi
-command -v codex && codex --version
-
-# --- effort policy (skip when CODEX_* already set) ---
-if [[ -z "${CODEX_MODEL:-}" || -z "${CODEX_REASONING:-}" ]]; then
-  RISK=$(grep -E '^risk:' "$TASK_FILE" | head -1 | awk '{print $2}' | tr -d '"' || true)
-  OWNS_N=$(grep -cE '^\s+-\s+' "$TASK_FILE" 2>/dev/null || echo 0)
-  # crude owns count: lines under owns_paths block; fallback medium/high
-  if grep -qE 'high_risk_paths:\s*true|risk:\s*high' "$TASK_FILE"; then
-    : "${CODEX_MODEL:=gpt-5.6-sol}"
-    : "${CODEX_REASONING:=high}"
-  elif [[ "${RISK:-medium}" == "low" ]]; then
-    : "${CODEX_MODEL:=gpt-5.6-terra}"
-    : "${CODEX_REASONING:=medium}"
-  else
-    : "${CODEX_MODEL:=gpt-5.6-terra}"
-    : "${CODEX_REASONING:=high}"
-  fi
-fi
-CODEX_MODEL="${CODEX_MODEL:-gpt-5.6-terra}"
-CODEX_REASONING="${CODEX_REASONING:-high}"
-# never default to xhigh
-[[ "$CODEX_REASONING" == "xhigh" ]] || true
-echo "CODEX_MODEL=$CODEX_MODEL CODEX_REASONING=$CODEX_REASONING"
+# Resolve the independent project setting; preserve explicit assignment overrides.
+export EMERGENCY_PROVIDER EMERGENCY_MODEL EMERGENCY_REASONING EMERGENCY_SERVICE_TIER
+export CODEX_MODEL CODEX_REASONING
+EMERGENCY_SETTINGS=$(PYTHONPATH="$HOME/.agents/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$PROJECT_CWD" <<'PYTHON'
+import os, sys
+from pathlib import Path
+from routing_profile import resolve_emergency_writer
+settings = resolve_emergency_writer(Path(sys.argv[1]))
+if os.environ.get("EMERGENCY_PROVIDER"):
+    settings = resolve_emergency_writer(Path(sys.argv[1]), settings={"provider": os.environ["EMERGENCY_PROVIDER"]})
+for key, env in (("model", "EMERGENCY_MODEL"), ("reasoning_effort", "EMERGENCY_REASONING"), ("service_tier", "EMERGENCY_SERVICE_TIER")):
+    settings[key] = os.environ.get(env) or settings[key]
+if settings["provider"] == "codex":
+    settings["model"] = os.environ.get("CODEX_MODEL") or settings["model"]
+    settings["reasoning_effort"] = os.environ.get("CODEX_REASONING") or settings["reasoning_effort"]
+for key in ("provider", "model", "reasoning_effort", "service_tier"):
+    print(settings[key])
+PYTHON
+) || exit 1
+mapfile -t EMERGENCY_CONFIG <<< "$EMERGENCY_SETTINGS"
+EMERGENCY_PROVIDER="${EMERGENCY_CONFIG[0]}"
+EMERGENCY_MODEL="${EMERGENCY_CONFIG[1]}"
+EMERGENCY_REASONING="${EMERGENCY_CONFIG[2]}"
+EMERGENCY_SERVICE_TIER="${EMERGENCY_CONFIG[3]}"
+echo "EMERGENCY_PROVIDER=$EMERGENCY_PROVIDER EMERGENCY_MODEL=$EMERGENCY_MODEL EMERGENCY_REASONING=$EMERGENCY_REASONING EMERGENCY_SERVICE_TIER=$EMERGENCY_SERVICE_TIER"
 ```
 
 ## Run
 
-Instructions: `~/.agents/codex/instructions/writer-emergency.md` (writer).
+Instructions: `~/.agents/codex/instructions/writer-emergency.md` (shared recovery task contract).
 
 ## Run — MUST be background (Claude Bash kills ~2 min foreground)
 
-**Do not** block foreground Bash on full `codex exec`. Use `lane-bg` + poll `lane-wait --once`.
+**Do not** block foreground Bash on the full writer process. Use `lane-bg` + poll `lane-wait --once`.
 
 `MODE=start` must **not** poll. Multi-task → `start` then `finish` only.
 
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 cd "$PROJECT_CWD"
-SPEC="$ARTIFACT_DIR/codex-spec.txt"
+SPEC="$ARTIFACT_DIR/emergency-spec.txt"
 FINAL="$ARTIFACT_DIR/lane-final.log"
-OUT_MSG="$ARTIFACT_DIR/codex-last-message.txt"
 # write SPEC = instructions + TASK_FILE contents + paths
 HB=""
 [[ -n "${RUN_SLUG:-}" ]] && HB="$ARTIFACT_DIR/heartbeat.json"
 # MODE already set in Preflight (smart default)
 
 if [[ "$MODE" != "finish" ]]; then
-  lane-bg --dir "$ARTIFACT_DIR" --label "codex-${CODEX_MODEL}" -- \
-    lane-exec --idle 900 --max 7200 --label "codex-${CODEX_MODEL}" \
+  if ! lane-bg --dir "$ARTIFACT_DIR" --label "emergency-${EMERGENCY_PROVIDER}" -- \
+    lane-exec --idle 900 --max 7200 --label "emergency-${EMERGENCY_PROVIDER}" \
       ${HB:+--heartbeat "$HB"} \
       --log "$ARTIFACT_DIR/lane-exec.log" \
-      -- bash -c 'codex exec --model "$0" -c model_reasoning_effort="$1" \
-          -c approval_policy="never" \
-          --sandbox workspace-write --skip-git-repo-check \
-          --cd "$2" --output-last-message "$3" - < "$4" > "$5" 2>&1; \
-          echo CODEX_EXIT=$? CODEX_MODEL=$0 CODEX_REASONING=$1 >> "$5"' \
-        "$CODEX_MODEL" "$CODEX_REASONING" "$PROJECT_CWD" "$OUT_MSG" "$SPEC" "$FINAL"
-# Note: Codex ≥0.147 removed `codex exec --full-auto`. Unattended write =
-# approval never + sandbox workspace-write (same effective policy as old full-auto).
+      -- lane-session run --provider "$EMERGENCY_PROVIDER" \
+        --model "$EMERGENCY_MODEL" --reasoning-effort "$EMERGENCY_REASONING" \
+        --service-tier "$EMERGENCY_SERVICE_TIER" \
+        --run-dir "$RUN_DIR" --task-id "$SESSION_TASK_ID" --role emergency-writer \
+        --cwd "$PROJECT_CWD" --prompt-file "$SPEC" --output "$FINAL"; then
+    echo "FAILED emergency writer launch failed"
+    exit 1
+  fi
 fi
 
 if [[ "$MODE" == "start" ]]; then
@@ -147,13 +137,15 @@ fi
 | idle | 900s | silent + no CPU → kill |
 | max | 7200s | absolute ceiling (detached) |
 
-Post: `check-owns-paths`, ensure `ARTIFACT_DIR/report.md` (CODEX REPORT). Empty diff → partial. Never merge main.
+Post: run `check-owns-paths` and verify the runtime report at
+`RUN_DIR/artifacts/SESSION_TASK_ID/report.md` (the `lane-session` canonical path,
+which may differ from the log `ARTIFACT_DIR`). Empty diff → partial. Never merge main.
 
 ## Completion (mandatory — Claude Code lifecycle)
 
 When the MODE action finishes (start marker / finish post / full poll+post):
 
-1. Last line: `DONE <mode> <ARTIFACT_DIR/report-or-marker>` or `FAILED <reason>`.
+1. Last line: `DONE <mode> <canonical-report-or-start-marker-path>` or `FAILED <reason>`.
 2. **Stop.** Do not park idle for more instructions.
 3. Completing marks the agent **done** (not idle). Idle resume noise is forbidden.
 4. PM re-spawns for a second MODE (e.g. `finish` after `start`).
