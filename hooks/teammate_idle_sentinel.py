@@ -154,7 +154,7 @@ def decide(payload: dict) -> tuple[int, str]:
     text = last_assistant_text(payload)
     name = _payload_str(payload, "teammate_name", "teammateName")
     role = _payload_str(payload, "agent_type", "agentType").rsplit(":", 1)[-1]
-    if role == "run-supervisor" or name.startswith("rs-"):
+    if role == "run-supervisor" or any(re.fullmatch(r"rs\d*-[A-Za-z0-9_.-]+", identity) for identity in (name, role)):
         matches = list(SENTINEL_RE.finditer(text[-TAIL_CHARS:]))
         if matches and matches[-1].group(1).upper() in {"DONE", "FAILED"}:
             return 0, ""

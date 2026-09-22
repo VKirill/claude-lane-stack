@@ -38,6 +38,9 @@ class SentinelUnitTests(unittest.TestCase):
     def test_supervisor_cannot_park_with_wait(self) -> None:
         for identity in [
             {"teammate_name": "rs-demo"},
+            {"teammate_name": "rs2-fotosessii-p1-bugs"},
+            {"agent_type": "rs12-demo"},
+            {"agent_type": "rs12-demo", "teammate_name": "watcher"},
             {"agent_type": "lane-stack:run-supervisor", "teammate_name": "watcher"},
         ]:
             for text in ["WAIT background monitor active", "Watching...", "DONE old\nWAIT again"]:

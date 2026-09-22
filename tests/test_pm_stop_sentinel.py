@@ -20,6 +20,7 @@ from pm_stop_sentinel import (  # noqa: E402
     decide_watch,
     is_supervisor_spawn,
     pick_controller,
+    supervisor_tasks,
     watch_run,
 )
 
@@ -201,6 +202,17 @@ class DecideStopTests(unittest.TestCase):
 
 
 class SpawnAndWatchTests(unittest.TestCase):
+    def test_numbered_supervisor_is_recognized_and_idle_is_not_live(self) -> None:
+        for name in ["rs-demo", "rs2-fotosessii-p1-bugs", "rs12-demo"]:
+            with self.subTest(name=name):
+                self.assertTrue(is_supervisor_spawn({
+                    "tool_name": "Agent", "tool_input": {"name": name},
+                }))
+                payload = {"background_tasks": [{"type": "teammate", "name": name, "status": "running"}]}
+                self.assertEqual(len(supervisor_tasks(payload, inflight_only=True)), 1)
+                payload["background_tasks"][0]["status"] = "idle"
+                self.assertEqual(supervisor_tasks(payload, inflight_only=True), [])
+
     def test_supervisor_spawn_detect(self) -> None:
         self.assertTrue(
             is_supervisor_spawn(

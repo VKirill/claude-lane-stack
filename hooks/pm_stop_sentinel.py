@@ -32,7 +32,7 @@ PM_AGENTS = frozenset(
 )
 SUPERVISOR_TYPES = frozenset({"run-supervisor", "lane-supervisor"})
 SUPERVISOR_RE = re.compile(
-    r"(?:run-supervisor|lane-supervisor|\brs-[a-z0-9][a-z0-9-]*)",
+    r"(?:run-supervisor|lane-supervisor|\brs\d*-[a-z0-9][a-z0-9-]*)",
     re.IGNORECASE,
 )
 RUN_DIR_RE = re.compile(r"\.agents/runs/([A-Za-z0-9._-]+)")
