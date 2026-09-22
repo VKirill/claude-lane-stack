@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin"))
 RUNNER = ROOT / "bin" / "browser-qa-jev"
 
-from browser_qa_jev import expected_hit, format_elements, decide, run_case  # noqa: E402
+from browser_qa_jev import expected_hit, format_elements, decide, run_case, snapshot  # noqa: E402
 from pipeline_stages import normalize_stages  # noqa: E402
 
 
@@ -32,6 +32,27 @@ class BrowserQaJevTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["id"], "e1")
 
+    def test_format_elements_keeps_all_action_text(self) -> None:
+        rows = format_elements(
+            [
+                {"id": f"e{index}", "kind": "click", "role": "button", "label": "L" * 120}
+                for index in range(81)
+            ]
+        )
+        self.assertEqual(len(rows), 81)
+        self.assertEqual(len(rows[-1]["label"]), 120)
+
+    def test_snapshot_keeps_all_actions(self) -> None:
+        raw = {"url": "http://x/", "title": "X", "text": "text", "actions": [
+            {"id": f"e{index}", "kind": "click"} for index in range(81)
+        ]}
+
+        class Dummy:
+            def evaluate(self, _expression):
+                return raw
+
+        self.assertEqual(len(snapshot(Dummy())["actions"]), 81)
+
     def test_decide_click(self) -> None:
         page = {
             "url": "http://x/",
@@ -47,10 +68,19 @@ class BrowserQaJevTest(unittest.TestCase):
                 "click_target": {"choice": "e1", "confidence": 0.7},
             }
         }
-        with patch("browser_qa_jev.call_jev", return_value=fake):
-            out = decide(page, "Click Pay", [])
+        with patch("browser_qa_jev.call_jev", return_value=fake) as call:
+            out = decide(
+                page,
+                "Click " + ("goal " * 300),
+                ["history " * 300],
+                expected="expected " * 300,
+            )
         self.assertEqual(out["operation"], "CLICK")
         self.assertEqual(out["target"], "e1")
+        state = call.call_args.args[0]
+        self.assertTrue(state["goal"].endswith("goal "))
+        self.assertTrue(state["expected"].endswith("expected "))
+        self.assertEqual(len(state["recent"]), 1)
 
     def test_run_case_done_checks_expected(self) -> None:
         page = {

@@ -32,15 +32,6 @@ class Task:
         return not (self.user_request or self.assistant_intent)
 
 
-def _tail_bytes(path: str, max_bytes: int) -> bytes:
-    size = os.path.getsize(path)
-    with open(path, "rb") as fh:
-        if size > max_bytes:
-            fh.seek(size - max_bytes)
-            fh.readline()  # discard the partial line we landed in
-        return fh.read()
-
-
 def _text_of(content: object) -> str:
     if isinstance(content, str):
         return content
@@ -90,7 +81,7 @@ def guess_transcript_path(cwd: str, session_id: str) -> str:
     return os.path.join(root, re.sub(r"[^A-Za-z0-9]", "-", cwd), f"{session_id}.jsonl")
 
 
-def task_from_payload(payload: dict, *, max_chars: int = 1500) -> Task | None:
+def task_from_payload(payload: dict, *, max_chars: int | None = None) -> Task | None:
     """A task the caller reconstructed itself, or None.
 
     The function-hook module reads the live session and sends ``task`` as
@@ -104,53 +95,40 @@ def task_from_payload(payload: dict, *, max_chars: int = 1500) -> Task | None:
     assistant = str(raw.get("assistant_intent") or "").strip()
     if not user and not assistant:
         return None
-    return Task(_head(user, max_chars), _tail(assistant, max_chars))
+    return Task(user, assistant)
 
 
 def read_task(
     transcript_path: str | None,
     *,
-    max_chars: int = 1500,
-    max_bytes: int = 2_000_000,
+    max_chars: int | None = None,
 ) -> Task:
-    """Return the latest user request and assistant intent from the transcript tail."""
+    """Return the latest user request and assistant intent from the full transcript."""
     if not transcript_path or not os.path.exists(transcript_path):
         return Task()
+    user, assistant = "", ""
     try:
-        data = _tail_bytes(transcript_path, max_bytes)
+        with open(transcript_path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    entry = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                kind = entry.get("type")
+                message = entry.get("message") or {}
+                content = message.get("content") if isinstance(message, dict) else None
+                if kind == "user":
+                    if entry.get("isMeta") or _has_tool_result(content):
+                        continue
+                    text = _text_of(content).strip()
+                    if text:
+                        user, assistant = text, ""
+                elif kind == "assistant":
+                    text = _text_of(content).strip()
+                    if text:
+                        assistant = text
     except OSError:
         return Task()
-
-    user, assistant = "", ""
-    for line in data.decode("utf-8", errors="replace").splitlines():
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(entry, dict):
-            continue
-        kind = entry.get("type")
-        message = entry.get("message") or {}
-        content = message.get("content") if isinstance(message, dict) else None
-        if kind == "user":
-            if entry.get("isMeta") or _has_tool_result(content):
-                continue
-            text = _text_of(content).strip()
-            if text:
-                user, assistant = text, ""
-        elif kind == "assistant":
-            text = _text_of(content).strip()
-            if text:
-                assistant = text
-    # Keep the head of long messages: a delegation prompt says what to do in its first lines and
-    # ends in details; the same holds for a long user request. The tail of an assistant message
-    # is the more useful half, since that is where it says what it will do next.
-    return Task(_head(user, max_chars), _tail(assistant, max_chars))
-
-
-def _head(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
-
-
-def _tail(text: str, limit: int) -> str:
-    return text if len(text) <= limit else "…" + text[-(limit - 1) :].lstrip()
+    return Task(user, assistant)

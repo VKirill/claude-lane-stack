@@ -83,15 +83,8 @@ def _block_questions(blocks: list[Block], name: str = "default") -> dict[str, An
 
 
 def _judge_window(blocks: list[Block], max_chars: int) -> list[Block]:
-    """The prefix of blocks that fits the state budget. The rest is kept unjudged."""
-    window: list[Block] = []
-    used = 0
-    for block in blocks:
-        used += len(block.text)
-        if used > max_chars and window:
-            break
-        window.append(block)
-    return window
+    """Return every block so the judge can see the complete tool result."""
+    return list(blocks)
 
 
 def post_tool_use(payload: dict[str, Any], runtime: Runtime, meta: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -216,7 +209,7 @@ def post_tool_use(payload: dict[str, Any], runtime: Runtime, meta: dict[str, Any
         if runtime.summarizer is not None and n < cfg.summary_max_groups:
             started = time.perf_counter()
             try:
-                summary = runtime.summarizer.summarize(text[: cfg.summary_max_chars], task, extracted.describe)
+                summary = runtime.summarizer.summarize(text, task, extracted.describe)
             except Exception as exc:  # noqa: BLE001 - a missing summary is not fatal
                 log.log_error(cfg, "summarizer", exc)
             summary_ms += int((time.perf_counter() - started) * 1000)
@@ -264,9 +257,9 @@ def user_prompt_submit(payload: dict[str, Any], runtime: Runtime) -> dict[str, A
     from typesafe_sdk import Noul
 
     state = {
-        "prompt": prompt[:4000],
+        "prompt": prompt,
         "candidates": {
-            c.id: {"title": c.title, "description": c.description, "excerpt": c.text[:600]}
+            c.id: {"title": c.title, "description": c.description, "excerpt": c.text}
             for c in candidates
         },
     }
@@ -308,15 +301,9 @@ def user_prompt_submit(payload: dict[str, Any], runtime: Runtime) -> dict[str, A
         return None
 
     parts = ["winnow selected these files as relevant to this prompt (read them here instead of opening them):"]
-    budget = cfg.context_max_chars - len(parts[0])
     for c in chosen:
         header = f"\n\n### {c.title} ({c.path})\n"
-        room = budget - len(header)
-        if room <= 200:
-            break
-        body = c.text if len(c.text) <= room else c.text[: room - 15] + "\n[truncated]"
-        parts.append(header + body)
-        budget -= len(header) + len(body)
+        parts.append(header + c.text)
 
     log.log_event(cfg, {**event, "injected": True, "reason": "injected", "chosen": [c.id for c in chosen]})
     return {

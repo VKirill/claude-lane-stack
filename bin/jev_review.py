@@ -28,8 +28,6 @@ SCREEN_THRESHOLD = 0.7
 MIN_LOCATION_CONFIDENCE = 0.55
 MAX_FOLLOW_UPS = 8
 MAX_PROFILES = 5
-MAX_FILES = 20
-MAX_PATCH = 6000
 BLOCKING_SEVERITY = 2.0
 ROUTE_SEVERITY = 1.5
 SKIP_NAMES = {
@@ -141,7 +139,7 @@ def parse_hunks(patch: str) -> list[dict[str, Any]]:
                 {
                     "id": f"hunk_{len(hunks) + 1}",
                     "startLine": start,
-                    "patch": clip("\n".join(current), 1800),
+                    "patch": "\n".join(current),
                 }
             )
 
@@ -199,9 +197,7 @@ def collect_diff(repo: Path, base: str | None = None) -> str:
 
     if base:
         return git("diff", "--no-ext-diff", "--unified=8", base)
-    unstaged = git("diff", "--no-ext-diff", "--unified=8", "HEAD")
-    staged = git("diff", "--no-ext-diff", "--unified=8", "--cached")
-    return (unstaged + "\n" + staged).strip()
+    return git("diff", "--no-ext-diff", "--unified=8", "HEAD")
 
 
 def _noul_q(question: str, yes: str, no: str) -> dict[str, Any]:
@@ -215,10 +211,10 @@ def _noul_q(question: str, yes: str, no: str) -> dict[str, Any]:
 def screen_file(file: dict[str, Any], tests: list[dict[str, Any]]) -> dict[str, float]:
     raw = call_jev(
         {
-            "file": {"path": file["path"], "patch": clip(file["patch"], MAX_PATCH)},
+            "file": {"path": file["path"], "patch": file["patch"]},
             "changedTests": [
-                {"path": item["path"], "patch": clip(item["patch"], 2500)}
-                for item in tests[:6]
+                {"path": item["path"], "patch": item["patch"]}
+                for item in tests
             ],
         },
         {
@@ -257,7 +253,7 @@ def screen_file(file: dict[str, Any], tests: list[dict[str, Any]]) -> dict[str, 
 def profile_file(file: dict[str, Any], probabilities: dict[str, float]) -> dict[str, Any]:
     raw = call_jev(
         {
-            "file": {"path": file["path"], "patch": clip(file["patch"], MAX_PATCH)},
+            "file": {"path": file["path"], "patch": file["patch"]},
             "screeningProbabilities": probabilities,
         },
         {
@@ -431,7 +427,7 @@ def review_changes(
         item
         for item in files
         if not TEST_FILE.search(item["path"]) and path_owned(item["path"], owns_paths)
-    ][:MAX_FILES]
+    ]
     empty = {
         "schema_version": 1,
         "mode": "changes",

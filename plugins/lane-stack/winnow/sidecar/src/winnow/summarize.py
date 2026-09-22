@@ -34,7 +34,7 @@ class ClaudeSummarizer:
     def summarize(self, text: str, task: Task, describe: str) -> str | None:
         prompt = (
             f"Tool call: {describe}\n"
-            f"Current task: {task.user_request[:600] or '(unknown)'}\n\n"
+            f"Current task: {task.user_request or '(unknown)'}\n\n"
             f"Section to summarize:\n<section>\n{text}\n</section>"
         )
         try:

@@ -77,8 +77,6 @@ def load_candidates(cfg: Config, cwd: str) -> list[Candidate]:
                 continue
             meta, body = _frontmatter(raw)
             title = meta.get("name") or path.stem
-            description = meta.get("description") or body.strip().split("\n", 1)[0][:200]
+            description = meta.get("description") or body.strip().split("\n", 1)[0]
             candidates.append(Candidate(_safe_id(path.stem, taken), path, title, description, body.strip()))
-            if len(candidates) >= cfg.context_max_candidates:
-                return candidates
     return candidates

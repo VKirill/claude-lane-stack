@@ -50,7 +50,7 @@ def main() -> int:
         return 0
     try:
         answers = call_jev(
-            {"task": prompt[:1500]},
+            {"task": prompt},
             {
                 "skill": {
                     "type": "choice",

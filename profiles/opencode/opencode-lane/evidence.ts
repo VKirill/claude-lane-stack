@@ -4,9 +4,6 @@ import { askJev, extraJevEnabled } from "./jev.ts"
 import { laneLog } from "./log.ts"
 import { stickySourcePath } from "./sticky.ts"
 
-const MAX_CRITERIA = 8
-const MAX_BASH = 5
-
 export function parseAcceptance(yaml: string): string[] {
   const out: string[] = []
   let inAcc = false
@@ -21,7 +18,7 @@ export function parseAcceptance(yaml: string): string[] {
       if (match) out.push(match[1].replace(/^["']|["']$/g, "").trim())
     }
   }
-  return out.slice(0, MAX_CRITERIA)
+  return out
 }
 
 export function lastToolText(messages: { parts?: unknown[] }[]): string {
@@ -32,7 +29,7 @@ export function lastToolText(messages: { parts?: unknown[] }[]): string {
       if (item.type === "tool" && typeof item.state?.output === "string") last = item.state.output
     }
   }
-  return last.slice(0, 3000)
+  return last
 }
 
 export function collectBashEvidence(messages: { parts?: unknown[] }[]): string {
@@ -47,13 +44,13 @@ export function collectBashEvidence(messages: { parts?: unknown[] }[]): string {
       const tool = (item.tool || "").toLowerCase()
       if (item.type !== "tool" || (tool !== "bash" && tool !== "shell")) continue
       const out = item.state?.output
-      if (typeof out !== "string" || out.length < 40) continue
+      if (typeof out !== "string" || !out.trim()) continue
       const cmd = typeof item.state?.input?.command === "string" ? item.state.input.command : ""
-      chunks.push(`$ ${cmd.slice(0, 200)}\n${out.slice(-800)}`)
+      chunks.push(`$ ${cmd}\n${out}`)
     }
   }
   if (!chunks.length) return lastToolText(messages)
-  return chunks.slice(-MAX_BASH).join("\n---\n")
+  return chunks.join("\n---\n")
 }
 
 const checked = new Map<string, string>()
@@ -70,8 +67,8 @@ export async function evidenceNotes(sessionID: string, messages: { parts?: unkno
   }
   const criteria = parseAcceptance(yaml)
   const evidence = collectBashEvidence(messages)
-  if (!criteria.length || evidence.length < 80) return ""
-  const sig = createHash("sha256").update(evidence).digest("hex").slice(0, 16)
+  if (!criteria.length || !evidence.trim()) return ""
+  const sig = createHash("sha256").update(JSON.stringify({ path, criteria, evidence })).digest("hex").slice(0, 16)
   if (checked.get(sessionID) === sig) return ""
   const questions: Record<string, unknown> = {}
   for (const [i, criterion] of criteria.entries()) {

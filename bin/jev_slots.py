@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from jev_decisions import JevCritiqueError, call_jev, choice, clip, noul
+from jev_decisions import JevCritiqueError, call_jev, choice, noul
 
 DISMISS_CUT = 0.35
 SCORE_FOR_RISK = {"low": 2, "medium": 5, "high": 8}
@@ -26,12 +26,12 @@ def triage_night_findings(findings: dict[str, dict[str, Any]]) -> list[str]:
         return []
     rows = []
     questions: dict[str, Any] = {}
-    for index, (fp, item) in enumerate(open_items[:12]):
+    for index, (fp, item) in enumerate(open_items):
         rows.append(
             {
                 "i": index,
                 "title": item.get("title"),
-                "summary": clip(str(item.get("summary") or ""), 400),
+                "summary": str(item.get("summary") or ""),
                 "severity": item.get("severity"),
                 "paths": (item.get("scope") or {}).get("owns_paths") or [],
             }
@@ -50,7 +50,7 @@ def triage_night_findings(findings: dict[str, dict[str, Any]]) -> list[str]:
         return []
     answers = raw.get("answers") or {}
     dismissed: list[str] = []
-    for index, (fp, item) in enumerate(open_items[:12]):
+    for index, (fp, item) in enumerate(open_items):
         if noul(answers, f"f{index}_real") >= DISMISS_CUT:
             continue
         item["actionable"] = False
@@ -61,7 +61,7 @@ def triage_night_findings(findings: dict[str, dict[str, Any]]) -> list[str]:
 
 def classify_verify_tail(detail: str) -> str | None:
     """Refine leftover verification_failed. None = keep regex result."""
-    text = clip(detail or "", 1500)
+    text = detail or ""
     if not text.strip():
         return None
     try:
@@ -99,7 +99,7 @@ def classify_verify_tail(detail: str) -> str | None:
 
 def score_brief(brief: str) -> dict[str, Any]:
     raw = call_jev(
-        {"brief": clip(brief, 2000)},
+        {"brief": brief},
         {
             "risk": {
                 "type": "choice",
@@ -121,7 +121,7 @@ def score_brief(brief: str) -> dict[str, Any]:
 
 def classify_intent(query: str) -> dict[str, Any]:
     raw = call_jev(
-        {"query": clip(query, 500)},
+        {"query": query},
         {
             "intent": {
                 "type": "choice",
@@ -147,7 +147,7 @@ def classify_intent(query: str) -> dict[str, Any]:
 
 def judge_qa_report(report: str, verdict: str) -> dict[str, Any]:
     raw = call_jev(
-        {"report": clip(report, 4000), "codex_verdict": verdict},
+        {"report": report, "codex_verdict": verdict},
         {
             "kind": {
                 "type": "choice",
@@ -195,8 +195,8 @@ def suggest_write_skills(task: dict[str, Any]) -> list[str]:
         raw = call_jev(
             {
                 "title": task.get("title"),
-                "objective": clip(str(task.get("objective") or ""), 400),
-                "owns": (task.get("owns_paths") or [])[:8],
+                "objective": str(task.get("objective") or ""),
+                "owns": task.get("owns_paths") or [],
             },
             {
                 "skill": {
@@ -258,6 +258,18 @@ RISK_TO_GROK_EFFORT = {
 }
 
 EMERGENCY_EFFORTS = {"medium", "high", "xhigh"}
+RAW_TASK_MARKER = "--- RAW TASK YAML (verbatim) ---"
+
+
+def _emergency_task_text(task_prompt: str) -> str:
+    if RAW_TASK_MARKER in task_prompt:
+        raw = task_prompt.split(RAW_TASK_MARKER, 1)[1]
+        if raw.startswith("\r\n"):
+            return raw[2:]
+        if raw.startswith("\n"):
+            return raw[1:]
+        return raw
+    return task_prompt
 
 
 def classify_emergency_effort(
@@ -276,8 +288,9 @@ def classify_emergency_effort(
         }
 
     try:
+        fulltask = _emergency_task_text(task_prompt)
         raw = call_jev(
-            {"task_prompt": clip(task_prompt, 8000)},
+            {"task_prompt": fulltask},
             {
                 "effort": {
                     "type": "choice",

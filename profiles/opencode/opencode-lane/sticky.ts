@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs"
 
 export const STICKY_MARK = "LANE CONTRACT (live)"
-const STICKY_CHARS = 8_000
 
 export type OcMessage = {
   info?: { role?: string; sessionID?: string; sessionId?: string }
@@ -13,10 +12,9 @@ export function stickySourcePath(): string {
 }
 
 export function formatStickyContract(raw: string, sourcePath: string): string {
-  const body = raw.length > STICKY_CHARS ? `${raw.slice(0, STICKY_CHARS)}\n…` : raw
   return (
     `${STICKY_MARK}\nRe-read ${sourcePath}. owns_paths / never_touch / acceptance in this file win over chat.\n\n` +
-    body
+    raw
   )
 }
 

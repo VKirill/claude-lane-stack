@@ -22,7 +22,7 @@ export function argKey(tool: string, args: unknown): string {
   const path = [a.path, a.filePath, a.file].find((v) => typeof v === "string") as string | undefined
   const cmd = [a.command, a.cmd].find((v) => typeof v === "string") as string | undefined
   const pattern = [a.pattern, a.query].find((v) => typeof v === "string") as string | undefined
-  return [tool.toLowerCase(), path ?? "", (cmd ?? "").slice(0, 400), (pattern ?? "").slice(0, 200)].join("|")
+  return [tool.toLowerCase(), path ?? "", cmd ?? "", pattern ?? ""].join("|")
 }
 
 export function toolFingerprint(tool: string, args: unknown, output: string): string {
@@ -56,13 +56,13 @@ export function recordTool(
   const list = recent.get(sessionID) || []
   list.push({
     tool: tool.toLowerCase(),
-    cmd: cmd.slice(0, 220),
+    cmd,
     fp,
     n,
     chars: output.length,
-    tail: output.slice(-400),
+    tail: output,
   })
-  recent.set(sessionID, list.slice(-8))
+  recent.set(sessionID, list)
   laneLog({
     mod: "budget",
     ok: true,
@@ -86,13 +86,12 @@ export async function repeatHint(
   }
   if (name !== "bash" && name !== "shell") return ""
   const prior = recentAttempts(sessionID)
-    .slice(-3)
-    .map((row) => ({ cmd: row.cmd, fp: row.fp, n: row.n, tail: row.tail.slice(-200) }))
+    .map((row) => ({ cmd: row.cmd, fp: row.fp, n: row.n, tail: row.tail }))
   if (!extraJevEnabled()) {
     return `[opencode-lane budget] same ${name} result ${n} times. Change the hypothesis before retrying.`
   }
   const answers = await askJev(
-    { task: task.slice(0, 1200), output: output.slice(0, 2000), repeats: n, prior },
+    { task, output, repeats: n, prior },
     {
       kind: {
         type: "choice",

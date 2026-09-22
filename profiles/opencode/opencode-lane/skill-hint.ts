@@ -21,8 +21,8 @@ const ALLOWED = new Set(Object.keys(WRITE_SKILLS))
 const hinted = new Map<string, string>()
 
 export function skillPhase(task: string, tools: string[] = []): string {
-  const last = tools.filter(Boolean).slice(-2).join(",")
-  return createHash("sha256").update(task.slice(0, 1500)).update("\0").update(last).digest("hex").slice(0, 16)
+  const last = tools.filter(Boolean).join(",")
+  return createHash("sha256").update(task).update("\0").update(last).digest("hex").slice(0, 16)
 }
 
 export async function skillHint(sessionID: string, task: string, tools: string[] = []): Promise<string> {
@@ -31,7 +31,7 @@ export async function skillHint(sessionID: string, task: string, tools: string[]
   if (hinted.get(sessionID) === sig) return ""
   hinted.set(sessionID, sig)
   const answers = await askJev(
-    { task: task.slice(0, 1500), tools: tools.slice(-2) },
+    { task, tools },
     {
       need: {
         type: "noul",

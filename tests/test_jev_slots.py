@@ -18,6 +18,7 @@ from jev_slots import (  # noqa: E402
     score_brief,
     suggest_write_skills,
     triage_night_findings,
+    classify_emergency_effort,
 )
 from handoff_lib import next_act_for_failure  # noqa: E402
 
@@ -50,6 +51,37 @@ class JevSlotsTest(unittest.TestCase):
         self.assertEqual(dismissed, ["a" * 64])
         self.assertFalse(findings["a" * 64]["actionable"])
         self.assertEqual(findings["a" * 64]["status"], "dismissed")
+
+    def test_jev_inputs_keep_long_tail_and_all_findings(self) -> None:
+        tail = "TAIL" * 2000
+        findings = {
+            str(index): {
+                "actionable": True,
+                "status": "open",
+                "title": f"finding {index}",
+                "summary": tail if index == 12 else "summary",
+                "scope": {"owns_paths": ["src/app.py"]},
+            }
+            for index in range(13)
+        }
+        with patch(
+            "jev_slots.call_jev",
+            return_value={"answers": {f"f{index}_real": _noul(0.9) for index in range(13)}},
+        ) as call:
+            triage_night_findings(findings)
+        state = call.call_args.args[0]
+        self.assertEqual(len(state["findings"]), 13)
+        self.assertTrue(state["findings"][12]["summary"].endswith("TAIL"))
+
+    def test_emergency_effort_sends_full_raw_task_after_marker(self) -> None:
+        raw_task = "schema_version: 2\n" + "objective: " + ("x" * 12000)
+        prompt = "writer contract\n--- RAW TASK YAML (verbatim) ---\n" + raw_task
+        with patch(
+            "jev_slots.call_jev",
+            return_value={"answers": {"effort": _choice("high")}},
+        ) as call:
+            classify_emergency_effort(prompt, "medium")
+        self.assertEqual(call.call_args.args[0]["task_prompt"], raw_task)
 
     def test_verify_tail_flake(self) -> None:
         with patch(

@@ -17,10 +17,9 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from jev_decisions import JevCritiqueError, call_jev, clip, openrouter_key
+from jev_decisions import JevCritiqueError, call_jev, openrouter_key
 
 MAX_STEPS = 16
-MAX_ACTIONS = 80
 TEXT_MODEL = os.environ.get("JEV_TEXT_MODEL") or "inception/mercury-2.5"
 DEVTOOLS_PORTS = (9333, 9222)
 
@@ -98,22 +97,20 @@ SNAPSHOT_JS = r"""
   }
   const words = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  let node, length = 0;
-  while ((node = walker.nextNode()) && length < 4000) {
+  let node;
+  while ((node = walker.nextNode())) {
     const value = node.textContent.trim(), parent = node.parentElement;
     if (!value || !parent || parent.closest('script,style,noscript,template') || !visible(parent))
       continue;
     words.push(value);
-    length += value.length;
   }
-  actions.splice(80);
   actions.forEach((a, i) => a.id = 'e' + (i + 1));
   if (scrollY + innerHeight < document.documentElement.scrollHeight - 2)
     actions.push({id: 'scroll_down', kind: 'scroll', label: 'Scroll down', delta: 560});
   if (scrollY > 0)
     actions.push({id: 'scroll_up', kind: 'scroll', label: 'Scroll up', delta: -560});
   actions.push({id: 'wait', kind: 'wait', label: 'Wait for the page to update'});
-  return {url: location.href, title: document.title, text: words.join('\n').slice(0, 4000),
+  return {url: location.href, title: document.title, text: words.join('\n'),
     w: innerWidth, h: innerHeight, actions};
 })()
 """
@@ -292,7 +289,7 @@ def snapshot(cdp: Cdp) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {"url": "", "title": "", "text": "", "actions": []}
     actions = raw.get("actions") if isinstance(raw.get("actions"), list) else []
-    raw["actions"] = [a for a in actions if isinstance(a, dict)][: MAX_ACTIONS + 3]
+    raw["actions"] = [a for a in actions if isinstance(a, dict)]
     return raw
 
 
@@ -306,7 +303,7 @@ def expected_hit(page_text: str, expected: str) -> bool:
     if not needle or needle in {"as written", "as written."}:
         return True
     hay = (page_text or "").lower()
-    return needle[:80] in hay or all(word in hay for word in needle.split()[:4] if len(word) > 2)
+    return needle in hay or all(word in hay for word in needle.split() if len(word) > 2)
 
 
 def format_elements(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -319,17 +316,19 @@ def format_elements(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "id": item.get("id"),
                 "kind": item.get("kind"),
                 "role": item.get("role"),
-                "label": clip(str(item.get("label") or ""), 80),
-                "value": clip(str(item.get("value") or ""), 40),
+                "label": str(item.get("label") or ""),
+                "value": str(item.get("value") or ""),
             }
         )
-    return rows[:MAX_ACTIONS]
+    return rows
 
 
-def decide(page: dict[str, Any], goal: str, history: list[str]) -> dict[str, Any]:
+def decide(
+    page: dict[str, Any], goal: str, history: list[str], *, expected: str = ""
+) -> dict[str, Any]:
     actions = page.get("actions") if isinstance(page.get("actions"), list) else []
-    clicks = {str(a["id"]): clip(str(a.get("label") or a["id"]), 80) for a in actions if a.get("kind") == "click"}
-    fills = {str(a["id"]): clip(str(a.get("label") or a["id"]), 80) for a in actions if a.get("kind") == "fill"}
+    clicks = {str(a["id"]): str(a.get("label") or a["id"]) for a in actions if a.get("kind") == "click"}
+    fills = {str(a["id"]): str(a.get("label") or a["id"]) for a in actions if a.get("kind") == "fill"}
     ops = {
         "CLICK": "Click a visible control that advances the case",
         "TYPE_TEXT": "Type into a visible field (a small model supplies the text)",
@@ -366,14 +365,15 @@ def decide(page: dict[str, Any], goal: str, history: list[str]) -> dict[str, Any
         }
     raw = call_jev(
         {
-            "goal": clip(goal, 500),
+            "goal": goal,
+            "expected": expected,
             "page": {
                 "url": page.get("url"),
                 "title": page.get("title"),
-                "text": clip(str(page.get("text") or ""), 2000),
+                "text": str(page.get("text") or ""),
             },
             "elements": format_elements(actions),
-            "recent": history[-8:],
+            "recent": history,
         },
         questions,
         title="lane-stack browser-qa-jev",
@@ -490,7 +490,7 @@ def run_case(
     for _ in range(max_steps):
         last_page = snapshot(cdp)
         try:
-            decision = decide(last_page, goal, history)
+            decision = decide(last_page, goal, history, expected=expected)
         except JevCritiqueError as exc:
             return {
                 "status": "blocked",

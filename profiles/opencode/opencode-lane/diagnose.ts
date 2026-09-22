@@ -1,11 +1,11 @@
 import { askJev, choiceOf, extraJevEnabled } from "./jev.ts"
-import { laneLog, sanitizeLog } from "./log.ts"
+import { laneLog, redactText } from "./log.ts"
 
 const KINDS = new Set(["code", "env", "contract", "context", "unclear"])
 
 export function looksFailed(text: string): boolean {
   return /traceback|assertionerror|\bfail(ed|ure)?\b|error:|npm err|exit code [1-9]|eacces|permission denied|command not found/i.test(
-    text.slice(0, 4000),
+    text,
   )
 }
 
@@ -14,7 +14,7 @@ export async function diagnoseFailure(task: string, output: string, exitCode?: u
   if (typeof exitCode !== "number" || !Number.isInteger(exitCode) || exitCode === 0) return ""
   if (!extraJevEnabled() || !looksFailed(output)) return ""
   const answers = await askJev(
-    { task: String(sanitizeLog(task)).slice(0, 1500), output: String(sanitizeLog(output)).slice(0, 2500) },
+    { task: redactText(task), output: redactText(output) },
     {
       kind: {
         type: "choice",

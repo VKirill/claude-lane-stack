@@ -83,13 +83,11 @@ def extract(tool_name: str, tool_input: Any, tool_response: Any) -> Extracted | 
 
 
 def trimmed_input(tool_name: str, tool_input: Any) -> dict[str, Any]:
-    """A compact view of the tool call for the judge's state."""
+    """The complete tool call for the judge's state.
+
+    Short descriptions remain display-only, but the judge needs every input
+    field and value to make a reliable decision.
+    """
     if not isinstance(tool_input, dict):
-        return {"raw": _short(tool_input, 300)}
-    if tool_name == "Bash":
-        return {"command": _short(tool_input.get("command", ""), 500)}
-    if tool_name == "Read":
-        return {k: tool_input[k] for k in ("file_path", "offset", "limit") if k in tool_input}
-    if tool_name == "Grep":
-        return {k: tool_input[k] for k in ("pattern", "path", "glob", "type") if k in tool_input}
-    return {k: _short(v, 200) for k, v in list(tool_input.items())[:8]}
+        return {"raw": tool_input}
+    return dict(tool_input)

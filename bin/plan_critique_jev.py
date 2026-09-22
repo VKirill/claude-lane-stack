@@ -14,7 +14,6 @@ from jev_decisions import (  # noqa: F401 — re-export for pipeline_stages
     JevCritiqueError,
     call_jev,
     choice as _choice,
-    clip as _clip,
     noul as _noul,
 )
 
@@ -34,15 +33,10 @@ SOFT_CODES = frozenset(
 )
 ACTIONABLE_CUT = 0.35
 UNCERTAIN_CUT = 0.5
-_PLAN_CHARS = 4000
-_SPEC_CHARS = 2000
-_OBJECTIVE_CHARS = 400
-
-
-def _read(path: Path, limit: int) -> str:
+def _read(path: Path) -> str:
     if not path.is_file():
         return ""
-    return _clip(path.read_text(encoding="utf-8", errors="replace"), limit)
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def pack_jev_state(run_dir: Path, structural: dict[str, Any]) -> dict[str, Any]:
@@ -53,7 +47,7 @@ def pack_jev_state(run_dir: Path, structural: dict[str, Any]) -> dict[str, Any]:
     if tasks_dir.is_dir():
         for path in sorted(tasks_dir.glob("*.yaml")):
             body = path.read_text(encoding="utf-8", errors="replace")
-            tasks.append({"file": path.name, "body": _clip(body, 1800)})
+            tasks.append({"file": path.name, "body": body})
     findings = []
     for item in structural.get("findings") or []:
         if not isinstance(item, dict):
@@ -73,10 +67,10 @@ def pack_jev_state(run_dir: Path, structural: dict[str, Any]) -> dict[str, Any]:
             }
         )
     return {
-        "plan": _read(run_dir / "PLAN.md", _PLAN_CHARS),
-        "spec": _read(run_dir / "SPEC.md", _SPEC_CHARS),
+        "plan": _read(run_dir / "PLAN.md"),
+        "spec": _read(run_dir / "SPEC.md"),
         "tasks": tasks,
-        "structural_findings": findings[:12],
+        "structural_findings": findings,
     }
 
 

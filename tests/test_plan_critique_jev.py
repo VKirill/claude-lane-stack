@@ -67,6 +67,28 @@ class PlanCritiqueJevTest(unittest.TestCase):
         self.assertEqual(state["structural_findings"][0]["code"], "plan_path_unowned")
         self.assertEqual(state["tasks"][0]["file"], "001.yaml")
 
+    def test_pack_state_keeps_full_inputs(self) -> None:
+        tail = "PLAN_TAIL" * 1200
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "PLAN.md").write_text(tail)
+            (run_dir / "SPEC.md").write_text("SPEC_TAIL" * 700)
+            (run_dir / "tasks").mkdir()
+            (run_dir / "tasks" / "001.yaml").write_text("task_tail: " + ("T" * 3000))
+            state = pack_jev_state(
+                run_dir,
+                {
+                    "findings": [
+                        {"id": str(index), "severity": "warn", "code": "owns_gap"}
+                        for index in range(13)
+                    ]
+                },
+            )
+        self.assertTrue(state["plan"].endswith("PLAN_TAIL"))
+        self.assertTrue(state["spec"].endswith("SPEC_TAIL"))
+        self.assertTrue(state["tasks"][0]["body"].endswith("T"))
+        self.assertEqual(len(state["structural_findings"]), 13)
+
     def test_answers_uncertain_ship_becomes_revise(self) -> None:
         payload = answers_to_payload(
             {

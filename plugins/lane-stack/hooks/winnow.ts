@@ -17,7 +17,6 @@ export const PORT = 47311
 export const TOOLS = ['Read', 'Bash', 'Grep'] as const
 /** Results shorter than this are never rewritten (the sidecar's WINNOW_MIN_CHARS default); skip the round trip. */
 const MIN_CHARS = 1500
-const TASK_CHARS = 1500
 
 export type Task = { user_request: string; assistant_intent: string }
 
@@ -52,17 +51,7 @@ export function taskFrom(messages: readonly SessionMessage[]): Task {
       assistant = text
     }
   }
-  return { user_request: head(user, TASK_CHARS), assistant_intent: tail(assistant, TASK_CHARS) }
-}
-
-/** A long request says what to do in its first lines. */
-export function head(text: string, limit: number): string {
-  return text.length <= limit ? text : text.slice(0, limit - 1).trimEnd() + '…'
-}
-
-/** A long assistant message says what it will do next at its end. */
-export function tail(text: string, limit: number): string {
-  return text.length <= limit ? text : '…' + text.slice(-(limit - 1)).trimStart()
+  return { user_request: user, assistant_intent: assistant }
 }
 
 export function describeMeta(tool: string, meta: Meta): string {

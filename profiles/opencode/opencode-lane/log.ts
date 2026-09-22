@@ -25,23 +25,24 @@ export function setLaneLogSink(sink: (row: Record<string, unknown>) => unknown):
   nativeSink = sink
 }
 
+export function redactText(value: string): string {
+  let text = value
+  for (const [key, secret] of Object.entries(process.env)) {
+    if (/key|token|secret|password|credential/i.test(key) && secret && secret.length >= 6) {
+      text = text.split(secret).join("[REDACTED]")
+    }
+  }
+  return text
+    .replace(/(Bearer\s+)\S+/gi, "$1[REDACTED]")
+    .replace(/((?:responseBody|requestBody|headers)["']?\s*[:=]\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
+    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization|cookie|set-cookie)[\s"']*[:=][\s"']*)[^\s"'&,}]+/gi, "$1[REDACTED]")
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[REDACTED]@")
+    .replace(/(https?:\/\/[^\s?#"']+)\?[^\s"']+/gi, "$1?[REDACTED]")
+}
+
 export function sanitizeLog(value: unknown, depth = 0): unknown {
   if (depth > 6) return "[depth limit]"
-  if (typeof value === "string") {
-    let text = value
-    for (const [key, secret] of Object.entries(process.env)) {
-      if (/key|token|secret|password|credential/i.test(key) && secret && secret.length >= 6) {
-        text = text.split(secret).join("[REDACTED]")
-      }
-    }
-    return text
-      .replace(/(Bearer\s+)\S+/gi, "$1[REDACTED]")
-      .replace(/((?:responseBody|requestBody|headers)["']?\s*[:=]\s*)"(?:\\.|[^"\\])*"/gi, '$1"[REDACTED]"')
-      .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization|cookie|set-cookie)[\s"']*[:=][\s"']*)[^\s"'&,}]+/gi, "$1[REDACTED]")
-      .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[REDACTED]@")
-      .replace(/(https?:\/\/[^\s?#"']+)\?[^\s"']+/gi, "$1?[REDACTED]")
-      .slice(0, 4000)
-  }
+  if (typeof value === "string") return redactText(value).slice(0, 4000)
   if (Array.isArray(value)) return value.slice(0, 40).map((item) => sanitizeLog(item, depth + 1))
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).slice(0, 60).map(([key, item]) => [

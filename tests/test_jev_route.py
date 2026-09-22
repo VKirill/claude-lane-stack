@@ -73,10 +73,7 @@ class JevRouteTest(unittest.TestCase):
             assert.equal(tasks.length, 2, 'unchanged task keeps the cached route');
             assert.equal(await route('Fix the local typo'), 'Fix the local typo');
             const large = 'schema_version: 2\\n' + 'a'.repeat(15000) + '\\nobjective: Keep this goal';
-            const bounded = await route(prefix + marker + large);
-            assert.ok(bounded.length <= 12000);
-            assert.ok(bounded.startsWith('schema_version: 2'));
-            assert.ok(bounded.endsWith('objective: Keep this goal'));
+            assert.equal(await route(prefix + marker + large), large);
             assert.ok(tasks.every(task => !task.includes('GENERAL WRITER') && !task.includes('synthetic noise')));
         """)
         self.assertEqual(out.returncode, 0, out.stderr)
@@ -109,6 +106,66 @@ class JevRouteTest(unittest.TestCase):
             assert.match(await diagnoseFailure('fix private-env-value',
                 'AssertionError: expected 1, got 2 password=private-password', 1), /diagnose.*code/);
             assert.equal(calls, 1);
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
+
+    def test_jev_consumers_keep_full_tasks_results_and_criteria(self) -> None:
+        modules = ROOT / "profiles/opencode/opencode-lane"
+        out = _node(f"""
+            import {{ skillHint, skillPhase }} from {(modules / 'skill-hint.ts').as_uri()!r};
+            import {{ recordTool, recentAttempts, repeatHint }} from {(modules / 'budget.ts').as_uri()!r};
+            import {{ evidenceNotes }} from {(modules / 'evidence.ts').as_uri()!r};
+            import {{ diagnoseFailure }} from {(modules / 'diagnose.ts').as_uri()!r};
+            import {{ mkdtempSync, writeFileSync, rmSync }} from 'node:fs';
+            import assert from 'node:assert/strict';
+            process.env.LANE_STACK_ROOT = {str(ROOT)!r};
+            process.env.LANE_OPENCODE_JEV = '1';
+            process.env.TYPESAFE_API_KEY = 'fixture-key';
+            process.env.TEST_SECRET = 'private-test-value';
+            const task = 'Task context\\n'.repeat(2000) + 'FINAL GOAL';
+            const result = 'Earlier test output\\n'.repeat(1000) + 'AssertionError: LAST FAILURE';
+            const requests = [];
+            globalThis.fetch = async (_url, request) => {{
+                requests.push(JSON.parse(request.body));
+                return new Response(JSON.stringify({{ answers: {{
+                    need: {{ noul: 0 }}, skill: {{ choice: 'none', confidence: 1 }},
+                    kind: {{ choice: 'same_loop', confidence: 1 }}
+                }} }}));
+            }};
+            assert.notEqual(skillPhase(task), skillPhase(task + 'CHANGED'));
+            await skillHint('full-skills', task);
+            assert.equal(requests.at(-1).state.task, task);
+            await diagnoseFailure(task, result + ' password=private-test-value', 1);
+            assert.equal(requests.at(-1).state.task, task);
+            assert.ok(requests.at(-1).state.output.includes('LAST FAILURE'));
+            assert.ok(!requests.at(-1).state.output.includes('private-test-value'));
+            const command = 'long command '.repeat(100) + 'FINAL ARGUMENT';
+            for (let i = 0; i < 10; i++) recordTool('full-budget', 'shell', {{ command }}, result + i);
+            assert.equal(recentAttempts('full-budget').length, 10);
+            await repeatHint(task, 'shell', result, 3, 'full-budget');
+            assert.equal(requests.at(-1).state.output, result);
+            assert.equal(requests.at(-1).state.prior.length, 10);
+            assert.ok(requests.at(-1).state.prior[0].cmd.endsWith('FINAL ARGUMENT|'));
+            assert.equal(requests.at(-1).state.prior[0].tail, result + '0');
+            const dir = mkdtempSync('/tmp/lane-evidence-full-');
+            try {{
+                process.env.LANE_TASK_FILE = dir + '/task.yaml';
+                const yaml = 'acceptance:\\n' + Array.from({{ length: 12 }}, (_, i) => '  - criterion ' + i).join('\\n');
+                writeFileSync(process.env.LANE_TASK_FILE, yaml);
+                const messages = Array.from({{ length: 7 }}, (_, i) => ({{ parts: [{{
+                    type: 'tool', tool: 'shell', state: {{ input: {{ command }}, output: result + i }}
+                }}] }}));
+                await evidenceNotes('full-evidence', messages);
+                const state = requests.at(-1).state;
+                assert.equal(state.criteria.length, 12);
+                assert.equal(state.evidence.split(result).length - 1, 7);
+                assert.ok(state.evidence.includes(command));
+                const count = requests.length;
+                writeFileSync(process.env.LANE_TASK_FILE, yaml + '\\n  - new acceptance criterion');
+                await evidenceNotes('full-evidence', messages);
+                assert.equal(requests.length, count + 1);
+                assert.equal(requests.at(-1).state.criteria.length, 13);
+            }} finally {{ rmSync(dir, {{ recursive: true, force: true }}); }}
         """)
         self.assertEqual(out.returncode, 0, out.stderr)
 
@@ -258,7 +315,7 @@ class JevRouteTest(unittest.TestCase):
 
     def test_sticky_contract_replaces_prior_block(self) -> None:
         script = (
-            "import { ensureStickyMessages, STICKY_MARK } from "
+            "import { ensureStickyMessages, formatStickyContract, STICKY_MARK } from "
             f"{INDEX.resolve().as_uri()!r}; "
             "const messages = ["
             "  { info: { role: 'user' }, parts: [{ type: 'text', text: STICKY_MARK + '\\nold' }] },"
@@ -268,6 +325,8 @@ class JevRouteTest(unittest.TestCase):
             "if (messages.length !== 2) throw new Error('len ' + messages.length); "
             "if (!messages[1].parts[0].text.endsWith('new')) throw new Error('sticky'); "
             "if (messages[0].parts[0].text !== 'ok') throw new Error('kept'); "
+            "const task = 'x'.repeat(20000) + 'TAIL'; "
+            "if (!formatStickyContract(task, 'task.yaml').endsWith(task)) throw new Error('cut task'); "
             "console.log('ok')"
         )
         out = _node(script)

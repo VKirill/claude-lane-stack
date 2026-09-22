@@ -18,8 +18,8 @@ export const DEFAULT_OPTIONS: ResolvedCompactOptions = {
   goal: '',
   keepThreshold: 0.5,
   preserveRecentMessages: 6,
-  maxStateTokens: 25_000,
-  maxRequestTokens: 30_000,
+  maxStateTokens: Number.POSITIVE_INFINITY,
+  maxRequestTokens: Number.POSITIVE_INFINITY,
   truncateHeadChars: 300,
 };
 
@@ -250,9 +250,10 @@ function count(decisions: readonly CallDecision[], reason: CallDecision['reason'
 /**
  * Compacts a transcript by asking Jev, for every tool call outside the pinned
  * first and newest messages, whether the call and whether its result must
- * stay. The whole history (results omitted, fitted into `maxStateTokens`) is
- * sent as state with every batch of questions. Throws when Jev fails or the
- * history cannot be fitted; the caller decides whether to fall back.
+ * stay. The whole history (including full tool inputs and results, fitted into
+ * `maxStateTokens`) is sent as state with every batch of questions. The
+ * legacy numeric ceilings are opt-in; defaults attempt the complete request
+ * and let the transport decide whether it is acceptable.
  */
 export async function compact(
   messages: readonly Message[],

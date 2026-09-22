@@ -13,7 +13,12 @@ import {
   type SessionEffort,
 } from './jev-route-core.js'
 
-const TASK_CHARS = 1500
+const RAW_TASK_MARKER = /^--- RAW TASK YAML \(verbatim\) ---\r?$/m
+
+function canonicalTask(text: string): string {
+  const marker = RAW_TASK_MARKER.exec(text)
+  return marker ? text.slice(marker.index + marker[0].length).trim() : text
+}
 
 function lastUser(messages: readonly SessionMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -21,7 +26,7 @@ function lastUser(messages: readonly SessionMessage[]): string {
     if (m.role !== 'user') continue
     if (m.toolResults && m.toolResults.length > 0) continue
     const text = m.text.trim()
-    if (text) return text.length <= TASK_CHARS ? text : text.slice(0, TASK_CHARS)
+    if (text) return canonicalTask(text)
   }
   return ''
 }
@@ -88,7 +93,7 @@ export const register: Register = (on: On, _options: PluginOptions) => {
     if (e.fork) return next(e)
     const off = await $.env.get('LANE_JEV_EFFORT')
     if (!routeEnabled(off)) return next(e)
-    const route = await classify($, e.prompt.trim().slice(0, TASK_CHARS), 'medium')
+    const route = await classify($, canonicalTask(e.prompt.trim()), 'medium')
     if (route.reason === 'fail-open') return next(e)
     const result = await next({ ...e, model: route.subagent })
     if (result.agentId) byAgent.set(result.agentId, route)

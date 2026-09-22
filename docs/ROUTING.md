@@ -3,6 +3,12 @@
 **No GPT-5.5.** Codex model choices in adoc come from the local Codex catalog,
 including GPT-6 Astra/Sol/Luna. Existing project model settings are preserved.
 
+Jev receives complete task text and evidence: no character, item-count, or local
+request-size truncation before classification, review, or context selection.
+Credential redaction and post-decision semantic pruning remain enabled. Provider
+errors use each integration's existing fallback; they never trigger input clipping.
+Loaded Claude/OpenCode hooks require a new process to pick up plugin updates.
+
 ## Roles (full stack)
 
 | Role | Who | Default model |

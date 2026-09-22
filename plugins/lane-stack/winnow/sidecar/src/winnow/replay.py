@@ -42,7 +42,7 @@ from winnow.extract import extract, trimmed_input
 from winnow.hooks import _block_questions, _judge_window
 from winnow.judge import Judge, JudgeResult
 from winnow.log import JEV_USD_PER_MILLION_INPUT
-from winnow.transcript import _head, _tail, _text_of
+from winnow.transcript import _text_of
 
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{5,}")
 WORD = re.compile(r"[A-Za-z][A-Za-z0-9_]{3,}")
@@ -239,7 +239,7 @@ def iter_cases(
                             pending[str(block.get("id"))] = (
                                 name,
                                 inp,
-                                {"user_request": _head(user_request, 1500), "assistant_intent": _tail(intent, 1500)},
+                                {"user_request": user_request, "assistant_intent": intent},
                             )
     yield from open_cases
 

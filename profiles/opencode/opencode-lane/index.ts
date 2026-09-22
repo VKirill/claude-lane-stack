@@ -86,12 +86,7 @@ function rememberPrompt(
   if (!sessionID || !text) return
   const marker = /^--- RAW TASK YAML \(verbatim\) ---\r?$/m.exec(text)
   const task = marker ? text.slice(marker.index + marker[0].length).trim() : text
-  // ponytail: cap task context at 12k; select YAML fields if contracts outgrow this.
-  const omitted = "\n...[truncated]...\n"
-  const bounded = task.length <= 12000
-    ? task
-    : task.slice(0, 8000) + omitted + task.slice(-(4000 - omitted.length))
-  lastPrompt.set(sessionID, bounded)
+  lastPrompt.set(sessionID, task)
 }
 
 function modelIdOf(model: { id?: string; modelID?: string } | undefined): string {
@@ -250,7 +245,7 @@ async function pruneMessages(messages: OcMessage[], sessionID: string): Promise<
         return request.parseJevResponse(response.status, response.ok, await response.text())
       },
     },
-    { preserveRecentMessages: 6 },
+    { preserveRecentMessages: 6, goal: lastPrompt.get(sessionID) || undefined },
   )
   const byShort = new Map<string, string>()
   let n = 0

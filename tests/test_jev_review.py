@@ -13,9 +13,11 @@ sys.path.insert(0, str(ROOT / "bin"))
 RUNNER = ROOT / "bin" / "jev-review"
 
 from jev_review import (  # noqa: E402
+    collect_diff,
     parse_changed_files,
     parse_hunks,
     review_changes,
+    screen_file,
     skip_path,
 )
 
@@ -29,6 +31,34 @@ class JevReviewTest(unittest.TestCase):
         self.assertEqual(hunks[0]["id"], "hunk_1")
         self.assertEqual(hunks[0]["startLine"], 10)
         self.assertEqual(hunks[1]["startLine"], 20)
+
+    def test_parse_hunks_keeps_full_patch(self) -> None:
+        tail = "tail marker"
+        patch_text = "@@ -1 +1 @@\n" + ("+line\n" * 700) + f"+{tail}\n"
+        self.assertTrue(parse_hunks(patch_text)[0]["patch"].endswith(f"+{tail}"))
+
+    def test_collect_diff_does_not_duplicate_staged_changes(self) -> None:
+        result = subprocess.CompletedProcess([], 0, stdout="DIFF\n", stderr="")
+        with patch("jev_review.subprocess.run", return_value=result) as run:
+            self.assertEqual(collect_diff(Path("/tmp")), "DIFF\n")
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.args[0][-1], "HEAD")
+
+    def test_screen_file_sends_full_patch_and_all_tests(self) -> None:
+        tail = "PATCH_TAIL" * 900
+        tests = [
+            {"path": f"tests/test_{index}.py", "patch": f"test {index} {tail}"}
+            for index in range(7)
+        ]
+        response = {"answers": {name: {"noul": 0.1} for name in (
+            "correctness", "security", "reliability", "compatibility", "testGap"
+        )}}
+        with patch("jev_review.call_jev", return_value=response) as call:
+            screen_file({"path": "app.py", "patch": tail}, tests)
+        state = call.call_args.args[0]
+        self.assertTrue(state["file"]["patch"].endswith("PATCH_TAIL"))
+        self.assertEqual(len(state["changedTests"]), 7)
+        self.assertTrue(state["changedTests"][-1]["patch"].endswith("PATCH_TAIL"))
 
     def test_parse_changed_files_skips_binary(self) -> None:
         diff = (
