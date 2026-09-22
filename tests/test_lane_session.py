@@ -427,6 +427,16 @@ class LaneSessionTest(unittest.TestCase):
                         "SUMMARY: fake OpenCode report\\n"
                         "<<<LANE_REPORT:END>>>"
                     )
+                    if os.environ.get("FAKE_ERROR_MESSAGE"):
+                        sys.stderr.write("Plugin failed: api_key=private-value\\n")
+                        emit({
+                            "type": "tool_use", "sessionID": session_id,
+                            "part": {
+                                "tool": "read", "callID": "call-1", "messageID": "msg-1",
+                                "state": {"status": "error", "input": {"filePath": "src/test.ts"},
+                                          "output": "private file contents", "error": "EACCES api_key=private-value"},
+                            },
+                        })
                     emit(
                         {
                             "type": "step_start",
@@ -1013,11 +1023,44 @@ class LaneSessionTest(unittest.TestCase):
             self._session_record("opencode")["session_id"], "opencode-session-test"
         )
 
+    def test_opencode_diagnostics_capture_tool_errors_and_startup_stderr(self) -> None:
+        result = self._run("opencode", "logs", extra_env={"FAKE_ERROR_MESSAGE": "diagnostic fixture"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = self.root / "task-logs.events.jsonl"
+        raw = path.read_text()
+        self.assertNotIn("private-value", raw)
+        self.assertNotIn("private file contents", raw)
+        events = [json.loads(line) for line in raw.splitlines()]
+        tool = next(row for row in events if row["event"] == "tool")
+        self.assertEqual(tool["session"], "opencode-session-test")
+        self.assertEqual(tool["task"], "logs")
+        self.assertEqual(tool["call"], "call-1")
+        self.assertEqual(tool["status"], "error")
+        self.assertIn("EACCES", tool["error"])
+        self.assertTrue(any(row["event"] == "stderr" and "Plugin failed" in row["text"] for row in events))
+        self.assertEqual(events[-1]["event"], "stream.finish")
+        self.assertIn("--print-logs", self._calls()[0])
+
+    def test_opencode_error_summary_omits_provider_bodies(self) -> None:
+        module = self._load_lane_session()
+        error = {"name": "APIError", "data": {
+            "message": "Provider failed", "statusCode": 500,
+            "responseBody": "private user document", "headers": {"x-secret": "private"},
+            "requestBody": "private prompt",
+        }}
+        summary = module.opencode_error_summary(error)
+        self.assertEqual(summary, {"name": "APIError", "data": {"message": "Provider failed", "statusCode": 500}})
+        sanitized = module.sanitize_provider_diagnostic(error)
+        self.assertNotIn("private", json.dumps(sanitized))
+        self.assertNotIn("private", module.sanitize_provider_diagnostic('responseBody="private document"'))
+
     def test_opencode_environment_isolates_plugins(self) -> None:
         module = self._load_lane_session()
         env = module.provider_environment("opencode")
         self.assertEqual(env["OPENCODE_DISABLE_CLAUDE_CODE"], "1")
         self.assertEqual(env["OPENCODE_DISABLE_DEFAULT_PLUGINS"], "1")
+        self.assertEqual(env["CURSOR_ACP_LOG_CONSOLE"], "1")
+        self.assertEqual(env["CURSOR_ACP_LOG_LEVEL"], "warn")
         self.assertIn('"task":"deny"', env["OPENCODE_PERMISSION"])
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:

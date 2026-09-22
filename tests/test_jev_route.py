@@ -27,6 +27,74 @@ def _node(script: str) -> subprocess.CompletedProcess[str]:
 
 
 class JevRouteTest(unittest.TestCase):
+    def test_lane_log_preserves_async_session_and_redacts_errors(self) -> None:
+        log = ROOT / "profiles/opencode/opencode-lane/log.ts"
+        out = _node(f"""
+            import {{ laneLog, withLaneSession, setLaneLogSink }} from {log.as_uri()!r};
+            import {{ mkdtempSync, readFileSync, rmSync }} from 'node:fs';
+            import {{ tmpdir }} from 'node:os';
+            import assert from 'node:assert/strict';
+            const root = mkdtempSync(tmpdir() + '/lane-log-session-');
+            try {{
+                process.env.HOME = root;
+                process.env.LANE_PROMPT_FILE = root + '/prompt.md';
+                process.env.LANE_LOG = '1';
+                process.env.TEST_API_KEY = 'private-test-key';
+                const native = [];
+                setLaneLogSink((row) => {{ native.push(row); return Promise.reject(new Error('offline')); }});
+                await Promise.all(['one', 'two'].map((id) => withLaneSession(id, async () => {{
+                    await new Promise(resolve => setTimeout(resolve, id === 'one' ? 10 : 1));
+                    laneLog({{ mod: id, ok: false, err: 'failed private-test-key Bearer other-token',
+                        data: {{ password: 'hidden', url: 'https://user:pass@example.com' }} }});
+                }})));
+                const raw = readFileSync(root + '/opencode-lane.jsonl', 'utf8');
+                for (const secret of ['private-test-key', 'other-token', 'hidden', 'user:pass']) assert.ok(!raw.includes(secret));
+                const rows = raw.trim().split('\\n').map(JSON.parse);
+                assert.equal(rows.length, 2);
+                for (const row of rows) assert.equal(row.session, row.mod);
+                assert.equal(native.length, 2);
+                assert.ok(!JSON.stringify(native).includes('private-test-key'));
+            }} finally {{ rmSync(root, {{ recursive: true, force: true }}); }}
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
+
+    def test_lane_log_falls_back_when_attempt_directory_is_unwritable(self) -> None:
+        log = ROOT / "profiles/opencode/opencode-lane/log.ts"
+        out = _node(f"""
+            import {{ laneLog, setLaneSession }} from {log.as_uri()!r};
+            import {{ mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync }} from 'node:fs';
+            import {{ tmpdir }} from 'node:os';
+            import assert from 'node:assert/strict';
+            const root = mkdtempSync(tmpdir() + '/lane-log-');
+            try {{
+                process.env.HOME = root;
+                process.env.LANE_LOG = '1';
+                process.env.LANE_TASK_FILE = root + '/runs/demo/tasks/001.yaml';
+                process.env.LANE_PROMPT_FILE = root + '/attempt/prompt.md';
+                setLaneSession('session-one');
+                laneLog({{ mod: 'budget', ok: true }});
+                const primary = JSON.parse(readFileSync(root + '/attempt/opencode-lane.jsonl', 'utf8'));
+                assert.equal(primary.session, 'session-one');
+                // A file in place of the parent reliably simulates an unwritable destination,
+                // even when tests run as root (chmod alone would not).
+                writeFileSync(root + '/blocked', '');
+                process.env.LANE_PROMPT_FILE = root + '/blocked/prompt.md';
+                laneLog({{ mod: 'budget', ok: true }});
+                const fallback = root + '/.config/opencode/opencode-lane.jsonl';
+                const row = JSON.parse(readFileSync(fallback, 'utf8'));
+                assert.equal(row.task, '001');
+                assert.equal(row.session, 'session-one');
+                assert.equal(row.log_origin, root + '/blocked/opencode-lane.jsonl');
+                process.env.LANE_LOG = '0';
+                laneLog({{ mod: 'budget', ok: true }});
+                assert.equal(readFileSync(fallback, 'utf8').trim().split('\\n').length, 1);
+                process.env.LANE_LOG = '1';
+                process.env.HOME = root + '/blocked';
+                assert.doesNotThrow(() => laneLog({{ mod: 'budget', ok: true }}));
+            }} finally {{ rmSync(root, {{ recursive: true, force: true }}); }}
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
+
     def test_apply_policy_and_model_suffix(self) -> None:
         script = (
             "import { assertRoutePolicy } from "
@@ -160,6 +228,20 @@ class JevRouteTest(unittest.TestCase):
         out = _node(script)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("ok", out.stdout)
+
+    def test_repeated_reads_get_a_hint_without_a_model_call(self) -> None:
+        budget = ROOT / "profiles/opencode/opencode-lane/budget.ts"
+        out = _node(f"""
+            import {{ repeatHint }} from {budget.as_uri()!r};
+            import assert from 'node:assert/strict';
+            globalThis.fetch = () => {{ throw new Error('No model call expected'); }};
+            for (const tool of ['read', 'grep']) {{
+                assert.equal(await repeatHint('task', tool, 'same output', 2, 'session'), '');
+                assert.match(await repeatHint('task', tool, 'same output', 3, 'session'), /report the concrete blocker/);
+            }}
+            assert.equal(await repeatHint('task', 'write', '', 4, 'session'), '');
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
 
     def test_session_key_does_not_collapse_to_empty(self) -> None:
         script = (

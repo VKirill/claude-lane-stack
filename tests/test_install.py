@@ -296,7 +296,7 @@ class InstallTest(unittest.TestCase):
             ROOT / "plugins" / "lane-stack" / "agents" / "dev-orchestrator.md"
         ).read_text(encoding="utf-8")
         self.assertIn("tavily", orch)
-        self.assertIn("Agent(run-supervisor, lane-supervisor, emergency-writer, night-reviewer, project-onboarder, docs-maintainer, design-lead, seo-specialist, copy-lead, tavily, browser-qa,", orch)
+        self.assertIn("Agent(lane-stack:run-supervisor, lane-stack:lane-supervisor, lane-stack:emergency-writer, lane-stack:night-reviewer, lane-stack:project-onboarder, lane-stack:docs-maintainer, lane-stack:design-lead, lane-stack:seo-specialist, lane-stack:copy-lead, lane-stack:tavily, lane-stack:browser-qa,", orch)
         self.assertIn("mcp__metamcp__mcp_call", orch)
         self.assertIn("- metamcp", orch)
 
@@ -581,7 +581,7 @@ class InstallTest(unittest.TestCase):
             orchestrator = (
                 home / ".agents" / "agents" / "claude" / "dev-orchestrator.md"
             ).read_text(encoding="utf-8")
-            self.assertIn("Agent(run-supervisor", orchestrator)
+            self.assertIn("Agent(lane-stack:run-supervisor", orchestrator)
             self.assertIn("no daytime LLM review", orchestrator)
             self.assertNotIn("blyt-", orchestrator)
             self.assertIn("Do **not** invent a", orchestrator)

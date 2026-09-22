@@ -823,6 +823,9 @@ def provider_command(
             "run",
             "--format",
             "json",
+            "--print-logs",
+            "--log-level",
+            "WARN",
             "--dir",
             str(args.cwd),
             "--agent",
@@ -937,6 +940,11 @@ def provider_environment(
                 "OPENCODE_DISABLE_CLAUDE_CODE": "1",
                 "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
                 "OPENCODE_PERMISSION": '{"task":"deny"}',
+                # The ACP file logger lives outside writable sandbox mounts.
+                # Forward warnings/errors through our redacted stderr journal.
+                "CURSOR_ACP_LOG_CONSOLE": "1",
+                "CURSOR_ACP_LOG_LEVEL": "warn",
+                "CURSOR_ACP_LOG_SILENT": "0",
             }
         )
     return environment
@@ -3038,6 +3046,49 @@ def classify_opencode_failure(
     return "opencode_provider_failed", True, True, "provider", None
 
 
+def sanitize_provider_diagnostic(value: object, depth: int = 0) -> object:
+    """Bound diagnostics and redact credentials; never pass raw tool output here."""
+    if depth > 6:
+        return "[depth limit]"
+    if isinstance(value, str):
+        for key, secret in os.environ.items():
+            if re.search(r"key|token|secret|password|credential", key, re.I) and len(secret) >= 6:
+                value = value.replace(secret, "[REDACTED]")
+        value = re.sub(r"(Bearer\s+)\S+", r"\1[REDACTED]", value, flags=re.I)
+        value = re.sub(
+            r'''((?:responseBody|requestBody|headers)["']?\s*[:=]\s*)"(?:\\.|[^"\\])*"''',
+            r'\1"[REDACTED]"', value, flags=re.I,
+        )
+        value = re.sub(
+            r'''((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization|cookie|set-cookie)[\s"']*[:=][\s"']*)[^\s"'&,}]+''',
+            r"\1[REDACTED]", value, flags=re.I,
+        )
+        value = re.sub(r"(https?://)[^\s/@]+:[^\s/@]+@", r"\1[REDACTED]@", value)
+        value = re.sub(r'''(https?://[^\s?#"']+)\?[^\s"']+''', r"\1?[REDACTED]", value)
+        return value[:4000]
+    if isinstance(value, dict):
+        return {
+            str(k): "[REDACTED]" if re.search(r"password|secret|api[_-]?key|authorization|cookie|access[_-]?token|refresh[_-]?token|responseBody|requestBody|headers", str(k), re.I)
+            else sanitize_provider_diagnostic(v, depth + 1)
+            for k, v in list(value.items())[:60]
+        }
+    if isinstance(value, list):
+        return [sanitize_provider_diagnostic(v, depth + 1) for v in value[:40]]
+    return value
+
+
+def opencode_error_summary(value: object) -> object:
+    if not isinstance(value, dict):
+        return value if isinstance(value, str) else None
+    result = {k: value[k] for k in ("name", "message", "code", "statusCode", "isRetryable")
+              if isinstance(value.get(k), (str, int, bool))}
+    data = value.get("data")
+    if isinstance(data, dict):
+        result["data"] = {k: data[k] for k in ("message", "code", "statusCode", "isRetryable")
+                          if isinstance(data.get(k), (str, int, bool))}
+    return result
+
+
 def stream_opencode_provider(
     process: subprocess.Popen[bytes],
     output: IO[bytes],
@@ -3066,6 +3117,31 @@ def stream_opencode_provider(
     protocol_error: str | None = None
     saw_stop = False
     saw_error = False
+    event_bytes = 0
+    event_path = Path(output.name).with_suffix(".events.jsonl") if isinstance(getattr(output, "name", None), str) else None
+
+    def diagnostic(event: str, **data: object) -> None:
+        nonlocal event_bytes
+        if event_path is None:
+            return
+        row = sanitize_provider_diagnostic({
+            "t": utc_now(), "event": event, "task": task_id,
+            "session": conversation_id, **data,
+        })
+        encoded = (json.dumps(row, ensure_ascii=False) + "\n").encode()
+        try:
+            if event_bytes >= MAX_PROVIDER_LOG_BYTES:
+                os.replace(event_path, event_path.with_suffix(".jsonl.1"))
+                event_bytes = 0
+            fd = os.open(event_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "ab") as journal:
+                journal.write(encoded)
+            event_bytes += len(encoded)
+        except OSError:
+            # The main provider stream remains available if diagnostic storage fails.
+            print("OPENCODE_EVENT telemetry_write_failed", flush=True)
+
+    diagnostic("stream.start", prompt_sha256=prompt_sha256)
 
     def write_log(data: bytes) -> None:
         nonlocal log_bytes, log_truncated
@@ -3085,6 +3161,7 @@ def stream_opencode_provider(
         if protocol_error is None:
             protocol_error = reason
             bounded_evidence_append(failure_evidence, line)
+            diagnostic("protocol.error", error=reason)
 
     def take_session(payload: dict) -> None:
         nonlocal conversation_id
@@ -3116,6 +3193,22 @@ def stream_opencode_provider(
         print(f"OPENCODE_EVENT {event_type}", flush=True)
         take_session(payload)
         part = payload.get("part") if isinstance(payload.get("part"), dict) else {}
+        if event_type == "tool_use":
+            state = part.get("state") if isinstance(part.get("state"), dict) else {}
+            args = state.get("input") if isinstance(state.get("input"), dict) else {}
+            result = str(state.get("output") or "")
+            diagnostic(
+                "tool", tool=part.get("tool"), call=part.get("callID"),
+                message=part.get("messageID"), status=state.get("status"),
+                input_sha256=hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest(),
+                input={k: args[k] for k in ("path", "filePath", "offset", "limit") if k in args},
+                output_chars=len(result), output_sha256=hashlib.sha256(result.encode()).hexdigest(),
+                error=state.get("error"), time=state.get("time"),
+            )
+        elif event_type in {"error", "session.error"}:
+            diagnostic(event_type, error=opencode_error_summary(payload.get("error", part.get("error"))))
+        elif event_type in {"step_start", "step_finish", "step-finish", "finish"}:
+            diagnostic(event_type, reason=part.get("reason"), tokens=part.get("tokens"), cost=part.get("cost"))
         text = part.get("text") if isinstance(part, dict) else None
         if not isinstance(text, str):
             text = payload.get("text")
@@ -3155,8 +3248,11 @@ def stream_opencode_provider(
             line, pending = pending.split(b"\n", 1)
             process_line(line)
 
+    stderr_pending = b""
+    stderr_discarding = False
+
     def consume_stderr(chunk: bytes) -> None:
-        nonlocal stderr_bytes
+        nonlocal stderr_bytes, stderr_pending, stderr_discarding
         stderr_bytes += len(chunk)
         bounded_evidence_append(failure_evidence, chunk)
         digest = hashlib.sha256(chunk).hexdigest()[:16]
@@ -3164,6 +3260,18 @@ def stream_opencode_provider(
             f"\n[opencode stderr: bytes={len(chunk)}; sha256={digest}]\n".encode("utf-8")
         )
         print("OPENCODE_EVENT stderr", flush=True)
+        # Redact whole lines, not OS read chunks: a credential may span chunks.
+        stderr_pending += chunk
+        while b"\n" in stderr_pending:
+            line, stderr_pending = stderr_pending.split(b"\n", 1)
+            if not stderr_discarding:
+                diagnostic("stderr", text=line.decode("utf-8", errors="replace"))
+            stderr_discarding = False
+        if len(stderr_pending) > 65536:
+            if not stderr_discarding:
+                diagnostic("stderr", text="[oversize line omitted]", bytes=len(stderr_pending))
+            stderr_pending = b""
+            stderr_discarding = True
 
     while open_fds:
         ready, _, _ = select.select(list(open_fds), [], [], 0.1)
@@ -3175,6 +3283,8 @@ def stream_opencode_provider(
                 open_fds.discard(fd)
     if pending:
         process_line(pending)
+    if stderr_pending and not stderr_discarding:
+        diagnostic("stderr", text=stderr_pending.decode("utf-8", errors="replace"))
 
     provider_exit_code = process.wait()
     if usage is None and conversation_id:
@@ -3224,6 +3334,8 @@ def stream_opencode_provider(
             protocol_error=protocol_error,
         )
     )
+    diagnostic("stream.finish", exit_code=exit_code, provider_exit_code=provider_exit_code,
+               failure_class=failure_class, protocol_error=protocol_error)
     return StreamResult(
         provider_exit_code=provider_exit_code,
         exit_code=exit_code,

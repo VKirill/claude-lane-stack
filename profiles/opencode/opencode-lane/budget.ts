@@ -80,6 +80,10 @@ export async function repeatHint(
 ): Promise<string> {
   if (n < 3) return ""
   const name = tool.toLowerCase()
+  if (name === "read" || name === "grep") {
+    laneLog({ mod: "budget", ok: true, session: sessionID, data: { event: "repeated_read", tool: name, n } })
+    return `[opencode-lane budget] Identical ${name} content has already been returned ${n} times. Reuse the earlier result and take the next task step. If you cannot proceed, report the concrete blocker instead of rereading it.`
+  }
   if (name !== "bash" && name !== "shell") return ""
   const prior = recentAttempts(sessionID)
     .slice(-3)

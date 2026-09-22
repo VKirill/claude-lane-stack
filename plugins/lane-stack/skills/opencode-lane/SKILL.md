@@ -44,7 +44,9 @@ opencode-lane — OpenCode-половина Claude Lane
 Диагноз прогона
 - Сказать «делай диагноз».
 - Лог: сосед LANE_PROMPT_FILE → opencode-lane.jsonl
-  иначе ~/.config/opencode/opencode-lane.jsonl
+  при read-only .agents → ~/.config/opencode/opencode-lane.jsonl
+- Запуск/инструменты/stderr: provider.events.jsonl рядом с provider.out.
+- Связь: task + session + call/message ID; log_origin указывает попытку.
 ```
 
 Canonical files: `profiles/opencode/opencode-lane.ts`,
@@ -116,9 +118,15 @@ f="${LANE_PROMPT_FILE%/*}/opencode-lane.jsonl"
 tail -n 40 "$f"
 ```
 
-2. Classify rows by `mod`: `jev` `route` `winnow` `compact` `sticky`
-   `diagnose` `skill-hint` `evidence` `budget`. `ok: false` is the failing
-   module. `budget` rows with `dup: true` are repeated tool results.
+2. Filter by `task`, `session`, and `log_origin` (the fallback is shared).
+   Classify rows by `mod`: `startup` `telemetry` `jev` `route` `winnow`
+   `compact` `sticky` `diagnose` `skill-hint` `evidence` `budget`.
+   `ok: false` is an error or retry. `telemetry` records session errors,
+   assistant errors, tool running/completed/error, permission events, and
+   lifecycle events. `budget` rows with `dup: true` are repeated results.
+   On the third identical read/grep result, `repeated_read` emits a
+   deterministic hint to reuse the result or report a blocker. It does not
+   terminate the writer or change controller retry/acceptance policy.
 3. Confirm the conveyor actually loaded us:
    - argv has no `--pure`
    - `~/.config/opencode/opencode.json` `plugin` contains
@@ -126,6 +134,35 @@ tail -n 40 "$f"
    - `LANE_TASK_FILE` was in the process env (sticky empty without it)
 4. Report: module, last `err`, whether the session continued (fail-open).
    Do not patch until asked.
+
+### Provider and startup diagnostics
+
+`lane-session` launches OpenCode with `--print-logs --log-level WARN` and
+writes `provider.events.jsonl` next to `provider.out`. This works even if
+the plugin never loads. It includes startup stderr, protocol errors, tool
+status/call/message IDs, input/output hashes, safe path/offset fields,
+step boundaries, and the final process result. `provider.out` retains the
+writer text; `prompt.md` is the exact dispatch prompt.
+Cursor ACP warnings/errors are forwarded to the same stderr journal via
+`CURSOR_ACP_LOG_CONSOLE=1` and `CURSOR_ACP_LOG_LEVEL=warn`, because its
+default `~/.opencode-cursor` file logger is outside the sandbox's writable mounts.
+
+The plugin uses OpenCode's documented `event` hook and mirrors its errors
+through `client.app.log()`. Native logs live under
+`~/.local/share/opencode/log/`. Find full tool arguments/results by session
+and call ID in OpenCode's session store (`opencode export <sessionID>`).
+Telemetry intentionally excludes full file contents, reasoning, and shell
+arguments; known credential patterns and environment secret values are redacted.
+
+Plugin journals rotate at 5 MiB; provider journals at 1 MiB; each keeps one
+backup (`.1`). Missing startup records can mean an old process, disabled
+logging, a load failure, or an unwritable log destination. Check stderr and
+the native log before assuming that a missing journal means no errors.
+A heartbeat proves process activity, not progress or successful acceptance.
+
+Sources: https://opencode.ai/docs/plugins/#events,
+https://opencode.ai/docs/plugins/#logging,
+https://opencode.ai/docs/troubleshooting/#logs.
 
 ---
 

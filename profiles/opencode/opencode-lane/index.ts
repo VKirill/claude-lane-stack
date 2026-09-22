@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process"
 import { askJev, stackRoot, typesafeKey } from "./jev.ts"
-import { laneLog, setLaneSession } from "./log.ts"
+import { laneLog, setLaneLogSink, setLaneSession, withLaneSession } from "./log.ts"
+import { createTelemetry, eventSessionID } from "./telemetry.ts"
 import {
   STICKY_MARK,
   appendStickyNotes,
@@ -63,7 +64,7 @@ async function ensureSidecar(): Promise<boolean> {
     },
   )
   if (started.status !== 0) {
-    laneLog({ mod: "winnow", ok: false, err: "sidecar start failed" })
+    laneLog({ mod: "winnow", ok: false, session: "", err: "sidecar start failed" })
     return false
   }
   return sidecarHealthy()
@@ -129,9 +130,9 @@ async function routeChatParams(
     try {
       const answers = await askJev({ task: prompt }, core.ROUTE_QUESTIONS, core.ROUTE_TIMEOUT_MS)
       if (answers) effort = core.parseRoute(answers, current).effort
-      laneLog({ mod: "route", ok: true, data: { effort } })
+      laneLog({ mod: "route", ok: true, session: sessionID, data: { effort } })
     } catch (err) {
-      laneLog({ mod: "route", ok: false, err: String(err) })
+      laneLog({ mod: "route", ok: false, session: sessionID, err: String(err) })
       effort = current
     }
     lastRoute.set(sessionID, { prompt, effort })
@@ -170,7 +171,7 @@ async function winnowOutput(
     signal: AbortSignal.timeout(20_000),
   })
   if (!response.ok) {
-    laneLog({ mod: "winnow", ok: false, err: `http ${response.status}` })
+    laneLog({ mod: "winnow", ok: false, session: sessionID, err: `http ${response.status}` })
     return text
   }
   const data = await response.json()
@@ -179,6 +180,7 @@ async function winnowOutput(
   laneLog({
     mod: "winnow",
     ok: true,
+    session: sessionID,
     data: { chars_in: text.length, chars_out: next.length },
   })
   return next
@@ -195,7 +197,7 @@ function toolChars(messages: OcMessage[]): number {
   return total
 }
 
-async function pruneMessages(messages: OcMessage[]): Promise<void> {
+async function pruneMessages(messages: OcMessage[], sessionID: string): Promise<void> {
   const key = typesafeKey()
   if (!key || toolChars(messages) < PRUNE_CHARS) return
   const root = stackRoot()
@@ -271,31 +273,63 @@ async function pruneMessages(messages: OcMessage[]): Promise<void> {
       if (next !== undefined && item.state) item.state.output = next
     }
   }
-  laneLog({ mod: "compact", ok: true, data: { dropped: dropped.size } })
+  laneLog({ mod: "compact", ok: true, session: sessionID, data: { dropped: dropped.size } })
 }
 
 let pruning = new Set<string>()
 
-export const OpenCodeLanePlugin = async () => {
-  void ensureSidecar()
+type PluginContext = {
+  client?: { app?: { log?: (input: { body: Record<string, unknown> }) => Promise<unknown> } }
+}
+
+export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
+  if (ctx?.client?.app?.log) {
+    setLaneLogSink((row) =>
+      ctx.client!.app!.log!({
+        body: {
+          service: "opencode-lane",
+          level: row.ok === false ? "error" : "info",
+          message: String(row.mod || "telemetry"),
+          extra: row,
+        },
+      }),
+    )
+  }
+  const telemetry = createTelemetry()
+  laneLog({ mod: "startup", ok: true, session: "", data: { event: "plugin.startup" } })
+  void ensureSidecar().then(
+    (ready) => {
+      if (!ready) laneLog({ mod: "winnow", ok: false, session: "", err: "sidecar unavailable" })
+    },
+    (err) => laneLog({ mod: "winnow", ok: false, session: "", err: String(err) }),
+  )
   return {
+    event: async (input: { event: unknown }) => {
+      try {
+        await telemetry.event(input)
+      } catch (err) {
+        laneLog({ mod: "telemetry", ok: false, session: eventSessionID(input.event), err: String(err) })
+      }
+    },
     "chat.message": async (
       input: { sessionID: string },
       output: { parts?: { type?: string; text?: string; synthetic?: boolean }[] },
     ) => {
       const sessionID = sessionKey(input, [{ info: { role: "user" }, parts: output.parts }], lastPrompt)
-      setLaneSession(sessionID)
-      rememberPrompt(sessionID, output.parts ?? [])
-      try {
-        const hint = await skillHint(
-          sessionID,
-          lastPrompt.get(sessionID) || "",
-          recentAttempts(sessionID).map((row) => row.tool),
-        )
-        pushNote(sessionID, hint)
-      } catch (err) {
-        laneLog({ mod: "skill-hint", ok: false, err: String(err) })
-      }
+      await withLaneSession(sessionID, async () => {
+        setLaneSession(sessionID)
+        rememberPrompt(sessionID, output.parts ?? [])
+        try {
+          const hint = await skillHint(
+            sessionID,
+            lastPrompt.get(sessionID) || "",
+            recentAttempts(sessionID).map((row) => row.tool),
+          )
+          pushNote(sessionID, hint)
+        } catch (err) {
+          laneLog({ mod: "skill-hint", ok: false, session: sessionID, err: String(err) })
+        }
+      })
     },
     "chat.params": async (
       input: {
@@ -306,10 +340,12 @@ export const OpenCodeLanePlugin = async () => {
     ) => {
       try {
         const sessionID = sessionKey(input)
-        setLaneSession(sessionID)
-        await routeChatParams(sessionID, input.model, output)
+        await withLaneSession(sessionID, async () => {
+          setLaneSession(sessionID)
+          await routeChatParams(sessionID, input.model, output)
+        })
       } catch (err) {
-        laneLog({ mod: "route", ok: false, err: String(err) })
+        laneLog({ mod: "route", ok: false, session: sessionKey(input), err: String(err) })
       }
     },
     "tool.execute.after": async (
@@ -317,75 +353,79 @@ export const OpenCodeLanePlugin = async () => {
       output: { output: string },
     ) => {
       const sessionID = sessionKey(input)
-      setLaneSession(sessionID)
-      const name = (input.tool || "").toLowerCase()
-      if (!TOOLS.has(name) || typeof output.output !== "string") return
-      const task = lastPrompt.get(sessionID) || ""
-      const original = output.output
-      try {
-        output.output = await winnowOutput(input.tool, input.args, original, sessionID, task)
-      } catch (err) {
-        laneLog({ mod: "winnow", ok: false, err: String(err) })
-      }
-      try {
-        const note = await diagnoseFailure(task, original)
-        if (note) {
-          pushNote(sessionID, note)
-          output.output = `${output.output}\n${note}`
+      await withLaneSession(sessionID, async () => {
+        setLaneSession(sessionID)
+        const name = (input.tool || "").toLowerCase()
+        if (!TOOLS.has(name) || typeof output.output !== "string") return
+        const task = lastPrompt.get(sessionID) || ""
+        const original = output.output
+        try {
+          output.output = await winnowOutput(input.tool, input.args, original, sessionID, task)
+        } catch (err) {
+          laneLog({ mod: "winnow", ok: false, session: sessionID, err: String(err) })
         }
-      } catch (err) {
-        laneLog({ mod: "diagnose", ok: false, err: String(err) })
-      }
-      try {
-        const { n } = recordTool(sessionID, input.tool, input.args, original)
-        const note = await repeatHint(task, input.tool, original, n, sessionID)
-        if (note) {
-          pushNote(sessionID, note)
-          output.output = `${output.output}\n${note}`
+        try {
+          const note = await diagnoseFailure(task, original)
+          if (note) {
+            pushNote(sessionID, note)
+            output.output = `${output.output}\n${note}`
+          }
+        } catch (err) {
+          laneLog({ mod: "diagnose", ok: false, session: sessionID, err: String(err) })
         }
-      } catch (err) {
-        laneLog({ mod: "budget", ok: false, err: String(err) })
-      }
-      try {
-        const hint = await skillHint(
-          sessionID,
-          task,
-          recentAttempts(sessionID).map((row) => row.tool),
-        )
-        pushNote(sessionID, hint)
-      } catch (err) {
-        laneLog({ mod: "skill-hint", ok: false, err: String(err) })
-      }
+        try {
+          const { n } = recordTool(sessionID, input.tool, input.args, original)
+          const note = await repeatHint(task, input.tool, original, n, sessionID)
+          if (note) {
+            pushNote(sessionID, note)
+            output.output = `${output.output}\n${note}`
+          }
+        } catch (err) {
+          laneLog({ mod: "budget", ok: false, session: sessionID, err: String(err) })
+        }
+        try {
+          const hint = await skillHint(
+            sessionID,
+            task,
+            recentAttempts(sessionID).map((row) => row.tool),
+          )
+          pushNote(sessionID, hint)
+        } catch (err) {
+          laneLog({ mod: "skill-hint", ok: false, session: sessionID, err: String(err) })
+        }
+      })
     },
     "experimental.chat.messages.transform": async (
       input: { sessionID?: string },
       output: { messages: OcMessage[] },
     ) => {
       const sessionID = sessionKey(input, output.messages, lastPrompt)
-      setLaneSession(sessionID)
-      try {
-        const evidence = await evidenceNotes(sessionID, output.messages)
-        pushNote(sessionID, evidence)
-      } catch (err) {
-        laneLog({ mod: "evidence", ok: false, err: String(err) })
-      }
-      if (pruning.has(sessionID)) return
-      pruning.add(sessionID)
-      try {
-        await pruneMessages(output.messages)
-      } catch (err) {
-        laneLog({ mod: "compact", ok: false, err: String(err) })
-      } finally {
-        pruning.delete(sessionID)
-      }
-      try {
-        ensureStickyMessages(
-          output.messages,
-          appendStickyNotes(readStickyContract(), sessionNotes.get(sessionID) || []),
-        )
-      } catch (err) {
-        laneLog({ mod: "sticky", ok: false, err: String(err) })
-      }
+      await withLaneSession(sessionID, async () => {
+        setLaneSession(sessionID)
+        try {
+          const evidence = await evidenceNotes(sessionID, output.messages)
+          pushNote(sessionID, evidence)
+        } catch (err) {
+          laneLog({ mod: "evidence", ok: false, session: sessionID, err: String(err) })
+        }
+        if (pruning.has(sessionID)) return
+        pruning.add(sessionID)
+        try {
+          await pruneMessages(output.messages, sessionID)
+        } catch (err) {
+          laneLog({ mod: "compact", ok: false, session: sessionID, err: String(err) })
+        } finally {
+          pruning.delete(sessionID)
+        }
+        try {
+          ensureStickyMessages(
+            output.messages,
+            appendStickyNotes(readStickyContract(), sessionNotes.get(sessionID) || []),
+          )
+        } catch (err) {
+          laneLog({ mod: "sticky", ok: false, session: sessionID, err: String(err) })
+        }
+      })
     },
   }
 }
