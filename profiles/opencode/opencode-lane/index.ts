@@ -83,7 +83,15 @@ function rememberPrompt(
     .map((part) => part.text)
     .join(" ")
     .trim()
-  if (sessionID && text) lastPrompt.set(sessionID, text.slice(0, 1500))
+  if (!sessionID || !text) return
+  const marker = /^--- RAW TASK YAML \(verbatim\) ---\r?$/m.exec(text)
+  const task = marker ? text.slice(marker.index + marker[0].length).trim() : text
+  // ponytail: cap task context at 12k; select YAML fields if contracts outgrow this.
+  const omitted = "\n...[truncated]...\n"
+  const bounded = task.length <= 12000
+    ? task
+    : task.slice(0, 8000) + omitted + task.slice(-(4000 - omitted.length))
+  lastPrompt.set(sessionID, bounded)
 }
 
 function modelIdOf(model: { id?: string; modelID?: string } | undefined): string {

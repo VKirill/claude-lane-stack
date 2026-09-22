@@ -27,6 +27,60 @@ def _node(script: str) -> subprocess.CompletedProcess[str]:
 
 
 class JevRouteTest(unittest.TestCase):
+    def test_opencode_routes_the_task_after_the_writer_contract(self) -> None:
+        out = _node(f"""
+            import {{ OpenCodeLanePlugin }} from {INDEX.as_uri()!r};
+            import assert from 'node:assert/strict';
+            process.env.LANE_OPENCODE_JEV = '0';
+            process.env.LANE_JEV_EFFORT = '1';
+            process.env.TYPESAFE_API_KEY = 'fixture-key';
+            process.env.LANE_STACK_ROOT = {str(ROOT)!r};
+            const tasks = [];
+            globalThis.fetch = async (url, request) => {{
+                if (String(url).endsWith('/health')) return new Response('ok');
+                const body = JSON.parse(request.body);
+                tasks.push(body.state.task);
+                return new Response(JSON.stringify({{ answers: {{
+                    tier: {{ choice: 'standard', confidence: 0.9 }},
+                    effort: {{ choice: 'high', confidence: 0.9 }},
+                    risk: {{ noul: 0.1 }}
+                }} }}));
+            }};
+            const hooks = await OpenCodeLanePlugin();
+            const input = {{ sessionID: 'same-warm-session' }};
+            const prefix = 'GENERAL WRITER INSTRUCTIONS\\n'.repeat(250);
+            const marker = '\\n--- RAW TASK YAML (verbatim) ---\\n';
+            async function route(text) {{
+                await hooks['chat.message'](input, {{ parts: [
+                    {{ type: 'text', text }},
+                    {{ type: 'text', text: 'synthetic noise', synthetic: true }}
+                ] }});
+                const params = {{ options: {{}} }};
+                const model = {{ id: 'cursor-acp/grok-4.7-medium' }};
+                await hooks['chat.params']({{ ...input, model }}, params);
+                assert.equal(model.id, 'cursor-acp/grok-4.7-high');
+                return tasks.at(-1);
+            }}
+            const first = 'schema_version: 2\\nid: "001"\\nrisk: low\\n' +
+                'read_first:\\n' + '  - context.ts\\n'.repeat(150) +
+                'objective: Forward templateData.shareChat\\nacceptance: [preserve preview]';
+            assert.equal(await route(prefix + marker + first), first);
+            const second = 'schema_version: 2\\nid: "002"\\nrisk: high\\n' +
+                'objective: Resolve concurrent lease fencing\\nowns_paths: [lease.ts]';
+            assert.equal(await route(prefix + marker + second), second);
+            assert.equal(tasks.length, 2, 'a new task in a warm session must be reclassified');
+            await route(prefix + marker + second);
+            assert.equal(tasks.length, 2, 'unchanged task keeps the cached route');
+            assert.equal(await route('Fix the local typo'), 'Fix the local typo');
+            const large = 'schema_version: 2\\n' + 'a'.repeat(15000) + '\\nobjective: Keep this goal';
+            const bounded = await route(prefix + marker + large);
+            assert.ok(bounded.length <= 12000);
+            assert.ok(bounded.startsWith('schema_version: 2'));
+            assert.ok(bounded.endsWith('objective: Keep this goal'));
+            assert.ok(tasks.every(task => !task.includes('GENERAL WRITER') && !task.includes('synthetic noise')));
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
+
     def test_diagnosis_requires_failed_exit_not_error_words(self) -> None:
         diagnose = ROOT / "profiles/opencode/opencode-lane/diagnose.ts"
         out = _node(f"""
