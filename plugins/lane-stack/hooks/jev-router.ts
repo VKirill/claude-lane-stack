@@ -5,6 +5,7 @@ import {
   ROUTE_QUESTIONS,
   ROUTE_TIMEOUT_MS,
   asSessionEffort,
+  claudeSessionEffort,
   defaultRoute,
   parseRoute,
   routeEnabled,
@@ -100,8 +101,10 @@ export const register: Register = (on: On, _options: PluginOptions) => {
     try {
       if (e.agentId) {
         const cached = byAgent.get(e.agentId)
-        if (!cached || cached.effort === e.effort) return yield* next(e)
-        return yield* next({ ...e, effort: cached.effort })
+        if (!cached) return yield* next(e)
+        const nextEffort = claudeSessionEffort(cached.effort)
+        if (nextEffort === e.effort) return yield* next(e)
+        return yield* next({ ...e, effort: nextEffort })
       }
       let route = byTurn.get(e.turnId)
       if (!route) {
@@ -110,8 +113,9 @@ export const register: Register = (on: On, _options: PluginOptions) => {
         route = await classify($, lastUser(messages), asSessionEffort(e.effort))
         byTurn.set(e.turnId, route)
       }
-      if (route.effort === e.effort) return yield* next(e)
-      return yield* next({ ...e, effort: route.effort })
+      const nextEffort = claudeSessionEffort(route.effort)
+      if (nextEffort === e.effort) return yield* next(e)
+      return yield* next({ ...e, effort: nextEffort })
     } catch {
       return yield* next(e)
     }

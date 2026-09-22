@@ -860,17 +860,22 @@ class DoctorTuiCatalogTest(unittest.TestCase):
         fallback = list(tui.WRITER_MODELS["opencode"])
         tui._OPENCODE_LIVE["models"] = ["stale/provider"]
         tui._OPENCODE_LIVE["agents"] = ["stale-agent"]
-        with patch.object(
-            tui,
-            "_fetch_opencode_models",
-            return_value=(
-                ["fresh/model"],
-                {"fresh/model": ["none", "low", "xhigh"]},
-            ),
-        ), patch.object(
-            tui, "_fetch_opencode_agents", return_value=["fresh-agent"]
-        ):
-            tui.refresh_opencode_catalog()
+        tui._OPENCODE_LIVE["stamp"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "oc.json"
+            with patch.dict(
+                os.environ, {"LANE_OPENCODE_CATALOG_CACHE": str(cache)}, clear=False
+            ), patch.object(
+                tui,
+                "_fetch_opencode_models",
+                return_value=(
+                    ["fresh/model"],
+                    {"fresh/model": ["none", "low", "xhigh"]},
+                ),
+            ), patch.object(
+                tui, "_fetch_opencode_agents", return_value=["fresh-agent"]
+            ):
+                tui.refresh_opencode_catalog(force=True)
         self.assertEqual(tui._probe_opencode_models(), ["fresh/model"])
         self.assertEqual(tui._probe_opencode_agents(), ["fresh-agent"])
         self.assertEqual(
@@ -882,6 +887,44 @@ class DoctorTuiCatalogTest(unittest.TestCase):
         tui._OPENCODE_LIVE["models"] = None
         tui._OPENCODE_LIVE["agents"] = None
         tui._OPENCODE_LIVE["variants"] = None
+        tui._OPENCODE_LIVE["stamp"] = None
+
+    def test_opencode_catalog_disk_cache_skips_fetch(self) -> None:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import agents_doctor_tui as tui  # noqa: E402
+
+        tui._OPENCODE_LIVE["models"] = None
+        tui._OPENCODE_LIVE["agents"] = None
+        tui._OPENCODE_LIVE["variants"] = None
+        tui._OPENCODE_LIVE["stamp"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "oc.json"
+            with patch.dict(
+                os.environ, {"LANE_OPENCODE_CATALOG_CACHE": str(cache)}, clear=False
+            ), patch.object(tui, "_opencode_catalog_stamp", return_value="stamp-a"):
+                with patch.object(
+                    tui,
+                    "_fetch_opencode_models",
+                    return_value=(["cached/model"], {"cached/model": ["medium"]}),
+                ) as fetch_models, patch.object(
+                    tui, "_fetch_opencode_agents", return_value=["lane-writer"]
+                ) as fetch_agents:
+                    tui.refresh_opencode_catalog()
+                    self.assertEqual(fetch_models.call_count, 1)
+                    self.assertEqual(fetch_agents.call_count, 1)
+                    tui.refresh_opencode_catalog()
+                    self.assertEqual(fetch_models.call_count, 1)
+                    tui._OPENCODE_LIVE["models"] = None
+                    tui._OPENCODE_LIVE["stamp"] = None
+                    tui.refresh_opencode_catalog()
+                    self.assertEqual(fetch_models.call_count, 1)
+                    self.assertEqual(tui._probe_opencode_models(), ["cached/model"])
+                    tui.refresh_opencode_catalog(force=True)
+                    self.assertEqual(fetch_models.call_count, 2)
+        tui._OPENCODE_LIVE["models"] = None
+        tui._OPENCODE_LIVE["agents"] = None
+        tui._OPENCODE_LIVE["variants"] = None
+        tui._OPENCODE_LIVE["stamp"] = None
 
     def test_parse_opencode_models_verbose_variants(self) -> None:
         sys.path.insert(0, str(ROOT / "bin"))

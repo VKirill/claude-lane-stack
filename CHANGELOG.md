@@ -1,3 +1,15 @@
+## 1.38.0 — 2026-09-22
+
+### Changed
+- **Jev effort by task:** ladder is `low` / `medium` / `high` / `xhigh`.
+  Easy work can drop to `low` at conf ≥ 0.3 (model suffix is not a floor).
+  Hard/risk still floors at `high` and may keep `xhigh`. `-fast` stays.
+  Claude clamps `xhigh`/`max` → `high`.
+- **adoc OpenCode catalog cache:** skip `opencode models --verbose` when
+  binary/config/plugins stamp matches
+  `~/.cache/claude-lane-stack/opencode-catalog.json`. Rescan forces a
+  live dump (`LANE_OPENCODE_CATALOG_CACHE` overrides the path).
+
 ## 1.37.0 — 2026-09-22
 
 ### Added

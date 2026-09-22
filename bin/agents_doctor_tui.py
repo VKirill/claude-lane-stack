@@ -19,6 +19,7 @@ UI language: en | ru (project ui.language + global ~/.agents/doctor.ui.yaml).
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -558,13 +559,15 @@ _OPENCODE_NON_CODE = (
     "r2v",
     "computer-use",
 )
-# Live `opencode models --verbose` / `agent list` for this adoc visit only.
+# Live `opencode models --verbose` / `agent list`.
 # Refreshed on launch, rescan, OpenCode writer pick, and opening the list.
+# Disk cache skips the slow verbose dump when config/binary/plugins are unchanged.
 # variants: model id → catalog variant names (empty list = no --variant).
 _OPENCODE_LIVE: dict[str, Any] = {
     "models": None,
     "agents": None,
     "variants": None,
+    "stamp": None,
 }
 
 
@@ -778,12 +781,125 @@ def _fetch_opencode_agents() -> list[str]:
     return list(dict.fromkeys(names))
 
 
-def refresh_opencode_catalog() -> None:
-    """Pull live OpenCode models/agents/variants. No disk; this adoc visit only."""
+def _opencode_catalog_cache_path() -> Path:
+    raw = (os.environ.get("LANE_OPENCODE_CATALOG_CACHE") or "").strip()
+    if raw:
+        return Path(raw)
+    return Path.home() / ".cache" / "claude-lane-stack" / "opencode-catalog.json"
+
+
+def _opencode_catalog_stamp() -> str:
+    """Cheap identity of the local OpenCode catalog (no `models --verbose`).
+
+    ponytail: file mtimes only — remote provider lists without a local file
+    change stay stale until rescan (force=True).
+    """
+    digest = hashlib.sha256()
+    binary = shutil.which("opencode")
+    if binary:
+        path = Path(binary)
+        try:
+            resolved = path.resolve()
+            stat = resolved.stat()
+            digest.update(f"{resolved}\0{stat.st_mtime_ns}\0{stat.st_size}\n".encode())
+        except OSError:
+            digest.update(f"{path}\0missing\n".encode())
+    else:
+        digest.update(b"nobin\n")
+    cfg = Path.home() / ".config" / "opencode"
+    paths: list[Path] = [
+        cfg / "opencode.json",
+        cfg / "auth.json",
+        Path.home() / ".local" / "share" / "opencode" / "auth.json",
+    ]
+    plugins = cfg / "plugins"
+    if plugins.is_dir():
+        paths.extend(
+            p
+            for p in plugins.rglob("*")
+            if p.is_file() and p.suffix in {".ts", ".js", ".json", ".md"}
+        )
+    agents = cfg / "agents"
+    if agents.is_dir():
+        paths.extend(agents.glob("*.md"))
+    for path in sorted(paths, key=lambda item: str(item)):
+        try:
+            stat = path.stat()
+            digest.update(f"{path}\0{stat.st_mtime_ns}\0{stat.st_size}\n".encode())
+        except OSError:
+            digest.update(f"{path}\0missing\n".encode())
+    return digest.hexdigest()
+
+
+def _read_opencode_catalog_cache(stamp: str) -> dict[str, Any] | None:
+    path = _opencode_catalog_cache_path()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict) or raw.get("stamp") != stamp:
+        return None
+    models = raw.get("models")
+    agents = raw.get("agents")
+    if not isinstance(models, list) or not isinstance(agents, list):
+        return None
+    variants = raw.get("variants")
+    if variants is not None and not isinstance(variants, dict):
+        return None
+    return {
+        "models": [str(item) for item in models if item],
+        "agents": [str(item) for item in agents if item],
+        "variants": variants,
+    }
+
+
+def _write_opencode_catalog_cache(
+    stamp: str,
+    models: list[str],
+    agents: list[str],
+    variants: dict[str, list[str]] | None,
+) -> None:
+    path = _opencode_catalog_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "stamp": stamp,
+            "models": models,
+            "agents": agents,
+            "variants": variants,
+        }
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def refresh_opencode_catalog(*, force: bool = False) -> None:
+    """Load OpenCode models/agents/variants. Cache when config stamp is unchanged."""
+    stamp = _opencode_catalog_stamp()
+    if (
+        not force
+        and _OPENCODE_LIVE.get("stamp") == stamp
+        and _OPENCODE_LIVE.get("models")
+    ):
+        return
+    if not force:
+        cached = _read_opencode_catalog_cache(stamp)
+        if cached:
+            _OPENCODE_LIVE["models"] = cached["models"]
+            _OPENCODE_LIVE["agents"] = cached["agents"]
+            _OPENCODE_LIVE["variants"] = cached["variants"]
+            _OPENCODE_LIVE["stamp"] = stamp
+            return
     models, variants = _fetch_opencode_models()
+    agents = _fetch_opencode_agents()
     _OPENCODE_LIVE["models"] = models
     _OPENCODE_LIVE["variants"] = variants
-    _OPENCODE_LIVE["agents"] = _fetch_opencode_agents()
+    _OPENCODE_LIVE["agents"] = agents
+    _OPENCODE_LIVE["stamp"] = stamp
+    _write_opencode_catalog_cache(stamp, models, agents, variants)
 
 
 def _probe_opencode_models() -> list[str]:
@@ -3010,7 +3126,7 @@ def run_tui(repo: Path, doctor: Any) -> int:
         if state.tools.get("opencode", {}).get("present") and "opencode" not in writers:
             writers.append("opencode")
         if shutil.which("opencode"):
-            refresh_opencode_catalog()
+            refresh_opencode_catalog(force=True)
         state.writers = writers or ["auto"]
         if state.writer not in state.writers:
             set_writer(state.writers[0])

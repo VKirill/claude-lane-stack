@@ -31,11 +31,12 @@ export const ROUTE_QUESTIONS = {
   },
   effort: {
     type: 'choice' as const,
-    instructions: 'Reasoning effort this turn needs.',
+    instructions: 'Reasoning effort this turn needs. Pick the cheapest that still solves the task.',
     criteria: {
-      low: 'obvious, mechanical, follow an existing pattern',
-      medium: 'normal implementation',
+      low: 'obvious, mechanical, follow an existing pattern; extra thinking is waste',
+      medium: 'normal implementation with local scope',
       high: 'must think carefully; many tradeoffs or failure modes',
+      xhigh: 'deep architecture, concurrency, security, or wide blast radius; cheaper effort will miss it',
     },
   },
   risk: {
@@ -49,8 +50,8 @@ const NOTCH: Record<string, number> = {
   low: 0,
   medium: 1,
   high: 2,
-  xhigh: 2,
-  max: 2,
+  xhigh: 3,
+  max: 4,
 }
 
 export function routeEnabled(flag: string | undefined | null): boolean {
@@ -65,31 +66,27 @@ export function asSessionEffort(value: unknown, fallback: SessionEffort = 'mediu
   return fallback
 }
 
-function asEffort(value: SessionEffort): Effort {
+export function claudeSessionEffort(value: SessionEffort): Effort {
   return value === 'xhigh' || value === 'max' ? 'high' : value
 }
 
 export function applyPolicy(a: PolicyInput): Route {
   const current = asSessionEffort(a.current)
+  const wanted = asSessionEffort(a.effort, current)
   if (a.risk >= 0.7) {
-    return {
-      effort: (NOTCH[current] ?? 0) >= 2 ? current : 'high',
-      subagent: 'sonnet',
-      reason: 'risk',
-    }
+    const floor: SessionEffort = (NOTCH[wanted] ?? 0) >= 3 ? wanted : 'high'
+    const effort: SessionEffort = (NOTCH[current] ?? 0) >= (NOTCH[floor] ?? 0) ? current : floor
+    return { effort, subagent: 'sonnet', reason: 'risk' }
   }
-  if (a.tier === 'mechanical' && a.tierConf >= 0.6) {
+  if (a.tier === 'mechanical' && a.tierConf >= 0.55) {
     return { effort: 'low', subagent: 'haiku', reason: 'mechanical' }
   }
   if (a.tier === 'hard' && a.tierConf >= 0.3) {
-    return { effort: 'high', subagent: 'sonnet', reason: 'hard' }
+    const effort: SessionEffort = (NOTCH[wanted] ?? 0) >= 3 ? wanted : 'high'
+    return { effort, subagent: 'sonnet', reason: 'hard' }
   }
-  const wanted = asEffort(asSessionEffort(a.effort, current))
-  const curN = NOTCH[current] ?? 1
-  const wantN = NOTCH[wanted] ?? 1
   let effort: SessionEffort = current
-  if (wantN > curN && a.effortConf >= 0.3) effort = wanted
-  else if (wantN < curN && a.effortConf >= 0.6) effort = wanted
+  if (wanted !== current && a.effortConf >= 0.3) effort = wanted
   return { effort, subagent: 'sonnet', reason: a.tier || 'standard' }
 }
 
@@ -119,8 +116,9 @@ export function currentEffortFromModelId(modelId: string): SessionEffort | null 
 export function swapModelEffort(modelId: string, effort: SessionEffort): string {
   const m = modelId.match(/^(.*)-(low|medium|high|xhigh|max)(-fast)?$/)
   if (!m) return modelId
-  if (m[2] === effort) return modelId
-  return `${m[1]}-${asEffort(effort)}${m[3] ?? ''}`
+  const next = asSessionEffort(effort)
+  if (m[2] === next) return modelId
+  return `${m[1]}-${next}${m[3] ?? ''}`
 }
 
 export function defaultRoute(current: SessionEffort): Route {
@@ -151,7 +149,15 @@ export function assertRoutePolicy(): void {
     ],
     [
       { tier: 'standard', effort: 'low', risk: 0.1, tierConf: 0.5, effortConf: 0.4, current: 'medium' },
-      { effort: 'medium', subagent: 'sonnet', reason: 'standard' },
+      { effort: 'low', subagent: 'sonnet', reason: 'standard' },
+    ],
+    [
+      { tier: 'standard', effort: 'xhigh', risk: 0.1, tierConf: 0.5, effortConf: 0.4, current: 'medium' },
+      { effort: 'xhigh', subagent: 'sonnet', reason: 'standard' },
+    ],
+    [
+      { tier: 'hard', effort: 'xhigh', risk: 0.2, tierConf: 0.5, effortConf: 0.5, current: 'medium' },
+      { effort: 'xhigh', subagent: 'sonnet', reason: 'hard' },
     ],
     [
       { tier: 'standard', effort: 'low', risk: 0.1, tierConf: 0.5, effortConf: 0.7, current: 'medium' },
@@ -164,8 +170,14 @@ export function assertRoutePolicy(): void {
       throw new Error(`applyPolicy ${JSON.stringify(input)} => ${JSON.stringify(got)} expected ${JSON.stringify(expected)}`)
     }
   }
-  if (swapModelEffort('cursor-grok-4.6-medium-fast', 'high') !== 'cursor-grok-4.6-high-fast') {
-    throw new Error('swap medium-fast → high-fast')
+  if (swapModelEffort('cursor-acp/grok-4.7-medium', 'xhigh') !== 'cursor-acp/grok-4.7-xhigh') {
+    throw new Error('swap medium → xhigh')
+  }
+  if (swapModelEffort('cursor-acp/grok-4.7-medium-fast', 'low') !== 'cursor-acp/grok-4.7-low-fast') {
+    throw new Error('swap medium-fast → low-fast')
+  }
+  if (swapModelEffort('cursor-grok-4.6-medium-fast', 'xhigh') !== 'cursor-grok-4.6-xhigh-fast') {
+    throw new Error('swap medium-fast → xhigh-fast')
   }
   if (swapModelEffort('ag/gemini-3.8-flash-medium', 'low') !== 'ag/gemini-3.8-flash-low') {
     throw new Error('swap gemini medium → low')
@@ -178,5 +190,11 @@ export function assertRoutePolicy(): void {
   }
   if (swapModelEffort('claude-opus-5', 'high') !== 'claude-opus-5') {
     throw new Error('no suffix stays')
+  }
+  if (claudeSessionEffort('xhigh') !== 'high' || claudeSessionEffort('max') !== 'high') {
+    throw new Error('claude clamps xhigh/max → high')
+  }
+  if (claudeSessionEffort('low') !== 'low') {
+    throw new Error('claude keeps low')
   }
 }
