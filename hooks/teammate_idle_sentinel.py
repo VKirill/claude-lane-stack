@@ -5,6 +5,8 @@ Exit 0  — allow idle (sentinel present, or hook disabled).
 Exit 2  — keep teammate working; stderr is fed back as the next instruction.
 
 run-supervisor may run as a teammate; it must not park with WAIT.
+After DONE|FAILED, idle is allowed for LANE_PM_DONE_HANG_SEC (default 300);
+past that the hook pokes the supervisor to tell the PM to close the task.
 Disable: LANE_TEAMMATE_IDLE_SENTINEL=0
 """
 from __future__ import annotations
@@ -13,6 +15,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 # Last non-empty line matching, or any line in the tail (models bury DONE).
@@ -22,6 +25,7 @@ SENTINEL_RE = re.compile(
 )
 TAIL_CHARS = 6000
 _SAFE_NAME = re.compile(r"[A-Za-z0-9_.-]+")
+DEFAULT_DONE_HANG_SEC = 300.0
 
 
 def _payload_str(payload: dict, *keys: str) -> str:
@@ -117,6 +121,28 @@ def _disabled() -> bool:
     }
 
 
+def _done_hang_sec() -> float:
+    raw = os.environ.get("LANE_PM_DONE_HANG_SEC", "").strip()
+    try:
+        return max(0.0, float(raw)) if raw else DEFAULT_DONE_HANG_SEC
+    except ValueError:
+        return DEFAULT_DONE_HANG_SEC
+
+
+def _transcript_age_sec(payload: dict) -> float:
+    now = time.time()
+    path = resolve_teammate_transcript(payload)
+    if path is None:
+        parent = _payload_str(payload, "transcript_path", "transcriptPath")
+        path = Path(parent).expanduser() if parent else None
+    if path is None:
+        return 0.0
+    try:
+        return max(0.0, now - path.stat().st_mtime)
+    except OSError:
+        return 0.0
+
+
 def last_assistant_text(payload: dict) -> str:
     teammate_path = resolve_teammate_transcript(payload)
     if teammate_path is not None:
@@ -157,6 +183,16 @@ def decide(payload: dict) -> tuple[int, str]:
     if role == "run-supervisor" or any(re.fullmatch(r"rs\d*-[A-Za-z0-9_.-]+", identity) for identity in (name, role)):
         matches = list(SENTINEL_RE.finditer(text[-TAIL_CHARS:]))
         if matches and matches[-1].group(1).upper() in {"DONE", "FAILED"}:
+            hang = _done_hang_sec()
+            age = _transcript_age_sec(payload)
+            if hang > 0 and age >= hang:
+                mins = max(1, int(age // 60))
+                return 2, (
+                    f"lane teammate_idle_sentinel: DONE {mins}m ago and this "
+                    f"run-supervisor is still parked. SendMessage the PM to "
+                    f"close the task (TaskStop this idle chip). Then stop — "
+                    f"no more watch, no tools."
+                )
             return 0, ""
         return 2, (
             "lane teammate_idle_sentinel: run-supervisor must keep watching; WAIT is forbidden. "

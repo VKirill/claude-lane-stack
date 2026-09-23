@@ -171,6 +171,39 @@ class DecideStopTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(err, "")
 
+    def test_pm_acked_stale_done_pokes_close_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            nudge = Path(tmp) / "nudge"
+            path = _ctrl(cwd, "owns-fix", "blocked")
+            stale = time.time() - 400
+            os.utime(path, (stale, stale))
+            payload = {
+                "hook_event_name": "Stop",
+                "agent_type": "dev-orchestrator",
+                "session_id": "sess-done-hang",
+                "cwd": str(cwd),
+                "last_assistant_message": (
+                    "owns-fix blocked. DONE blocked .agents/runs/owns-fix/controller.json"
+                ),
+            }
+            env_hang = {"LANE_PM_DONE_NUDGE_DIR": str(nudge)}
+            old_nudge = os.environ.get("LANE_PM_DONE_NUDGE_DIR")
+            os.environ["LANE_PM_DONE_NUDGE_DIR"] = str(nudge)
+            try:
+                code, err = decide_stop(payload)
+                self.assertEqual(code, 2)
+                self.assertIn("Close the task", err)
+                self.assertIn("TaskStop", err)
+                code2, err2 = decide_stop(payload)
+                self.assertEqual(code2, 0)
+                self.assertEqual(err2, "")
+            finally:
+                if old_nudge is None:
+                    os.environ.pop("LANE_PM_DONE_NUDGE_DIR", None)
+                else:
+                    os.environ["LANE_PM_DONE_NUDGE_DIR"] = old_nudge
+
     def test_non_pm_ignores_disk(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cwd = Path(tmp)

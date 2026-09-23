@@ -128,11 +128,10 @@ a teammate-idle park and **not** a terminal digest.
 
 Host hook `pm_stop_sentinel` pokes this session if you try to idle while a
 supervisor is in-flight, or when `controller.json` just went
-`accepted|blocked|failed`. Act on the poke; do not ignore it.
-
-Host hook `pm_stop_sentinel` pokes this session if you try to idle while a
-supervisor is in-flight, or when `controller.json` just went
-`accepted|blocked|failed`. Act on the poke; do not ignore it.
+`accepted|blocked|failed`. Act on the poke; do not ignore it. If this session
+already wrote `DONE` and is still open **5 minutes** later, the same hook pokes
+once: close the task (`TaskStop` idle `rs-*` that already `DONE`'d; do not
+watch or poll).
 
 On every `rs-*` / `run-supervisor` **finished** / idle / vanished chip, **same
 turn** (do not wait for the human, do not say «жду прогресс»):
@@ -194,7 +193,7 @@ when several Claude peers help. Product writes stay on the conveyor (WRITE mode)
 | Treat research-teammate **idle** after `DONE`/`WAIT` as «read the file» | Apply that to `rs-*` / `run-supervisor` (those use Silence protocol) |
 | Prefer the **file path** from `DONE` over chat chips | Nag `SendMessage` «you went idle» in a loop |
 | `SendMessage` with the next real question once | `TaskStop` + redo the audit yourself as the happy path |
-| `TaskStop` only if hung **working** >~3 min, or human abort | Stop an idle teammate that already `DONE`'d |
+| `TaskStop` only if hung **working** >~3 min, idle `rs-*` with `DONE` >5 min (host poke), or human abort | Stop a fresh idle teammate that just `DONE`'d |
 
 ### Stack one-shots — DONE close
 
@@ -415,7 +414,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 | gitnexus | discovery for task YAML |
 | Agent → run-supervisor | durable start + bounded watch until accepted/blocked; no source writes |
 | Agent → lane-supervisor | one typed diagnostic/recovery action; no source writes |
-| TaskStop | stop a **stuck** non-terminal Claude Agent only (after disk evidence) |
+| TaskStop | stop a **stuck** non-terminal Claude Agent, or idle `rs-*` whose last line is `DONE` older than 5 min (host poke) |
 | SendMessage / ListAgents | in-session progress (supervisor→PM); optional operator Remote Control alert |
 | Kimi/Qwen/… process / Codex fallback | normal write / one typed Sol high recovery write |
 

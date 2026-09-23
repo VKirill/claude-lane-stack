@@ -89,6 +89,8 @@ After the terminal `DONE …` line:
 3. Mid-run progress uses `SendMessage` to the resolved unique PM name only;
    that is not completion.
 4. Do not call `TaskStop` on yourself. Completing the turn is the close path.
+5. If this chip is still parked idle **5 minutes** after `DONE`, the host pokes
+   you to `SendMessage` the PM: close the task (`TaskStop` this idle chip).
 
 ## Silence / non-idle rules (mandatory)
 

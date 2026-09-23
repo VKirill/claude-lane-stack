@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -53,6 +54,37 @@ class SentinelUnitTests(unittest.TestCase):
             for text in ["DONE accepted /tmp/controller.json", "FAILED CLI unavailable"]:
                 self.assertEqual(decide({"hook_event_name": "TeammateIdle", **identity,
                                          "last_assistant_message": text})[0], 0)
+
+    def test_supervisor_stale_done_pokes_close(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rs.jsonl"
+            path.write_text(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "content": [
+                                {"type": "text", "text": "DONE accepted /tmp/controller.json"}
+                            ]
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            stale = time.time() - 400
+            os.utime(path, (stale, stale))
+            code, err = decide(
+                {
+                    "hook_event_name": "TeammateIdle",
+                    "agent_type": "lane-stack:run-supervisor",
+                    "teammate_name": "rs-stale-done",
+                    "agent_transcript_path": str(path),
+                }
+            )
+            self.assertEqual(code, 2)
+            self.assertIn("SendMessage", err)
+            self.assertIn("close the task", err)
         self.assertEqual(decide({"teammate_name": "researcher",
                                  "last_assistant_message": "WAIT need scope"})[0], 0)
 

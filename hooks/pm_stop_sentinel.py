@@ -4,6 +4,8 @@
 Stop (sync):
   exit 2 — continue the turn; stderr is the reason.
   exit 0 — allow idle (also on Ctrl+C / session exit, and while rs-* is live).
+  After the PM already wrote DONE, a second poke fires if the session is
+  still open ≥ LANE_PM_DONE_HANG_SEC (default 300) — close, do not re-watch.
 
 PostToolUse Agent|Task (asyncRewake):
   if this spawn is run-supervisor / lane-supervisor, poll controller.json
@@ -42,6 +44,7 @@ DEFAULT_POLL = 5.0
 DEFAULT_WATCH_SEC = 7200.0
 RUNNING_AGE_SEC = 24 * 3600
 TERMINAL_AGE_SEC = 30 * 60
+DEFAULT_DONE_HANG_SEC = 300.0
 
 
 def _disabled() -> bool:
@@ -249,6 +252,42 @@ def pick_controller(cwd: Path, *, now: float | None = None, slug: str = "") -> P
     return best[1] if best else None
 
 
+def _done_hang_sec() -> float:
+    raw = os.environ.get("LANE_PM_DONE_HANG_SEC", "").strip()
+    try:
+        return max(0.0, float(raw)) if raw else DEFAULT_DONE_HANG_SEC
+    except ValueError:
+        return DEFAULT_DONE_HANG_SEC
+
+
+def _nudge_root() -> Path:
+    raw = os.environ.get("LANE_PM_DONE_NUDGE_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path.home() / ".agents" / "statusline" / "done-close"
+
+
+def _safe_token(raw: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_." else "_" for c in raw)[:80] or "_"
+
+
+def _nudge_path(session_id: str, slug: str) -> Path:
+    return _nudge_root() / f"{_safe_token(session_id)}__{_safe_token(slug)}"
+
+
+def _nudge_taken(session_id: str, slug: str) -> bool:
+    return _nudge_path(session_id, slug).is_file()
+
+
+def _mark_nudge(session_id: str, slug: str) -> None:
+    path = _nudge_path(session_id, slug)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{time.time():.0f}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def already_acked(text: str, slug: str, stage: str) -> bool:
     if not text or not slug or not stage:
         return False
@@ -312,6 +351,22 @@ def decide_stop(payload: dict) -> tuple[int, str]:
     slug = path.parent.name
     text = last_assistant_text(payload)
     if already_acked(text, slug, stage):
+        hang = _done_hang_sec()
+        try:
+            age = time.time() - path.stat().st_mtime
+        except OSError:
+            age = 0.0
+        session = _session_id(payload)
+        if hang > 0 and age >= hang and not _nudge_taken(session, slug):
+            _mark_nudge(session, slug)
+            mins = max(1, int(age // 60))
+            return (
+                2,
+                f"lane pm_stop_sentinel: {slug} DONE {stage} {mins}m ago "
+                f"and this session is still open. Close the task now: "
+                f"TaskStop idle rs-* chips that already DONE'd; "
+                f"do not watch or poll; end this turn.",
+            )
         return 0, ""
     if stage == "running" and tasks:
         return 0, ""
