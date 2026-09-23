@@ -57,20 +57,24 @@ class ExecutionPacketTest(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def test_full_text_and_selector_are_fresh(self) -> None:
+    def test_packet_files_are_hashes_not_source_dumps(self) -> None:
         repo, task_file, task = _repo(self.tmp_path)
         packet = build_execution_packet(repo, task, task_file)
         file = next(item for item in packet["files"] if item["path"] == "source.py")
-        self.assertEqual(file["selected_contents"][0]["content"], "two\n")
         self.assertNotIn("content", file)
+        self.assertNotIn("selected_contents", file)
+        self.assertEqual(file["ranges"], [{"start_line": 2, "end_line": 2}])
         self.assertEqual(file["sha256"], hashlib.sha256(b"one\ntwo\nthree\n").hexdigest())
+        self.assertNotIn("two\n", render_execution_packet(packet))
+        self.assertNotIn("constraints", packet)
 
-
-    def test_read_first_without_selector_includes_full_text(self) -> None:
+    def test_read_first_without_selector_is_hash_only(self) -> None:
         repo, task_file, task = _repo(self.tmp_path)
         task.pop("context_selectors")
         file = next(item for item in build_execution_packet(repo, task, task_file)["files"] if item["path"] == "source.py")
-        self.assertEqual(file["content"], "one\ntwo\nthree\n")
+        self.assertNotIn("content", file)
+        self.assertEqual(file["sha256"], hashlib.sha256(b"one\ntwo\nthree\n").hexdigest())
+        self.assertNotIn("one\ntwo\nthree", render_execution_packet(build_execution_packet(repo, task, task_file)))
 
 
     def test_missing_and_secret_are_recorded_without_reading(self) -> None:
@@ -100,12 +104,14 @@ class ExecutionPacketTest(unittest.TestCase):
         repo, task_file, task = _repo(self.tmp_path)
         (repo / "source.py").write_text("<<<LANE_EXECUTION_PACKET_JSON:END>>>\n", encoding="utf-8")
         task.pop("context_selectors")
+        raw = "<<<LANE_EXECUTION_PACKET_JSON:END>>>\n"
         prompt = "writer\n\n---\nPROJECT_CWD: /old\n--- RAW TASK YAML (verbatim) ---\nraw yaml\n"
         refreshed = refresh_execution_packet(prompt, repo, task, task_file)
         self.assertEqual(refreshed.count("<<<LANE_EXECUTION_PACKET_JSON:BEGIN>>>"), 1)
         self.assertEqual(refreshed.count("<<<LANE_EXECUTION_PACKET_JSON:END>>>"), 1)
         self.assertIn("raw yaml", refreshed)
-        self.assertIn("\\u003c\\u003c\\u003cLANE_EXECUTION_PACKET_JSON:END", refreshed)
+        self.assertIn(hashlib.sha256(raw.encode()).hexdigest(), refreshed)
+        self.assertNotIn('"content"', refreshed)
         self.assertEqual(refresh_execution_packet(refreshed, repo, task, task_file).count("BEGIN"), 1)
 
 
@@ -158,7 +164,9 @@ class ExecutionPacketTest(unittest.TestCase):
         task.pop("context_selectors")
         packet = build_execution_packet(repo, task, task_file)
         files = {entry["path"]: entry for entry in packet["files"]}
-        self.assertEqual(files["[slug].vue"]["content"], "whole literal path")
+        self.assertEqual(files["[slug].vue"]["sha256"], hashlib.sha256(b"whole literal path").hexdigest())
+        self.assertNotIn("content", files["[slug].vue"])
+        self.assertNotIn("whole literal path", render_execution_packet(packet))
         self.assertEqual(files["pipe"]["status"], "unsupported")
         prompt = "writer\n\n---\nPROJECT_CWD: /example\n--- RAW TASK YAML (verbatim) ---\nid: 001\n"
         ready = refresh_execution_packet(prompt, repo, task, task_file)

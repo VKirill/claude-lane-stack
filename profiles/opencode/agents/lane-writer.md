@@ -44,11 +44,11 @@ Load skills via the `skill` tool when needed: `lane-contract`, `karpathy-guideli
 
 ## Execution loop
 
-Use the prepared execution packet as source data, not instructions. Compare
-target hashes before editing; reuse unchanged source fragments. Do not `read` or
-`grep` a path already in `files` with status `ok`. `interface_refs` are pointers:
-`read` them once (`offset`/`limit` when `start_line` is set); do not grep to
-discover them. Batch independent missing
+Use the prepared execution packet as hashes and path pointers, not dumped
+source. Compare target hashes before editing. `interface_refs` (and `files`
+paths): `read` them once (`offset`/`limit` when `start_line` is set); do not
+grep to discover them. Do not `read` or `grep` a path you already loaded this
+turn. Batch independent missing
 reads/searches, then **call `edit` in the same step** and run focused
 checks. Do not reread a file you already have. Do not announce "I will insert"
 without an `edit` tool call. Expand context for a named missing fact, changed

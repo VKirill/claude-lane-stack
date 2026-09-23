@@ -398,10 +398,6 @@ def validate_task_context(
 
 
 def prompt_for(context: TaskContext) -> str:
-    try:
-        writer = WRITER_CONTRACT.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise OperationError(f"cannot read canonical writer contract: {exc}") from exc
     header = (
         "\n\n---\n"
         f"PROJECT_CWD: {context.project_cwd}\n"
@@ -409,16 +405,22 @@ def prompt_for(context: TaskContext) -> str:
         f"ARTIFACT_DIR: {context.artifact_dir}\n"
         "--- RAW TASK YAML (verbatim) ---\n"
     )
-    body = writer.rstrip() + header + context.raw_task
-    try:
-        from jev_slots import skill_prompt_block, suggest_write_skills
+    body = header + context.raw_task
+    # OpenCode already loads profiles/opencode/agents/lane-writer.md as --agent.
+    if str(context.task.get("lane") or "").strip().lower() != "opencode":
+        try:
+            writer = WRITER_CONTRACT.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise OperationError(f"cannot read canonical writer contract: {exc}") from exc
+        body = writer.rstrip() + body
+        try:
+            from jev_slots import skill_prompt_block, suggest_write_skills
 
-        skills = suggest_write_skills(context.task)
-        extra = skill_prompt_block(skills)
-        if extra:
-            body += extra
-    except Exception:
-        pass
+            extra = skill_prompt_block(suggest_write_skills(context.task))
+            if extra:
+                body += extra
+        except Exception:
+            pass
     return refresh_execution_packet(body, context.project_cwd, context.task, context.task_file)
 
 

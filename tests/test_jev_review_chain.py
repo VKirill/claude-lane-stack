@@ -139,6 +139,8 @@ class JevReviewChainTest(unittest.TestCase):
         block = skill_prompt_block(names)
         self.assertIn("impeccable-ui", block)
         self.assertIn("~/.agents/skills/impeccable-ui/SKILL.md", block)
+        self.assertEqual(skill_prompt_block(["writer-practices", "impeccable-ui"]), skill_prompt_block(["impeccable-ui"]))
+        self.assertEqual(skill_prompt_block(["writer-practices"]), "")
 
     def test_task_schema_allows_skills(self) -> None:
         schema = json.loads(

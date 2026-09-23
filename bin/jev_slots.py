@@ -218,10 +218,12 @@ def suggest_write_skills(task: dict[str, Any]) -> list[str]:
 
 
 def skill_prompt_block(names: list[str]) -> str:
+    # writer-practices is already the writer/agent contract; do not re-hint it.
+    names = [name for name in names[:3] if name and name != "writer-practices"]
     if not names:
         return ""
     lines = ["\n---\nWRITE SKILLS (read SKILL.md and follow):\n"]
-    for name in names[:3]:
+    for name in names:
         lines.append(f"- {name}: ~/.agents/skills/{name}/SKILL.md\n")
     return "".join(lines)
 

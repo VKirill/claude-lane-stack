@@ -124,13 +124,14 @@ No mutable `status` / free-form verify strings on new runs.
 
 ### Prepared execution context
 
-`lane-ctl` supplies fresh source data from explicit `read_first` and owned paths.
+`lane-ctl` supplies hashes and path pointers from `read_first` and owned paths.
 Paths named in `interfaces`/`objective` (slash-path plus extension;
-`file.ts:12-40` is a range) become `interface_refs` pointers — not dumped
-source. The writer reads those files. Keep related tests in `read_first`.
+`file.ts:12-40` is a range) become `interface_refs`. The writer reads those
+files. Keep related tests in `read_first`.
 Use precise context selectors for known relevant ranges; do not
 cut content by character budgets. Paste the snippet when you have it. The
-original task remains immutable.
+original task remains immutable. OpenCode already loads `lane-writer`; the
+user prompt is YAML + packet, not a second copy of the writer contract.
 
 Writers reuse unchanged supplied code and batch independent missing reads.
 An impact receipt can replace rediscovery only for its covered target, with

@@ -2,8 +2,8 @@
 """Deterministic, source-backed context packets for lane writers.
 
 The packet is data-only: it does not expand globs or rewrite source text.
-Files named in interfaces/objective become path pointers (interface_refs),
-not dumped source. Explicit read_first/owns still inline content.
+Files are path + SHA-256 only — no source dumps. interfaces/objective paths
+become interface_refs pointers. The writer reads those files.
 """
 from __future__ import annotations
 
@@ -459,15 +459,16 @@ def build_execution_packet(project_cwd: Path, task: dict, task_file: Path) -> di
         if entry.get("status") in {"error", "excluded", "deferred"}:
             files.append(entry)
             continue
-        files.append(
-            _read_text_record(
-                root,
-                Path(key),
-                ranges=entry.get("ranges", []),
-                sources=entry.get("sources", []),
-                include_full=bool(entry.get("full")),
-            )
+        record = _read_text_record(
+            root,
+            Path(key),
+            ranges=[],
+            sources=entry.get("sources", []),
+            include_full=False,
         )
+        if entry.get("ranges"):
+            record["ranges"] = list(entry["ranges"])
+        files.append(record)
     source_hashes = {
         item["path"]: item["sha256"]
         for item in files
@@ -484,19 +485,6 @@ def build_execution_packet(project_cwd: Path, task: dict, task_file: Path) -> di
         "interface_refs": interface_refs,
         "source_hashes": source_hashes,
         "source_snapshot_sha256": _json_hash(source_hashes),
-        "constraints": {
-            key: task.get(key, [])
-            for key in (
-                "verification",
-                "never_touch",
-                "interfaces",
-                "invariants",
-                "out_of_scope",
-                "acceptance",
-                "expected_outputs",
-            )
-            if key in task
-        },
         "working_tree": _working_tree_snapshot(root),
     }
     if task_error:

@@ -637,9 +637,8 @@ def command_prompt(prompt_file: Path) -> str:
     if len(prompt.encode("utf-8")) > 96 * 1024:
         return (
             f"Read the complete assembled task at {json.dumps(str(prompt_file.resolve()))} "
-            "before acting. It contains the writer contract, prepared source context, "
-            "and authoritative raw task YAML. Read it once without clipping; "
-            "reuse its source context and follow its instructions. "
+            "before acting. It contains the task YAML and packet path pointers. "
+            "Read it once without clipping. "
             "If your read tool paginates, fetch every remaining page."
         )
     return prompt

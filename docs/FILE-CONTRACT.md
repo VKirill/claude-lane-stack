@@ -85,10 +85,11 @@ fail closed on unknown run/task stages instead of inferring success.
 `lane-ctl` prepares source context at start and refreshes it for each retry or
 fallback. The task YAML stays immutable, previous attempt artifacts stay intact,
 and each attempt binds its own prompt hash. Explicit `read_first`/owned files
-are supplied with SHA-256 hashes; missing, binary or excluded files are reported.
+are supplied with SHA-256 hashes only, not file bodies; missing, binary or excluded files are reported.
 Existing project files named in `interfaces` or `objective` (slash-path plus
-extension; optional `:start-end`) are listed as `interface_refs` pointers, not
-inlined. The writer reads them. Ownership
+extension; optional `:start-end`) are listed as `interface_refs` pointers.
+The writer reads those files. YAML already carries interfaces, acceptance and
+verification; the packet does not copy them. Ownership
 patterns/directories are reported as deferred context; declare their
 relevant source files in `read_first` or `context_selectors`. Ownership alone
 does not trigger an indiscriminate repository-wide source dump.

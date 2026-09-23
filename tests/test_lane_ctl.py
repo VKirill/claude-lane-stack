@@ -195,6 +195,7 @@ class LaneCtlTest(unittest.TestCase):
         verify: str = "tests",
         risk: str = "low",
         with_run_contract: bool = True,
+        lane: str | None = None,
     ) -> Path:
         if with_run_contract:
             (self.run_dir / "run.yaml").write_text(
@@ -210,12 +211,14 @@ class LaneCtlTest(unittest.TestCase):
                 entries.append(normalized)
             else:
                 entries.append(entry)
+        lane_line = f"lane: {lane}\n" if lane else ""
         raw = (
             "schema_version: 2\n"
             f"id: {json.dumps(task_id)}\n"
             "title: Schema v2 test task\n"
             "status: done\n"
             f"risk: {risk}\n"
+            f"{lane_line}"
             f"verify: {verify}\n"
             f"project_cwd: {json.dumps(str(self.project_cwd))}\n"
             "owns_paths:\n"
@@ -484,6 +487,21 @@ class LaneCtlTest(unittest.TestCase):
         )
         self.assertEqual(verified["status"], "verified")
 
+    def test_opencode_prompt_omits_writer_contract_and_source_dumps(self) -> None:
+        (self.project_cwd / "example.txt").write_text("owned-body\n", encoding="utf-8")
+        task_file = self.write_v2_task("oc", verify="none", lane="opencode")
+        result = self.start(task_file, task_id="oc", check=False)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        prompt = (
+            self.run_dir / "artifacts" / "oc" / "attempts" / "01" / "prompt.md"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("# Lane writer", prompt)
+        self.assertNotIn("You implement ONE file-based task. Not a chatbot.", prompt)
+        self.assertNotIn("WRITE SKILLS", prompt)
+        self.assertIn("lane: opencode", prompt)
+        self.assertIn(hashlib.sha256(b"owned-body\n").hexdigest(), prompt)
+        self.assertNotIn("owned-body", prompt)
+
     def test_retry_refreshes_source_context_and_preserves_task(self) -> None:
         for version in (1, 2):
             with self.subTest(version=version):
@@ -500,14 +518,18 @@ class LaneCtlTest(unittest.TestCase):
                 artifact = self.run_dir / "artifacts" / task_id
                 first_dir = artifact if version == 1 else artifact / "attempts" / "01"
                 first_prompt = (first_dir / "prompt.md").read_bytes()
-                self.assertIn(b"SOURCE_BEFORE_RETRY", first_prompt)
+                before_hash = hashlib.sha256(b"SOURCE_BEFORE_RETRY\n").hexdigest().encode()
+                self.assertIn(before_hash, first_prompt)
+                self.assertNotIn(b"SOURCE_BEFORE_RETRY", first_prompt)
                 source.write_text("SOURCE_AFTER_RETRY\n")
                 self.run_ctl("retry", "--run-dir", str(self.run_dir), "--task-id", task_id)
                 self.assertEqual(self.wait_status(task_id)["status"], "awaiting_verification")
                 second_dir = artifact if version == 1 else artifact / "attempts" / "02"
                 second_prompt = (second_dir / "prompt.md").read_bytes()
-                self.assertIn(b"SOURCE_AFTER_RETRY", second_prompt)
-                self.assertNotIn(b"SOURCE_BEFORE_RETRY", second_prompt)
+                after_hash = hashlib.sha256(b"SOURCE_AFTER_RETRY\n").hexdigest().encode()
+                self.assertIn(after_hash, second_prompt)
+                self.assertNotIn(before_hash, second_prompt)
+                self.assertNotIn(b"SOURCE_AFTER_RETRY", second_prompt)
                 self.assertEqual(task_file.read_bytes(), original_task)
                 control = json.loads((second_dir / "control.json").read_text())
                 self.assertEqual(control["prompt_sha256"], hashlib.sha256(second_prompt).hexdigest())
