@@ -1,3 +1,13 @@
+## 1.39.0 — 2026-09-23
+
+### Changed
+- **OpenCode writer prompt:** `lane: opencode` gets YAML + packet hashes/path
+  pointers, not a second copy of `writer.md` and not dumped source. The agent
+  file is the contract; the writer reads `read_first` / `interface_refs`.
+- **OpenCode compaction off** in lane env and host `opencode.json` (`auto` and
+  `prune` false). Writable OpenCode cache/state binds so winnow is not EROFS.
+- **`writer-practices` is not re-hinted** in the user prompt.
+
 ## 1.38.0 — 2026-09-22
 
 ### Changed
