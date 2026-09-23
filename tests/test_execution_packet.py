@@ -171,6 +171,52 @@ class ExecutionPacketTest(unittest.TestCase):
         self.assertEqual(packet["files"][0]["status"], "deferred")
         self.assertIn("read_first", packet["files"][0]["error"])
 
+    def test_interfaces_path_is_inlined_without_read_first(self) -> None:
+        repo, task_file, task = _repo(self.tmp_path)
+        helper = repo / "pkg" / "helper.ts"
+        helper.parent.mkdir()
+        helper.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+        task.update(
+            read_first=[],
+            owns_paths=["source.py"],
+            context_selectors=[],
+            interfaces=[
+                "copy parseSelfie from pkg/helper.ts:2-2",
+                "verify in pkg/helper.ts, read-only",
+                "bare helper.ts is not enough",
+                "https://cdn.example/pkg/helper.ts ignored",
+            ],
+        )
+        packet = build_execution_packet(repo, task, task_file)
+        file = next(item for item in packet["files"] if item["path"] == "pkg/helper.ts")
+        self.assertIn("interface_ref", file["sources"])
+        self.assertEqual(file["content"], "alpha\nbeta\ngamma\n")
+        self.assertEqual(file["selected_contents"][0]["content"], "beta\n")
+
+    def test_interfaces_skip_missing_secret_and_never_touch(self) -> None:
+        repo, task_file, task = _repo(self.tmp_path)
+        (repo / "pkg").mkdir()
+        (repo / "pkg" / "ok.ts").write_text("ok\n", encoding="utf-8")
+        (repo / "pkg" / ".env.local").write_text("TOKEN=no", encoding="utf-8")
+        (repo / "pkg" / "skip.ts").write_text("nope\n", encoding="utf-8")
+        task.update(
+            read_first=[],
+            context_selectors=[],
+            never_touch=["pkg/skip.ts", ".env*"],
+            interfaces=[
+                "missing pkg/ghost.ts",
+                "secret pkg/.env.local",
+                "never pkg/skip.ts",
+                "ok pkg/ok.ts",
+            ],
+        )
+        packet = build_execution_packet(repo, task, task_file)
+        by_path = {item["path"]: item for item in packet["files"]}
+        self.assertEqual(by_path["pkg/ok.ts"]["content"], "ok\n")
+        self.assertNotIn("pkg/ghost.ts", by_path)
+        self.assertNotIn("pkg/skip.ts", by_path)
+        self.assertNotIn("TOKEN", render_execution_packet(packet))
+
     def test_receipt_requires_declared_owned_unambiguous_target_coverage(self) -> None:
         repo, task_file, task = _repo(self.tmp_path)
         (repo / ".gitnexus").mkdir()

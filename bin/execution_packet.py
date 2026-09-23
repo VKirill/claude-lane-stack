@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic, source-backed context packets for lane writers.
 
-The packet is deliberately data-only.  It does not interpret task prose,
-expand globs, or rewrite source text.
+The packet is data-only: it does not expand globs or rewrite source text.
+Existing project files named in interfaces/objective are inlined the same way
+as read_first, so a writer does not have to rediscover them.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 from pathlib import Path
@@ -29,6 +31,13 @@ _SECRET_NAMES = {
 }
 _SECRET_SUFFIXES = (".pem", ".p12", ".key")
 _SKIP_TREE_DIRS = {".git", ".gitnexus", ".agents", "node_modules"}
+# ponytail: harvest only slash-paths that already exist; cap stops a novel-length
+# interfaces dump. Upgrade: PM context_selectors, or fail pre-dispatch on unnamed refs.
+_MAX_INTERFACE_REFS = 20
+_INTERFACE_PATH_RE = re.compile(
+    r"(?<![\w./])((?:[\w][\w.-]*/)+[\w.-]+\.[A-Za-z][\w.-]*)"
+    r"(?::(\d+)(?:-(\d+))?)?"
+)
 
 
 def _sha256(data: bytes) -> str:
@@ -160,6 +169,63 @@ def _selector(raw: object) -> tuple[str | None, dict[str, int] | None, str | Non
     if not isinstance(start, int) or not isinstance(end, int) or start < 1 or end < start:
         return path, None, "context selector requires positive start_line <= end_line"
     return path, {"start_line": start, "end_line": end}, None
+
+
+def _task_prose(task: dict) -> str:
+    chunks: list[str] = []
+    for key in ("interfaces", "objective"):
+        value = task.get(key)
+        if isinstance(value, str):
+            chunks.append(value)
+        elif isinstance(value, list):
+            chunks.extend(item for item in value if isinstance(item, str))
+    return "\n".join(chunks)
+
+
+def _never_touch_match(posix: str, never_touch: list[object]) -> bool:
+    for pattern in never_touch:
+        if not isinstance(pattern, str) or not pattern:
+            continue
+        if fnmatch.fnmatchcase(posix, pattern) or fnmatch.fnmatchcase(Path(posix).name, pattern):
+            return True
+    return False
+
+
+def _interface_refs(root: Path, task: dict) -> list[tuple[str, dict[str, int] | None]]:
+    """Existing project files named in interfaces/objective, optional :start-end."""
+    never_touch = _as_list(task.get("never_touch"))
+    found: list[tuple[str, dict[str, int] | None]] = []
+    seen: set[tuple[str, int, int] | tuple[str]] = set()
+    for match in _INTERFACE_PATH_RE.finditer(_task_prose(task)):
+        relative, error = _safe_relative(root, match.group(1))
+        if relative is None or error or any(part in _SKIP_TREE_DIRS for part in relative.parts):
+            continue
+        posix = relative.as_posix()
+        if _never_touch_match(posix, never_touch):
+            continue
+        path = root / relative
+        try:
+            if not path.is_file():
+                continue
+        except OSError:
+            continue
+        start_raw, end_raw = match.group(2), match.group(3)
+        line_range = None
+        if start_raw is not None:
+            start_i = int(start_raw)
+            end_i = int(end_raw) if end_raw is not None else start_i
+            if start_i >= 1 and end_i >= start_i:
+                line_range = {"start_line": start_i, "end_line": end_i}
+        key: tuple[str, int, int] | tuple[str] = (
+            (posix, line_range["start_line"], line_range["end_line"]) if line_range else (posix,)
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append((posix, line_range))
+        if len(found) >= _MAX_INTERFACE_REFS:
+            break
+    return found
 
 
 def _explicit_owned_files(project_cwd: Path, owns_paths: list[object]) -> list[tuple[Path, str]]:
@@ -366,6 +432,8 @@ def build_execution_packet(project_cwd: Path, task: dict, task_file: Path) -> di
             add(raw_path or "<invalid-context-selector>", "context_selector", error=selector_error)
         elif raw_path is not None and line_range is not None:
             add(raw_path, "context_selector", line_range)
+    for raw_path, line_range in _interface_refs(root, task):
+        add(raw_path, "interface_ref", line_range)
 
     files: list[dict[str, Any]] = []
     for key in sorted(entries):

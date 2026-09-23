@@ -125,9 +125,11 @@ No mutable `status` / free-form verify strings on new runs.
 ### Prepared execution context
 
 `lane-ctl` supplies fresh source data from explicit `read_first` and owned paths,
-with hashes, constraints and focused verification. Keep related tests in
+plus any existing project files named in `interfaces`/`objective` (slash-path
+with extension; `file.ts:12-40` becomes a range). Keep related tests in
 `read_first`. Use precise context selectors for known relevant ranges; do not
-cut content by character budgets. The original task remains immutable.
+cut content by character budgets. Paste the snippet when you have it. The
+original task remains immutable.
 
 Writers reuse unchanged supplied code and batch independent missing reads.
 An impact receipt can replace rediscovery only for its covered target, with

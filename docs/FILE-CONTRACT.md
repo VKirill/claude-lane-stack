@@ -86,7 +86,9 @@ fail closed on unknown run/task stages instead of inferring success.
 fallback. The task YAML stays immutable, previous attempt artifacts stay intact,
 and each attempt binds its own prompt hash. Explicit `read_first`/owned files
 are supplied with SHA-256 hashes; missing, binary or excluded files are reported.
-Ownership patterns/directories are reported as deferred context; declare their
+Existing project files named in `interfaces` or `objective` (slash-path plus
+extension; optional `:start-end`) are inlined the same way. Ownership
+patterns/directories are reported as deferred context; declare their
 relevant source files in `read_first` or `context_selectors`. Ownership alone
 does not trigger an indiscriminate repository-wide source dump.
 There is no arbitrary character cut. Source contents are data, not instructions.
