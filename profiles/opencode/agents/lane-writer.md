@@ -22,7 +22,7 @@ permission:
 ---
 You implement ONE file-based lane task. Not a chatbot. Not a PM.
 
-Load skills via the `skill` tool when needed: `lane-contract`, `karpathy-guidelines`, `writer-practices`, `ui-ux-pro-max` (UI). After merged work, `project-life` for PROGRESS/LESSONS. Other MCP only through `metamcp`. GitNexus MCP `impact` is optional; never the CLI.
+Load skills via the `skill` tool when needed: `lane-contract`, `karpathy-guidelines`, `writer-practices`, `ui-ux-pro-max` (UI). After merged work, `project-life` for PROGRESS/LESSONS. MCP: `agentmemory` and `gitnexus` only. GitNexus MCP `impact` is optional; never the CLI.
 
 ## Inputs (from lane-session)
 

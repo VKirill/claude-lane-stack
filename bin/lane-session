@@ -1023,10 +1023,69 @@ def provider_environment(
                 # instead of OpenCode read/edit/bash and skips LANE_REPORT.
                 "CURSOR_ACP_FORWARD_TOOL_CALLS": "false",
                 "CURSOR_ACP_TOOL_LOOP_MODE": "opencode",
+                # Off until attach_opencode_lane_mcp writes a stdio-only
+                # slice; ACP cannot speak OpenCode `type: remote` (metamcp).
                 "CURSOR_ACP_MCP_BRIDGE": "false",
             }
         )
     return environment
+
+
+OPENCODE_LANE_MCP = ("agentmemory", "gitnexus")
+
+
+def slice_opencode_mcp(
+    data: object, *, keep: tuple[str, ...] = OPENCODE_LANE_MCP
+) -> dict[str, object]:
+    """Keep only named local MCP servers; drop remote (ACP has no HTTP transport)."""
+    source = data if isinstance(data, dict) else {}
+    mcp = source.get("mcp")
+    sliced: dict[str, object] = {}
+    if isinstance(mcp, dict):
+        for name in keep:
+            entry = mcp.get(name)
+            if (
+                isinstance(entry, dict)
+                and entry.get("enabled") is not False
+                and entry.get("type") == "local"
+            ):
+                sliced[name] = entry
+    out = dict(source)
+    out["mcp"] = sliced
+    return out
+
+
+def attach_opencode_lane_mcp(
+    environment: dict[str, str],
+    *,
+    run_dir: Path,
+    config_path: Path | None = None,
+) -> Path | None:
+    """Point ACP at host OpenCode config with only agentmemory + gitnexus."""
+    raw_src = (
+        str(config_path)
+        if config_path is not None
+        else environment.get("OPENCODE_CONFIG")
+        or os.environ.get("OPENCODE_CONFIG")
+        or str(Path.home() / ".config" / "opencode" / "opencode.json")
+    )
+    src = Path(raw_src).expanduser()
+    try:
+        data = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    dest = run_dir / "opencode.lane.json"
+    dest.write_text(
+        json.dumps(slice_opencode_mcp(data), separators=(",", ":")),
+        encoding="utf-8",
+    )
+    try:
+        dest.chmod(0o600)
+    except OSError:
+        pass
+    environment["OPENCODE_CONFIG"] = str(dest.resolve())
+    environment["CURSOR_ACP_MCP_BRIDGE"] = "true"
+    return dest
 
 
 def lane_stack_root() -> Path:
@@ -4054,6 +4113,7 @@ def run_provider(args: argparse.Namespace) -> int:
                 run_dir=run_dir,
                 task_id=args.task_id,
             )
+            attach_opencode_lane_mcp(provider_env, run_dir=run_dir)
             ensure_winnow_sidecar()
         if provider_state_dir is not None:
             provider_env["CODEX_HOME"] = str(provider_state_dir)

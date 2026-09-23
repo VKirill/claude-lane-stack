@@ -1151,6 +1151,56 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         )
         self.assertNotIn("OPENCODE_CONFIG_CONTENT", module.provider_environment("qwen"))
 
+    def test_slice_opencode_mcp_keeps_local_allowlist(self) -> None:
+        module = self._load_lane_session()
+        sliced = module.slice_opencode_mcp(
+            {
+                "plugin": ["cursor-acp"],
+                "mcp": {
+                    "agentmemory": {"type": "local", "command": ["/bin/am"]},
+                    "gitnexus": {"type": "local", "command": ["/bin/gn"]},
+                    "metamcp": {"type": "remote", "url": "http://127.0.0.1:12010/mcp"},
+                    "extra": {"type": "local", "command": ["/bin/no"]},
+                },
+            }
+        )
+        self.assertEqual(sliced["plugin"], ["cursor-acp"])
+        self.assertEqual(
+            set(sliced["mcp"]),
+            {"agentmemory", "gitnexus"},
+        )
+        self.assertEqual(sliced["mcp"]["agentmemory"]["type"], "local")
+
+    def test_attach_opencode_lane_mcp_enables_stdio_bridge(self) -> None:
+        module = self._load_lane_session()
+        host = self.fake_home / ".config" / "opencode"
+        host.mkdir(parents=True)
+        (host / "opencode.json").write_text(
+            json.dumps(
+                {
+                    "mcp": {
+                        "agentmemory": {"type": "local", "command": ["/bin/am"]},
+                        "gitnexus": {"type": "local", "command": ["/bin/gn"]},
+                        "metamcp": {
+                            "type": "remote",
+                            "url": "http://127.0.0.1:12010/mcp",
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        env: dict[str, str] = {"CURSOR_ACP_MCP_BRIDGE": "false"}
+        dest = module.attach_opencode_lane_mcp(
+            env, run_dir=self.run_dir, config_path=host / "opencode.json"
+        )
+        self.assertIsNotNone(dest)
+        self.assertEqual(env["CURSOR_ACP_MCP_BRIDGE"], "true")
+        self.assertEqual(env["OPENCODE_CONFIG"], str(dest.resolve()))
+        mcp = json.loads(dest.read_text(encoding="utf-8"))["mcp"]
+        self.assertEqual(set(mcp), {"agentmemory", "gitnexus"})
+        self.assertNotIn("metamcp", mcp)
+
     def test_opencode_writable_paths_include_state_home(self) -> None:
         module = self._load_lane_session()
         paths = module._provider_writable_paths(
