@@ -95,7 +95,7 @@ async function renderCurrent({ refreshed = false } = {}) {
   else if (route.name === "reviews") await renderReviews(context);
   else await renderBoard(context);
   if (version === renderVersion && refreshed) pulse(root);
-  renderSidebar();
+  if (!refreshed) renderSidebar();
 }
 
 function setConnection(status) {
