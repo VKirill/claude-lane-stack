@@ -957,11 +957,8 @@ def provider_environment(
                 "OPENCODE_PERMISSION": '{"task":"deny"}',
                 # Parallel writers share cwd: OpenCode's snapshot git index
                 # races across processes. Lane owns change tracking/acceptance.
-                # Compaction (host opencode.json auto:true) wipes the file the
-                # writer just read and starts the reread loop. Lane sticky
-                # restore is not a substitute for keeping the tool history.
-                # CONFIG_CONTENT deep-merges; DISABLE_* flags apply after every
-                # layer (including .opencode) so a project file cannot re-enable.
+                # Compaction is off in host opencode.json and via DISABLE_* flags
+                # after every merge layer so a project .opencode cannot re-enable.
                 "OPENCODE_CONFIG_CONTENT": json.dumps(
                     {
                         "snapshot": False,
@@ -981,6 +978,28 @@ def provider_environment(
     return environment
 
 
+def lane_stack_root() -> Path:
+    """Checkout that owns plugins/lane-stack, even when argv is ~/.agents/bin."""
+    env = (os.environ.get("LANE_STACK_ROOT") or "").strip()
+    if env:
+        return Path(env).expanduser().resolve()
+    checkout = Path(__file__).resolve().parents[1]
+    sidecar = checkout / "plugins" / "lane-stack" / "winnow" / "sidecar"
+    if sidecar.is_dir():
+        return checkout
+    install = Path.home() / ".agents" / "install.json"
+    try:
+        raw = json.loads(install.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return checkout
+    source = raw.get("source_repo")
+    if isinstance(source, str) and source.strip():
+        path = Path(source.strip()).expanduser()
+        if (path / "plugins" / "lane-stack" / "winnow" / "sidecar").is_dir():
+            return path.resolve()
+    return checkout
+
+
 def attach_lane_contract_env(
     environment: dict[str, str],
     *,
@@ -993,8 +1012,8 @@ def attach_lane_contract_env(
     candidate = run_dir / "tasks" / f"{task_id}.yaml"
     if candidate.is_file():
         environment["LANE_TASK_FILE"] = str(candidate.resolve())
+    environment["LANE_STACK_ROOT"] = str(lane_stack_root())
     for key in (
-        "LANE_STACK_ROOT",
         "TYPESAFE_API_KEY",
         "JEV_API_KEY",
         "LANE_JEV_EFFORT",
@@ -1150,8 +1169,7 @@ def ensure_winnow_sidecar() -> bool:
                 return True
     except OSError:
         pass
-    root = Path(os.environ.get("LANE_STACK_ROOT") or Path(__file__).resolve().parents[1])
-    project = root / "plugins" / "lane-stack" / "winnow" / "sidecar"
+    project = lane_stack_root() / "plugins" / "lane-stack" / "winnow" / "sidecar"
     if not project.is_dir():
         return False
     try:
@@ -1205,14 +1223,26 @@ def _provider_writable_paths(
     if provider == "cursor":
         return (home / ".cursor", cwd)
     if provider == "opencode":
-        return (
+        paths = [
             home / ".local" / "share" / "opencode",
             home / ".config" / "opencode",
             # models.dev + plugin locks; default XDG_STATE_HOME/opencode.
             # Without this bind the sandbox is EROFS here and winnow never starts.
             home / ".local" / "state" / "opencode",
+            home / ".cache" / "opencode",
             cwd,
-        )
+        ]
+        for env_key, default in (
+            ("XDG_DATA_HOME", home / ".local" / "share"),
+            ("XDG_CONFIG_HOME", home / ".config"),
+            ("XDG_STATE_HOME", home / ".local" / "state"),
+            ("XDG_CACHE_HOME", home / ".cache"),
+        ):
+            raw = os.environ.get(env_key)
+            extra = (Path(raw).expanduser() if raw else default) / "opencode"
+            if extra not in paths:
+                paths.append(extra)
+        return tuple(paths)
     return tuple(path for path in (cwd, provider_state_dir) if path is not None)
 
 

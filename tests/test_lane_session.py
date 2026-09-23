@@ -1130,6 +1130,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             "opencode", home=self.fake_home, cwd=self.cwd, provider_state_dir=None
         )
         self.assertIn(self.fake_home / ".local" / "state" / "opencode", paths)
+        self.assertIn(self.fake_home / ".cache" / "opencode", paths)
 
     @unittest.skipUnless(shutil.which("bwrap"), "bubblewrap required for live lock-dir probe")
     def test_opencode_sandbox_can_create_state_lock(self) -> None:
@@ -1209,6 +1210,10 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         )
         self.assertEqual(env["LANE_PROMPT_FILE"], str(prompt.resolve()))
         self.assertEqual(env["LANE_TASK_FILE"], str(yaml_path.resolve()))
+        self.assertTrue(Path(env["LANE_STACK_ROOT"]).is_dir())
+        self.assertTrue(
+            (Path(env["LANE_STACK_ROOT"]) / "plugins" / "lane-stack" / "winnow" / "sidecar").is_dir()
+        )
 
     def test_attach_lane_contract_env_keeps_jev_off_flag(self) -> None:
         module = self._load_lane_session()
@@ -1222,6 +1227,11 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(env["LANE_OPENCODE_JEV"], "0")
         self.assertEqual(env["LANE_PROMPT_FILE"], str(prompt.resolve()))
         self.assertNotIn("LANE_TASK_FILE", env)
+
+    def test_lane_stack_root_prefers_env(self) -> None:
+        module = self._load_lane_session()
+        with patch.dict("os.environ", {"LANE_STACK_ROOT": "/tmp/lane-stack-root-test"}, clear=False):
+            self.assertEqual(module.lane_stack_root(), Path("/tmp/lane-stack-root-test").resolve())
 
     def test_cursor_fast_tier_appends_model_suffix(self) -> None:
         module = self._load_lane_session()

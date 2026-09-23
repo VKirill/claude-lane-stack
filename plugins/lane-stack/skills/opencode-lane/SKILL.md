@@ -192,8 +192,9 @@ Do-now (can pay, bounded):
 1. Conveyor dropped `--pure`, so **every** `opencode.json` plugin loads
    (`agentmemory-capture`, `gemini-auth`, `open-cursor`). Need a lane-only
    config or an allowlist so only `opencode-lane` runs in writer sessions.
-2. `attach_lane_contract_env` does not pass `LANE_OPENCODE_JEV`;
-   `LANE_STACK_ROOT` only if already in the parent env.
+2. `attach_lane_contract_env` now always pins `LANE_STACK_ROOT` (install.json
+   if `~/.agents/bin` has no sidecar). `LANE_OPENCODE_JEV` still only if already
+   in the parent env.
 3. `evidenceNotes` still run once per evidence hash (early empty skips).
    `skillHint` is once per task, not per tool.
 4. Diagnose notes are not consumed by `lane-ctl` retry (controller backlog).
