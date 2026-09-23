@@ -171,11 +171,12 @@ class ExecutionPacketTest(unittest.TestCase):
         self.assertEqual(packet["files"][0]["status"], "deferred")
         self.assertIn("read_first", packet["files"][0]["error"])
 
-    def test_interfaces_path_is_inlined_without_read_first(self) -> None:
+    def test_interfaces_path_is_a_pointer_not_dumped_source(self) -> None:
         repo, task_file, task = _repo(self.tmp_path)
-        helper = repo / "pkg" / "helper.ts"
-        helper.parent.mkdir()
-        helper.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+        pkg = repo / "pkg"
+        pkg.mkdir()
+        (pkg / "helper.ts").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+        (pkg / "slice.ts").write_text("one\ntwo\nthree\n", encoding="utf-8")
         task.update(
             read_first=[],
             owns_paths=["source.py"],
@@ -183,15 +184,25 @@ class ExecutionPacketTest(unittest.TestCase):
             interfaces=[
                 "copy parseSelfie from pkg/helper.ts:2-2",
                 "verify in pkg/helper.ts, read-only",
+                "pattern in pkg/slice.ts:2-2 only",
                 "bare helper.ts is not enough",
                 "https://cdn.example/pkg/helper.ts ignored",
             ],
         )
         packet = build_execution_packet(repo, task, task_file)
-        file = next(item for item in packet["files"] if item["path"] == "pkg/helper.ts")
-        self.assertIn("interface_ref", file["sources"])
-        self.assertEqual(file["content"], "alpha\nbeta\ngamma\n")
-        self.assertEqual(file["selected_contents"][0]["content"], "beta\n")
+        files = {item["path"]: item for item in packet["files"]}
+        self.assertNotIn("pkg/helper.ts", files)
+        self.assertNotIn("pkg/slice.ts", files)
+        self.assertEqual(
+            packet["interface_refs"],
+            [
+                {"path": "pkg/helper.ts"},
+                {"path": "pkg/slice.ts", "start_line": 2, "end_line": 2},
+            ],
+        )
+        rendered = render_execution_packet(packet)
+        self.assertNotIn("alpha", rendered)
+        self.assertNotIn("gamma", rendered)
 
     def test_interfaces_skip_missing_secret_and_never_touch(self) -> None:
         repo, task_file, task = _repo(self.tmp_path)
@@ -212,7 +223,8 @@ class ExecutionPacketTest(unittest.TestCase):
         )
         packet = build_execution_packet(repo, task, task_file)
         by_path = {item["path"]: item for item in packet["files"]}
-        self.assertEqual(by_path["pkg/ok.ts"]["content"], "ok\n")
+        self.assertNotIn("pkg/ok.ts", by_path)
+        self.assertEqual(packet["interface_refs"], [{"path": "pkg/ok.ts"}])
         self.assertNotIn("pkg/ghost.ts", by_path)
         self.assertNotIn("pkg/skip.ts", by_path)
         self.assertNotIn("TOKEN", render_execution_packet(packet))

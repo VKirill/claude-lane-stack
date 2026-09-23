@@ -2,8 +2,8 @@
 """Deterministic, source-backed context packets for lane writers.
 
 The packet is data-only: it does not expand globs or rewrite source text.
-Existing project files named in interfaces/objective are inlined the same way
-as read_first, so a writer does not have to rediscover them.
+Files named in interfaces/objective become path pointers (interface_refs),
+not dumped source. Explicit read_first/owns still inline content.
 """
 from __future__ import annotations
 
@@ -189,6 +189,25 @@ def _never_touch_match(posix: str, never_touch: list[object]) -> bool:
         if fnmatch.fnmatchcase(posix, pattern) or fnmatch.fnmatchcase(Path(posix).name, pattern):
             return True
     return False
+
+
+def _interface_ref_records(
+    refs: list[tuple[str, dict[str, int] | None]], dumped: set[str]
+) -> list[dict[str, Any]]:
+    """Path pointers only. An unadorned path wins over a :start-end mention."""
+    by_path: dict[str, dict[str, Any]] = {}
+    for raw_path, line_range in refs:
+        if raw_path in dumped:
+            continue
+        current = by_path.get(raw_path)
+        if current is None:
+            record: dict[str, Any] = {"path": raw_path}
+            if line_range:
+                record.update(line_range)
+            by_path[raw_path] = record
+        elif line_range is None:
+            by_path[raw_path] = {"path": raw_path}
+    return list(by_path.values())
 
 
 def _interface_refs(root: Path, task: dict) -> list[tuple[str, dict[str, int] | None]]:
@@ -432,8 +451,7 @@ def build_execution_packet(project_cwd: Path, task: dict, task_file: Path) -> di
             add(raw_path or "<invalid-context-selector>", "context_selector", error=selector_error)
         elif raw_path is not None and line_range is not None:
             add(raw_path, "context_selector", line_range)
-    for raw_path, line_range in _interface_refs(root, task):
-        add(raw_path, "interface_ref", line_range)
+    interface_refs = _interface_ref_records(_interface_refs(root, task), set(entries))
 
     files: list[dict[str, Any]] = []
     for key in sorted(entries):
@@ -463,6 +481,7 @@ def build_execution_packet(project_cwd: Path, task: dict, task_file: Path) -> di
         "task_sha256": task_sha256,
         "scope": _scope(task),
         "files": files,
+        "interface_refs": interface_refs,
         "source_hashes": source_hashes,
         "source_snapshot_sha256": _json_hash(source_hashes),
         "constraints": {

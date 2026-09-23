@@ -124,10 +124,11 @@ No mutable `status` / free-form verify strings on new runs.
 
 ### Prepared execution context
 
-`lane-ctl` supplies fresh source data from explicit `read_first` and owned paths,
-plus any existing project files named in `interfaces`/`objective` (slash-path
-with extension; `file.ts:12-40` becomes a range). Keep related tests in
-`read_first`. Use precise context selectors for known relevant ranges; do not
+`lane-ctl` supplies fresh source data from explicit `read_first` and owned paths.
+Paths named in `interfaces`/`objective` (slash-path plus extension;
+`file.ts:12-40` is a range) become `interface_refs` pointers — not dumped
+source. The writer reads those files. Keep related tests in `read_first`.
+Use precise context selectors for known relevant ranges; do not
 cut content by character budgets. Paste the snippet when you have it. The
 original task remains immutable.
 
