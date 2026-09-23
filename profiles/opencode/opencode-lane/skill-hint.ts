@@ -27,7 +27,8 @@ export function skillPhase(task: string, tools: string[] = []): string {
 
 export async function skillHint(sessionID: string, task: string, tools: string[] = []): Promise<string> {
   if (!extraJevEnabled() || !sessionID || !task) return ""
-  const sig = skillPhase(task, tools)
+  // Once per task. Hashing recent tools re-hinted writer-practices on every grep.
+  const sig = skillPhase(task)
   if (hinted.get(sessionID) === sig) return ""
   hinted.set(sessionID, sig)
   const answers = await askJev(

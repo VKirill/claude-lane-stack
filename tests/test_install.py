@@ -360,6 +360,8 @@ class InstallTest(unittest.TestCase):
             (ROOT / "profiles" / "opencode" / "commands" / "opencode-lane.md").is_file()
         )
         self.assertIn("commands/opencode-lane.md", install)
+        self.assertIn('compaction["auto"] = False', install)
+        self.assertIn('compaction["prune"] = False', install)
 
     def test_seo_specialist_pack_is_shipped(self) -> None:
         agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"

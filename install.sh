@@ -161,6 +161,13 @@ new = "./plugins/opencode-lane.ts"
 plugins = [item for item in plugins if item not in ("./plugins/lane-context.ts", new)]
 plugins.append(new)
 data["plugin"] = plugins
+# Default compaction.auto is true and wipes tool history on large sessions.
+compaction = data.get("compaction")
+if not isinstance(compaction, dict):
+    compaction = {}
+compaction["auto"] = False
+compaction["prune"] = False
+data["compaction"] = compaction
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PY
 fi

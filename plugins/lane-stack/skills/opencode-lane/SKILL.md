@@ -152,7 +152,7 @@ Cursor ACP warnings/errors are forwarded to the same stderr journal via
 `CURSOR_ACP_LOG_CONSOLE=1` and `CURSOR_ACP_LOG_LEVEL=warn`, because its
 default `~/.opencode-cursor` file logger is outside the sandbox's writable mounts.
 
-Lane writers set `OPENCODE_CONFIG_CONTENT={"snapshot":false}`. Parallel
+Lane writers set `OPENCODE_CONFIG_CONTENT={"snapshot":false,"compaction":{"auto":false,"prune":false}}`. Parallel
 writers in the same checkout otherwise race on OpenCode's shared snapshot
 Git index; stale root-owned snapshot objects can also reject writes.
 This disables OpenCode UI undo for lane writers only. Lane's own change
@@ -194,8 +194,8 @@ Do-now (can pay, bounded):
    config or an allowlist so only `opencode-lane` runs in writer sessions.
 2. `attach_lane_contract_env` does not pass `LANE_OPENCODE_JEV`;
    `LANE_STACK_ROOT` only if already in the parent env.
-3. `evidenceNotes` / `skillHint` run **once** per session. Early empty
-   tool output skips evidence forever.
+3. `evidenceNotes` still run once per evidence hash (early empty skips).
+   `skillHint` is once per task, not per tool.
 4. Diagnose notes are not consumed by `lane-ctl` retry (controller backlog).
 5. `experimental.chat.messages.transform` may omit `sessionID` → notes
    keyed as `""`.

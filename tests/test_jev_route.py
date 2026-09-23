@@ -197,6 +197,10 @@ class JevRouteTest(unittest.TestCase):
             }};
             assert.notEqual(skillPhase(task), skillPhase(task + 'CHANGED'));
             await skillHint('full-skills', task);
+            const afterFirstHint = requests.length;
+            await skillHint('full-skills', task, ['read']);
+            await skillHint('full-skills', task, ['grep', 'shell']);
+            assert.equal(requests.length, afterFirstHint, 'skill hint must not re-ask on every tool');
             assert.equal(requests.at(-1).state.task, task);
             await diagnoseFailure(task, result + ' password=private-test-value', 1);
             assert.equal(requests.at(-1).state.task, task);

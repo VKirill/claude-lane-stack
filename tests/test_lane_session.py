@@ -1113,11 +1113,87 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         env = module.provider_environment("opencode")
         self.assertEqual(env["OPENCODE_DISABLE_CLAUDE_CODE"], "1")
         self.assertEqual(env["OPENCODE_DISABLE_DEFAULT_PLUGINS"], "1")
+        self.assertEqual(env["OPENCODE_DISABLE_AUTOCOMPACT"], "1")
+        self.assertEqual(env["OPENCODE_DISABLE_PRUNE"], "1")
         self.assertEqual(env["CURSOR_ACP_LOG_CONSOLE"], "1")
         self.assertEqual(env["CURSOR_ACP_LOG_LEVEL"], "warn")
         self.assertIn('"task":"deny"', env["OPENCODE_PERMISSION"])
-        self.assertEqual(json.loads(env["OPENCODE_CONFIG_CONTENT"]), {"snapshot": False})
+        self.assertEqual(
+            json.loads(env["OPENCODE_CONFIG_CONTENT"]),
+            {"snapshot": False, "compaction": {"auto": False, "prune": False}},
+        )
         self.assertNotIn("OPENCODE_CONFIG_CONTENT", module.provider_environment("qwen"))
+
+    def test_opencode_writable_paths_include_state_home(self) -> None:
+        module = self._load_lane_session()
+        paths = module._provider_writable_paths(
+            "opencode", home=self.fake_home, cwd=self.cwd, provider_state_dir=None
+        )
+        self.assertIn(self.fake_home / ".local" / "state" / "opencode", paths)
+
+    @unittest.skipUnless(shutil.which("bwrap"), "bubblewrap required for live lock-dir probe")
+    def test_opencode_sandbox_can_create_state_lock(self) -> None:
+        module = self._load_lane_session()
+        wrapped = module.sandbox_provider_command(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from pathlib import Path; import os, json; "
+                    "p = Path.home() / '.local' / 'state' / 'opencode' / 'locks' / 'lane-probe'; "
+                    "p.parent.mkdir(parents=True, exist_ok=True); p.write_text('ok'); "
+                    "print(json.dumps({'ok': p.read_text(), 'bytes': p.stat().st_size}))"
+                ),
+            ],
+            provider="opencode",
+            run_dir=self.run_dir,
+            cwd=self.cwd,
+            home=self.fake_home,
+        )
+        result = subprocess.run(
+            wrapped, capture_output=True, text=True, timeout=15, env={**os.environ, "HOME": str(self.fake_home)}
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads(result.stdout)
+        self.assertEqual(observed["ok"], "ok")
+        lock = self.fake_home / ".local" / "state" / "opencode" / "locks" / "lane-probe"
+        self.assertTrue(lock.is_file())
+
+    @unittest.skipUnless(shutil.which("bwrap"), "bubblewrap required for live winnow probe")
+    def test_opencode_sandbox_reaches_host_winnow(self) -> None:
+        module = self._load_lane_session()
+        if not module.ensure_winnow_sidecar():
+            self.skipTest("winnow sidecar did not become healthy on 127.0.0.1:47311")
+        wrapped = module.sandbox_provider_command(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "from urllib.request import urlopen; import json; "
+                    f"r = urlopen({module.WINNOW_HEALTH_URL!r}, timeout=2); "
+                    "print(json.dumps({'status': getattr(r, 'status', 200), "
+                    "'body': r.read()[:80].decode('utf-8', 'replace')}))"
+                ),
+            ],
+            provider="opencode",
+            run_dir=self.run_dir,
+            cwd=self.cwd,
+            home=self.fake_home,
+        )
+        result = subprocess.run(wrapped, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads(result.stdout)
+        self.assertLess(observed["status"], 400)
+
+    def test_opencode_writer_contract_forbids_cli_impact_and_json_dumps(self) -> None:
+        agent = (ROOT / "profiles" / "opencode" / "agents" / "lane-writer.md").read_text()
+        prompt = (ROOT / "agents" / "grok" / "writer.md").read_text()
+        self.assertIn("Never run `node .gitnexus/run.cjs`", agent)
+        self.assertIn("Never run `node .gitnexus/run.cjs`", prompt)
+        self.assertIn("`write` = **new files only**", agent)
+        self.assertIn("`write` is for **new files**", prompt)
+        self.assertIn('{"name":"write"', agent)
+        self.assertIn('{"name":"write"', prompt)
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
         module = self._load_lane_session()

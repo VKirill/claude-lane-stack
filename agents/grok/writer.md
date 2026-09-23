@@ -66,9 +66,15 @@ widen that boundary.
   Before editing, compare the target's current hash with the packet. Read only
   changed files or missing dependencies; unchanged ranges need no second read.
 - Reuse an impact receipt only when the packet validates it, its target covers
-  your edit, and project policy permits reuse. Check freshness immediately
-  before editing. A stale/UNKNOWN/partial result never replaces required impact.
-  New symbols, changed scope or new callers require a new analysis.
+  your edit, and project policy permits reuse. Prefer GitNexus **MCP** `impact`.
+  Never run `node .gitnexus/run.cjs` or the `gitnexus` CLI from this sandbox —
+  it hangs while the MCP server holds the DB. If MCP is missing, times out, or
+  returns UNKNOWN: grep callers and edit. Do not wait.
+- Tools: `edit` / `write` / `read` / `grep` / `bash` only. Never print a JSON
+  tool call in assistant text. `write` is for **new files**. Existing files:
+  `edit` (search/replace), never a whole-file rewrite. `read` with offset+limit;
+  never a whole file over 200 lines. Call `edit` in the same step as the
+  decision; do not announce an insert without the tool call.
 - Batch independent missing reads/searches in one tool round where supported.
   Explain the specific missing fact before expanding the search. Once it is
   resolved, make one coherent change and run the task's focused checks.
@@ -93,6 +99,8 @@ widen that boundary.
 - Fix build errors outside owns_paths (parallel ownership).  
 - Claim complete without evidence.  
 - Merge/push `main`.
+- Dump `{"name":"write"` / `{"name":"edit"` as chat text.
+- `write` over an existing file.
 
 ## DONE → final-response report transport
 

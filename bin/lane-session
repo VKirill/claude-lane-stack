@@ -957,7 +957,20 @@ def provider_environment(
                 "OPENCODE_PERMISSION": '{"task":"deny"}',
                 # Parallel writers share cwd: OpenCode's snapshot git index
                 # races across processes. Lane owns change tracking/acceptance.
-                "OPENCODE_CONFIG_CONTENT": '{"snapshot":false}',
+                # Compaction (host opencode.json auto:true) wipes the file the
+                # writer just read and starts the reread loop. Lane sticky
+                # restore is not a substitute for keeping the tool history.
+                # CONFIG_CONTENT deep-merges; DISABLE_* flags apply after every
+                # layer (including .opencode) so a project file cannot re-enable.
+                "OPENCODE_CONFIG_CONTENT": json.dumps(
+                    {
+                        "snapshot": False,
+                        "compaction": {"auto": False, "prune": False},
+                    },
+                    separators=(",", ":"),
+                ),
+                "OPENCODE_DISABLE_AUTOCOMPACT": "1",
+                "OPENCODE_DISABLE_PRUNE": "1",
                 # The ACP file logger lives outside writable sandbox mounts.
                 # Forward warnings/errors through our redacted stderr journal.
                 "CURSOR_ACP_LOG_CONSOLE": "1",
@@ -1112,6 +1125,67 @@ def resolver_mount_args() -> list[str]:
     return mounts
 
 
+def _ensure_dir(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+
+WINNOW_HEALTH_URL = "http://127.0.0.1:47311/health"
+
+
+def ensure_winnow_sidecar() -> bool:
+    """Start the host winnow sidecar so a sandboxed plugin can health-check it.
+
+    The plugin's own `uv run ... serve --ensure` runs inside the sandbox and
+    dies on EROFS. Network is not unshared, so a host sidecar on loopback is
+    enough. Fail-open: a missing sidecar leaves tool output untrimmed.
+    """
+    try:
+        from urllib.request import urlopen
+
+        with urlopen(WINNOW_HEALTH_URL, timeout=0.8) as response:
+            if getattr(response, "status", 200) < 400:
+                return True
+    except OSError:
+        pass
+    root = Path(os.environ.get("LANE_STACK_ROOT") or Path(__file__).resolve().parents[1])
+    project = root / "plugins" / "lane-stack" / "winnow" / "sidecar"
+    if not project.is_dir():
+        return False
+    try:
+        started = subprocess.run(
+            [
+                "uv",
+                "run",
+                "-q",
+                "--project",
+                str(project),
+                "python",
+                "-m",
+                "winnow",
+                "serve",
+                "--ensure",
+            ],
+            timeout=20,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if started.returncode != 0:
+        return False
+    try:
+        from urllib.request import urlopen
+
+        with urlopen(WINNOW_HEALTH_URL, timeout=0.8) as response:
+            return getattr(response, "status", 200) < 400
+    except OSError:
+        return False
+
+
 def _provider_writable_paths(
     provider: str, *, home: Path, cwd: Path, provider_state_dir: Path | None
 ) -> tuple[Path, ...]:
@@ -1134,6 +1208,9 @@ def _provider_writable_paths(
         return (
             home / ".local" / "share" / "opencode",
             home / ".config" / "opencode",
+            # models.dev + plugin locks; default XDG_STATE_HOME/opencode.
+            # Without this bind the sandbox is EROFS here and winnow never starts.
+            home / ".local" / "state" / "opencode",
             cwd,
         )
     return tuple(path for path in (cwd, provider_state_dir) if path is not None)
@@ -1304,6 +1381,7 @@ def _sandbox_provider_command_bubblewrap(
         provider, home=home, cwd=cwd, provider_state_dir=provider_state_dir
     )
     for writable in writable_paths:
+        _ensure_dir(writable)
         if writable.exists():
             wrapped.extend(("--bind", str(writable), str(writable)))
     wrapped.extend(("--ro-bind", str(control_root), str(control_root)))
@@ -1390,6 +1468,8 @@ def _sandbox_provider_command_seatbelt(
     writable_paths = _provider_writable_paths(
         provider, home=home, cwd=cwd, provider_state_dir=provider_state_dir
     )
+    for writable in writable_paths:
+        _ensure_dir(writable)
     hidden_paths = _provider_hidden_paths(provider, home=home)
     # Codex keeps its real binary path under seatbelt: unlike bubblewrap there
     # is no bind-mount mechanism to present it under /opt/claude-lane-codex,
@@ -3893,6 +3973,7 @@ def run_provider(args: argparse.Namespace) -> int:
                 run_dir=run_dir,
                 task_id=args.task_id,
             )
+            ensure_winnow_sidecar()
         if provider_state_dir is not None:
             provider_env["CODEX_HOME"] = str(provider_state_dir)
         provider_home = Path(provider_env.get("HOME", str(Path.home()))).resolve()
