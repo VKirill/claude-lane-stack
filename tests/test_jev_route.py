@@ -225,8 +225,8 @@ class JevRouteTest(unittest.TestCase):
                 await evidenceNotes('full-evidence', messages);
                 const state = requests.at(-1).state;
                 assert.equal(state.criteria.length, 12);
-                assert.equal(state.evidence.split(result).length - 1, 7);
-                assert.ok(state.evidence.includes(command));
+                assert.ok(state.evidence.includes('LAST FAILURE'));
+                assert.ok(state.evidence.length <= 4000);
                 const count = requests.length;
                 writeFileSync(process.env.LANE_TASK_FILE, yaml + '\\n  - new acceptance criterion');
                 await evidenceNotes('full-evidence', messages);
@@ -507,6 +507,14 @@ class JevRouteTest(unittest.TestCase):
             "const text = collectBashEvidence(messages); "
             "if (!text.includes('1 passed')) throw new Error(text); "
             "if (text.includes('src file contents')) throw new Error('read-leaked'); "
+            "const many = Array.from({length: 8}, (_, i) => ("
+            "{ parts: [{ type: 'tool', tool: 'shell', state: { "
+            "input: { command: 't' + i }, output: ('pad-' + i + '-').repeat(400) } }] }"
+            ")); "
+            "const capped = collectBashEvidence(many); "
+            "if (capped.includes('pad-0-')) throw new Error('kept-old'); "
+            "if (!capped.includes('pad-7-')) throw new Error('lost-new'); "
+            "if (capped.length > 4000) throw new Error('oversize ' + capped.length); "
             "console.log('ok')"
         )
         out = _node(script)

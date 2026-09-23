@@ -50,7 +50,16 @@ export function collectBashEvidence(messages: { parts?: unknown[] }[]): string {
     }
   }
   if (!chunks.length) return lastToolText(messages)
-  return chunks.join("\n---\n")
+  return capBashEvidence(chunks)
+}
+
+const EVIDENCE_MAX_CHUNKS = 3
+const EVIDENCE_MAX_CHARS = 4000
+
+function capBashEvidence(chunks: string[]): string {
+  const joined = chunks.slice(-EVIDENCE_MAX_CHUNKS).join("\n---\n")
+  if (joined.length <= EVIDENCE_MAX_CHARS) return joined
+  return joined.slice(-EVIDENCE_MAX_CHARS)
 }
 
 const checked = new Map<string, string>()
