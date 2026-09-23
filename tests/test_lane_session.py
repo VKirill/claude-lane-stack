@@ -419,6 +419,10 @@ class LaneSessionTest(unittest.TestCase):
                         if "--session" in args
                         else "opencode-session-test"
                     )
+                    omit_report = (
+                        os.environ.get("FAKE_REPORT_MODE") == "missing"
+                        and "--session" not in args
+                    )
                     report = (
                         "<<<LANE_REPORT:BEGIN>>>\\n"
                         f"TASK_ID: {task_id}\\n"
@@ -427,6 +431,7 @@ class LaneSessionTest(unittest.TestCase):
                         "SUMMARY: fake OpenCode report\\n"
                         "<<<LANE_REPORT:END>>>"
                     )
+                    text = "I finished the edits." if omit_report else report
                     if os.environ.get("FAKE_ERROR_MESSAGE"):
                         sys.stderr.write("Plugin failed: api_key=private-value\\n")
                         emit({
@@ -447,7 +452,7 @@ class LaneSessionTest(unittest.TestCase):
                         {
                             "type": "text",
                             "sessionID": session_id,
-                            "part": {"text": report},
+                            "part": {"text": text},
                         }
                     )
                     emit(
@@ -1076,6 +1081,25 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(
             self._session_record("opencode")["session_id"], "opencode-session-test"
         )
+
+    def test_opencode_nudges_same_session_when_lane_report_missing(self) -> None:
+        result = self._run(
+            "opencode",
+            "nudge-001",
+            extra_env={"FAKE_REPORT_MODE": "missing"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LANE_SESSION nudge opencode", result.stdout)
+        first, second = self._calls()
+        self.assertNotIn("--session", first)
+        self.assertEqual(second[second.index("--session") + 1], "opencode-session-test")
+        self.assertIn("<<<LANE_REPORT:BEGIN>>>", second[-1])
+        self.assertIn("Do not print JSON tool calls as chat", second[-1])
+        report = (self.run_dir / "artifacts" / "nudge-001" / "report.md").read_text()
+        self.assertIn("STATUS: complete", report)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertTrue(receipt["protocol_valid"])
+        self.assertIsNone(receipt.get("protocol_error"))
 
     def test_opencode_diagnostics_capture_tool_errors_and_startup_stderr(self) -> None:
         result = self._run("opencode", "logs", extra_env={"FAKE_ERROR_MESSAGE": "diagnostic fixture"})

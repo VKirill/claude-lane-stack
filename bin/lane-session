@@ -151,6 +151,38 @@ AGY_ALLOWED_TOOLS = frozenset(
 )
 REPORT_BEGIN = "<<<LANE_REPORT:BEGIN>>>"
 REPORT_END = "<<<LANE_REPORT:END>>>"
+_MISSING_REPORT_ERRORS = frozenset(
+    {
+        "lane report is missing",
+        "lane report end marker is missing",
+        "opencode stream ended without result",
+    }
+)
+
+
+def opencode_report_nudge_text(
+    *,
+    task_id: str,
+    cwd: Path,
+    prompt_file: Path,
+    prompt_sha256: str,
+) -> str:
+    """One follow-up on the same OpenCode session when the envelope is missing."""
+    boundary = lane_report_boundary(
+        task_id=task_id,
+        cwd=cwd,
+        prompt_file=prompt_file,
+        prompt_sha256=prompt_sha256,
+        leading_newline=False,
+    )
+    return (
+        "Stop. Do not call Cursor tools. Do not print JSON tool calls as chat. "
+        f"The previous turn ended without {REPORT_BEGIN} ... {REPORT_END}. "
+        "If the task is complete or blocked, reply with ONLY that envelope. "
+        "STATUS must be exactly one of: complete, partial, timeout, unavailable. "
+        "If tools failed, use STATUS: partial and name the blocker in Gaps.\n\n"
+        f"{boundary}\n"
+    )
 
 
 def lane_report_boundary(
@@ -645,7 +677,12 @@ def command_prompt(prompt_file: Path) -> str:
 
 
 def provider_command(
-    args: argparse.Namespace, lease: Lease, *, prompt_sha256: str
+    args: argparse.Namespace,
+    lease: Lease,
+    *,
+    prompt_sha256: str,
+    resume_session: str | None = None,
+    prompt_text: str | None = None,
 ) -> list[str]:
     if args.provider == "cursor":
         binary = args.binary or shutil.which("cursor-agent")
@@ -823,13 +860,19 @@ def provider_command(
             command[1:1] = ["--resume", str(lease.record["session_id"])]
         return command
     if args.provider == "opencode":
-        prompt = command_prompt(args.prompt_file)
-        boundary = lane_report_boundary(
-            task_id=args.task_id,
-            cwd=args.cwd,
-            prompt_file=args.prompt_file,
-            prompt_sha256=prompt_sha256,
-        )
+        if prompt_text is not None:
+            payload = prompt_text
+        else:
+            payload = (
+                command_prompt(args.prompt_file)
+                + lane_report_boundary(
+                    task_id=args.task_id,
+                    cwd=args.cwd,
+                    prompt_file=args.prompt_file,
+                    prompt_sha256=prompt_sha256,
+                )
+                + "\n"
+            )
         # No --pure: opencode-lane.ts must load so compact can re-pin TASK_FILE.
         # Default marketplace plugins stay off via OPENCODE_DISABLE_DEFAULT_PLUGINS.
         command = [
@@ -851,9 +894,12 @@ def provider_command(
         if variant:
             command.extend(["--variant", variant])
         command.append("--dangerously-skip-permissions")
-        if not lease.is_new and lease.record.get("session_id"):
-            command.extend(["--session", str(lease.record["session_id"])])
-        command.append(prompt + boundary + "\n")
+        session = resume_session or (
+            None if lease.is_new else lease.record.get("session_id")
+        )
+        if session:
+            command.extend(["--session", str(session)])
+        command.append(payload)
         return command
     if args.provider != "agy":
         raise RuntimeError(f"unsupported provider {args.provider!r}")
@@ -4061,6 +4107,59 @@ def run_provider(args: argparse.Namespace) -> int:
             )
             if result.session_id:
                 captured = result.session_id
+            if (
+                args.provider == "opencode"
+                and result.provider_exit_code == 0
+                and result.protocol_error in _MISSING_REPORT_ERRORS
+                and captured
+            ):
+                print(
+                    f"LANE_SESSION nudge opencode session={captured} "
+                    f"missing={result.protocol_error}",
+                    flush=True,
+                )
+                nudge_argv = provider_command(
+                    args,
+                    lease,
+                    prompt_sha256=prompt_sha256,
+                    resume_session=captured,
+                    prompt_text=opencode_report_nudge_text(
+                        task_id=args.task_id,
+                        cwd=cwd,
+                        prompt_file=args.prompt_file,
+                        prompt_sha256=prompt_sha256,
+                    ),
+                )
+                nudge_command = sandbox_provider_command(
+                    nudge_argv,
+                    provider=args.provider,
+                    run_dir=run_dir,
+                    cwd=cwd,
+                    home=provider_home,
+                    provider_state_dir=provider_state_dir,
+                )
+                process = subprocess.Popen(
+                    nudge_command,
+                    cwd=cwd,
+                    env=provider_env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
+                )
+                result = stream_provider(
+                    process,
+                    output,
+                    provider=args.provider,
+                    expected_session_id=captured,
+                    requested_model=args.model,
+                    task_id=args.task_id,
+                    prompt_sha256=prompt_sha256,
+                    report_path=run_dir / "artifacts" / args.task_id / "report.md",
+                    report_root=run_dir,
+                )
+                if result.session_id:
+                    captured = result.session_id
             exit_code = result.exit_code
 
         record = finish_lease(

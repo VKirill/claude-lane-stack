@@ -93,3 +93,4 @@ none | <specific blocker>
 ```
 
 Do not wrap the envelope in a fence. Do not mkdir the report — the runtime writes `report.md`.
+If tools fail or the turn is ending, still emit this envelope (`STATUS: partial` + blocker in Gaps). Never dump JSON tool calls as chat.
