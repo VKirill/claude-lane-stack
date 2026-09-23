@@ -77,6 +77,31 @@ class ExecutionPacketTest(unittest.TestCase):
         self.assertNotIn("one\ntwo\nthree", render_execution_packet(build_execution_packet(repo, task, task_file)))
 
 
+    def test_read_first_strips_pm_prose_and_keeps_windows(self) -> None:
+        repo, task_file, task = _repo(self.tmp_path)
+        task.pop("context_selectors")
+        task["read_first"] = [
+            "source.py — ONLY two windows via offset/limit: lines 1-1 and lines 3-3. Never read the whole file (3 lines).",
+            "source.py lines 2-2 (query params + item shape)",
+            "source.py (short file)",
+        ]
+        packet = build_execution_packet(repo, task, task_file)
+        paths = [item["path"] for item in packet["files"]]
+        self.assertNotIn(task["read_first"][0], paths)
+        file = next(item for item in packet["files"] if item["path"] == "source.py")
+        self.assertEqual(file["status"], "ok")
+        self.assertEqual(
+            file["ranges"],
+            [
+                {"start_line": 1, "end_line": 1},
+                {"start_line": 3, "end_line": 3},
+                {"start_line": 2, "end_line": 2},
+            ],
+        )
+        self.assertEqual(file["sha256"], hashlib.sha256(b"one\ntwo\nthree\n").hexdigest())
+        self.assertNotIn("content", file)
+
+
     def test_missing_and_secret_are_recorded_without_reading(self) -> None:
         repo, task_file, task = _repo(self.tmp_path)
         (repo / ".env").write_text("TOKEN=do-not-load", encoding="utf-8")

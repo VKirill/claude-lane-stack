@@ -38,6 +38,14 @@ _INTERFACE_PATH_RE = re.compile(
     r"(?<![\w./])((?:[\w][\w.-]*/)+[\w.-]+\.[A-Za-z][\w.-]*)"
     r"(?::(\d+)(?:-(\d+))?)?"
 )
+# ponytail: PM pastes "path.ts — ONLY lines 10-20 (note)" in read_first.
+# Ceiling: first path token + up to 8 windows; upgrade: path + ranges in YAML.
+_DECLARED_SPLIT_RE = re.compile(
+    r"(?:\s+[—–]\s+|\s+-\s+|\s+lines?\b|:(?=\d)|\s+\()",
+    re.IGNORECASE,
+)
+_WINDOW_RE = re.compile(r"~?(\d+)\s*[-–—]\s*(\d+)")
+_MAX_DECLARED_WINDOWS = 8
 
 
 def _sha256(data: bytes) -> str:
@@ -67,6 +75,34 @@ def _is_secret(relative: Path) -> bool:
         or name.startswith(".env-")
         or name.endswith(_SECRET_SUFFIXES)
     )
+
+
+def _declared_path(raw: object) -> tuple[object, list[dict[str, int]]]:
+    """Strip trailing prose from a declared path; keep optional line windows."""
+    if not isinstance(raw, str):
+        return raw, []
+    text = raw.strip()
+    if not text:
+        return raw, []
+    match = _DECLARED_SPLIT_RE.search(text)
+    path = text[: match.start()].strip() if match else text
+    rest = text[match.start() :] if match else ""
+    if not path:
+        return raw, []
+    ranges: list[dict[str, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for hit in _WINDOW_RE.finditer(rest):
+        start, end = int(hit.group(1)), int(hit.group(2))
+        if start < 1 or end < start:
+            continue
+        key = (start, end)
+        if key in seen:
+            continue
+        seen.add(key)
+        ranges.append({"start_line": start, "end_line": end})
+        if len(ranges) >= _MAX_DECLARED_WINDOWS:
+            break
+    return path, ranges
 
 
 def _safe_relative(project_cwd: Path, raw: object) -> tuple[Path | None, str | None]:
@@ -427,7 +463,12 @@ def build_execution_packet(project_cwd: Path, task: dict, task_file: Path) -> di
 
     read_first = _as_list(task.get("read_first"))
     for raw_path in read_first:
-        add(raw_path, "read_first")
+        path, windows = _declared_path(raw_path)
+        if not windows:
+            add(path, "read_first")
+            continue
+        for window in windows:
+            add(path, "read_first", window)
     owns_paths = _as_list(task.get("owns_paths", task.get("files", [])))
     for relative, source in _explicit_owned_files(root, owns_paths):
         add(relative.as_posix(), source)
