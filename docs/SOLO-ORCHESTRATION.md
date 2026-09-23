@@ -43,7 +43,7 @@ You work **alone** through **dev-orchestrator**. No multi-developer merge dance.
 
 | Tier | Owner | Scope |
 |------|-------|-------|
-| L0 | Writer process | Focused tests while coding |
+| L0 | Writer process | Code only; do not execute test runners |
 | L1 | Controller `lane-ctl verify` | Task `verification[]` (scoped) |
 | L2 | PM pre-merge / CI | One full or affected suite per run |
 

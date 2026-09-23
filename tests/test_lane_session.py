@@ -1273,6 +1273,10 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
         self.assertIn("If text says Cursor/MCP tools are unavailable", agent)
+        for text in (agent, prompt):
+            self.assertIn("Do **not** run tests, typecheck", text)
+            self.assertIn("skipped: controller L1", text)
+            self.assertNotIn("L0 focused checks only", text)
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
         module = self._load_lane_session()

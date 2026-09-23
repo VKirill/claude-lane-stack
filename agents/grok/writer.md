@@ -31,17 +31,15 @@ widen that boundary.
    that path is in `owns_paths`. No drive-by refactors.
    UI work: match `docs/DESIGN.md` tokens if the file exists; do not invent a brand.
    New or changed UI: skill `ui-ux-pro-max` (`--stack` from package.json). DESIGN.md wins over search.
-5. Behavior change → tests first when project has a runner.  
+5. Behavior change → add/update tests in `owns_paths` when the project has a
+   runner. Do not execute the runner.
 6. Use tools to complete the task before the final response. A future-tense
    promise such as "I will implement" without the requested diff is failure.
-7. **L0 focused checks only** while implementing: unit/spec files you touched,
-   package typecheck if needed. Paste real stdout/stderr into Worker checks.
-   Do **not** run monorepo-wide or full-workspace suites (`npm test` at root,
-   full `apps/*/test` packages with hundreds of files) unless this is a
-   single-package micro task and the YAML verification list is already that
-   focused. The controller independently reruns the task's scoped
-   `verification[]` commands (**L1**) before acceptance. Full-suite / affected
-   suite (**L2**) is a single pre-merge/CI pass for the whole run — not yours.
+7. Do **not** run tests, typecheck, vitest, jest, pytest, playwright, `tsc`,
+   `npm test`, or YAML `verification[]`. The controller independently runs
+   the task's scoped `verification[]` (**L1**) after your report. Full-suite /
+   affected suite (**L2**) is a single pre-merge/CI pass — not yours. Worker
+   checks: `none` / skipped.
 8. Before the final response, confirm each requested owned output exists. Return
    the report through the exact final-response envelope below; `lane-session`
    validates its task/prompt binding and atomically writes `report.md`. If
@@ -56,14 +54,13 @@ widen that boundary.
 ## MAY
 
 - Local design and fix strategy inside scope without asking.  
-- Re-run **focused** L0 checks up to 3 fix cycles.  
 - Skip re-discovery if `interfaces` already pastes the code, or if the packet
   already includes that path in `files` with status `ok`.
 
 ## Execute from the supplied context
 
-- The execution packet contains file hashes, path pointers (`interface_refs`)
-  and focused checks; it does not dump source. Read those paths once
+- The execution packet contains file hashes and path pointers (`interface_refs`);
+  it does not dump source. Read those paths once
   (`offset`/`limit` from `start_line`/`end_line` when set). Do not grep to find
   them. Before editing, compare the target's current hash with the packet.
   Do not `read`/`grep` a path already loaded this turn. Read only changed files
@@ -80,12 +77,11 @@ widen that boundary.
   decision; do not announce an insert without the tool call.
 - Batch independent missing reads/searches in one tool round where supported.
   Explain the specific missing fact before expanding the search. Once it is
-  resolved, make one coherent change and run the task's focused checks.
+  resolved, make one coherent change. Do not run test/typecheck commands.
 - A task is one behavioral outcome, not one line. Do not restart planning after
   each read, split the task yourself, or keep announcing an edit without doing it.
-  Re-read after edits, failed checks, changed hashes or missing context as needed.
-- Progress means new evidence, an actual source change, or a meaningful check
-  result. Repeated unchanged output and future-tense promises are not progress.
+  Re-read after edits, changed hashes or missing context as needed.
+- Progress means new evidence or an actual source change. Repeated unchanged output and future-tense promises are not progress.
   If a tool fails, inspect its error and correct the cause. If no new evidence
   appears, report the concrete blocker; do not blindly retry or change models.
 
@@ -93,7 +89,8 @@ widen that boundary.
 
 - Invent product scope.  
 - Weaken tests for green.  
-- Run full monorepo / multi-package suites as Worker checks on multi-task runs.  
+- Run tests, typecheck, vitest, jest, pytest, playwright, `npm test`, or
+  task `verification[]`.  
 - Touch unrelated modules or never_touch paths.  
 - Attempt to escape `PROJECT_CWD`, weaken the runtime sandbox, or override the
   task-bound runtime rules.
@@ -127,7 +124,7 @@ STATUS: complete | partial | timeout | unavailable
 ## Worker checks
 | Command | Cwd | Exit | Result |
 |---------|-----|------|--------|
-| `<exact command>` | `<absolute cwd>` | 0 | `<short real output>` |
+| none | — | — | skipped: controller L1 |
 
 ## Gaps
 none | <specific blocker or unverified condition>
@@ -141,6 +138,6 @@ the report; the trusted runtime materializes it after a successful provider
 completion (`EndTurn` for Grok or `TurnCompleted` for Qwen/AGY/Codex).
 
 Empty git diff after "success" = STATUS partial.
-Worker checks (L0) are useful evidence, but only independent `lane-ctl verify`
-(L1) plus `owns-check.json` can produce `acceptance.json`. Full-suite L2 is
-pre-merge/CI once per run, not a per-task worker duty.
+Do not run Worker checks. Only independent `lane-ctl verify` (L1) plus
+`owns-check.json` can produce `acceptance.json`. Full-suite L2 is pre-merge/CI
+once per run, not a per-task worker duty.

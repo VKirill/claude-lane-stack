@@ -1,3 +1,10 @@
+## 1.40.0 — 2026-09-24
+
+### Changed
+- **Writer L0 skip:** OpenCode `lane-writer` and `writer.md` no longer run
+  tests/typecheck/`verification[]`. Controller L1 still does. Worker checks
+  are `none` / skipped.
+
 ## 1.39.0 — 2026-09-23
 
 ### Changed

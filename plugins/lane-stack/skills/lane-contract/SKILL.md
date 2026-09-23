@@ -33,10 +33,10 @@ PM до dispatch
 
 Писатель
 - Только owns_paths. Не `.agents` (`run-validate` rejects it — sandbox remounts `.agents` read-only). Не merge/push main.
-- L0 — узкие проверки. Вне owns сломалось → Gaps, не «починить мир».
+- Не гоняй тесты/typecheck — это L1 контроллера. Пиши тесты в owns, не запускай. Вне owns сломалось → Gaps.
 
 Тиры
-- L0 writer  · L1 lane-ctl verify  · L2 PM/CI
+- L0 writer: код, тесты не запускать  · L1 lane-ctl verify  · L2 PM/CI
 
 Нельзя
 - timeout_sec в плане выдумывать (дефолт 900)
@@ -106,10 +106,10 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 2. Work only in `PROJECT_CWD`.  
 3. Edit **only** `owns_paths`. Honor `never_touch`.  
 4. Do not write `.agents`.  
-5. **L0 focused** checks only; report in English.  
+5. Do **not** run tests/typecheck/`verification[]`; L1 is `lane-ctl verify`. Report in English.  
 6. No git merge/push main.  
 7. Outside-owns build break → report Gaps, do not “fix the world”.  
-8. No monorepo full suite as Worker checks on multi-task runs.  
+8. Do not run monorepo suites or Worker checks.  
 
 ---
 
@@ -147,7 +147,7 @@ per task; a read count or timer alone is not grounds for splitting it.
 
 | Tier | Who | What |
 |------|-----|------|
-| **L0** | Writer | Focused tests while coding |
+| **L0** | Writer | Code + test files; do not execute runners |
 | **L1** | `lane-ctl verify` | Task `verification[]` only |
 | **L2** | PM / CI | One full or affected suite per run |
 

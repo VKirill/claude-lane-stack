@@ -158,8 +158,9 @@ others still runnable), terminal `accepted` / `blocked` / `failed`. Task stage
 so newly introduced writer leaks outside owns still fail. `never_touch` stays
 hard-fail for new hits.
 
-**Verification:** task YAML `verification[]` is **L1 focused** only. Writers do
-**L0 focused** checks. Full/affected suite is **L2 once** at pre-merge/CI.
+**Verification:** task YAML `verification[]` is **L1 focused** only, run by
+the controller. Writers do **not** execute tests/typecheck. Full/affected
+suite is **L2 once** at pre-merge/CI.
 
 Grok write lanes run through `lane-session`. Sessions are scoped to this
 run, role, worktree, and model. One slot accepts one task at a time; concurrent

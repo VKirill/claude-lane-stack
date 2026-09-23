@@ -247,7 +247,7 @@ Roster: `agents/claude/README.md`.
 
 | Tier | Owner | Scope | When |
 |------|-------|-------|------|
-| **L0** | Writer | Unit/spec under owns; optional package typecheck | During implement |
+| **L0** | Writer | Code only; do not run tests/typecheck | During implement |
 | **L1** | Controller | Task `verification[]` — **focused** paths/suites only | After report → accept |
 | **L2** | PM pre-merge / CI | **One** full or affected suite for the whole run | After all accepted |
 

@@ -367,7 +367,7 @@ rejects stale receipts or any post-review tracked/untracked mutation.
 - Controller stage `degraded`: some tasks blocked, others still runnable.
 - Terminal `blocked` only when every task is accepted or blocked.
 - `lane-ctl start` writes `dirt-baseline.json`; owns-check ignores foreign pre-existing dirt outside owns_paths.
-- Verification: L0 writer focused, L1 controller scoped, L2 pre-merge once.
+- Verification: L0 writer does not run tests, L1 controller scoped, L2 pre-merge once.
 
 While the controller is still active, it rechecks blocked tasks through
 `lane-ctl status --json`. A current validated `accepted` status reconciles a
