@@ -344,7 +344,10 @@ class JevRouteTest(unittest.TestCase):
         self.assertIn("LANE_JEV_EFFORT", router)
         self.assertIn("STICKY_MARK", sticky)
         self.assertIn("ensureStickyMessages", sticky)
+        self.assertIn("dumpedToolNote", sticky)
         self.assertIn("LANE_TASK_FILE", sticky)
+        self.assertIn("dumpedToolNote", oc)
+        self.assertIn("lastAssistantText", oc)
         self.assertIn("diagnoseFailure", oc)
         self.assertIn("skillHint", oc)
         self.assertIn("evidenceNotes", oc)
@@ -394,6 +397,24 @@ class JevRouteTest(unittest.TestCase):
             "if (messages[0].parts[0].text !== 'ok') throw new Error('kept'); "
             "const task = 'x'.repeat(20000) + 'TAIL'; "
             "if (!formatStickyContract(task, 'task.yaml').endsWith(task)) throw new Error('cut task'); "
+            "console.log('ok')"
+        )
+        out = _node(script)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("ok", out.stdout)
+
+    def test_dumped_tool_json_gets_sticky_note(self) -> None:
+        script = (
+            "import { dumpedToolNote, lastAssistantText } from "
+            f"{INDEX.resolve().as_uri()!r}; "
+            "const dump = lastAssistantText(["
+            "  { info: { role: 'user' }, parts: [{ type: 'text', text: 'go' }] },"
+            "  { info: { role: 'assistant' }, parts: [{ type: 'text', "
+            "text: 'Инструменты Cursor здесь недоступны.\\n{\\\"name\\\":\\\"bash\\\",\\\"command\\\":\\\"ls\\\"}' }] }"
+            "]); "
+            "const note = dumpedToolNote(dump); "
+            "if (!note.includes('JSON-in-chat')) throw new Error('miss ' + note); "
+            "if (dumpedToolNote('STATUS: complete')) throw new Error('false-pos'); "
             "console.log('ok')"
         )
         out = _node(script)

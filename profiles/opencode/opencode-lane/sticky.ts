@@ -51,3 +51,27 @@ export function appendStickyNotes(base: string, notes: string[]): string {
   if (!base) return `${STICKY_MARK}\n${extra.join("\n")}`
   return `${base}\n\n${extra.join("\n")}`
 }
+
+const DUMPED_TOOL_NAME =
+  /"name"\s*:\s*"(?:bash|shell|read|edit|write|grep|glob|str_replace|Shell|Read|Write|Grep|Glob)"/i
+const CURSOR_CHANNEL_DEAD =
+  /инструменты Cursor|Cursor tools.{0,40}unavail|MCP-сервер(?:ы)? не подключен/i
+
+export function lastAssistantText(messages: OcMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.info?.role !== "assistant") continue
+    return (messages[i].parts ?? [])
+      .map((part) => (part as { text?: string })?.text || "")
+      .join("\n")
+  }
+  return ""
+}
+
+export function dumpedToolNote(text: string): string {
+  if (!text || (!DUMPED_TOOL_NAME.test(text) && !CURSOR_CHANNEL_DEAD.test(text))) return ""
+  return (
+    "[opencode-lane tools] JSON-in-chat is ignored. Call OpenCode " +
+    "read/edit/write/bash/grep. Cursor/MCP ACP tools do not exist here. " +
+    "If done or blocked, emit LANE_REPORT now."
+  )
+}

@@ -5,7 +5,9 @@ import { createTelemetry, eventSessionID } from "./telemetry.ts"
 import {
   STICKY_MARK,
   appendStickyNotes,
+  dumpedToolNote,
   ensureStickyMessages,
+  lastAssistantText,
   readStickyContract,
   type OcMessage,
 } from "./sticky.ts"
@@ -15,7 +17,14 @@ import { evidenceNotes } from "./evidence.ts"
 import { recentAttempts, recordTool, repeatHint } from "./budget.ts"
 import { sessionKey } from "./session.ts"
 
-export { STICKY_MARK, formatStickyContract, readStickyContract, ensureStickyMessages } from "./sticky.ts"
+export {
+  STICKY_MARK,
+  dumpedToolNote,
+  formatStickyContract,
+  lastAssistantText,
+  readStickyContract,
+  ensureStickyMessages,
+} from "./sticky.ts"
 export { looksFailed } from "./diagnose.ts"
 export { parseAcceptance, collectBashEvidence } from "./evidence.ts"
 export { WRITE_SKILLS, skillPhase } from "./skill-hint.ts"
@@ -322,6 +331,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
           laneLog({ mod: "evidence", ok: false, session: sessionID, err: String(err) })
         }
         try {
+          pushNote(sessionID, dumpedToolNote(lastAssistantText(output.messages)))
           ensureStickyMessages(
             output.messages,
             appendStickyNotes(readStickyContract(), sessionNotes.get(sessionID) || []),

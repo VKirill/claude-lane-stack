@@ -1141,6 +1141,9 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(env["OPENCODE_DISABLE_PRUNE"], "1")
         self.assertEqual(env["CURSOR_ACP_LOG_CONSOLE"], "1")
         self.assertEqual(env["CURSOR_ACP_LOG_LEVEL"], "warn")
+        self.assertEqual(env["CURSOR_ACP_FORWARD_TOOL_CALLS"], "false")
+        self.assertEqual(env["CURSOR_ACP_TOOL_LOOP_MODE"], "opencode")
+        self.assertEqual(env["CURSOR_ACP_MCP_BRIDGE"], "false")
         self.assertIn('"task":"deny"', env["OPENCODE_PERMISSION"])
         self.assertEqual(
             json.loads(env["OPENCODE_CONFIG_CONTENT"]),
@@ -1219,6 +1222,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn("`write` is for **new files**", prompt)
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
+        self.assertIn("If text says Cursor/MCP tools are unavailable", agent)
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
         module = self._load_lane_session()

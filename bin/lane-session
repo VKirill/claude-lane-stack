@@ -1018,6 +1018,12 @@ def provider_environment(
                 "CURSOR_ACP_LOG_CONSOLE": "1",
                 "CURSOR_ACP_LOG_LEVEL": "warn",
                 "CURSOR_ACP_LOG_SILENT": "0",
+                # cursor-acp defaults advertise Cursor/MCP tools to Grok.
+                # metamcp remote is unimplemented; Grok then dumps JSON in chat
+                # instead of OpenCode read/edit/bash and skips LANE_REPORT.
+                "CURSOR_ACP_FORWARD_TOOL_CALLS": "false",
+                "CURSOR_ACP_TOOL_LOOP_MODE": "opencode",
+                "CURSOR_ACP_MCP_BRIDGE": "false",
             }
         )
     return environment
