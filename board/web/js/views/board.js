@@ -139,8 +139,8 @@ function column(projectId, status, tasks) {
   return column;
 }
 
-export async function renderBoard({ root, route, isCurrent, rerender }) {
-  loading(root, 6);
+export async function renderBoard({ root, route, isCurrent, rerender, refreshed = false }) {
+  if (!refreshed) loading(root, 6);
   try {
     const project = details(await loadProject(route.projectId, getScope(route.projectId)));
     if (!isCurrent()) return;

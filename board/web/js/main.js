@@ -17,6 +17,8 @@ const connection = document.getElementById("connection-status");
 let renderVersion = 0;
 let route = parseRoute();
 let refreshTimer = null;
+let refreshRunning = false;
+let refreshPending = false;
 
 function health(summary) {
   if (summary.blocked > 0 || summary.failed) return "alert";
@@ -79,10 +81,11 @@ async function renderSidebar(force = false) {
 async function renderCurrent({ refreshed = false } = {}) {
   route = parseRoute();
   const version = ++renderVersion;
-  closeOverlay();
+  if (!refreshed) closeOverlay();
   const context = {
     root,
     route,
+    refreshed,
     isCurrent: () => version === renderVersion,
     rerender: () => renderCurrent(),
   };
@@ -103,12 +106,20 @@ function setConnection(status) {
 }
 
 function refreshFromEvent() {
+  refreshPending = true;
+  if (refreshRunning) return;
   if (refreshTimer) window.clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(async () => {
     refreshTimer = null;
-    invalidate();
-    await renderSidebar(true);
-    await renderCurrent({ refreshed: true });
+    refreshPending = false;
+    refreshRunning = true;
+    try {
+      invalidate();
+      await Promise.all([renderSidebar(true), renderCurrent({ refreshed: true })]);
+    } finally {
+      refreshRunning = false;
+      if (refreshPending) refreshFromEvent();
+    }
   }, 160);
 }
 
