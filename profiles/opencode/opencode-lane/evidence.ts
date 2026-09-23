@@ -53,13 +53,20 @@ export function collectBashEvidence(messages: { parts?: unknown[] }[]): string {
   return capBashEvidence(chunks)
 }
 
-const EVIDENCE_MAX_CHUNKS = 3
 const EVIDENCE_MAX_CHARS = 4000
+const CHECK_RE =
+  /vitest|pytest|\bjest\b|npm (?:run )?(?:test|typecheck)|typecheck|\btsc\b|playwright|\bpassed\b|\bfailed\b|\bfailure\b|assertionerror|error TS|tests? \d/i
+
+function looksLikeCheck(chunk: string): boolean {
+  return CHECK_RE.test(chunk)
+}
 
 function capBashEvidence(chunks: string[]): string {
-  const joined = chunks.slice(-EVIDENCE_MAX_CHUNKS).join("\n---\n")
-  if (joined.length <= EVIDENCE_MAX_CHARS) return joined
-  return joined.slice(-EVIDENCE_MAX_CHARS)
+  const checks = chunks.filter(looksLikeCheck)
+  if (!checks.length) return ""
+  const picked = checks[checks.length - 1]
+  if (picked.length <= EVIDENCE_MAX_CHARS) return picked
+  return picked.slice(-EVIDENCE_MAX_CHARS)
 }
 
 const checked = new Map<string, string>()

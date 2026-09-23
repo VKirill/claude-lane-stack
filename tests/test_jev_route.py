@@ -220,7 +220,7 @@ class JevRouteTest(unittest.TestCase):
                 const yaml = 'acceptance:\\n' + Array.from({{ length: 12 }}, (_, i) => '  - criterion ' + i).join('\\n');
                 writeFileSync(process.env.LANE_TASK_FILE, yaml);
                 const messages = Array.from({{ length: 7 }}, (_, i) => ({{ parts: [{{
-                    type: 'tool', tool: 'shell', state: {{ input: {{ command }}, output: result + i }}
+                    type: 'tool', tool: 'shell', state: {{ input: {{ command }}, output: result }}
                 }}] }}));
                 await evidenceNotes('full-evidence', messages);
                 const state = requests.at(-1).state;
@@ -507,14 +507,23 @@ class JevRouteTest(unittest.TestCase):
             "const text = collectBashEvidence(messages); "
             "if (!text.includes('1 passed')) throw new Error(text); "
             "if (text.includes('src file contents')) throw new Error('read-leaked'); "
-            "const many = Array.from({length: 8}, (_, i) => ("
+            "const many = ["
             "{ parts: [{ type: 'tool', tool: 'shell', state: { "
-            "input: { command: 't' + i }, output: ('pad-' + i + '-').repeat(400) } }] }"
-            ")); "
+            "input: { command: 'pytest a.py' }, output: '===== 1 passed in 0.1s =====' } }] },"
+            "{ parts: [{ type: 'tool', tool: 'shell', state: { "
+            "input: { command: 'wc -l f.ts' }, output: '12 f.ts' } }] },"
+            "{ parts: [{ type: 'tool', tool: 'shell', state: { "
+            "input: { command: 'npm run typecheck' }, output: ('noise ').repeat(3000) + 'error TS2304' } }] }"
+            "]; "
             "const capped = collectBashEvidence(many); "
-            "if (capped.includes('pad-0-')) throw new Error('kept-old'); "
-            "if (!capped.includes('pad-7-')) throw new Error('lost-new'); "
+            "if (capped.includes('1 passed')) throw new Error('kept-old-pytest'); "
+            "if (capped.includes('12 f.ts')) throw new Error('kept-wc'); "
+            "if (!capped.includes('error TS2304')) throw new Error('lost-typecheck'); "
             "if (capped.length > 4000) throw new Error('oversize ' + capped.length); "
+            "const noop = collectBashEvidence(["
+            "{ parts: [{ type: 'tool', tool: 'shell', state: { "
+            "input: { command: 'wc -l x' }, output: '3 x' } }] }]); "
+            "if (noop) throw new Error('wc-jev ' + noop); "
             "console.log('ok')"
         )
         out = _node(script)
