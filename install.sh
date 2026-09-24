@@ -208,6 +208,20 @@ for executable in "$STACK_ROOT"/bin/*; do
   install -m 0755 "$executable" "$DEST/bin/"
 done
 
+# mizchi/jev-test-filter: L1 test selection against the git diff.
+if command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+  node_major="$(node -p "parseInt(process.versions.node, 10)" 2>/dev/null || echo 0)"
+  if [[ "$node_major" -ge 24 ]]; then
+    mkdir -p "$DEST/lib/jev-test-filter"
+    npm install --omit=dev --prefix "$DEST/lib/jev-test-filter" jev-test-filter@0.1.1 \
+      || echo "warning: npm install jev-test-filter failed; L1 runs the full suite" >&2
+    if [[ -x "$DEST/lib/jev-test-filter/node_modules/.bin/jev-test-filter" ]]; then
+      ln -sfn "$DEST/lib/jev-test-filter/node_modules/.bin/jev-test-filter" \
+        "$DEST/bin/jev-test-filter"
+    fi
+  fi
+fi
+
 # board, docs, hooks, templates
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/board/" "$DEST/board/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/docs/" "$DEST/docs/"

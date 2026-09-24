@@ -2713,11 +2713,12 @@ def resolve_verification_cwd(project_cwd: Path, value: str) -> Path:
 
 
 def run_verification_command(
-    argv: list[str], *, cwd: Path, timeout: int
+    argv: list[str], *, cwd: Path, timeout: int, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
     process = subprocess.Popen(
         argv,
         cwd=cwd,
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -2832,10 +2833,19 @@ def cmd_verify_v2(
                 timeout_sec = entry["timeout_sec"]
                 command_started = utc_now()
                 try:
+                    from jev_test_filter import verification_env, wrap_verification
+
+                    command_argv, filter_meta = wrap_verification(
+                        command_argv, cwd=command_cwd
+                    )
+                except Exception:
+                    filter_meta = {"skipped": "wrap-error"}
+                try:
                     completed = run_verification_command(
                         command_argv,
                         cwd=command_cwd,
                         timeout=timeout_sec,
+                        env=verification_env() if filter_meta.get("wrapped") else None,
                     )
                     exit_code = completed.returncode
                     output = completed.stdout
@@ -2847,6 +2857,13 @@ def cmd_verify_v2(
                     exit_code = 127
                     output = f"cannot execute verification command: {exc}\n"
                 passed = passed and exit_code == 0
+                if filter_meta.get("wrapped"):
+                    record_src = command_cwd / ".jev-test-filter" / "last.json"
+                    if record_src.is_file():
+                        shutil.copy2(
+                            record_src,
+                            safe_child_file(result_dir, "jev-test-filter.json"),
+                        )
                 record = {
                     **entry,
                     "resolved_cwd": str(command_cwd),
@@ -2854,6 +2871,7 @@ def cmd_verify_v2(
                     "ended_at": utc_now(),
                     "exit_code": exit_code,
                     "output": output,
+                    "test_filter": filter_meta,
                 }
                 command_results.append(record)
                 evidence.extend(

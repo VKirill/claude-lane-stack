@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.56.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.57.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -193,7 +193,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.56.0
+cd claude-lane-stack && git checkout v1.57.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
@@ -256,6 +256,7 @@ lane-pm
 | `night-shift` | Ночь |
 | `chrome-qa` | Отдельный QA-профиль Chrome, порт 9333 |
 | `jev-review` | Jev-ревью `git diff` (хунки → noul/choice/score) |
+| `jev-test-filter` | L1: только тесты, которые дифф может сломать (vitest/jest/node/go/…) |
 | `browser-qa-jev` | QA в Chrome: DOM-таблица → Jev (дефолт `stages.browser_qa`) |
 | `browser-qa-codex` | QA в живом Chrome силами Codex |
 

@@ -1,3 +1,8 @@
+## 1.57.0 — 2026-09-24
+
+### Added
+- **L1 test filter:** `lane-ctl verify` wraps vitest/jest/node:test/Playwright/`go test`/`cargo test` with [`jev-test-filter`](https://github.com/mizchi/jev-test-filter) `--exec`. YAML stays as written. Typecheck/lint/build are not filtered. Missing binary or key → full suite (fail-open). Receipt: `jev-test-filter.json`. Off: `LANE_JEV_TEST_FILTER=0`.
+
 ## 1.56.0 — 2026-09-24
 
 ### Changed
