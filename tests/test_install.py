@@ -342,6 +342,25 @@ class InstallTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("browser-qa", orch)
 
+    def test_orchestrator_yaml_reference_is_in_skill(self) -> None:
+        skill = (
+            ROOT / "plugins" / "lane-stack" / "skills" / "orchestrator-lanes" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        ref = (
+            ROOT
+            / "plugins"
+            / "lane-stack"
+            / "skills"
+            / "orchestrator-lanes"
+            / "references"
+            / "task-yaml.md"
+        )
+        self.assertIn("references/task-yaml.md", skill)
+        self.assertTrue(ref.is_file())
+        text = ref.read_text(encoding="utf-8")
+        self.assertIn("context_selectors", text)
+        self.assertIn("section C4", text)
+
     def test_opencode_lane_skill_is_pm_only(self) -> None:
         skill = (
             ROOT / "plugins" / "lane-stack" / "skills" / "opencode-lane" / "SKILL.md"
@@ -611,6 +630,17 @@ class InstallTest(unittest.TestCase):
 
             pm_skill = home / ".agents" / "pm-skills" / "orchestrator-lanes" / "SKILL.md"
             self.assertTrue(pm_skill.is_file())
+            self.assertIn("references/task-yaml.md", pm_skill.read_text(encoding="utf-8"))
+            self.assertTrue(
+                (
+                    home
+                    / ".agents"
+                    / "pm-skills"
+                    / "orchestrator-lanes"
+                    / "references"
+                    / "task-yaml.md"
+                ).is_file()
+            )
             self.assertTrue((home / ".agents" / "pm-skills" / "info" / "SKILL.md").is_file())
             self.assertTrue((home / ".agents" / "pm-skills" / "app-architect" / "SKILL.md").is_file())
             self.assertTrue((home / ".agents" / "pm-skills" / "bulk-reader" / "SKILL.md").is_file())

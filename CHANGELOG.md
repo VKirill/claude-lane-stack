@@ -1,3 +1,10 @@
+## 1.49.0 — 2026-09-24
+
+### Changed
+- **Orchestrator YAML reference:** before filling `tasks/*.yaml`, read
+  `orchestrator-lanes/references/task-yaml.md` (field map + good/bad).
+  Phase 1 no longer says “see lane-contract” and stops.
+
 ## 1.48.0 — 2026-09-24
 
 ### Changed

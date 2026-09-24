@@ -44,6 +44,7 @@ UI
 ```
 
 Load: **karpathy-guidelines**, **lane-contract**, **project-life**, **resume-project**, **project-design**, **ui-ux-pro-max**.
+Before filling `tasks/*.yaml`: Read this skill's `references/task-yaml.md`.
 
 Docs: `FILE-CONTRACT.md`, `ROUTING.md`, `SOLO-ORCHESTRATION.md`,
 `PLATFORM-CAPABILITIES.md` (Claude Code + Codex features we use),
@@ -195,8 +196,22 @@ Reject template-only text (“Record interfaces, invariants…”). `run-validat
 
 ### Task YAML
 
-Immutable after first start. Required fields per **lane-contract**.  
-`verification[]` = **L1 focused** only (see below).
+**Before writing `tasks/*.yaml`, Read `references/task-yaml.md` in this skill.**
+That file is the field map + good/bad examples. `lane-contract` is the schema/gate
+sibling; do not skip the reference and invent a novel in `interfaces`.
+
+Where the TZ lives:
+
+| Put here | Not here |
+|----------|----------|
+| `objective` + `acceptance` | `interfaces` as a briefing |
+| `read_first` = existing files | `section C4` / `lines 10-20 ONLY` |
+| `context_selectors` = line windows | notes inside `read_first` |
+| `interfaces` = signatures or `[]` | CONTINUATION / Gaps / git status |
+| `invariants` = product or `[]` | HARD RULE / edit tool / `wc -l` / checkout |
+
+Immutable after first start. `verification[]` = **L1 focused** only (see below).
+`run-validate --phase pre-dispatch` rejects the bad column.
 
 Repeated correction rule: if you retype the same path/command fix twice in a project, persist it in CLAUDE.md / LESSONS.md first, then regenerate the plan.
 
