@@ -34,7 +34,8 @@ except ImportError:  # pragma: no cover - defensive, see routing_profile imports
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import sandbox_backend
 
-from path_utils import PROJECT_SKILLS, find_project_skill
+from path_utils import find_project_skill
+from routing_profile import bound_writer_skills
 
 
 STATE_VERSION = 1
@@ -1293,7 +1294,7 @@ def link_project_skills(dest_root: Path, cwd: Path | None) -> list[Path]:
     if cwd is None:
         return created
     dest_root.mkdir(exist_ok=True)
-    for name in sorted(PROJECT_SKILLS):
+    for name in bound_writer_skills(cwd):
         skill_md = find_project_skill(cwd, name)
         if skill_md is None:
             continue
@@ -1327,7 +1328,7 @@ def inject_native_project_skills(
     links/dirs via cleanup_native_project_skills.
     """
     rel = NATIVE_SKILL_DIRS.get(provider)
-    if rel is None:
+    if rel is None or cwd is None or not bound_writer_skills(cwd):
         return [], []
     created_dirs: list[Path] = []
     created_links: list[Path] = []

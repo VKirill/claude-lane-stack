@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin"))
 
 from routing_profile import (  # noqa: E402
+    bound_writer_skills,
     lane_matches_profile,
     load_routing_profile,
     resolve_agy_effort,
@@ -291,6 +292,18 @@ class RoutingProfileTest(unittest.TestCase):
                     self.assertEqual(resolved["provider"], "agy")
                     self.assertEqual(resolved["model"], model)
                     self.assertEqual(resolved["reasoning_effort"], expected)
+
+
+    def test_bound_writer_skills_come_from_project_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(bound_writer_skills(root), ())
+            (root / ".agents").mkdir()
+            (root / ".agents" / "routing.profile.yaml").write_text(
+                "writer:\n  skills: selfystudio, ../escape, SelfyStudio\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(bound_writer_skills(root), ("selfystudio",))
 
 
 if __name__ == "__main__":

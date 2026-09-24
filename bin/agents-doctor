@@ -647,6 +647,7 @@ def write_outputs(
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from pm_read import normalize_pm_read, resolve_pm_read
         from routing_profile import load_routing_profile as _load_profile
+    from path_utils import parse_skill_names
     from routing_profile import KNOWN_WRITERS, resolve_emergency_writer
 
     previous = _load_profile(repo)
@@ -756,6 +757,10 @@ def write_outputs(
                 else "Cursor -fast model sibling"
             )
             lines.append(f"  service_tier: {tier}  # standard | fast ({hint})")
+        prev_writer = previous.get("writer") if isinstance(previous.get("writer"), dict) else {}
+        bound_skills = parse_skill_names(prev_writer.get("skills"))
+        if bound_skills:
+            lines.append(f"  skills: {', '.join(bound_skills)}")
     if emergency is not None:
         lines.append("emergency_writer:")
         for key, value in emergency.items():

@@ -19,8 +19,8 @@ import os
 import re
 from pathlib import Path
 
-PROJECT_SKILLS = frozenset({"selfystudio"})
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+MAX_BOUND_SKILLS = 8
 
 
 def canonical_path(value: str | Path) -> Path:
@@ -37,9 +37,24 @@ def same_path(a: str | Path, b: str | Path) -> bool:
     return canonical_path(a) == canonical_path(b)
 
 
+def parse_skill_names(raw: str | None) -> tuple[str, ...]:
+    """Sanitize a comma/space skill list from a project session profile."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for part in str(raw or "").replace(",", " ").split():
+        name = part.strip().lower()
+        if not _SKILL_NAME_RE.fullmatch(name) or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+        if len(names) >= MAX_BOUND_SKILLS:
+            break
+    return tuple(names)
+
+
 def find_project_skill(cwd: str | Path, name: str) -> Path | None:
     """Return SKILL.md for a project-local skill, walking up to the git root."""
-    if name not in PROJECT_SKILLS or not _SKILL_NAME_RE.fullmatch(name):
+    if not _SKILL_NAME_RE.fullmatch(name):
         return None
     cur = Path(cwd).expanduser()
     try:

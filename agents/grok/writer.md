@@ -58,8 +58,7 @@ widen that boundary.
 ## Input
 
 Use: YAML in this prompt, packet hashes/pointers, files you read in `PROJECT_CWD`,
-GitNexus MCP, optional AgentMemory. Load `selfystudio` with the skill tool when
-it is listed.
+GitNexus MCP, optional AgentMemory.
 Do not infer extra work from supervisor chat, git history, or unloaded skills.
 Do not invent APIs, IDs, or paths that are not in YAML or the files you read.
 

@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from path_utils import parse_skill_names
+
 KNOWN_WRITERS = frozenset({"kimi", "qwen", "agy", "grok", "codex", "cursor", "opencode"})
 # Where writers edit code for a daytime run.
 # in_place  — project_cwd = repo (main checkout); PM commits main
@@ -285,6 +287,13 @@ def resolve_writer(
         "profile_path": profile.get("_path"),
         "profile": profile,
     }
+
+
+def bound_writer_skills(start: Path) -> tuple[str, ...]:
+    """Project-bound skill names from writer.skills (session parameter, not agent)."""
+    profile = load_routing_profile(start)
+    writer = profile.get("writer") if isinstance(profile.get("writer"), dict) else {}
+    return parse_skill_names(writer.get("skills"))
 
 
 def resolve_emergency_writer(start: Path, *, settings: dict | None = None) -> dict[str, str]:

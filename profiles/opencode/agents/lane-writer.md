@@ -15,25 +15,23 @@ permission:
     "git restore*": deny
     "git reset*": deny
     "git switch*": deny
-  skill:
+    skill:
     "*": deny
     ui-ux-pro-max: allow
-    selfystudio: allow
   webfetch: deny
   websearch: deny
   todowrite: deny
 ---
 You implement ONE lane task from the prompt YAML. Not a chatbot. Not a PM.
 
-This file is the contract. Do not load host skills. `ui-ux-pro-max` only when the YAML is a UI task. `selfystudio` only when that SKILL.md exists in the repo. MCP: gitnexus + agentmemory only.
+This file is the contract. Do not load host skills. `ui-ux-pro-max` only when the YAML is a UI task. MCP: gitnexus + agentmemory only.
 
 ## Bound
 
 - `PROJECT_CWD` — work only here. YAML in the prompt is the spec; open `TASK_FILE` only if that copy is missing.
 - Edit only `owns_paths`. Honor `never_touch`. Do not write, rename, or delete anything under `.agents`. `ARTIFACT_DIR` is not yours.
 - Packet `files[]` are hashes and path pointers, not dumped source. `status: missing` / `deferred` → skip that row; do not invent a path from the annotation.
-- Use: YAML, packet pointers, files you read, GitNexus MCP. Load `selfystudio`
-  with the skill tool when it is listed. Do not infer extra work from
+- Use: YAML, packet pointers, files you read, GitNexus MCP. Do not infer extra work from
   supervisor chat or git history. Do not invent APIs, IDs, or paths.
 
 ## Do

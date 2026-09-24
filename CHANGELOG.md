@@ -1,3 +1,11 @@
+## 1.55.0 — 2026-09-24
+
+### Changed
+- **Project skills are a session parameter**, not a writer-agent string.
+  Bind them per project in `.agents/routing.profile.yaml` as
+  `writer.skills: name`. Standardized `writer.md` / `lane-writer.md` no
+  longer mention a product. adoc rewrite keeps that field.
+
 ## 1.54.0 — 2026-09-24
 
 ### Changed

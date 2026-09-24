@@ -871,6 +871,13 @@ class LaneSessionTest(unittest.TestCase):
             sys.modules.pop(name, None)
         return module
 
+    def _bind_writer_skills(self, cwd: Path, names: str = "selfystudio") -> None:
+        agents = cwd / ".agents"
+        agents.mkdir(parents=True, exist_ok=True)
+        (agents / "routing.profile.yaml").write_text(
+            f"writer:\n  skills: {names}\n", encoding="utf-8"
+        )
+
     def test_qwen_environment_does_not_set_invalid_sandbox(self) -> None:
         # qwen only accepts QWEN_SANDBOX in {docker, podman, sandbox-exec};
         # "off" makes it loop on "Invalid sandbox command" before init. The
@@ -1226,6 +1233,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         skill = self.cwd / ".agents" / "skills" / "selfystudio"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("# SelfyStudio\n", encoding="utf-8")
+        self._bind_writer_skills(self.cwd, "selfystudio")
         other = self.root / "other-project"
         other.mkdir()
         with patch.dict(os.environ, {"HOME": str(self.fake_home)}):
@@ -1254,6 +1262,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         skill = self.cwd / ".agents" / "skills" / "selfystudio"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("# SelfyStudio\n", encoding="utf-8")
+        self._bind_writer_skills(self.cwd, "selfystudio")
         owned = self.cwd / ".opencode" / "skills" / "ui-owned"
         owned.mkdir(parents=True)
         (owned / "SKILL.md").write_text("# keep\n", encoding="utf-8")
@@ -1268,11 +1277,22 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertFalse(dest.exists())
         self.assertTrue((owned / "SKILL.md").is_file())
 
+    def test_unbound_project_skill_is_not_injected(self) -> None:
+        module = self._load_lane_session()
+        skill = self.cwd / ".agents" / "skills" / "selfystudio"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# present-but-unbound\n", encoding="utf-8")
+        links, dirs = module.inject_native_project_skills("opencode", self.cwd)
+        self.assertEqual(links, [])
+        self.assertFalse((self.cwd / ".opencode" / "skills" / "selfystudio").exists())
+        module.cleanup_native_project_skills(links, dirs)
+
     def test_opencode_native_skill_inject_does_not_overwrite(self) -> None:
         module = self._load_lane_session()
         skill = self.cwd / ".agents" / "skills" / "selfystudio"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("# from-agents\n", encoding="utf-8")
+        self._bind_writer_skills(self.cwd, "selfystudio")
         native = self.cwd / ".opencode" / "skills" / "selfystudio"
         native.mkdir(parents=True)
         (native / "SKILL.md").write_text("# repo-owned\n", encoding="utf-8")
@@ -1382,7 +1402,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn("Do not `git checkout` and rewrite", prompt)
         self.assertIn('"git checkout*": deny', agent)
         self.assertIn("ui-ux-pro-max: allow", agent)
-        self.assertIn("selfystudio: allow", agent)
+        self.assertNotIn("selfystudio: allow", agent)
         self.assertIn('"*": deny', agent)
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
@@ -1400,7 +1420,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertIn("Do not YAGNI the task", text)
             self.assertIn("Do not pick silently", text)
             self.assertIn("`ponytail:` comment", text)
-            self.assertIn("Load `selfystudio`", text)
+            self.assertNotIn("selfystudio", text)
             self.assertNotIn("PROJECT SKILL", text)
         self.assertNotIn("No task MCP.", prompt)
         self.assertIn("AgentMemory", prompt)
