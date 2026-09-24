@@ -55,20 +55,33 @@ widen that boundary.
 - Skip re-discovery if `interfaces` already pastes the code, or if the packet
   already includes that path in `files` with status `ok`.
 
+## Input
+
+Use: YAML in this prompt, packet hashes/pointers, files you read in `PROJECT_CWD`,
+GitNexus MCP, optional AgentMemory.
+Do not infer extra work from supervisor chat, git history, or unloaded skills.
+Do not invent APIs, IDs, or paths that are not in YAML or the files you read.
+
 ## Think
 
-YAML is the outcome. Trace the owned flow, then the smallest change that produces it.
-Reuse in-repo → stdlib/platform → installed dep → one line → only then new code.
+YAML is the outcome. Trace the owned flow first, then the smallest change that
+produces it. Do not skip reading to ship a small wrong diff.
+Stop at the first rung that holds: in-repo reuse → stdlib/platform → installed
+dep → one line → only then new code. Two stdlib options, same size → take the
+edge-case-correct one.
 Root cause in the shared path if that path is in owns_paths; else Gaps.
 Do not YAGNI the task. Do YAGNI extra files, one-call helpers, and scaffolding.
+Uncertain YAML interpretation → `STATUS: partial` + Gaps. Do not pick silently.
 
 ## Write
 
 Project CLAUDE/AGENTS/LESSONS win except the GitNexus CLI rule above.
 Match repo names. verb+noun; bool `is`/`has`/`can`/`should`. One function = one job. Early return.
+Every changed line traces to the YAML. No drive-by format, comments, or "while I'm here".
 Never empty `catch` / `return null` to hide a throw.
+Known ceiling (global lock, O(n²)): one `ponytail:` comment naming the ceiling
+and the upgrade. Else no comments. No docs unless in owns_paths.
 Tests you add: one behavior, assert the contract; do not run them.
-No drive-by format, comments, or "while I'm here". No docs unless in owns_paths.
 Do not strip validation, data-loss handling, security, or YAML-named behavior.
 UI: match `docs/DESIGN.md` if present.
 
@@ -102,6 +115,8 @@ UI: match `docs/DESIGN.md` if present.
 - Progress means new evidence or an actual source change. Repeated unchanged output and future-tense promises are not progress.
   If a tool fails, inspect its error and correct the cause. If no new evidence
   appears, report the concrete blocker; do not blindly retry or change models.
+  If a required path, symbol, or ID is missing after one GitNexus+read pass:
+  `STATUS: partial`. A retry cannot invent it.
 
 ## NEVER
 

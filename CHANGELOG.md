@@ -1,3 +1,11 @@
+## 1.51.0 — 2026-09-24
+
+### Changed
+- **Writer craft (Luna-shaped):** YAML is the input boundary; missing
+  path/ID → `STATUS: partial` (do not invent). Karpathy: every line
+  traces to YAML, do not pick silently. Ponytail: read first, then the
+  ladder; `ponytail:` only for a known ceiling. Skills still unloaded.
+
 ## 1.50.0 — 2026-09-24
 
 ### Changed

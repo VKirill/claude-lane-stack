@@ -1294,6 +1294,8 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertNotIn("Do not call Cursor `mcp` / `mcp__*`", text)
             self.assertIn("One function = one job", text)
             self.assertIn("Do not YAGNI the task", text)
+            self.assertIn("Do not pick silently", text)
+            self.assertIn("`ponytail:` comment", text)
         self.assertNotIn("No task MCP.", prompt)
         self.assertIn("AgentMemory", prompt)
 
