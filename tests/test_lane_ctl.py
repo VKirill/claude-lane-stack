@@ -2296,5 +2296,34 @@ class OpenCodeLaneRetryBlockTest(unittest.TestCase):
         self.assertIn("diagnose=env", reason)
 
 
+class RecoveryAdviceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.lane_ctl = _load_lane_ctl()
+
+    def test_exhausted_continue_does_not_retry(self) -> None:
+        advice = self.lane_ctl.recovery_advice(
+            status="failed",
+            reason="lane report is missing",
+            report_trusted=False,
+            report_status=None,
+            fallback_eligible=False,
+            failure_retryable=False,
+        )
+        self.assertIs(advice["retry_ok"], False)
+        self.assertEqual(advice["next"], "inspect")
+
+    def test_protocol_failure_still_retries_when_retryable(self) -> None:
+        advice = self.lane_ctl.recovery_advice(
+            status="failed",
+            reason="lane report is missing",
+            report_trusted=False,
+            report_status=None,
+            fallback_eligible=False,
+            failure_retryable=True,
+        )
+        self.assertIs(advice["retry_ok"], True)
+        self.assertEqual(advice["next"], "retry")
+
+
 if __name__ == "__main__":
     unittest.main()

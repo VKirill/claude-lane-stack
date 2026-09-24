@@ -1,3 +1,8 @@
+## 1.56.0 — 2026-09-24
+
+### Changed
+- **OpenCode missing report:** continue the same session (`Continue. Finish the work.`) instead of `retry_wait` with a full `prompt.md` replay. Crash without a report also continues once. If that continue still has no envelope, `failure_retryable=false` and the controller inspects instead of retrying.
+
 ## 1.55.0 — 2026-09-24
 
 ### Changed

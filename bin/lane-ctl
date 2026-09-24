@@ -869,6 +869,7 @@ def recovery_advice(
     report_trusted: bool,
     report_status: str | None,
     fallback_eligible: object,
+    failure_retryable: object = None,
 ) -> dict[str, object]:
     """Tell the PM whether this looks like a writer crash or a contract block."""
     if status == "provider_partial" or (
@@ -880,6 +881,14 @@ def recovery_advice(
             "fallback_ok": False,
             "next": "replace_task",
             "reason": "trusted_partial_report",
+        }
+    if failure_retryable is False:
+        return {
+            "kind": "writer_failure",
+            "retry_ok": False,
+            "fallback_ok": fallback_eligible is True,
+            "next": "fallback" if fallback_eligible is True else "inspect",
+            "reason": reason,
         }
     if fallback_eligible is True:
         return {
@@ -1141,6 +1150,7 @@ def task_status_v2(
         report_trusted=bool(report_evidence.get("trusted")),
         report_status=report_status if isinstance(report_status, str) else None,
         fallback_eligible=runtime.get("fallback_eligible"),
+        failure_retryable=runtime.get("failure_retryable"),
     )
     loop_reason = opencode_lane_retry_block(attempt_dir)
     if loop_reason:

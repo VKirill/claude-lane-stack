@@ -163,6 +163,15 @@ _MISSING_REPORT_ERRORS = frozenset(
 )
 
 
+def opencode_should_continue(result: StreamResult, session_id: str | None) -> bool:
+    """Same OpenCode session can take a short continue instead of a full retry."""
+    if not session_id or result.report_sha256:
+        return False
+    if result.protocol_error in _MISSING_REPORT_ERRORS:
+        return True
+    return result.provider_exit_code != 0
+
+
 def opencode_report_nudge_text(
     *,
     task_id: str,
@@ -170,7 +179,7 @@ def opencode_report_nudge_text(
     prompt_file: Path,
     prompt_sha256: str,
 ) -> str:
-    """One follow-up on the same OpenCode session when the envelope is missing."""
+    """Continue the same OpenCode session when the envelope is missing."""
     boundary = lane_report_boundary(
         task_id=task_id,
         cwd=cwd,
@@ -179,11 +188,10 @@ def opencode_report_nudge_text(
         leading_newline=False,
     )
     return (
-        "Stop. Do not call Cursor tools. Do not print JSON tool calls as chat. "
-        f"The previous turn ended without {REPORT_BEGIN} ... {REPORT_END}. "
-        "If the task is complete or blocked, reply with ONLY that envelope. "
+        "Continue. Finish the work. "
+        f"If it is done or blocked, reply with ONLY {REPORT_BEGIN} ... {REPORT_END}. "
         "STATUS must be exactly one of: complete, partial, timeout, unavailable. "
-        "If tools failed, use STATUS: partial and name the blocker in Gaps.\n\n"
+        "Do not restart the task from scratch.\n\n"
         f"{boundary}\n"
     )
 
@@ -273,7 +281,9 @@ TEST_PROVIDER_ENV_KEYS = frozenset(
         "FAKE_ERROR_MESSAGE",
         "FAKE_ENV_LOG",
         "FAKE_ENV_SCRUB_LOG",
+        "FAKE_CONTINUE_EXIT",
         "FAKE_EXIT",
+        "FAKE_KEEP_MISSING",
         "FAKE_EFFECTIVE_MODEL",
         "FAKE_PID_FILE",
         "FAKE_PROVIDER_KIND",
@@ -4343,8 +4353,6 @@ def run_provider(args: argparse.Namespace) -> int:
                 report_path=run_dir / "artifacts" / args.task_id / "report.md",
                 report_root=run_dir,
             )
-            if result.session_id:
-                captured = result.session_id
             if (
                 args.provider == "opencode"
                 and not lease.is_new
@@ -4389,17 +4397,16 @@ def run_provider(args: argparse.Namespace) -> int:
                     report_path=run_dir / "artifacts" / args.task_id / "report.md",
                     report_root=run_dir,
                 )
-                if result.session_id:
-                    captured = result.session_id
+            if result.session_id:
+                captured = result.session_id
             if (
                 args.provider == "opencode"
-                and result.provider_exit_code == 0
-                and result.protocol_error in _MISSING_REPORT_ERRORS
                 and captured
+                and opencode_should_continue(result, captured)
             ):
                 print(
-                    f"LANE_SESSION nudge opencode session={captured} "
-                    f"missing={result.protocol_error}",
+                    f"LANE_SESSION continue opencode session={captured} "
+                    f"missing={result.protocol_error or 'no-report'}",
                     flush=True,
                 )
                 nudge_argv = provider_command(
@@ -4444,6 +4451,8 @@ def run_provider(args: argparse.Namespace) -> int:
                 )
                 if result.session_id:
                     captured = result.session_id
+                if result.report_sha256 is None:
+                    result.failure_retryable = False
             exit_code = result.exit_code
 
         record = finish_lease(

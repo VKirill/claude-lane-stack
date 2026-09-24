@@ -419,9 +419,9 @@ class LaneSessionTest(unittest.TestCase):
                         if "--session" in args
                         else "opencode-session-test"
                     )
-                    omit_report = (
-                        os.environ.get("FAKE_REPORT_MODE") == "missing"
-                        and "--session" not in args
+                    omit_report = os.environ.get("FAKE_REPORT_MODE") == "missing" and (
+                        "--session" not in args
+                        or os.environ.get("FAKE_KEEP_MISSING") == "1"
                     )
                     report = (
                         "<<<LANE_REPORT:BEGIN>>>\\n"
@@ -471,6 +471,8 @@ class LaneSessionTest(unittest.TestCase):
                             },
                         }
                     )
+                    if "--session" in args:
+                        raise SystemExit(int(os.environ.get("FAKE_CONTINUE_EXIT", "0")))
                     raise SystemExit(int(os.environ.get("FAKE_EXIT", "0")))
 
                 if os.environ.get("FAKE_PROVIDER_KIND") == "kimi":
@@ -1096,17 +1098,51 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             extra_env={"FAKE_REPORT_MODE": "missing"},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("LANE_SESSION nudge opencode", result.stdout)
+        self.assertIn("LANE_SESSION continue opencode", result.stdout)
         first, second = self._calls()
         self.assertNotIn("--session", first)
         self.assertEqual(second[second.index("--session") + 1], "opencode-session-test")
         self.assertIn("<<<LANE_REPORT:BEGIN>>>", second[-1])
-        self.assertIn("Do not print JSON tool calls as chat", second[-1])
+        self.assertIn("Continue. Finish the work.", second[-1])
         report = (self.run_dir / "artifacts" / "nudge-001" / "report.md").read_text()
         self.assertIn("STATUS: complete", report)
         receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
         self.assertTrue(receipt["protocol_valid"])
         self.assertIsNone(receipt.get("protocol_error"))
+
+    def test_opencode_continues_same_session_after_crash_without_report(self) -> None:
+        result = self._run(
+            "opencode",
+            "continue-crash-001",
+            extra_env={"FAKE_REPORT_MODE": "missing", "FAKE_EXIT": "1"},
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LANE_SESSION continue opencode", result.stdout)
+        first, second = self._calls()
+        self.assertNotIn("--session", first)
+        self.assertEqual(second[second.index("--session") + 1], "opencode-session-test")
+        self.assertIn("Continue. Finish the work.", second[-1])
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertTrue(receipt["protocol_valid"])
+        self.assertEqual(receipt["provider_exit_code"], 0)
+
+    def test_opencode_exhausted_continue_is_not_retryable(self) -> None:
+        result = self._run(
+            "opencode",
+            "continue-exhausted-001",
+            extra_env={
+                "FAKE_REPORT_MODE": "missing",
+                "FAKE_KEEP_MISSING": "1",
+            },
+            check=False,
+        )
+        self.assertEqual(result.returncode, 65, result.stderr)
+        self.assertIn("LANE_SESSION continue opencode", result.stdout)
+        self.assertEqual(len(self._calls()), 2)
+        receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
+        self.assertFalse(receipt["protocol_valid"])
+        self.assertFalse(receipt["failure_retryable"])
 
     def test_opencode_diagnostics_capture_tool_errors_and_startup_stderr(self) -> None:
         result = self._run("opencode", "logs", extra_env={"FAKE_ERROR_MESSAGE": "diagnostic fixture"})
