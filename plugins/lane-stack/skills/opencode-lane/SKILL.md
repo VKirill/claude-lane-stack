@@ -100,6 +100,7 @@ OpenCode hooks this plugin uses:
 
 - `chat.message` — remember prompt, skill-hint
 - `chat.params` — Jev effort
+- `tool.execute.before` — block `write` over an existing file and `git checkout`/`restore`/`reset`/`switch`
 - `tool.execute.after` — winnow, diagnose
 - All tool events, including glob/MCP/edit/write/errors, feed progress diagnostics;
   Winnow still filters only read/grep/bash/shell. Novel output is evidence to

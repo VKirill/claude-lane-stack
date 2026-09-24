@@ -15,7 +15,7 @@ export function stripRestoreLoop(raw: string): string {
   // Task YAML "git checkout then redo" turns a truncated write into a loop.
   return raw
     .split("\n")
-    .filter((line) => !/\bgit\s+checkout\b/i.test(line))
+    .filter((line) => !/\bgit\s+(?:checkout|restore|reset|switch)\b/i.test(line))
     .join("\n")
 }
 

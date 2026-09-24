@@ -30,6 +30,19 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = ROOT / "schemas"
 MAX_VERIFICATION_TIMEOUT = 7200
 GLOB_CHARS = frozenset("*?[")
+RESTORE_LOOP_RE = re.compile(
+    r"\bgit\s+(?:checkout|restore|reset|switch)\b", re.I
+)
+
+
+def restore_loop_error(raw: str, task_id: str) -> str | None:
+    if not RESTORE_LOOP_RE.search(raw):
+        return None
+    return (
+        f"task {task_id}: git checkout/restore/reset/switch in the contract "
+        "turns truncated writes into a retry loop. Remove it; writers report "
+        "STATUS: partial instead of restoring files."
+    )
 
 
 class ContractError(RuntimeError):
@@ -407,6 +420,12 @@ def validate_run(run_dir: Path, phase: str) -> int:
         tasks[task_id] = task
         task_files[task_id] = task_path
         task_entries.append((task_id, task))
+
+        restore = restore_loop_error(
+            task_path.read_text(encoding="utf-8"), task_id
+        )
+        if restore:
+            errors.append(restore)
 
         for location in placeholder_locations(task):
             errors.append(f"task {task_id}: unresolved placeholder at {location}")

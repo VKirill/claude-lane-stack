@@ -397,10 +397,38 @@ class JevRouteTest(unittest.TestCase):
             "if (messages[0].parts[0].text !== 'ok') throw new Error('kept'); "
             "const task = 'x'.repeat(20000) + 'TAIL'; "
             "if (!formatStickyContract(task, 'task.yaml').endsWith(task)) throw new Error('cut task'); "
-            "const looped = 'keep\\n- HARD RULE: git checkout -- file and redo\\nkeep2'; "
+            "const looped = 'keep\\n- HARD RULE: git checkout -- file and redo\\n- git restore -- file\\nkeep2'; "
             "const stripped = formatStickyContract(looped, 'task.yaml'); "
             "if (stripped.includes('git checkout')) throw new Error('kept checkout'); "
+            "if (stripped.includes('git restore')) throw new Error('kept restore'); "
             "if (!stripped.includes('keep2')) throw new Error('dropped body'); "
+            "console.log('ok')"
+        )
+        out = _node(script)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("ok", out.stdout)
+
+    def test_guard_blocks_existing_write_and_git_restore(self) -> None:
+        script = (
+            "import { mkdirSync, writeFileSync, rmSync } from 'node:fs'; "
+            "import { join } from 'node:path'; "
+            "import { tmpdir } from 'node:os'; "
+            "import { guardTool } from "
+            f"{INDEX.resolve().as_uri()!r}; "
+            "const dir = join(tmpdir(), 'lane-guard-' + Date.now()); "
+            "mkdirSync(dir); "
+            "const existing = join(dir, 'a.ts'); "
+            "writeFileSync(existing, 'old\\n'.repeat(20)); "
+            "try { "
+            "  const blocked = guardTool('write', { path: existing, content: 'x' }, dir); "
+            "  if (!blocked.includes('write blocked')) throw new Error('exist ' + blocked); "
+            "  const fresh = guardTool('write', { path: join(dir, 'new.ts'), content: 'x' }, dir); "
+            "  if (fresh) throw new Error('new ' + fresh); "
+            "  const git = guardTool('bash', { command: 'git checkout -- a.ts' }, dir); "
+            "  if (!git.includes('git checkout')) throw new Error('git ' + git); "
+            "  const ok = guardTool('bash', { command: 'git diff -- a.ts' }, dir); "
+            "  if (ok) throw new Error('diff ' + ok); "
+            "} finally { rmSync(dir, { recursive: true, force: true }); } "
             "console.log('ok')"
         )
         out = _node(script)

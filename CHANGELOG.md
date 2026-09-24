@@ -1,3 +1,12 @@
+## 1.42.0 — 2026-09-24
+
+### Fixed
+- **OpenCode restore loop is refused, not hinted:** `tool.execute.before`
+  throws on `write` over an existing file and on `bash` `git checkout` /
+  `restore` / `reset` / `switch`. OpenCode agent permission denies those git
+  globs. `run-validate` rejects task YAML that contains them. Sticky strips
+  the same lines if they still appear.
+
 ## 1.41.0 — 2026-09-24
 
 ### Fixed

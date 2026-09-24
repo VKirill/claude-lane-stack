@@ -1279,6 +1279,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn("`write` is for **new files**", prompt)
         self.assertIn("Do not `git checkout` and rewrite", agent)
         self.assertIn("Do not `git checkout` and rewrite", prompt)
+        self.assertIn('"git checkout*": deny', agent)
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
         self.assertIn("If text says Cursor/MCP tools are unavailable", agent)

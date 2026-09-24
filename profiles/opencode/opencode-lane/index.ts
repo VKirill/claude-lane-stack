@@ -15,6 +15,7 @@ import { diagnoseFailure } from "./diagnose.ts"
 import { skillHint } from "./skill-hint.ts"
 import { evidenceNotes } from "./evidence.ts"
 import { recentAttempts, recordTool, repeatHint, toolRepeatN } from "./budget.ts"
+import { guardTool } from "./guard.ts"
 import { sessionKey } from "./session.ts"
 
 export {
@@ -29,6 +30,7 @@ export { looksFailed } from "./diagnose.ts"
 export { parseAcceptance, collectBashEvidence } from "./evidence.ts"
 export { WRITE_SKILLS, skillPhase } from "./skill-hint.ts"
 export { toolFingerprint, recordTool, recentAttempts, toolRepeatN } from "./budget.ts"
+export { guardTool } from "./guard.ts"
 export { askCacheKey } from "./jev.ts"
 export { sessionKey, pickSessionID } from "./session.ts"
 
@@ -264,6 +266,15 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
       } catch (err) {
         laneLog({ mod: "route", ok: false, session: sessionKey(input), err: String(err) })
       }
+    },
+    "tool.execute.before": async (
+      input: { tool: string; sessionID: string; callID?: string },
+      output: { args?: unknown },
+    ) => {
+      const msg = guardTool(input.tool, output.args)
+      if (!msg) return
+      laneLog({ mod: "guard", ok: false, session: input.sessionID || "", err: msg })
+      throw new Error(msg)
     },
     "tool.execute.after": async (
       input: { tool: string; sessionID: string; callID?: string; args: unknown },

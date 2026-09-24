@@ -11,6 +11,10 @@ permission:
     "git commit*": deny
     "git push*": deny
     "git merge*": deny
+    "git checkout*": deny
+    "git restore*": deny
+    "git reset*": deny
+    "git switch*": deny
   skill:
     "*": allow
     orchestrator-lanes: deny
