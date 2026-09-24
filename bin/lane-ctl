@@ -407,8 +407,11 @@ def prompt_for(context: TaskContext) -> str:
         "--- RAW TASK YAML (verbatim) ---\n"
     )
     body = header + context.raw_task
-    # OpenCode already loads profiles/opencode/agents/lane-writer.md as --agent.
-    if str(context.task.get("lane") or "").strip().lower() != "opencode":
+    # OpenCode --agent lane-writer; Cursor --plugin-dir profiles/cursor/lane-writer.
+    if str(context.task.get("lane") or "").strip().lower() not in {
+        "opencode",
+        "cursor",
+    }:
         try:
             writer = WRITER_CONTRACT.read_text(encoding="utf-8")
         except OSError as exc:

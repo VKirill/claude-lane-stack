@@ -869,8 +869,11 @@ def provider_command(
             model,
             "--output-format",
             "stream-json",
-            prompt + boundary + "\n",
         ]
+        plugin_dir = cursor_lane_plugin_dir()
+        if plugin_dir is not None:
+            command.extend(["--plugin-dir", str(plugin_dir)])
+        command.append(prompt + boundary + "\n")
         if not lease.is_new and lease.record.get("session_id"):
             command[1:1] = ["--resume", str(lease.record["session_id"])]
         return command
@@ -1148,6 +1151,17 @@ def attach_opencode_lane_mcp(
     environment["OPENCODE_CONFIG"] = str(dest.resolve())
     environment["CURSOR_ACP_MCP_BRIDGE"] = "true"
     return dest
+
+
+def cursor_lane_plugin_dir() -> Path | None:
+    """Isolated Cursor plugin for orchestrator cursor-agent only (--plugin-dir)."""
+    for path in (
+        lane_stack_root() / "profiles" / "cursor" / "lane-writer",
+        Path.home() / ".agents" / "profiles" / "cursor" / "lane-writer",
+    ):
+        if (path / ".cursor-plugin" / "plugin.json").is_file():
+            return path.resolve()
+    return None
 
 
 def lane_stack_root() -> Path:

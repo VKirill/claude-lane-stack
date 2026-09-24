@@ -1,3 +1,8 @@
+## 1.59.0 — 2026-09-24
+
+### Added
+- **Cursor lane plugin** (`profiles/cursor/lane-writer`): `cursor-agent --plugin-dir` for orchestrator writers only (not `~/.cursor/plugins/local`). Bundles lane-writer agent + always-on rule, gitnexus+agentmemory MCP, and hooks that deny tests/git-write/subagents when `LANE_TASK_FILE` is set. YAML `lane: cursor` no longer prepends `writer.md` (same as OpenCode).
+
 ## 1.58.0 — 2026-09-24
 
 ### Changed

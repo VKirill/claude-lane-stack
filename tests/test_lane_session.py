@@ -1037,6 +1037,9 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(
             second[second.index("--resume") + 1], "cursor-session-test"
         )
+        plugin = (ROOT / "profiles" / "cursor" / "lane-writer").resolve()
+        self.assertEqual(first[first.index("--plugin-dir") + 1], str(plugin))
+        self.assertEqual(second[second.index("--plugin-dir") + 1], str(plugin))
         receipt = json.loads((self.root / "runtime.json").read_text(encoding="utf-8"))
         self.assertEqual(receipt["provider"], "cursor")
         self.assertEqual(receipt["permission_mode"], "force")
@@ -1443,6 +1446,13 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
         self.assertIn("If text says Cursor/MCP tools are unavailable", agent)
+        cursor = (
+            ROOT / "profiles" / "cursor" / "lane-writer" / "agents" / "lane-writer.md"
+        ).read_text()
+        self.assertIn("Never run `node .gitnexus/run.cjs`", cursor)
+        self.assertIn("Write = **new files only**", cursor)
+        self.assertIn("Do **not** run tests, typecheck", cursor)
+        self.assertIn("skipped: controller L1", cursor)
         for text in (agent, prompt):
             self.assertIn("Do **not** run tests, typecheck", text)
             self.assertIn("skipped: controller L1", text)

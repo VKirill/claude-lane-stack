@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "./scripts/before_shell.py",
+        "failClosed": false
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "./scripts/subagent_start.py",
+        "failClosed": true
+      }
+    ]
+  }
+}

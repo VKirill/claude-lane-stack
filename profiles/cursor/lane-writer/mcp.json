@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "gitnexus",
+      "args": ["mcp"]
+    },
+    "agentmemory": {
+      "command": "agentmemory-mcp",
+      "env": {
+        "AGENTMEMORY_TOOLS": "all"
+      }
+    }
+  }
+}
