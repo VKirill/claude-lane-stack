@@ -1,3 +1,10 @@
+## 1.50.0 — 2026-09-24
+
+### Changed
+- **Codex lane-writer MCP:** isolated `CODEX_HOME` now gets stdio
+  `gitnexus` + `agentmemory` only (no host metamcp/plugins/skills).
+  Writer contract allows those two; GitNexus CLI still forbidden.
+
 ## 1.49.0 — 2026-09-24
 
 ### Changed

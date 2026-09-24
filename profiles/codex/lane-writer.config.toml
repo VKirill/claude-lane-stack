@@ -1,23 +1,22 @@
-# Bare Codex profile for Claude Lane Stack durable writers (provider=codex).
+# Codex lane-writer — durable conveyor sessions (provider=codex).
 #
-# Native Codex config only — loaded from an ephemeral CODEX_HOME that contains:
-#   auth.json + config.toml (this file) + empty skills/ plugins/ rules/
-# Host ~/.codex (MCP, plugins, user skills) is never copied and is tmpfs-masked
-# by bubblewrap at runtime.
+# Loaded from an ephemeral CODEX_HOME: auth.json + this config + empty
+# skills/ plugins/ rules/. Host ~/.codex is tmpfs-masked (no user skills,
+# no plugins, no extra MCP servers).
 #
-# Model/effort are still overridden by lane-session CLI flags when needed
-# (stack default programmer preset: gpt-5.6-luna + max).
+# Runtime injects stdio MCP: gitnexus + agentmemory only (code graph +
+# recall). Model/effort still come from lane-session / adoc (default Luna+max).
+#
+# Craft is `agents/grok/writer.md` in the prompt, not this file.
 
 model = "gpt-5.6-luna"
 model_reasoning_effort = "max"
-# service_tier / fast_mode are set per-run by lane-session from adoc
-# (writer.service_tier: standard|fast). Do not hardcode host interactive defaults.
+# service_tier / fast_mode: lane-session from adoc writer.service_tier.
 approval_policy = "never"
 sandbox_mode = "workspace-write"
 web_search = "disabled"
 personality = "pragmatic"
 suppress_unstable_features_warning = true
-# Project AGENTS.md / CLAUDE.md only (bounded). No host docs.
 project_doc_max_bytes = 32768
 project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md"]
 
@@ -28,8 +27,7 @@ network_access = true
 max_threads = 1
 max_depth = 1
 
-# Feature flags (native [features] table + matching --disable on CLI).
-# Keep shell/exec tooling; strip multi-agent, plugins, MCP apps, browser, etc.
+# Keep shell/exec. Strip multi-agent, plugins, ChatGPT apps, browser, skills catalog.
 [features]
 multi_agent = false
 multi_agent_v2 = false

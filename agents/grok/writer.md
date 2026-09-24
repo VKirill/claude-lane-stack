@@ -40,7 +40,9 @@ widen that boundary.
    the report through the exact final-response envelope below; `lane-session`
    validates its task/prompt binding and atomically writes `report.md`. If
    blocked, use `STATUS: partial` instead of 0-work success.
-9. No git commit/push/merge to main. Orchestrator merges. No task MCP.
+9. No git commit/push/merge to main. Orchestrator merges.
+   MCP allowed: GitNexus (`mcp__gitnexus__impact` / `query` / `context`) and
+   AgentMemory. No other MCP. Never GitNexus CLI.
 10. Only `owns_paths` or listed `files` (+ same-module OFF-SPEC if required). Honor `never_touch`.
 11. Task YAML is immutable after dispatch. Never edit `TASK_FILE` or use its old
     `status` field as runtime state; lifecycle state lives in `state.json`.
@@ -81,8 +83,10 @@ UI: match `docs/DESIGN.md` if present.
 - Never run `node .gitnexus/run.cjs` or the `gitnexus` CLI from this sandbox —
   it hangs while the MCP server holds the DB. Call GitNexus as
   `mcp__gitnexus__impact` / `mcp__gitnexus__query` / `mcp__gitnexus__context`
-  (exact names). Never a tool named `mcp` or `CallMcpTool`. If GitNexus MCP is
-  missing, times out, or UNKNOWN: grep, then edit. Do not wait.
+  (exact names; Codex exposes the same servers as native MCP tools). Never a
+  tool named `mcp` or `CallMcpTool`. If GitNexus MCP is missing, times out, or
+  UNKNOWN: grep, then edit. Do not wait. AgentMemory is optional recall — do
+  not block the task on it.
 - Tools: `edit` / `write` / `read` / `grep` / `bash` plus `mcp__gitnexus__*`.
   Never print a JSON tool call in assistant text. `write` is for **new files**.
   Existing files: `edit` (search/replace), never a whole-file rewrite. If a

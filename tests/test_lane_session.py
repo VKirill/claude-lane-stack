@@ -164,7 +164,7 @@ class LaneSessionTest(unittest.TestCase):
                 if args and args[0] == "exec":
                     if os.environ.get("FAKE_CODEX_HOME_LOG"):
                         codex_home = Path(os.environ["CODEX_HOME"])
-                        # Record bare-home shape for assertions (auth + config, no mcp).
+                        # Record bare-home shape for assertions (auth + config + lane MCP).
                         Path(os.environ["FAKE_CODEX_HOME_LOG"]).write_text(
                             json.dumps(
                                 {
@@ -1294,6 +1294,16 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertNotIn("Do not call Cursor `mcp` / `mcp__*`", text)
             self.assertIn("One function = one job", text)
             self.assertIn("Do not YAGNI the task", text)
+        self.assertNotIn("No task MCP.", prompt)
+        self.assertIn("AgentMemory", prompt)
+
+    def test_codex_lane_writer_mcp_is_gitnexus_and_agentmemory_only(self) -> None:
+        module = self._load_lane_session()
+        text = module.lane_writer_mcp_toml()
+        self.assertIn("[mcp_servers.gitnexus]", text)
+        self.assertIn("[mcp_servers.agentmemory]", text)
+        self.assertNotIn("[mcp_servers.metamcp]", text)
+        self.assertIn("args = [\"mcp\"]", text)
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
         module = self._load_lane_session()
@@ -2204,7 +2214,12 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertTrue(codex_home["auth_exists"])
         self.assertTrue(codex_home["config_exists"])
         self.assertTrue(codex_home["skills_empty"])
-        self.assertFalse(codex_home["has_mcp_servers_block"])
+        self.assertTrue(codex_home["has_mcp_servers_block"])
+        home_cfg = Path(codex_home["path"]) / "config.toml"
+        written = home_cfg.read_text(encoding="utf-8")
+        self.assertIn("[mcp_servers.gitnexus]", written)
+        self.assertIn("[mcp_servers.agentmemory]", written)
+        self.assertNotIn("[mcp_servers.metamcp]", written)
         self.assertNotEqual(Path(codex_home["path"]), self.fake_home / ".codex")
         self.assertTrue(Path(codex_home["path"]).is_dir())
 

@@ -2,7 +2,8 @@
 """Run a typed writer provider behind the lane control-plane boundary.
 
 AGY, Grok, Qwen, Kimi, Cursor, and Codex use run-scoped warm-session affinity.
-Codex keeps an isolated per-slot CODEX_HOME (host MCP/plugins stay out).
+Codex keeps an isolated per-slot CODEX_HOME (host plugins/skills stay out;
+stdio MCP is gitnexus + agentmemory only).
 """
 
 from __future__ import annotations
@@ -94,10 +95,9 @@ workspace_dependencies = false
 guardian_approval = false
 """
 # Native `codex exec --disable <feature>` set for bare writer (stable flags only).
-# System skills (imagegen, skill-installer, …) are baked into Codex and cannot
-# be fully removed via public CLI; user skills/MCP/plugins are excluded by the
-# ephemeral CODEX_HOME + sandbox-backend mask of host ~/.codex (bwrap tmpfs
-# on Linux, seatbelt deny rules on macOS).
+# System skills (imagegen, skill-installer, …) cannot be fully removed via public
+# CLI. Host plugins/user skills stay out via ephemeral CODEX_HOME + sandbox mask.
+# gitnexus + agentmemory stdio MCP are injected into that home (not host ~/.codex).
 CODEX_DISABLE_FEATURES = (
     "multi_agent",
     "multi_agent_v2",
@@ -697,11 +697,12 @@ def provider_command(
     if args.provider == "codex":
         # Bare lane-writer (native Codex):
         # - per-slot CODEX_HOME = auth + bare config.toml + empty skills/plugins/rules
+        #   + gitnexus/agentmemory stdio MCP (not host metamcp)
         # - `-p lane-writer` layers the same bare profile by name (also installed
         #   as ~/.codex/lane-writer.config.toml for human inspection)
         # - do NOT pass --ignore-user-config (would skip our bare config.toml)
         # - host ~/.codex is hidden by the sandbox backend (bwrap tmpfs on
-        #   Linux, seatbelt deny rules on macOS) so MCP/plugins/user skills stay out
+        #   Linux, seatbelt deny rules on macOS) so host plugins/user skills stay out
         # - no --ephemeral: session files must survive so the next task can resume
         command = [
             binary,
@@ -1161,7 +1162,7 @@ def attach_lane_contract_env(
 
 
 def lane_writer_config_text() -> str:
-    """Return bare lane-writer config.toml contents (no MCP/plugins)."""
+    """Return bare lane-writer config.toml contents (MCP appended at home prep)."""
     here = Path(__file__).resolve()
     candidates = [
         here.parents[1] / "profiles" / "codex" / "lane-writer.config.toml",
@@ -1177,13 +1178,37 @@ def lane_writer_config_text() -> str:
     return DEFAULT_LANE_WRITER_CONFIG
 
 
+def _toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def lane_writer_mcp_toml() -> str:
+    """Stdio MCP for the isolated Codex writer: gitnexus + agentmemory only."""
+    gitnexus = shutil.which("gitnexus") or "gitnexus"
+    agentmemory = shutil.which("agentmemory-mcp") or "agentmemory-mcp"
+    url = os.environ.get("AGENTMEMORY_URL") or "http://127.0.0.1:3111"
+    return (
+        "\n# Injected at runtime — host plugins/skills stay out.\n"
+        "[mcp_servers.gitnexus]\n"
+        f"command = {_toml_string(gitnexus)}\n"
+        'args = ["mcp"]\n'
+        "\n[mcp_servers.agentmemory]\n"
+        f"command = {_toml_string(agentmemory)}\n"
+        'default_tools_approval_mode = "approve"\n'
+        "\n[mcp_servers.agentmemory.env]\n"
+        'AGENTMEMORY_TOOLS = "all"\n'
+        f"AGENTMEMORY_URL = {_toml_string(url)}\n"
+    )
+
+
 def prepare_codex_home(
     provider: str, *, run_dir: Path, key: str, reset: bool
 ) -> Path | None:
     """Build an isolated per-slot CODEX_HOME with auth + bare lane-writer config.
 
-    Host MCP servers, plugins, and user skills live under the real ~/.codex and
-    are never copied here. Bubblewrap also tmpfs-masks ~/.codex at runtime.
+    Host plugins and user skills live under the real ~/.codex and are never
+    copied here. gitnexus + agentmemory stdio MCP are written explicitly.
+    Bubblewrap also tmpfs-masks ~/.codex at runtime.
     The slot home is reused across tasks so `codex exec resume` can see the
     previous thread. Reset on rotation (new lease). Auth is not stored in the
     run dir — only under a uid-scoped temp path.
@@ -1214,7 +1239,7 @@ def prepare_codex_home(
     auth_target = scratch / "auth.json"
     shutil.copyfile(auth_source, auth_target)
     auth_target.chmod(0o600)
-    config_text = lane_writer_config_text()
+    config_text = lane_writer_config_text() + lane_writer_mcp_toml()
     # Base config + named profile (native `-p lane-writer`).
     (scratch / "config.toml").write_text(config_text, encoding="utf-8")
     (scratch / "lane-writer.config.toml").write_text(config_text, encoding="utf-8")
