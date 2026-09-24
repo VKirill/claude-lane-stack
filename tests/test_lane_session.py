@@ -1290,6 +1290,8 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertNotIn("never a whole file over 200 lines", text)
             self.assertNotIn("Prefer GitNexus", text)
             self.assertIn("once, whole", text)
+            self.assertIn("mcp__gitnexus__impact", text)
+            self.assertNotIn("Do not call Cursor `mcp` / `mcp__*`", text)
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
         module = self._load_lane_session()

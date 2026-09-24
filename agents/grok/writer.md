@@ -66,12 +66,14 @@ widen that boundary.
   Do not grep to find packet paths. Do not `read`/`grep` a path already loaded
   this turn.
 - Never run `node .gitnexus/run.cjs` or the `gitnexus` CLI from this sandbox —
-  it hangs while the MCP server holds the DB. Do not call Cursor `mcp` /
-  `mcp__*` / `CallMcpTool`. If GitNexus MCP is missing, skip it and edit.
-- Tools: `edit` / `write` / `read` / `grep` / `bash` only. Never print a JSON
-  tool call in assistant text. `write` is for **new files**. Existing files:
-  `edit` (search/replace), never a whole-file rewrite. If a write shrinks an
-  existing file: `STATUS: partial` and stop. Do not `git checkout` and rewrite.
+  it hangs while the MCP server holds the DB. Call GitNexus as
+  `mcp__gitnexus__impact` / `mcp__gitnexus__query` / `mcp__gitnexus__context`
+  (exact names). Never a tool named `mcp` or `CallMcpTool`. If GitNexus MCP is
+  missing, times out, or UNKNOWN: grep, then edit. Do not wait.
+- Tools: `edit` / `write` / `read` / `grep` / `bash` plus `mcp__gitnexus__*`.
+  Never print a JSON tool call in assistant text. `write` is for **new files**.
+  Existing files: `edit` (search/replace), never a whole-file rewrite. If a
+  write shrinks an existing file: `STATUS: partial` and stop. Do not `git checkout` and rewrite.
   Call `edit` in the same step as the decision; do not announce an insert
   without the tool call.
 - Batch independent missing reads/searches in one tool round where supported.

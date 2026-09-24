@@ -1,3 +1,10 @@
+## 1.45.0 — 2026-09-24
+
+### Fixed
+- **Writer GitNexus:** call OpenCode tools `mcp__gitnexus__impact` /
+  `query` / `context`. The Cursor tool named `mcp` is invalid; the CLI
+  still hangs. 1.44 forbade `mcp__*` and hid the working names.
+
 ## 1.44.0 — 2026-09-24
 
 ### Changed
