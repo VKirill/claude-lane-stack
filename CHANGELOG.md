@@ -1,3 +1,8 @@
+## 1.58.0 — 2026-09-24
+
+### Changed
+- **L1 typecheck/lint/build:** not a file subset (tsc is whole-program). Skip the command when the git diff under `verification.cwd` has no files that can affect it (another package, markdown, CSS). Direct `eslint … .` is narrowed to the changed files. Off: `LANE_L1_SCOPE=0`.
+
 ## 1.57.0 — 2026-09-24
 
 ### Added

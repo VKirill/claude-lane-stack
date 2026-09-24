@@ -2841,18 +2841,25 @@ def cmd_verify_v2(
                 except Exception:
                     filter_meta = {"skipped": "wrap-error"}
                 try:
-                    completed = run_verification_command(
-                        command_argv,
-                        cwd=command_cwd,
-                        timeout=timeout_sec,
-                        env=verification_env() if filter_meta.get("wrapped") else None,
-                    )
-                    exit_code = completed.returncode
-                    output = completed.stdout
-                    if exit_code == 124:
-                        output += (
-                            f"verification command timed out after {timeout_sec}s\n"
+                    if filter_meta.get("skip_run"):
+                        exit_code = 0
+                        output = (
+                            f"L1 skipped {filter_meta.get('kind')}: "
+                            f"{filter_meta.get('reason')}\n"
                         )
+                    else:
+                        completed = run_verification_command(
+                            command_argv,
+                            cwd=command_cwd,
+                            timeout=timeout_sec,
+                            env=verification_env() if filter_meta.get("wrapped") else None,
+                        )
+                        exit_code = completed.returncode
+                        output = completed.stdout
+                        if exit_code == 124:
+                            output += (
+                                f"verification command timed out after {timeout_sec}s\n"
+                            )
                 except OSError as exc:
                     exit_code = 127
                     output = f"cannot execute verification command: {exc}\n"
