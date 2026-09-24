@@ -1169,6 +1169,9 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
                     "metamcp": {"type": "remote", "url": "http://127.0.0.1:12010/mcp"},
                     "extra": {"type": "local", "command": ["/bin/no"]},
                 },
+                "agent": {"wiki-linter": {"mode": "primary"}},
+                "command": {"wiki-init": {"agent": "wiki-investigator"}},
+                "permission": "allow",
             }
         )
         self.assertEqual(sliced["plugin"], ["cursor-acp", "./plugins/opencode-lane.ts"])
@@ -1177,6 +1180,11 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             {"agentmemory", "gitnexus"},
         )
         self.assertEqual(sliced["mcp"]["agentmemory"]["type"], "local")
+        self.assertNotIn("agent", sliced)
+        self.assertNotIn("command", sliced)
+        self.assertNotIn("permission", sliced)
+        self.assertEqual(sliced["compaction"], {"auto": False, "prune": False})
+        self.assertFalse(sliced["snapshot"])
 
     def test_attach_opencode_lane_mcp_enables_stdio_bridge(self) -> None:
         module = self._load_lane_session()
@@ -1192,7 +1200,9 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
                             "type": "remote",
                             "url": "http://127.0.0.1:12010/mcp",
                         },
-                    }
+                    },
+                    "agent": {"wiki-linter": {"mode": "primary"}},
+                    "command": {"wiki-init": {"agent": "wiki-investigator"}},
                 }
             ),
             encoding="utf-8",
@@ -1207,6 +1217,9 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         mcp = json.loads(dest.read_text(encoding="utf-8"))["mcp"]
         self.assertEqual(set(mcp), {"agentmemory", "gitnexus"})
         self.assertNotIn("metamcp", mcp)
+        written = json.loads(dest.read_text(encoding="utf-8"))
+        self.assertNotIn("agent", written)
+        self.assertNotIn("command", written)
 
     def test_opencode_writable_paths_include_state_home(self) -> None:
         module = self._load_lane_session()
@@ -1280,6 +1293,8 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn("Do not `git checkout` and rewrite", agent)
         self.assertIn("Do not `git checkout` and rewrite", prompt)
         self.assertIn('"git checkout*": deny', agent)
+        self.assertIn("ui-ux-pro-max: allow", agent)
+        self.assertIn('"*": deny', agent)
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
         self.assertIn("If text says Cursor/MCP tools are unavailable", agent)

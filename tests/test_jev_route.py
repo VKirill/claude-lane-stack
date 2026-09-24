@@ -199,11 +199,10 @@ class JevRouteTest(unittest.TestCase):
             }};
             assert.notEqual(skillPhase(task), skillPhase(task + 'CHANGED'));
             await skillHint('full-skills', task);
-            const afterFirstHint = requests.length;
+            assert.equal(requests.length, 0, 'skill hint must not call Jev or inject SKILL.md');
             await skillHint('full-skills', task, ['read']);
             await skillHint('full-skills', task, ['grep', 'shell']);
-            assert.equal(requests.length, afterFirstHint, 'skill hint must not re-ask on every tool');
-            assert.equal(requests.at(-1).state.task, task);
+            assert.equal(requests.length, 0);
             await diagnoseFailure(task, result + ' password=private-test-value', 1);
             assert.equal(requests.at(-1).state.task, task);
             assert.ok(requests.at(-1).state.output.includes('LAST FAILURE'));
@@ -431,6 +430,14 @@ class JevRouteTest(unittest.TestCase):
             "  if (!git.includes('git checkout')) throw new Error('git ' + git); "
             "  const ok = guardTool('bash', { command: 'git diff -- a.ts' }, dir); "
             "  if (ok) throw new Error('diff ' + ok); "
+            "  const skill = guardTool('skill', { name: 'writer-practices' }, dir); "
+            "  if (!skill.includes('skill blocked')) throw new Error('skill ' + skill); "
+            "  const ui = guardTool('skill', { name: 'ui-ux-pro-max' }, dir); "
+            "  if (ui) throw new Error('ui ' + ui); "
+            "  const meta = guardTool('mcp__metamcp__search', {}, dir); "
+            "  if (!meta.includes('MCP blocked')) throw new Error('meta ' + meta); "
+            "  const gn = guardTool('mcp__gitnexus__impact', { target: 'x' }, dir); "
+            "  if (gn) throw new Error('gn ' + gn); "
             "} finally { rmSync(dir, { recursive: true, force: true }); } "
             "console.log('ok')"
         )

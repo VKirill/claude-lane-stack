@@ -1,3 +1,12 @@
+## 1.52.0 — 2026-09-24
+
+### Changed
+- **OpenCode writer isolation:** lane config drops host wiki agents/commands
+  and extra plugins; MCP stays gitnexus+agentmemory. `lane-writer` denies
+  skills except `ui-ux-pro-max`. Guard blocks other `skill` / MCP tool
+  calls (`--dangerously-skip-permissions` bypasses agent deny). SkillHint
+  no longer injects SKILL.md.
+
 ## 1.51.0 — 2026-09-24
 
 ### Changed

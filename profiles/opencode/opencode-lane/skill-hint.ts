@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
-import { askJev, choiceOf, extraJevEnabled, stackRoot } from "./jev.ts"
-import { laneLog } from "./log.ts"
+import { stackRoot } from "./jev.ts"
 
 function loadWriteSkills(): Record<string, string> {
   try {
@@ -17,37 +16,16 @@ function loadWriteSkills(): Record<string, string> {
 
 export const WRITE_SKILLS: Record<string, string> = loadWriteSkills()
 
-const ALLOWED = new Set(Object.keys(WRITE_SKILLS))
-const hinted = new Map<string, string>()
-
 export function skillPhase(task: string, tools: string[] = []): string {
   const last = tools.filter(Boolean).join(",")
   return createHash("sha256").update(task).update("\0").update(last).digest("hex").slice(0, 16)
 }
 
-export async function skillHint(sessionID: string, task: string, tools: string[] = []): Promise<string> {
-  if (!extraJevEnabled() || !sessionID || !task) return ""
-  // Once per task. Hashing recent tools re-hinted writer-practices on every grep.
-  const sig = skillPhase(task)
-  if (hinted.get(sessionID) === sig) return ""
-  hinted.set(sessionID, sig)
-  const answers = await askJev(
-    { task, tools },
-    {
-      need: {
-        type: "noul",
-        instructions: "Does this task need a specialized write skill beyond the lane contract?",
-      },
-      skill: {
-        type: "choice",
-        instructions: "Which write skill should the implementer follow for this task and recent tools?",
-        criteria: WRITE_SKILLS,
-      },
-    },
-  )
-  const need = typeof answers?.need?.noul === "number" && Number.isFinite(answers.need.noul) ? answers.need.noul : 1
-  const { choice, conf } = choiceOf(answers, "skill", ALLOWED, "none")
-  laneLog({ mod: "skill-hint", ok: true, data: { choice, conf, need } })
-  if (need < 0.35 || choice === "none" || conf < 0.55) return ""
-  return `[opencode-lane skill] ${choice} (conf ${conf.toFixed(2)}). Load ~/.agents/skills/${choice}/SKILL.md if it fits.`
+export async function skillHint(
+  _sessionID: string,
+  _task: string,
+  _tools: string[] = [],
+): Promise<string> {
+  // Writer contract is enough. Do not inject SKILL.md (guard + lane-writer deny).
+  return ""
 }
