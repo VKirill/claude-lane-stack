@@ -1421,6 +1421,71 @@ class LaneCtlTest(unittest.TestCase):
         self.assertEqual(status["status"], "awaiting_verification")
         self.assertFalse(status["verification"]["verified"])
 
+    def test_status_prints_recent_provider_tools(self) -> None:
+        task_file = self.write_v2_task(
+            verification=[{"command": "true", "cwd": ".", "timeout_sec": 5}]
+        )
+        self.start(task_file)
+        self.wait_status()
+        attempt = self.run_dir / "artifacts" / "001" / "attempts" / "01"
+        (attempt / "provider.events.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "t": "2026-09-24T00:19:16.000Z",
+                            "event": "tool",
+                            "tool": "write",
+                            "status": "completed",
+                            "input": {"path": "/repo/a.ts"},
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "t": "2026-09-24T00:19:20.000Z",
+                            "event": "tool",
+                            "tool": "write",
+                            "status": "completed",
+                            "input": {"path": "/repo/a.ts"},
+                        }
+                    ),
+                    json.dumps({"t": "2026-09-24T00:19:21.000Z", "event": "stderr", "text": "noise"}),
+                    json.dumps(
+                        {
+                            "t": "2026-09-24T00:19:22.000Z",
+                            "event": "tool",
+                            "tool": "read",
+                            "status": "completed",
+                            "input": {"path": "/repo/a.ts"},
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        text = self.run_ctl(
+            "status",
+            "--run-dir",
+            str(self.run_dir),
+            "--task-id",
+            "001",
+        ).stdout
+        self.assertIn("activity read:1 write:2", text)
+        self.assertIn("last=00:19:22 read completed /repo/a.ts", text)
+        payload = json.loads(
+            self.run_ctl(
+                "status",
+                "--run-dir",
+                str(self.run_dir),
+                "--task-id",
+                "001",
+                "--json",
+            ).stdout
+        )
+        self.assertEqual(payload["activity"]["counts"], {"write": 2, "read": 1})
+        self.assertEqual(payload["activity"]["last"][-1]["tool"], "read")
+
     def test_v2_status_requires_complete_provider_report(self) -> None:
         cases = (
             (

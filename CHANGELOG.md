@@ -1,3 +1,10 @@
+## 1.43.0 — 2026-09-24
+
+### Changed
+- **`lane-ctl status` shows writer activity:** last tools from
+  `provider.events.jsonl` (counts + last path). Existing observer polls
+  pick it up; no extra watch loop. `lane-ctl tail --source events`.
+
 ## 1.42.0 — 2026-09-24
 
 ### Fixed

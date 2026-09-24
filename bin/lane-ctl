@@ -93,6 +93,7 @@ TAIL_SOURCES = {
     "supervisor": "lane-bg.supervisor.log",
     "executor": "lane-exec.log",
     "provider": "provider.out",
+    "events": "provider.events.jsonl",
     "report": "report.md",
     "verification": "verified.txt",
 }
@@ -924,6 +925,60 @@ def recovery_advice(
     }
 
 
+def summarize_provider_activity(attempt_dir: Path) -> dict:
+    """Last OpenCode tools from provider.events.jsonl (observer-facing)."""
+    path = safe_child_file(attempt_dir, "provider.events.jsonl")
+    empty = {"counts": {}, "last": [], "path": str(path), "exists": path.is_file()}
+    if not path.is_file():
+        return empty
+    try:
+        text = tail_lines(path, 400)
+    except OperationError:
+        return empty
+    counts: dict[str, int] = {}
+    last: list[dict[str, object]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event") != "tool":
+            continue
+        tool = str(event.get("tool") or "?")
+        counts[tool] = counts.get(tool, 0) + 1
+        inp = event.get("input")
+        loc = ""
+        if isinstance(inp, dict):
+            raw = (
+                inp.get("path")
+                or inp.get("filePath")
+                or inp.get("file")
+                or inp.get("command")
+                or ""
+            )
+            if isinstance(raw, str):
+                loc = " ".join(raw.split())
+                if len(loc) > 80:
+                    loc = loc[:80]
+        last.append(
+            {
+                "t": str(event.get("t") or "")[11:19],
+                "tool": tool,
+                "status": event.get("status"),
+                "path": loc,
+            }
+        )
+    return {
+        "counts": counts,
+        "last": last[-6:],
+        "path": str(path),
+        "exists": True,
+    }
+
+
 def task_status_v2(
     run_dir: Path,
     task_id: str,
@@ -1118,6 +1173,7 @@ def task_status_v2(
         "task_sha256": state.get("task_sha256"),
         "provider": provider,
         "heartbeat": heartbeat,
+        "activity": summarize_provider_activity(attempt_dir),
         "report": {
             "exists": report_path.is_file(),
             "complete": report_complete,
@@ -1690,6 +1746,17 @@ def cmd_status(args: argparse.Namespace) -> int:
             f"verified={'yes' if payload['verification']['verified'] else 'no'} "
             f"attempt={payload['attempt']}"
         )
+        activity = payload.get("activity") or {}
+        counts = activity.get("counts") or {}
+        last_rows = activity.get("last") or []
+        if counts or last_rows:
+            bits = " ".join(f"{name}:{n}" for name, n in sorted(counts.items()))
+            last = last_rows[-1] if last_rows else {}
+            loc = last.get("path") or ""
+            print(
+                f"activity {bits} last={last.get('t', '')} "
+                f"{last.get('tool', '')} {last.get('status', '')} {loc}".rstrip()
+            )
     return 0
 
 
