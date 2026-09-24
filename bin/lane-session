@@ -1023,6 +1023,9 @@ def provider_environment(
                 # instead of OpenCode read/edit/bash and skips LANE_REPORT.
                 "CURSOR_ACP_FORWARD_TOOL_CALLS": "false",
                 "CURSOR_ACP_TOOL_LOOP_MODE": "opencode",
+                # One shared :32124 proxy is a SPOF: first writer exit RSTs
+                # every sibling. Isolated listen; EADDRINUSE falls to port 0.
+                "CURSOR_ACP_REUSE_EXISTING_PROXY": "false",
                 # Off until attach_opencode_lane_mcp writes a stdio-only
                 # slice; ACP cannot speak OpenCode `type: remote` (metamcp).
                 "CURSOR_ACP_MCP_BRIDGE": "false",
@@ -1032,12 +1035,28 @@ def provider_environment(
 
 
 OPENCODE_LANE_MCP = ("agentmemory", "gitnexus")
+OPENCODE_LANE_PLUGINS = frozenset({"cursor-acp", "opencode-lane"})
+
+
+def _opencode_lane_plugin_name(entry: object) -> str | None:
+    if not isinstance(entry, str):
+        return None
+    raw = entry.strip().lower()
+    if not raw:
+        return None
+    path = raw.rsplit("@", 1)[0]
+    base = path.rsplit("/", 1)[-1]
+    for suffix in (".ts", ".js", ".mjs", ".cjs"):
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    return base or None
 
 
 def slice_opencode_mcp(
     data: object, *, keep: tuple[str, ...] = OPENCODE_LANE_MCP
 ) -> dict[str, object]:
-    """Keep only named local MCP servers; drop remote (ACP has no HTTP transport)."""
+    """Keep lane MCP + plugins; drop remote MCP and extra OpenCode plugins."""
     source = data if isinstance(data, dict) else {}
     mcp = source.get("mcp")
     sliced: dict[str, object] = {}
@@ -1052,6 +1071,13 @@ def slice_opencode_mcp(
                 sliced[name] = entry
     out = dict(source)
     out["mcp"] = sliced
+    plugins = source.get("plugin")
+    if isinstance(plugins, list):
+        out["plugin"] = [
+            item
+            for item in plugins
+            if _opencode_lane_plugin_name(item) in OPENCODE_LANE_PLUGINS
+        ]
     return out
 
 

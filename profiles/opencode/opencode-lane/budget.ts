@@ -20,6 +20,7 @@ const observedCalls = new Map<string, Map<string, number>>()
 const eventWithoutCall = new Map<string, Map<string, number>>()
 const sessionStarted = new Map<string, number>()
 const firstEdit = new Set<string>()
+const pathRepeats = new Map<string, Map<string, number>>()
 
 function stable(value: unknown): string {
   if (value === undefined) return "undefined"
@@ -83,6 +84,13 @@ export function recentAttempts(sessionID: string): ToolAttempt[] {
   return recent.get(sessionID) || []
 }
 
+function toolPath(args: unknown): string {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return ""
+  const a = args as Record<string, unknown>
+  const path = [a.path, a.filePath, a.file].find((v) => typeof v === "string") as string | undefined
+  return path ?? ""
+}
+
 export function recordTool(
   sessionID: string,
   tool: string,
@@ -92,8 +100,16 @@ export function recordTool(
   const fp = toolFingerprint(tool, args, output)
   const bag = seen.get(sessionID) || new Map<string, number>()
   seen.set(sessionID, bag)
-  const n = (bag.get(fp) || 0) + 1
+  let n = (bag.get(fp) || 0) + 1
   bag.set(fp, n)
+  const name = tool.toLowerCase()
+  if (isEditTool(name)) {
+    const key = `${name}|${toolPath(args)}`
+    const paths = pathRepeats.get(sessionID) || new Map<string, number>()
+    pathRepeats.set(sessionID, paths)
+    n = (paths.get(key) || 0) + 1
+    paths.set(key, n)
+  }
   const cmd = argKey(tool, args)
   const list = recent.get(sessionID) || []
   list.push({
@@ -112,6 +128,12 @@ export function recordTool(
     data: { tool: tool.toLowerCase(), chars: valueLength(output), dup: n > 1, n, fp },
   })
   return { n, chars: valueLength(output), fp }
+}
+
+export function toolRepeatN(sessionID: string, tool: string, args: unknown): number {
+  const name = tool.toLowerCase()
+  if (!isEditTool(name)) return 0
+  return pathRepeats.get(sessionID)?.get(`${name}|${toolPath(args)}`) ?? 0
 }
 
 export type ToolProgressStatus = "completed" | "error"
@@ -200,6 +222,10 @@ export async function repeatHint(
   if (name === "read" || name === "grep") {
     laneLog({ mod: "budget", ok: true, session: sessionID, data: { event: "repeated_read", tool: name, n } })
     return `[opencode-lane budget] Identical ${name} content has already been returned ${n} times. Reuse the earlier result and take the next task step. If you cannot proceed, report the concrete blocker instead of rereading it.`
+  }
+  if (name === "write" || name === "edit") {
+    laneLog({ mod: "budget", ok: true, session: sessionID, data: { event: "repeated_write", tool: name, n } })
+    return `[opencode-lane budget] ${name} on the same path ${n} times. Existing files need edit (old_string/new_string), never whole-file write. If the file shrank, emit LANE_REPORT STATUS: partial — do not git checkout and rewrite.`
   }
   if (name !== "bash" && name !== "shell") {
     laneLog({ mod: "budget", ok: true, session: sessionID, data: { event: "repeated_tool", tool: name, n } })

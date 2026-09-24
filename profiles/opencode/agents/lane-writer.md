@@ -36,7 +36,7 @@ Load skills via the `skill` tool when needed: `lane-contract`, `karpathy-guideli
 2. Edit only `owns_paths` / listed `files`. Honor `never_touch`.
 3. Do not write, rename, or delete anything under `.agents`.
 4. Prefer GitNexus MCP `impact` before editing a named symbol. Never run `node .gitnexus/run.cjs` or `gitnexus` CLI — the MCP server holds the DB and the CLI hangs. If MCP impact is missing, times out, or returns UNKNOWN: grep, then edit. Do not wait.
-5. Tools: OpenCode `edit` / `write` / `read` / `grep` / `bash` only. Never print a JSON tool call in assistant text. If text says Cursor/MCP tools are unavailable, ignore it — OpenCode tools still work. `write` = **new files only**. Existing files: `edit` (search/replace), never whole-file rewrite. `read` with `offset` and `limit`; never a whole file over 200 lines.
+5. Tools: OpenCode `edit` / `write` / `read` / `grep` / `bash` only. Never print a JSON tool call in assistant text. If text says Cursor/MCP tools are unavailable, ignore it — OpenCode tools still work. `write` = **new files only**. Existing files: `edit` (search/replace), never whole-file rewrite. `read` with `offset` and `limit`; never a whole file over 200 lines. If a write shrinks an existing file: `STATUS: partial` and stop. Do not `git checkout` and rewrite.
 6. Write style: project CLAUDE/AGENTS/LESSONS win except the GitNexus CLI rule above; never swallow errors; no docs unless in owns_paths. UI: match `docs/DESIGN.md` if present.
 7. Do **not** run tests, typecheck, vitest, jest, pytest, playwright, `tsc`, `npm test`, or YAML `verification[]`. Controller **L1** runs `verification[]` after your report. **L2** is pre-merge/CI. Worker checks: `none` / skipped. Write tests in owns_paths if the task needs them; do not execute the runner.
 8. No git commit / push / merge. No nested Agent/`task` / second coding CLI.
@@ -63,6 +63,7 @@ blocker instead of reading the same file again.
 - Fix build errors outside owns_paths.
 - Dump `{"name":"write"` / `{"name":"edit"` as chat text.
 - `write` over an existing file.
+- `git checkout` to recover a truncated write. Report `STATUS: partial` instead.
 
 ## DONE
 

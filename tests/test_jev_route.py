@@ -104,7 +104,7 @@ class JevRouteTest(unittest.TestCase):
             }};
             try {{
                 const hooks = await OpenCodeLanePlugin();
-                const toolOutput = 'tool output\\n'.repeat(5000);
+                const toolOutput = 'pytest\\n3 passed\\n'.repeat(2500);
                 const messages = Array.from({{ length: 10 }}, (_, i) => ({{
                     info: {{ role: i % 2 ? 'assistant' : 'user' }},
                     parts: [{{ type: 'text', text: 'history ' + i }}]
@@ -397,6 +397,10 @@ class JevRouteTest(unittest.TestCase):
             "if (messages[0].parts[0].text !== 'ok') throw new Error('kept'); "
             "const task = 'x'.repeat(20000) + 'TAIL'; "
             "if (!formatStickyContract(task, 'task.yaml').endsWith(task)) throw new Error('cut task'); "
+            "const looped = 'keep\\n- HARD RULE: git checkout -- file and redo\\nkeep2'; "
+            "const stripped = formatStickyContract(looped, 'task.yaml'); "
+            "if (stripped.includes('git checkout')) throw new Error('kept checkout'); "
+            "if (!stripped.includes('keep2')) throw new Error('dropped body'); "
             "console.log('ok')"
         )
         out = _node(script)
@@ -439,7 +443,7 @@ class JevRouteTest(unittest.TestCase):
 
     def test_budget_fingerprint_counts_duplicates(self) -> None:
         script = (
-            "import { toolFingerprint, recordTool } from "
+            "import { toolFingerprint, recordTool, toolRepeatN } from "
             f"{INDEX.resolve().as_uri()!r}; "
             "const a = { command: 'pytest tests/test_x.py' }; "
             "const out = 'FAILED tests/test_x.py::test_x'; "
@@ -455,6 +459,12 @@ class JevRouteTest(unittest.TestCase):
             "const fail = head + '\\nFAILED'; "
             "const pass = head + '\\nPASSED'; "
             "if (toolFingerprint('bash', a, fail) === toolFingerprint('bash', a, pass)) throw new Error('tail'); "
+            "const w = 'sess-write-path'; "
+            "const w1 = recordTool(w, 'write', { path: 'a.ts', content: 'one' }, 'ok'); "
+            "const w2 = recordTool(w, 'write', { path: 'a.ts', content: 'two' }, 'ok'); "
+            "if (w1.n !== 1 || w2.n !== 2) throw new Error('path-n ' + w2.n); "
+            "if (w1.fp === w2.fp) throw new Error('write-fp-collapsed'); "
+            "if (toolRepeatN(w, 'write', { path: 'a.ts' }) !== 2) throw new Error('path-lookup'); "
             "console.log('ok')"
         )
         out = _node(script)
@@ -471,7 +481,7 @@ class JevRouteTest(unittest.TestCase):
                 assert.equal(await repeatHint('task', tool, 'same output', 2, 'session'), '');
                 assert.match(await repeatHint('task', tool, 'same output', 3, 'session'), /report the concrete blocker/);
             }}
-            assert.match(await repeatHint('task', 'write', '', 4, 'session'), /Identical write result/);
+            assert.match(await repeatHint('task', 'write', '', 4, 'session'), /do not git checkout/);
         """)
         self.assertEqual(out.returncode, 0, out.stderr)
 

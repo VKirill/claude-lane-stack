@@ -72,7 +72,9 @@ widen that boundary.
   returns UNKNOWN: grep callers and edit. Do not wait.
 - Tools: `edit` / `write` / `read` / `grep` / `bash` only. Never print a JSON
   tool call in assistant text. `write` is for **new files**. Existing files:
-  `edit` (search/replace), never a whole-file rewrite. `read` with offset+limit;
+  `edit` (search/replace), never a whole-file rewrite. If a write shrinks an
+  existing file: `STATUS: partial` and stop. Do not `git checkout` and rewrite.
+  `read` with offset+limit;
   never a whole file over 200 lines. Call `edit` in the same step as the
   decision; do not announce an insert without the tool call.
 - Batch independent missing reads/searches in one tool round where supported.

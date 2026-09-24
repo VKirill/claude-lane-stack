@@ -87,7 +87,7 @@ await call("edit_file", "session-a", { path: "out.txt", oldString: "missing", ne
 for (let i = 0; i < 3; i++) {
   const bareWrite = { output: "write callback ok", metadata: {} }
   await after({ tool: "write", sessionID: "session-a", callID: `call-write-${i}`, args: { path: "out.txt" } }, bareWrite)
-  if (i === 2 && !bareWrite.output.includes("Identical write result")) throw new Error("write loop hint missing")
+  if (i === 2 && !bareWrite.output.includes("do not git checkout")) throw new Error("write loop hint missing")
 }
 const sessionB = { output: full, metadata: {} }
 await after({ tool: "glob", sessionID: "session-b", callID: "call-glob-b", args: globArgs }, sessionB)

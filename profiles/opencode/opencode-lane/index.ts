@@ -14,7 +14,7 @@ import {
 import { diagnoseFailure } from "./diagnose.ts"
 import { skillHint } from "./skill-hint.ts"
 import { evidenceNotes } from "./evidence.ts"
-import { recentAttempts, recordTool, repeatHint } from "./budget.ts"
+import { recentAttempts, recordTool, repeatHint, toolRepeatN } from "./budget.ts"
 import { sessionKey } from "./session.ts"
 
 export {
@@ -28,7 +28,7 @@ export {
 export { looksFailed } from "./diagnose.ts"
 export { parseAcceptance, collectBashEvidence } from "./evidence.ts"
 export { WRITE_SKILLS, skillPhase } from "./skill-hint.ts"
-export { toolFingerprint, recordTool, recentAttempts } from "./budget.ts"
+export { toolFingerprint, recordTool, recentAttempts, toolRepeatN } from "./budget.ts"
 export { askCacheKey } from "./jev.ts"
 export { sessionKey, pickSessionID } from "./session.ts"
 
@@ -295,7 +295,9 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
         try {
           const observed = await telemetry.after(input, { output: original, metadata: output.metadata })
           if (!observed.skipped) {
-            const n = observed.deduped ? observed.n : recordTool(sessionID, input.tool, input.args, original).n
+            const n = observed.deduped
+              ? Math.max(observed.n, toolRepeatN(sessionID, input.tool, input.args))
+              : recordTool(sessionID, input.tool, input.args, original).n
             const note = await repeatHint(task, input.tool, original, n, sessionID)
             if (note) {
               pushNote(sessionID, note)

@@ -1,3 +1,14 @@
+## 1.41.0 — 2026-09-24
+
+### Fixed
+- **OpenCode Grok/ACP loop:** lane env does not reuse the shared
+  `127.0.0.1:32124` cursor-acp proxy (first writer exit no longer RSTs siblings).
+  Lane `opencode.json` keeps only `cursor-acp` + `opencode-lane` plugins
+  (drops `open-cursor` / gemini-auth). Sticky contract strips `git checkout`
+  restore-and-retry lines. Budget counts `write`/`edit` by path so a truncate
+  loop gets a stop hint. Writer contract: shrunken file → `STATUS: partial`,
+  no checkout rewrite.
+
 ## 1.40.0 — 2026-09-24
 
 ### Changed

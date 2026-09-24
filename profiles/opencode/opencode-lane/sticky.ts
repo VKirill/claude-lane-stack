@@ -11,10 +11,18 @@ export function stickySourcePath(): string {
   return (process.env.LANE_TASK_FILE || process.env.LANE_PROMPT_FILE || "").trim()
 }
 
+export function stripRestoreLoop(raw: string): string {
+  // Task YAML "git checkout then redo" turns a truncated write into a loop.
+  return raw
+    .split("\n")
+    .filter((line) => !/\bgit\s+checkout\b/i.test(line))
+    .join("\n")
+}
+
 export function formatStickyContract(raw: string, sourcePath: string): string {
   return (
     `${STICKY_MARK}\nThe complete current contract from ${sourcePath} is supplied below. Use it directly; open the file only if this copy is missing or uncertain. owns_paths / never_touch / acceptance in this contract win over chat.\n\n` +
-    raw
+    stripRestoreLoop(raw)
   )
 }
 

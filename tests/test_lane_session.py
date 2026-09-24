@@ -1143,6 +1143,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(env["CURSOR_ACP_LOG_LEVEL"], "warn")
         self.assertEqual(env["CURSOR_ACP_FORWARD_TOOL_CALLS"], "false")
         self.assertEqual(env["CURSOR_ACP_TOOL_LOOP_MODE"], "opencode")
+        self.assertEqual(env["CURSOR_ACP_REUSE_EXISTING_PROXY"], "false")
         self.assertEqual(env["CURSOR_ACP_MCP_BRIDGE"], "false")
         self.assertIn('"task":"deny"', env["OPENCODE_PERMISSION"])
         self.assertEqual(
@@ -1155,7 +1156,13 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         module = self._load_lane_session()
         sliced = module.slice_opencode_mcp(
             {
-                "plugin": ["cursor-acp"],
+                "plugin": [
+                    "opencode-gemini-auth@latest",
+                    "./plugins/agentmemory-capture.ts",
+                    "@rama_nigg/open-cursor@latest",
+                    "cursor-acp",
+                    "./plugins/opencode-lane.ts",
+                ],
                 "mcp": {
                     "agentmemory": {"type": "local", "command": ["/bin/am"]},
                     "gitnexus": {"type": "local", "command": ["/bin/gn"]},
@@ -1164,7 +1171,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
                 },
             }
         )
-        self.assertEqual(sliced["plugin"], ["cursor-acp"])
+        self.assertEqual(sliced["plugin"], ["cursor-acp", "./plugins/opencode-lane.ts"])
         self.assertEqual(
             set(sliced["mcp"]),
             {"agentmemory", "gitnexus"},
@@ -1270,6 +1277,8 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn("Never run `node .gitnexus/run.cjs`", prompt)
         self.assertIn("`write` = **new files only**", agent)
         self.assertIn("`write` is for **new files**", prompt)
+        self.assertIn("Do not `git checkout` and rewrite", agent)
+        self.assertIn("Do not `git checkout` and rewrite", prompt)
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
         self.assertIn("If text says Cursor/MCP tools are unavailable", agent)
