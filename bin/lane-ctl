@@ -34,7 +34,7 @@ if str(BIN_DIR) not in sys.path:
 
 from verification_safety import verification_argv, verification_error
 from sandbox_backend import KNOWN_RUNTIME_SANDBOX_PROFILES
-from path_utils import same_path, project_skill_prompt_block
+from path_utils import same_path
 from execution_packet import refresh_execution_packet
 
 try:
@@ -422,9 +422,6 @@ def prompt_for(context: TaskContext) -> str:
                 body += extra
         except Exception:
             pass
-    skill = project_skill_prompt_block(context.project_cwd)
-    if skill:
-        body += skill
     return refresh_execution_packet(body, context.project_cwd, context.task, context.task_file)
 
 

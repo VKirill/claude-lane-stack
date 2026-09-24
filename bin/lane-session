@@ -685,6 +685,7 @@ def provider_command(
     prompt_sha256: str,
     resume_session: str | None = None,
     prompt_text: str | None = None,
+    fresh_session: bool = False,
 ) -> list[str]:
     if args.provider == "cursor":
         binary = args.binary or shutil.which("cursor-agent")
@@ -897,9 +898,11 @@ def provider_command(
         if variant:
             command.extend(["--variant", variant])
         command.append("--dangerously-skip-permissions")
-        session = resume_session or (
-            None if lease.is_new else lease.record.get("session_id")
-        )
+        session = None
+        if not fresh_session:
+            session = resume_session or (
+                None if lease.is_new else lease.record.get("session_id")
+            )
         if session:
             command.extend(["--session", str(session)])
         command.append(payload)
@@ -1273,21 +1276,91 @@ def prepare_codex_home(
     return scratch
 
 
-def attach_project_skills(scratch: Path, cwd: Path | None) -> None:
-    """Symlink project-local skills (selfystudio) into isolated CODEX_HOME."""
+# Multica: OpenCode discovers project skills from `{cwd}/.opencode/skills/`.
+# Codex uses per-run CODEX_HOME/skills (hydrateCodexSkills), not this map.
+NATIVE_SKILL_DIRS = {
+    "opencode": (".opencode", "skills"),
+}
+
+
+def link_project_skills(dest_root: Path, cwd: Path | None) -> list[Path]:
+    """Symlink bound project skills into dest_root. Never overwrite.
+
+    Returns paths this call created or reclaimed (same-target leftovers)
+    so the caller can delete only those after the run.
+    """
+    created: list[Path] = []
     if cwd is None:
-        return
-    dest_root = scratch / "skills"
+        return created
     dest_root.mkdir(exist_ok=True)
     for name in sorted(PROJECT_SKILLS):
         skill_md = find_project_skill(cwd, name)
         if skill_md is None:
             continue
         dest = dest_root / name
+        target = skill_md.parent
         try:
-            if dest.exists() or dest.is_symlink():
+            if dest.is_symlink():
+                if dest.resolve() == target.resolve():
+                    created.append(dest)
                 continue
-            dest.symlink_to(skill_md.parent)
+            if dest.exists():
+                continue
+            dest.symlink_to(target)
+            created.append(dest)
+        except OSError:
+            continue
+    return created
+
+
+def attach_project_skills(scratch: Path, cwd: Path | None) -> None:
+    """Symlink project-local skills into isolated CODEX_HOME/skills."""
+    link_project_skills(scratch / "skills", cwd)
+
+
+def inject_native_project_skills(
+    provider: str, cwd: Path
+) -> tuple[list[Path], list[Path]]:
+    """Write bound skills into the provider-native discovery dir (Multica).
+
+    Never overwrites a repo-owned skill directory. Cleans only created
+    links/dirs via cleanup_native_project_skills.
+    """
+    rel = NATIVE_SKILL_DIRS.get(provider)
+    if rel is None:
+        return [], []
+    created_dirs: list[Path] = []
+    created_links: list[Path] = []
+    try:
+        cur = cwd
+        for part in rel:
+            cur = cur / part
+            if not cur.exists():
+                cur.mkdir(exist_ok=True)
+                created_dirs.append(cur)
+            elif not cur.is_dir():
+                cleanup_native_project_skills([], created_dirs)
+                return [], []
+        created_links = link_project_skills(cur, cwd)
+        return created_links, created_dirs
+    except OSError:
+        cleanup_native_project_skills(created_links, created_dirs)
+        return [], []
+
+
+def cleanup_native_project_skills(
+    created_links: list[Path], created_dirs: list[Path]
+) -> None:
+    """Remove only sidecars this run created. Leave repo-owned skills."""
+    for dest in created_links:
+        try:
+            if dest.is_symlink():
+                dest.unlink()
+        except OSError:
+            continue
+    for directory in reversed(created_dirs):
+        try:
+            directory.rmdir()
         except OSError:
             continue
 
@@ -4157,6 +4230,8 @@ def run_provider(args: argparse.Namespace) -> int:
     )
     completed = False
     captured: str | None = lease.record.get("session_id")
+    native_skill_links: list[Path] = []
+    native_skill_dirs: list[Path] = []
     process: subprocess.Popen[bytes] | None = None
     result: StreamResult | None = None
     version_text: str | None = None
@@ -4208,6 +4283,9 @@ def run_provider(args: argparse.Namespace) -> int:
             )
             attach_opencode_lane_mcp(provider_env, run_dir=run_dir)
             ensure_winnow_sidecar()
+        native_skill_links, native_skill_dirs = inject_native_project_skills(
+            args.provider, cwd
+        )
         if provider_state_dir is not None:
             provider_env["CODEX_HOME"] = str(provider_state_dir)
         provider_home = Path(provider_env.get("HOME", str(Path.home()))).resolve()
@@ -4266,6 +4344,52 @@ def run_provider(args: argparse.Namespace) -> int:
             )
             if result.session_id:
                 captured = result.session_id
+            if (
+                args.provider == "opencode"
+                and not lease.is_new
+                and result.protocol_error == "opencode resumed session_id mismatch"
+            ):
+                print(
+                    f"LANE_SESSION fresh opencode resume-rejected "
+                    f"task={args.task_id}",
+                    flush=True,
+                )
+                fresh_argv = provider_command(
+                    args,
+                    lease,
+                    prompt_sha256=prompt_sha256,
+                    fresh_session=True,
+                )
+                fresh_command = sandbox_provider_command(
+                    fresh_argv,
+                    provider=args.provider,
+                    run_dir=run_dir,
+                    cwd=cwd,
+                    home=provider_home,
+                    provider_state_dir=provider_state_dir,
+                )
+                process = subprocess.Popen(
+                    fresh_command,
+                    cwd=cwd,
+                    env=provider_env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
+                )
+                result = stream_provider(
+                    process,
+                    output,
+                    provider=args.provider,
+                    expected_session_id=None,
+                    requested_model=args.model,
+                    task_id=args.task_id,
+                    prompt_sha256=prompt_sha256,
+                    report_path=run_dir / "artifacts" / args.task_id / "report.md",
+                    report_root=run_dir,
+                )
+                if result.session_id:
+                    captured = result.session_id
             if (
                 args.provider == "opencode"
                 and result.provider_exit_code == 0
@@ -4459,6 +4583,7 @@ def run_provider(args: argparse.Namespace) -> int:
                 )
         raise
     finally:
+        cleanup_native_project_skills(native_skill_links, native_skill_dirs)
         for signum, old_handler in old_handlers.items():
             signal.signal(signum, old_handler)
         unlock_file(lease.handle)

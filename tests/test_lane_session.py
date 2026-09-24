@@ -1249,6 +1249,66 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(dest.read_text(encoding="utf-8"), "# SelfyStudio\n")
         self.assertFalse((Path(empty_home) / "skills" / "selfystudio").exists())
 
+    def test_opencode_injects_selfystudio_into_native_skills_dir(self) -> None:
+        module = self._load_lane_session()
+        skill = self.cwd / ".agents" / "skills" / "selfystudio"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# SelfyStudio\n", encoding="utf-8")
+        owned = self.cwd / ".opencode" / "skills" / "ui-owned"
+        owned.mkdir(parents=True)
+        (owned / "SKILL.md").write_text("# keep\n", encoding="utf-8")
+        links, dirs = module.inject_native_project_skills("opencode", self.cwd)
+        dest = self.cwd / ".opencode" / "skills" / "selfystudio"
+        self.assertTrue(dest.is_symlink())
+        self.assertEqual((dest / "SKILL.md").read_text(encoding="utf-8"), "# SelfyStudio\n")
+        self.assertIn(dest, links)
+        self.assertNotIn(self.cwd / ".opencode", dirs)
+        self.assertNotIn(self.cwd / ".opencode" / "skills", dirs)
+        module.cleanup_native_project_skills(links, dirs)
+        self.assertFalse(dest.exists())
+        self.assertTrue((owned / "SKILL.md").is_file())
+
+    def test_opencode_native_skill_inject_does_not_overwrite(self) -> None:
+        module = self._load_lane_session()
+        skill = self.cwd / ".agents" / "skills" / "selfystudio"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# from-agents\n", encoding="utf-8")
+        native = self.cwd / ".opencode" / "skills" / "selfystudio"
+        native.mkdir(parents=True)
+        (native / "SKILL.md").write_text("# repo-owned\n", encoding="utf-8")
+        links, dirs = module.inject_native_project_skills("opencode", self.cwd)
+        self.assertEqual(links, [])
+        self.assertEqual(
+            (native / "SKILL.md").read_text(encoding="utf-8"), "# repo-owned\n"
+        )
+        module.cleanup_native_project_skills(links, dirs)
+        self.assertTrue((native / "SKILL.md").is_file())
+
+    def test_opencode_fresh_session_drops_resume_flag(self) -> None:
+        from types import SimpleNamespace
+
+        module = self._load_lane_session()
+        args = SimpleNamespace(
+            provider="opencode",
+            binary="opencode",
+            prompt_file=self.cwd / "prompt.md",
+            task_id="fresh",
+            cwd=self.cwd,
+            model="grok-4.7-medium",
+            reasoning_effort="medium",
+            role="writer",
+        )
+        (self.cwd / "prompt.md").write_text("hi\n", encoding="utf-8")
+        lease = SimpleNamespace(is_new=False, record={"session_id": "ses-old"})
+        resumed = module.provider_command(args, lease, prompt_sha256="abc")
+        self.assertIn("--session", resumed)
+        self.assertIn("ses-old", resumed)
+        fresh = module.provider_command(
+            args, lease, prompt_sha256="abc", fresh_session=True
+        )
+        self.assertNotIn("--session", fresh)
+        self.assertNotIn("ses-old", fresh)
+
     def test_opencode_writable_paths_include_state_home(self) -> None:
         module = self._load_lane_session()
         paths = module._provider_writable_paths(
@@ -1340,7 +1400,8 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertIn("Do not YAGNI the task", text)
             self.assertIn("Do not pick silently", text)
             self.assertIn("`ponytail:` comment", text)
-            self.assertIn("PROJECT SKILL", text)
+            self.assertIn("Load `selfystudio`", text)
+            self.assertNotIn("PROJECT SKILL", text)
         self.assertNotIn("No task MCP.", prompt)
         self.assertIn("AgentMemory", prompt)
 

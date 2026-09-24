@@ -1,3 +1,13 @@
+## 1.54.0 — 2026-09-24
+
+### Changed
+- **Native project skills (Multica):** OpenCode gets a symlink in
+  `.opencode/skills/` before the run; Codex stays on per-run
+  `CODEX_HOME/skills`. Repo-owned skill dirs are never overwritten; the
+  injector deletes only what it created. Prompt no longer contains
+  `PROJECT SKILL`. Resume-id mismatch starts a fresh OpenCode session on
+  the same turn.
+
 ## 1.53.0 — 2026-09-24
 
 ### Changed

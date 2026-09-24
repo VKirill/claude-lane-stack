@@ -64,16 +64,3 @@ def find_project_skill(cwd: str | Path, name: str) -> Path | None:
             break
         cur = parent
     return None
-
-
-def project_skill_prompt_block(cwd: str | Path) -> str:
-    """Prompt pointer so writers read the project skill before editing."""
-    lines: list[str] = []
-    root = Path(cwd)
-    for name in sorted(PROJECT_SKILLS):
-        path = find_project_skill(root, name)
-        if path is not None:
-            lines.append(f"- {name}: {path}\n")
-    if not lines:
-        return ""
-    return "\n---\nPROJECT SKILL (read and follow before editing):\n" + "".join(lines)
