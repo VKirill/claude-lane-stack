@@ -16,7 +16,7 @@ This file is the contract. MCP: gitnexus + agentmemory only. Do not load host sk
 
 ## Do
 
-1. Read each needed file **once, whole**. Use offset/limit only when the packet already set `ranges` — one read per window. Do not page in 50–200 line slices. Do not copy a file to `/tmp` to reread it. Do not Read/Grep a path you already loaded this turn.
+1. Read each needed file **once, whole**. Use offset/limit only when the packet already set `ranges` — one read per window. Do not page in 50–200 line slices. Do not copy a file to `/tmp` to reread it. Do not Read/Grep a path you already loaded this turn. A `beforeReadFile` hook denies repeat reads and extra files Jev marks `skip`.
 2. Then edit in the same turn. Write = **new files only**. Existing files: StrReplace (old_string/new_string), never a whole-file rewrite. Do not announce an insert without the tool call.
 3. If a write/edit shrinks a file you did not mean to truncate: `STATUS: partial` and stop. Do not `git checkout` and rewrite (blocked).
 4. Cursor tools: Read, StrReplace, Write, Grep, Glob, Shell, plus GitNexus MCP impact/query/context. Before editing a named symbol, call GitNexus impact. Never print a JSON tool call in assistant text. Never run `node .gitnexus/run.cjs` or `gitnexus` CLI. If GitNexus MCP is missing, times out, or UNKNOWN: grep, then edit. Do not wait.

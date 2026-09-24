@@ -12,6 +12,13 @@
         "command": "./scripts/subagent_start.py",
         "failClosed": true
       }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "./scripts/before_read.py",
+        "failClosed": false,
+        "timeout": 15
+      }
     ]
   }
 }

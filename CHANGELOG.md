@@ -1,3 +1,8 @@
+## 1.60.0 — 2026-09-24
+
+### Added
+- **Cursor `beforeReadFile` Jev Choice:** packet / reread / `never_touch` / secrets stay in code. Paths outside the execution packet get Choice `needed` | `skip` via `bin/jev_read.py` (`call_jev`). `skip` at confidence ≥ 0.55 denies the read. No key or Jev error → allow. Off: `LANE_JEV_READ=0`. Accept `jev-review` unchanged.
+
 ## 1.59.0 — 2026-09-24
 
 ### Added
