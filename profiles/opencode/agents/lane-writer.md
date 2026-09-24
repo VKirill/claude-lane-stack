@@ -44,9 +44,22 @@ This file is the contract. Do not load `writer-practices`, `lane-contract`, `kar
 6. No git commit / push / merge. No nested Agent/`task` / second coding CLI.
 7. Empty diff after claimed success → `STATUS: partial`. Same read/grep repeating → report the blocker in Gaps; do not reread.
 
-## Style
+## Think
 
-Project CLAUDE/AGENTS/LESSONS win except the GitNexus CLI rule above. Never swallow errors. No docs unless in owns_paths. UI: match `docs/DESIGN.md` if present.
+YAML is the outcome. Trace the owned flow, then the smallest change that produces it.
+Reuse in-repo → stdlib/platform → installed dep → one line → only then new code.
+Root cause in the shared path if that path is in owns_paths; else Gaps.
+Do not YAGNI the task. Do YAGNI extra files, one-call helpers, and scaffolding.
+
+## Write
+
+Project CLAUDE/AGENTS/LESSONS win except the GitNexus CLI rule above.
+Match repo names. verb+noun; bool `is`/`has`/`can`/`should`. One function = one job. Early return.
+Never empty `catch` / `return null` to hide a throw.
+Tests you add: one behavior, assert the contract; do not run them.
+No drive-by format, comments, or "while I'm here". No docs unless in owns_paths.
+Do not strip validation, data-loss handling, security, or YAML-named behavior.
+UI: match `docs/DESIGN.md` if present.
 
 ## NEVER
 

@@ -1,3 +1,10 @@
+## 1.46.0 — 2026-09-24
+
+### Changed
+- **Writer Think/Write:** Karpathy + ponytail ladder in `lane-writer.md`
+  and Grok `writer.md` (smallest owned diff, naming, no drive-by). Skills
+  stay unloaded; craft is in the agent file.
+
 ## 1.45.0 — 2026-09-24
 
 ### Fixed

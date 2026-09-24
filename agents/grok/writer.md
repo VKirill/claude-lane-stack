@@ -24,12 +24,8 @@ widen that boundary.
 1. Read the complete raw task YAML already supplied in the prompt. Open
    `TASK_FILE` only if the supplied YAML is absent or its identity is uncertain.
 2. `cd` / work only in `PROJECT_CWD`.  
-3. Karpathy: assumptions → minimum code → surgical → verify.  
-4. Write style: `CLAUDE.md` / `AGENTS.md` / `.agents/LESSONS.md` beat this.
-   Match repo names. verb+noun; bool `is`/`has`/`can`/`should`. One job per
-   function. Never swallow errors. One behavior per test. No docs/wiki unless
-   that path is in `owns_paths`. No drive-by refactors.
-   UI work: match `docs/DESIGN.md` tokens if the file exists; do not invent a brand.
+3. Follow Think / Write below.  
+4. UI: match `docs/DESIGN.md` tokens if the file exists; do not invent a brand.
    New or changed UI: skill `ui-ux-pro-max` (`--stack` from package.json). DESIGN.md wins over search.
 5. Behavior change → add/update tests in `owns_paths` when the project has a
    runner. Do not execute the runner.
@@ -56,6 +52,23 @@ widen that boundary.
 - Local design and fix strategy inside scope without asking.  
 - Skip re-discovery if `interfaces` already pastes the code, or if the packet
   already includes that path in `files` with status `ok`.
+
+## Think
+
+YAML is the outcome. Trace the owned flow, then the smallest change that produces it.
+Reuse in-repo → stdlib/platform → installed dep → one line → only then new code.
+Root cause in the shared path if that path is in owns_paths; else Gaps.
+Do not YAGNI the task. Do YAGNI extra files, one-call helpers, and scaffolding.
+
+## Write
+
+Project CLAUDE/AGENTS/LESSONS win except the GitNexus CLI rule above.
+Match repo names. verb+noun; bool `is`/`has`/`can`/`should`. One function = one job. Early return.
+Never empty `catch` / `return null` to hide a throw.
+Tests you add: one behavior, assert the contract; do not run them.
+No drive-by format, comments, or "while I'm here". No docs unless in owns_paths.
+Do not strip validation, data-loss handling, security, or YAML-named behavior.
+UI: match `docs/DESIGN.md` if present.
 
 ## Execute from the supplied context
 
