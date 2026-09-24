@@ -1287,6 +1287,9 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertIn("Do **not** run tests, typecheck", text)
             self.assertIn("skipped: controller L1", text)
             self.assertNotIn("L0 focused checks only", text)
+            self.assertNotIn("never a whole file over 200 lines", text)
+            self.assertNotIn("Prefer GitNexus", text)
+            self.assertIn("once, whole", text)
 
     def test_attach_lane_contract_env_pins_task_yaml(self) -> None:
         module = self._load_lane_session()

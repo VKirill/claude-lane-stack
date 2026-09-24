@@ -1,3 +1,11 @@
+## 1.44.0 — 2026-09-24
+
+### Changed
+- **Writer contract:** read each needed file once, whole. Packet `ranges`
+  only — no 200-line paging, no `/tmp` dump-reread. Do not load
+  writer-practices / lane-contract / karpathy. Do not call Cursor `mcp` /
+  GitNexus CLI. OpenCode `lane-writer` + Grok `writer.md`.
+
 ## 1.43.0 — 2026-09-24
 
 ### Changed

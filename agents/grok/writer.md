@@ -60,23 +60,20 @@ widen that boundary.
 ## Execute from the supplied context
 
 - The execution packet contains file hashes and path pointers (`interface_refs`);
-  it does not dump source. Read those paths once
-  (`offset`/`limit` from `start_line`/`end_line` when set). Do not grep to find
-  them. Before editing, compare the target's current hash with the packet.
-  Do not `read`/`grep` a path already loaded this turn. Read only changed files
-  or missing dependencies.
-- Reuse an impact receipt only when the packet validates it, its target covers
-  your edit, and project policy permits reuse. Prefer GitNexus **MCP** `impact`.
-  Never run `node .gitnexus/run.cjs` or the `gitnexus` CLI from this sandbox —
-  it hangs while the MCP server holds the DB. If MCP is missing, times out, or
-  returns UNKNOWN: grep callers and edit. Do not wait.
+  it does not dump source. Read each needed path **once, whole**. Use
+  `offset`/`limit` only for a packet `ranges` window — one read per window.
+  Do not page in 50–200 line slices. Do not dump a file to `/tmp` to reread it.
+  Do not grep to find packet paths. Do not `read`/`grep` a path already loaded
+  this turn.
+- Never run `node .gitnexus/run.cjs` or the `gitnexus` CLI from this sandbox —
+  it hangs while the MCP server holds the DB. Do not call Cursor `mcp` /
+  `mcp__*` / `CallMcpTool`. If GitNexus MCP is missing, skip it and edit.
 - Tools: `edit` / `write` / `read` / `grep` / `bash` only. Never print a JSON
   tool call in assistant text. `write` is for **new files**. Existing files:
   `edit` (search/replace), never a whole-file rewrite. If a write shrinks an
   existing file: `STATUS: partial` and stop. Do not `git checkout` and rewrite.
-  `read` with offset+limit;
-  never a whole file over 200 lines. Call `edit` in the same step as the
-  decision; do not announce an insert without the tool call.
+  Call `edit` in the same step as the decision; do not announce an insert
+  without the tool call.
 - Batch independent missing reads/searches in one tool round where supported.
   Explain the specific missing fact before expanding the search. Once it is
   resolved, make one coherent change. Do not run test/typecheck commands.
