@@ -438,6 +438,12 @@ class JevRouteTest(unittest.TestCase):
             "  if (!meta.includes('MCP blocked')) throw new Error('meta ' + meta); "
             "  const gn = guardTool('mcp__gitnexus__impact', { target: 'x' }, dir); "
             "  if (gn) throw new Error('gn ' + gn); "
+            "  const ss = guardTool('skill', { name: 'selfystudio' }, dir); "
+            "  if (!ss.includes('skill blocked')) throw new Error('ss-miss ' + ss); "
+            "  mkdirSync(join(dir, '.agents', 'skills', 'selfystudio'), { recursive: true }); "
+            "  writeFileSync(join(dir, '.agents', 'skills', 'selfystudio', 'SKILL.md'), '# ss\\n'); "
+            "  const ssOk = guardTool('skill', { name: 'selfystudio' }, dir); "
+            "  if (ssOk) throw new Error('ss-ok ' + ssOk); "
             "} finally { rmSync(dir, { recursive: true, force: true }); } "
             "console.log('ok')"
         )

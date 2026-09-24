@@ -1,3 +1,11 @@
+## 1.53.0 — 2026-09-24
+
+### Changed
+- **Project skill `selfystudio`:** OpenCode and Codex writers load it when
+  `.agents/skills/selfystudio/SKILL.md` (or `.claude/skills/…`) exists in
+  the repo — prompt pointer, Codex `CODEX_HOME/skills` symlink, OpenCode
+  guard allow. Other host skills stay out.
+
 ## 1.52.0 — 2026-09-24
 
 ### Changed

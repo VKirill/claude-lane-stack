@@ -1221,6 +1221,34 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertNotIn("agent", written)
         self.assertNotIn("command", written)
 
+    def test_codex_home_links_selfystudio_skill(self) -> None:
+        module = self._load_lane_session()
+        skill = self.cwd / ".agents" / "skills" / "selfystudio"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# SelfyStudio\n", encoding="utf-8")
+        other = self.root / "other-project"
+        other.mkdir()
+        with patch.dict(os.environ, {"HOME": str(self.fake_home)}):
+            linked_home = module.prepare_codex_home(
+                "codex",
+                run_dir=self.run_dir,
+                key="slot-ss",
+                reset=True,
+                cwd=self.cwd,
+            )
+            empty_home = module.prepare_codex_home(
+                "codex",
+                run_dir=self.run_dir,
+                key="slot-empty",
+                reset=True,
+                cwd=other,
+            )
+        self.assertIsNotNone(linked_home)
+        dest = Path(linked_home) / "skills" / "selfystudio" / "SKILL.md"
+        self.assertTrue(dest.is_file())
+        self.assertEqual(dest.read_text(encoding="utf-8"), "# SelfyStudio\n")
+        self.assertFalse((Path(empty_home) / "skills" / "selfystudio").exists())
+
     def test_opencode_writable_paths_include_state_home(self) -> None:
         module = self._load_lane_session()
         paths = module._provider_writable_paths(
@@ -1294,6 +1322,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn("Do not `git checkout` and rewrite", prompt)
         self.assertIn('"git checkout*": deny', agent)
         self.assertIn("ui-ux-pro-max: allow", agent)
+        self.assertIn("selfystudio: allow", agent)
         self.assertIn('"*": deny', agent)
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
@@ -1311,6 +1340,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertIn("Do not YAGNI the task", text)
             self.assertIn("Do not pick silently", text)
             self.assertIn("`ponytail:` comment", text)
+            self.assertIn("PROJECT SKILL", text)
         self.assertNotIn("No task MCP.", prompt)
         self.assertIn("AgentMemory", prompt)
 

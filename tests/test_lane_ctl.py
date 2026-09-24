@@ -502,6 +502,22 @@ class LaneCtlTest(unittest.TestCase):
         self.assertIn(hashlib.sha256(b"owned-body\n").hexdigest(), prompt)
         self.assertNotIn("owned-body", prompt)
 
+    def test_opencode_prompt_includes_selfystudio_skill_when_present(self) -> None:
+        (self.project_cwd / "example.txt").write_text("owned-body\n", encoding="utf-8")
+        skill = self.project_cwd / ".agents" / "skills" / "selfystudio"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# SelfyStudio\n", encoding="utf-8")
+        task_file = self.write_v2_task("oc-ss", verify="none", lane="opencode")
+        result = self.start(task_file, task_id="oc-ss", check=False)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        prompt = (
+            self.run_dir / "artifacts" / "oc-ss" / "attempts" / "01" / "prompt.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("PROJECT SKILL", prompt)
+        self.assertIn("selfystudio:", prompt)
+        self.assertIn(str((skill / "SKILL.md").resolve()), prompt)
+        self.assertNotIn("# Lane writer", prompt)
+
     def test_retry_refreshes_source_context_and_preserves_task(self) -> None:
         for version in (1, 2):
             with self.subTest(version=version):

@@ -34,6 +34,8 @@ except ImportError:  # pragma: no cover - defensive, see routing_profile imports
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import sandbox_backend
 
+from path_utils import PROJECT_SKILLS, find_project_skill
+
 
 STATE_VERSION = 1
 HARD_MAX_TASKS = 10
@@ -1221,7 +1223,7 @@ def lane_writer_mcp_toml() -> str:
 
 
 def prepare_codex_home(
-    provider: str, *, run_dir: Path, key: str, reset: bool
+    provider: str, *, run_dir: Path, key: str, reset: bool, cwd: Path | None = None
 ) -> Path | None:
     """Build an isolated per-slot CODEX_HOME with auth + bare lane-writer config.
 
@@ -1267,7 +1269,27 @@ def prepare_codex_home(
     (scratch / "skills").mkdir(exist_ok=True)
     (scratch / "plugins").mkdir(exist_ok=True)
     (scratch / "rules").mkdir(exist_ok=True)
+    attach_project_skills(scratch, cwd)
     return scratch
+
+
+def attach_project_skills(scratch: Path, cwd: Path | None) -> None:
+    """Symlink project-local skills (selfystudio) into isolated CODEX_HOME."""
+    if cwd is None:
+        return
+    dest_root = scratch / "skills"
+    dest_root.mkdir(exist_ok=True)
+    for name in sorted(PROJECT_SKILLS):
+        skill_md = find_project_skill(cwd, name)
+        if skill_md is None:
+            continue
+        dest = dest_root / name
+        try:
+            if dest.exists() or dest.is_symlink():
+                continue
+            dest.symlink_to(skill_md.parent)
+        except OSError:
+            continue
 
 
 def active_pathname_sockets() -> list[Path]:
@@ -4172,6 +4194,7 @@ def run_provider(args: argparse.Namespace) -> int:
             run_dir=run_dir,
             key=lease.key,
             reset=lease.is_new,
+            cwd=args.cwd,
         )
         provider_env = provider_environment(
             args.provider, reasoning_effort=args.reasoning_effort

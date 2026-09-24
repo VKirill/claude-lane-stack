@@ -1,8 +1,9 @@
 import { existsSync, statSync } from "node:fs"
-import { resolve } from "node:path"
+import { join, resolve } from "node:path"
 
 const GIT_RESTORE = /\bgit\s+(?:checkout|restore|reset|switch)\b/i
 const ALLOWED_SKILLS = new Set(["ui-ux-pro-max"])
+const PROJECT_SKILLS = new Set(["selfystudio"])
 const ALLOWED_MCP = new Set(["gitnexus", "agentmemory"])
 const MCP_NAME = /^mcp__([^_]+?)__/i
 
@@ -31,6 +32,19 @@ function toolArg(args: unknown, keys: string[]): string {
   return ""
 }
 
+function projectHasSkill(cwd: string, name: string): boolean {
+  let cur = cwd
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(cur, ".agents", "skills", name, "SKILL.md"))) return true
+    if (existsSync(join(cur, ".claude", "skills", name, "SKILL.md"))) return true
+    if (existsSync(join(cur, ".git"))) break
+    const parent = resolve(cur, "..")
+    if (parent === cur) break
+    cur = parent
+  }
+  return false
+}
+
 export function guardTool(tool: string, args: unknown, cwd = process.cwd()): string {
   const name = tool.toLowerCase()
   if (name === "write" || name === "write_file" || name === "oc_write") {
@@ -57,11 +71,14 @@ export function guardTool(tool: string, args: unknown, cwd = process.cwd()): str
   }
   if (name === "skill" || name === "skills") {
     const skill = toolArg(args, ["name", "skill", "skillName"]).toLowerCase()
-    if (!ALLOWED_SKILLS.has(skill)) {
+    const allowed =
+      ALLOWED_SKILLS.has(skill) ||
+      (PROJECT_SKILLS.has(skill) && projectHasSkill(cwd, skill))
+    if (!allowed) {
       return (
         "[opencode-lane guard] skill blocked" +
         (skill ? `: ${skill}` : "") +
-        ". Writer may load ui-ux-pro-max on UI tasks only."
+        ". Writer may load ui-ux-pro-max on UI tasks, or selfystudio in that repo."
       )
     }
   }

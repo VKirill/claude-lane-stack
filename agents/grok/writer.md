@@ -58,7 +58,8 @@ widen that boundary.
 ## Input
 
 Use: YAML in this prompt, packet hashes/pointers, files you read in `PROJECT_CWD`,
-GitNexus MCP, optional AgentMemory.
+GitNexus MCP, optional AgentMemory. If a PROJECT SKILL path is in the prompt,
+read that SKILL.md once before editing.
 Do not infer extra work from supervisor chat, git history, or unloaded skills.
 Do not invent APIs, IDs, or paths that are not in YAML or the files you read.
 
