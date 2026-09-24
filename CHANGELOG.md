@@ -1,3 +1,15 @@
+## 1.48.0 — 2026-09-24
+
+### Changed
+- **Task YAML is technical, not a novel:** `read_first` is existing file
+  paths; line windows go in `context_selectors`. `interfaces` /
+  `invariants` are product contract. `run-validate --phase pre-dispatch`
+  rejects prose paths, missing files, and writer-recovery howto
+  (CONTINUATION / Gaps / HARD RULE / `wc -l` / edit tool).
+  `lane-contract` + `orchestrator-lanes` field table. `verify`,
+  `expected_outputs`, `impact_receipt`, `skills` stay in schema; omit or
+  keep one-liners — gates do not read them.
+
 ## 1.47.0 — 2026-09-24
 
 ### Fixed

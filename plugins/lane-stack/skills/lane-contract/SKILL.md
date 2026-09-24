@@ -26,10 +26,11 @@ lane-contract — контракт задачи (YAML в .agents/runs/)
 PM до dispatch
 1) run-init → PLAN/SPEC/tasks
 2) owns_paths + never_touch + acceptance (поведение, не «всё зелёное»)
-3) Одна задача = один product outcome. depends_on только compile/data.
-4) Parallel только при disjoint owns.
-5) run-validate --phase pre-dispatch
-6) Один run-supervisor. lane = adoc main_write.
+3) read_first = существующие файлы; окна строк = context_selectors; interfaces = сигнатуры или []
+4) Одна задача = один product outcome. depends_on только compile/data.
+5) Parallel только при disjoint owns.
+6) run-validate --phase pre-dispatch
+7) Один run-supervisor. lane = adoc main_write.
 
 Писатель
 - Только owns_paths. Не `.agents` (`run-validate` rejects it — sandbox remounts `.agents` read-only). Не merge/push main.
@@ -54,7 +55,7 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 
 1. `run-init` → fill PLAN/SPEC/tasks → `run-validate --phase pre-dispatch` before dispatch.  
 2. Set **`owns_paths`**, **`never_touch`**, behavioral **`acceptance`**.  
-3. Paste real interfaces into `interfaces`; declare `read_first`, `invariants`, `out_of_scope`, `expected_outputs`.  
+3. **`read_first`**: existing project-relative files only. Line windows go in **`context_selectors`**. **`interfaces`**: signatures/types, or `[]`. Product **`invariants`** / **`out_of_scope`**; never writer recovery. **`expected_outputs`**: artifact path, not “tests green”.  
 4. One `run-supervisor` per run; `lane-supervisor` only for typed one-shots.  
 5. Parallel only with **disjoint** owns_paths.  
 6. Controller: owns → L1 verify → accept **progressively**.  
@@ -115,31 +116,40 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 
 ## Required schema-v2 task fields
 
-`schema_version`, `id`, `title`, `risk`, `lane`, `project_cwd`, `read_first`,
-`interfaces`, `invariants`, `out_of_scope`, `expected_outputs`, `owns_paths`,
-`never_touch`, `depends_on`, `objective`, `acceptance`, `verify`, structured
-`verification` (`command`, absolute `cwd`; **`timeout_sec` optional** — default 900).
+Identity (must match adoc / run): `schema_version`, `id`, `title`, `risk`, `lane`, `project_cwd`.
+
+| Field | What the machine uses | Fill | Leave empty / omit |
+|-------|----------------------|------|-------------------|
+| `objective` | Writer TZ (prompt) | One product outcome, behavior | never |
+| `acceptance` | Report + PM | Observable behavior | never |
+| `owns_paths` | Owns gate | Every path the outcome must edit | never |
+| `never_touch` | Owns gate | Secrets / unrelated | `.env*` minimum |
+| `read_first` | Packet files | Existing files, no notes | `[]` if none |
+| `context_selectors` | Packet line windows | `{path, start_line, end_line}` | omit (do not put windows in `read_first`) |
+| `verification` | L1 `lane-ctl verify` | Focused commands | `[]` only with `verify: none` |
+| `verify` | Schema only | `tests` / `smoke` / `none` matching L1 | do not invent a second suite |
+| `depends_on` | DAG | Real compile/data ids | `[]` |
+| `interfaces` | Prompt + path scrape | Signatures / type names | `[]` |
+| `invariants` | Prompt | Product constraints | `[]` |
+| `out_of_scope` | Prompt | Non-goals not already in `never_touch` | `[]` |
+| `expected_outputs` | Schema + prompt | Artifact path this task creates | one path, not “typecheck green” |
+| `impact_receipt` / `impact_targets` | Packet | Only if you captured a receipt | omit |
+| `skills` | Claude prompt inject | `impeccable-ui` on UI tasks | omit (OpenCode ignores) |
+
+`run-validate --phase pre-dispatch` rejects: `git checkout`/`restore` in the YAML; `read_first` prose (`section C4`, `lines 10-20`); missing `read_first` files; CONTINUATION / Gaps / HARD RULE / `wc -l` / edit-tool recovery in `interfaces` or `invariants`.
 
 No mutable `status` / free-form verify strings on new runs.
 
 ### Prepared execution context
 
-`lane-ctl` supplies hashes and path pointers from `read_first` and owned paths.
-Paths named in `interfaces`/`objective` (slash-path plus extension;
-`file.ts:12-40` is a range) become `interface_refs`. The writer reads those
-files. Keep related tests in `read_first`.
-Use precise context selectors for known relevant ranges; do not
-cut content by character budgets. Paste the snippet when you have it. The
-original task remains immutable. OpenCode already loads `lane-writer`; the
+`lane-ctl` supplies hashes and path pointers from `read_first` and `context_selectors`.
+Paths named in `interfaces`/`objective` (`file.ts:12-40`) become `interface_refs`.
+Keep related tests in `read_first` as **paths**.
+The original task remains immutable. OpenCode already loads `lane-writer`; the
 user prompt is YAML + packet, not a second copy of the writer contract.
 
-Writers reuse unchanged supplied code and batch independent missing reads.
-An impact receipt can replace rediscovery only for its covered target, with
-matching source/index state and project permission. Declare `impact_receipt`
-and exact owned `impact_targets: [path::symbol]` before dispatch; capture must
-cover every declared target. UNKNOWN, partial, stale or
-truncated evidence requires a fresh check. Preserve a single coherent outcome
-per task; a read count or timer alone is not grounds for splitting it.
+Writers reuse unchanged supplied code. Omit `impact_receipt` unless the file exists
+on disk.
 
 ---
 

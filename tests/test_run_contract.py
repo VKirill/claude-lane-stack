@@ -25,7 +25,8 @@ class RunContractTest(unittest.TestCase):
         self.repo.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         (self.repo / "README.md").write_text("fixture\n", encoding="utf-8")
-        subprocess.run(["git", "add", "README.md"], cwd=self.repo, check=True)
+        (self.repo / "AGENTS.md").write_text("fixture agents\n", encoding="utf-8")
+        subprocess.run(["git", "add", "README.md", "AGENTS.md"], cwd=self.repo, check=True)
         subprocess.run(
             [
                 "git",
@@ -449,6 +450,42 @@ class RunContractTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2)
         self.assertIn("git checkout/restore/reset/switch", result.stderr)
+
+    def test_rejects_read_first_prose_and_missing_file(self) -> None:
+        self.initialize()
+        path = self.write_task("001")
+        task = yaml.safe_load(path.read_text(encoding="utf-8"))
+        task["read_first"] = [
+            "AGENTS.md section C4 (the map)",
+            "missing-context.ts",
+        ]
+        path.write_text(yaml.safe_dump(task, sort_keys=False), encoding="utf-8")
+        self.write_real_spec()
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("bare file path", result.stderr)
+        self.assertIn("does not exist as a file", result.stderr)
+
+    def test_rejects_writer_howto_in_interfaces_and_invariants(self) -> None:
+        self.initialize()
+        path = self.write_task("001")
+        task = yaml.safe_load(path.read_text(encoding="utf-8"))
+        task["interfaces"] = [
+            "CONTINUATION: start with `git status --short` then finish Gaps from last"
+        ]
+        task["invariants"] = [
+            "HARD RULE: existing files only with the edit tool; wc -l after each edit"
+        ]
+        path.write_text(yaml.safe_dump(task, sort_keys=False), encoding="utf-8")
+        self.write_real_spec()
+
+        result = self.run_validate()
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("interfaces is product contract", result.stderr)
+        self.assertIn("invariants is product contract", result.stderr)
 
     def test_rejects_overlapping_owns_paths(self) -> None:
         self.initialize()

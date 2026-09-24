@@ -6,12 +6,13 @@ lane: {{lane}}  # must match agents-doctor main_write (adoc)
 project_cwd: {{project_cwd_yaml}}
 read_first:
   - "AGENTS.md"
-interfaces: []
+# Windows: context_selectors [{path, start_line, end_line}] — not notes in read_first.
+interfaces: []  # signatures/types only; else []
 invariants:
-  - "Preserve unrelated user work"
+  - "Preserve unrelated user work"  # product constraints, not git checkout / edit tool
 out_of_scope: []
 expected_outputs:
-  - "REPLACE_ME product or code output created by this task"
+  - "REPLACE_ME product path or artifact this task creates"
 owns_paths:
   - "REPLACE_ME/product-surface/**"
 never_touch:

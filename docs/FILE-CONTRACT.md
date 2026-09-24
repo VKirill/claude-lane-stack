@@ -224,6 +224,7 @@ verify: smoke # none | smoke | tests — see table below
 project_cwd: "/absolute/path/to/repo-or-worktree"
 read_first:
   - AGENTS.md
+# Line windows: context_selectors [{path, start_line, end_line}] — not notes here.
 interfaces:
   - "SubscriptionPanel(props: SubscriptionPanelProps)"
 invariants:

@@ -25,7 +25,7 @@ orchestrator-lanes — раны (только сессия dev-orchestrator)
 Старт рана
 1) cwd = проект. Сессия = dev-orchestrator.
 2) Score один раз (0–2 micro … 11+ спроси).
-3) run-init → заполнить PLAN/SPEC/tasks по lane-contract.
+3) run-init → заполнить PLAN/SPEC/tasks по lane-contract (ТЗ в objective, не проза в interfaces).
 4) run-validate --phase pre-dispatch.
 5) Один Agent(run-supervisor) на ран.
 6) lane из adoc (.agents/routing.profile.yaml), не хардкод kimi.
@@ -33,7 +33,8 @@ orchestrator-lanes — раны (только сессия dev-orchestrator)
 UI
 - Нужны полные docs/DESIGN.md и apps/<app>/docs/DESIGN.md.
 - Нет файла → сначала design-lead, потом run-init.
-- Task read_first: оба DESIGN.md. Не в owns_paths, если исход не токены.
+- Task read_first: оба DESIGN.md как пути файлов. Не в owns_paths, если исход не токены.
+- YAML задач: ТЗ = objective + acceptance. Не роман в interfaces. Окна строк — context_selectors.
 
 Нельзя
 - run-init на фразе «планируем / не запускай»
@@ -148,6 +149,9 @@ Bad multi-task runs almost always start here. Apply **before** `run-init` / befo
 ```bash
 run-init "$(pwd)" <slug> --score <score>
 # Fill PLAN.md, SPEC.md (required content when score≥7 or ≥2 tasks), tasks/*.yaml
+# YAML is technical: objective=outcome, read_first=existing files,
+# context_selectors=line windows, interfaces=signatures or [].
+# Do not copy writer recovery (git checkout, edit tool, CONTINUATION) into the task.
 plan-critique --run-dir "$(pwd)/.agents/runs/<slug>"   # stages.plan_critique (adoc)
 # Every error/warn id → artifacts/critique-reply.json (take | skip+note)
 run-validate --run-dir "$(pwd)/.agents/runs/<slug>" --phase pre-dispatch

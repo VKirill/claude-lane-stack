@@ -45,6 +45,46 @@ def restore_loop_error(raw: str, task_id: str) -> str | None:
     )
 
 
+# ponytail: PM pastes "path.ts lines 10-20 (note)" in read_first. Ceiling: bare
+# path + existence; windows belong in context_selectors.
+_READ_FIRST_JUNK_RE = re.compile(
+    r"[:\s(]|://|\blines?\b|\bsection\b|\bONLY\b", re.I
+)
+_CONTRACT_HOWTO_RE = re.compile(
+    r"\bCONTINUATION\b|\bGaps from\b|git status --short|\bHARD RULE\b|"
+    r"\bwc -l\b|edit tool|whole-file write",
+    re.I,
+)
+
+
+def read_first_entry_error(raw: object, project_cwd: Path) -> str | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return "must be a non-empty project-relative file path"
+    text = raw.strip()
+    if text.startswith("/") or ".." in Path(text).parts:
+        return "must be a project-relative file path"
+    if _READ_FIRST_JUNK_RE.search(text):
+        return (
+            "must be a bare file path (no 'lines', 'section', or notes); "
+            "put windows in context_selectors"
+        )
+    path = (project_cwd / text).resolve(strict=False)
+    if not is_within(path, project_cwd):
+        return "escapes project_cwd"
+    if not path.is_file():
+        return f"does not exist as a file: {text}"
+    return None
+
+
+def contract_howto_error(raw: object, field: str) -> str | None:
+    if not isinstance(raw, str) or not _CONTRACT_HOWTO_RE.search(raw):
+        return None
+    return (
+        f"{field} is product contract, not writer recovery "
+        "(no CONTINUATION / Gaps / HARD RULE / git status / wc -l / edit tool)"
+    )
+
+
 class ContractError(RuntimeError):
     pass
 
@@ -427,6 +467,16 @@ def validate_run(run_dir: Path, phase: str) -> int:
         if restore:
             errors.append(restore)
 
+        if phase == "pre-dispatch":
+            for item in task.get("interfaces") or []:
+                howto = contract_howto_error(item, "interfaces")
+                if howto:
+                    errors.append(f"task {task_id}: {howto}")
+            for item in task.get("invariants") or []:
+                howto = contract_howto_error(item, "invariants")
+                if howto:
+                    errors.append(f"task {task_id}: {howto}")
+
         for location in placeholder_locations(task):
             errors.append(f"task {task_id}: unresolved placeholder at {location}")
 
@@ -438,6 +488,14 @@ def validate_run(run_dir: Path, phase: str) -> int:
             errors.append(f"task {task_id}: project_cwd does not exist: {task_cwd}")
         elif task_cwd != project_cwd:
             errors.append(f"task {task_id}: project_cwd must equal run project_cwd")
+
+        if phase == "pre-dispatch" and task_cwd_raw.is_absolute() and task_cwd.is_dir():
+            for index, raw_path in enumerate(task.get("read_first") or []):
+                detail = read_first_entry_error(raw_path, task_cwd)
+                if detail:
+                    errors.append(
+                        f"task {task_id}: read_first[{index}] {raw_path!r} {detail}"
+                    )
 
         # agents-doctor routing.profile.yaml is source of truth for writer lane.
         try:
