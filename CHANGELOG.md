@@ -1,3 +1,11 @@
+## 1.47.0 — 2026-09-24
+
+### Fixed
+- **Cursor `mcp` dispatcher:** Grok calls Cursor tool `mcp` with
+  `serverIdentifier` + `toolName`. cursor-acp used to passthrough that
+  (dead). `install.sh` now rewrites it to `mcp__gitnexus__impact` /
+  `mcp__agentmemory__*` when that name is in the ACP allowlist.
+
 ## 1.46.0 — 2026-09-24
 
 ### Changed

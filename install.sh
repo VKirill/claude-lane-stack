@@ -141,6 +141,11 @@ if [[ -f "$HOME/.config/opencode/opencode.json" ]] \
     open-cursor install || echo "warning: open-cursor install failed; Cursor models stay unavailable in OpenCode" >&2
   fi
 fi
+if [[ -f "$HOME/.config/opencode/plugin/cursor-acp.js" ]]; then
+  python3 "$STACK_ROOT/profiles/opencode/patch_cursor_acp_mcp.py" \
+    "$HOME/.config/opencode/plugin/cursor-acp.js" \
+    || echo "warning: cursor-acp mcp remap patch failed" >&2
+fi
 if [[ -f "$HOME/.config/opencode/opencode.json" && -f "$STACK_ROOT/profiles/opencode/opencode-lane.ts" ]]; then
   mkdir -p "$HOME/.config/opencode/plugins/opencode-lane"
   install -m 0644 "$STACK_ROOT/profiles/opencode/opencode-lane.ts" "$HOME/.config/opencode/plugins/opencode-lane.ts"

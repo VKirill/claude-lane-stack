@@ -31,6 +31,7 @@ export { parseAcceptance, collectBashEvidence } from "./evidence.ts"
 export { WRITE_SKILLS, skillPhase } from "./skill-hint.ts"
 export { toolFingerprint, recordTool, recentAttempts, toolRepeatN } from "./budget.ts"
 export { guardTool } from "./guard.ts"
+export { rewriteCursorMcpCall } from "./mcp-dispatch.ts"
 export { askCacheKey } from "./jev.ts"
 export { sessionKey, pickSessionID } from "./session.ts"
 

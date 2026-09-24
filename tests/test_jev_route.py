@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -356,6 +358,7 @@ class JevRouteTest(unittest.TestCase):
         self.assertIn("laneLog", oc)
         install = (ROOT / "install.sh").read_text(encoding="utf-8")
         self.assertIn('opencode-lane/"*.ts', install)
+        self.assertIn("patch_cursor_acp_mcp.py", install)
         self.assertIn('rm -f "$HOME/.config/opencode/plugins/lane-context.ts"', install)
         hook = (ROOT / "plugins" / "lane-stack" / "hooks" / "skillranker-hook.sh").read_text(
             encoding="utf-8"
@@ -434,6 +437,74 @@ class JevRouteTest(unittest.TestCase):
         out = _node(script)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("ok", out.stdout)
+
+    def test_rewrite_cursor_mcp_to_opencode_tool_name(self) -> None:
+        script = (
+            "import { rewriteCursorMcpCall } from "
+            f"{INDEX.resolve().as_uri()!r}; "
+            "const allowed = ['mcp__gitnexus__impact', 'read']; "
+            "const hit = rewriteCursorMcpCall({"
+            "  name: 'gitnexus-impact',"
+            "  args: { target: 'persistContext', direction: 'upstream' },"
+            "  providerIdentifier: 'gitnexus',"
+            "  toolName: 'impact',"
+            "  serverIdentifier: 'gitnexus'"
+            "}, allowed); "
+            "if (!hit || hit.name !== 'mcp__gitnexus__impact') throw new Error('name ' + JSON.stringify(hit)); "
+            "if (hit.args.target !== 'persistContext') throw new Error('args'); "
+            "const blocked = rewriteCursorMcpCall({"
+            "  serverIdentifier: 'metamcp', toolName: 'mcp_call', args: { x: 1 }"
+            "}, allowed); "
+            "if (blocked) throw new Error('metamcp'); "
+            "const missing = rewriteCursorMcpCall({"
+            "  serverIdentifier: 'gitnexus', toolName: 'impact', args: { target: 'x' }"
+            "}, ['read']); "
+            "if (missing) throw new Error('allowlist'); "
+            "console.log('ok')"
+        )
+        out = _node(script)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("ok", out.stdout)
+
+    def test_patch_cursor_acp_rewrites_mcp_passthrough(self) -> None:
+        fixture = (
+            "function extractOpenAiToolCall(event, allowedToolNames) {\n"
+            '  if (name.toLowerCase() === "mcp") {\n'
+            '    log5.warn("Model attempted to call \'mcp\' directly (not a valid tool name)", {\n'
+            "      args,\n"
+            '      hint: "MCP tools must be called by their full name (e.g. mcp__engram__mem_save), not \'mcp\'"\n'
+            "    });\n"
+            "    return {\n"
+            '      action: "passthrough",\n'
+            "      passthroughName: name\n"
+            "    };\n"
+            "  }\n"
+            "}\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cursor-acp.js"
+            path.write_text(fixture, encoding="utf-8")
+            patcher = ROOT / "profiles" / "opencode" / "patch_cursor_acp_mcp.py"
+            first = subprocess.run(
+                [sys.executable, str(patcher), str(path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertIn("patched", first.stdout)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("LANE_MCP_DISPATCH_V1", text)
+            self.assertIn("Rewrote Cursor mcp dispatcher", text)
+            self.assertIn("action: \"intercept\"", text)
+            second = subprocess.run(
+                [sys.executable, str(patcher), str(path)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertIn("already", second.stdout)
 
     def test_dumped_tool_json_gets_sticky_note(self) -> None:
         script = (
