@@ -54,7 +54,7 @@ impeccable-ui — структура и техника UI. Не хуки и не
 
 Optional CLI: if `impeccable` is already on `PATH`, `impeccable detect <path>` is allowed as evidence. Do not download the binary, do not enable hooks.
 
-## Audit dimensions (report 0–4 each)
+## Audit dimensions (evidence for observed; N/A for unverified)
 
 1. Accessibility — contrast, labels, keyboard, headings, `prefers-reduced-motion`.
 2. Performance — layout-property animation, lazy images, unused motion.
@@ -63,6 +63,25 @@ Optional CLI: if `impeccable` is already on `PATH`, `impeccable detect <path>` i
 5. States — hover/disabled/loading/empty/error actually exist.
 
 Critique (design-lead) is **one pass**. Do not spawn dual sub-agents. If no screenshot: write `DEGRADED: no screenshot` and continue on source.
+
+## Evidence before verdict
+
+For each finding give the screen/path, observed behavior, user impact, smallest
+correction and verification step. Mark each dimension as observed, source-only,
+or not checked; an unobserved dimension is not a pass.
+Use existing browser evidence or ask the parent for browser-qa. A URL alone is
+not visual evidence. Keep subjective style preferences separate from defects.
+
+For task-focused review, also inspect form labels/autocomplete, paste support,
+error recovery, focus return from overlays, long/localized content, semantic
+links versus buttons, image dimensions and navigation/back behavior. Apply only
+checks relevant to the surface; report unavailable evidence explicitly.
+Reference: [Vercel Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines).
+
+For a11y/adaptation details and correct WCAG units, read the relevant section of
+`web-design/references/specialist-checks.md`. The 44px target above is our comfort
+recommendation, not a claim about WCAG AA's minimum. Match checks to actual input
+methods and report which interaction states were exercised.
 
 ## NEVER
 

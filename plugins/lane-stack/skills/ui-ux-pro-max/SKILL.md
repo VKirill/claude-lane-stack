@@ -76,6 +76,21 @@ python3 "$SKILL_DIR/scripts/search.py" "<query>" --stack nuxtjs   # or vue / nux
 
 Do **not** use `${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/...` (upstream path).
 
+## Designer decision loop
+
+Start with user job, primary action, content/states, target surface and existing
+components. Follow the Query Contract below; do not run every domain search.
+For each adopted result, keep query, result identity, why it fits, and what you
+rejected because of brand, accessibility or stack constraints in the design notes.
+A ranked hit is not a validated user need or measured conversion result.
+
+Operate/admin screens prioritize task speed, legibility and recovery. Landing
+pages prioritize understanding and a clear next action. A GSAP snippet in search
+output does not authorize installing GSAP or adding motion without a user benefit.
+In mockup mode, recommendations stay in the isolated artifact and handoff; only
+extract/seed or an explicitly assigned token change updates DESIGN.md.
+Use `web-design/references/designer-workflow.md` for mockup delivery and checks.
+
 ## When to load extras
 
 | Need | Read |
@@ -138,7 +153,9 @@ If `python` is not found, try `python3`, then `py -3`. Requires Python 3.x, no e
 
 Choose the smallest search mode that fits the request:
 
-1. **New project/page or system-wide visual direction** → use `--design-system`.
+1. **New brand or missing system-wide visual direction** → use `--design-system`.
+   Existing-brand pages reuse that system; search only unresolved concerns.
+   Gray wireframes use UX guidance without palette/typeface generation.
 2. **Targeted concern or component bug** → use one explicit `--domain`.
 3. **Known implementation stack** → use `--stack`; add a separate domain search only for a distinct design concern.
 
@@ -158,7 +175,7 @@ Extract from the user request:
 - **Style keywords**: playful, vibrant, minimal, dark mode, content-first, immersive, etc.
 - **Stack**: detect from the project — check `package.json` deps (react/next/vue/svelte/nuxt/@angular), `pubspec.yaml` (Flutter), `*.xcodeproj`/`Package.swift` (SwiftUI), `composer.json` (Laravel), or React Native markers (`app.json` + `react-native` dep). If nothing is detectable and stack guidance matters, ask the user. **Never assume a stack** — a hardcoded default silently misroutes every recommendation.
 
-### Step 2: Generate Design System (REQUIRED for new pages/projects)
+### Step 2: Generate Design System (only when visual direction is missing)
 
 Use `--design-system` when the task needs a coherent product-wide visual direction:
 
@@ -201,7 +218,7 @@ python3 "$SKILL_DIR/scripts/search.py" "<query>" --design-system --variance <1-1
 
 **Example:**
 ```bash
-python3 "$SKILL_DIR/scripts/search.py" "internal analytics dashboard" --design-system --variance 8 --motion 7 --density 8 -p "Ops Console"
+python3 "$SKILL_DIR/scripts/search.py" "internal analytics dashboard" --design-system --variance 3 --motion 2 --density 8 -p "Ops Console"
 ```
 
 ### Step 3: Supplement with Detailed Searches (as needed)

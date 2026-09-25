@@ -99,7 +99,7 @@ Claude: `/lane-stack:opencode-lane info`. OpenCode TUI: `/opencode-lane` (не `
 
 | Агент | Зачем |
 |---|---|
-| `design-lead` | полные DESIGN.md + аудит слопа |
+| `design-lead` | DESIGN.md, UX/UI-аудит, серый прототип (`prototype`), цветной HTML-макет (`mockup`) |
 | `run-supervisor` | смотрит один ран |
 | `lane-supervisor` | одно действие `lane-ctl` |
 | `emergency-writer` | Codex после terminal block |

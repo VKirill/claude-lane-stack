@@ -265,7 +265,7 @@ replace the write conveyor with teammates or Codex multi_agent inside the lane.
 | `night-reviewer` | Shell-out Codex review | No |
 | `project-onboarder` | Shell-out Codex onboard | No |
 | `docs-maintainer` | Shell-out Codex docs refresh | No |
-| `design-lead` | Extract/refresh/audit `docs/DESIGN.md` | No |
+| `design-lead` | DESIGN.md, UX/UI audit, gray prototypes and isolated branded mockups | No |
 | `seo-specialist` | SEO harness (DrMax, `.agents/seo/`) | No — not product code |
 | `copy-lead` | Site copy + audience (`.agents/copy/`) | No — not product code |
 | `tavily` | Web search / cited report (`.agents/research/`) | No — not product code |
@@ -293,7 +293,8 @@ that Claude Code natively uses **are allowed**:
 | Emergency after terminal block | **emergency-writer** only |
 | SEO / семантика / контент под поиск | **seo-specialist** — never a writer lane, never PM-written DrMax |
 | Копирайт / ЦА / подача страницы | **copy-lead** — never a writer lane, never PM-written headlines |
-| Серый HTML-прототип страницы | skill **`page-prototype`** → `site/` · `app/` · `flows/` — never a writer lane, never DESIGN.md |
+| Серый HTML-прототип страницы | **design-lead** `MODE=prototype` + **`page-prototype`** → `site/` · `app/` · `flows/`; no writer lane or DESIGN.md rewrite |
+| Цветной дизайн-макет | **design-lead** `MODE=mockup` + **`web-design`** → page-local `visual/` under `.agents/prototypes/`; product implementation later via writer |
 | UI слоп / ревью вёрстки | skill **`web-design`** → **design-lead** `MODE=audit` — never a writer lane, never Vue |
 | Поиск в интернете / cited report | **tavily** — never a writer lane |
 | Живой URL / клики / вёрстка 375 | **browser-qa** — never a writer lane, never DESIGN.md |
@@ -423,7 +424,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 never expand owns with caches.
 | Agent → **project-onboarder** | first: CLAUDE / `docs/llm` / app packs (`stages.onboard`) |
 | Agent → **docs-maintainer** | second, after onboard DONE: wiki (`stages.docs`) |
-| Agent → **design-lead** | extract/refresh `docs/DESIGN.md`; `MODE=audit` after `web-design` |
+| Agent → **design-lead** | DESIGN.md extract/seed; audit, prototype or mockup via `web-design` |
 | Agent → **seo-specialist** | SEO / семантика / контент под поиск — never PM-written DrMax |
 | Agent → **copy-lead** | копирайт / ЦА / H1 / микрокопи — never PM-written page copy |
 | Write `.agents/prototypes/{site,app,flows}/` | skill **`page-prototype`** — gray HTML; not Vue, not DESIGN.md |
