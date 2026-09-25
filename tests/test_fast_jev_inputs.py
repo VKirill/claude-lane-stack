@@ -10,147 +10,115 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _bun(script: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bun", "-e", script],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
+        ["bun", "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=30,
     )
 
 
 class FastJevInputsTest(unittest.TestCase):
-    def test_complete_calls_are_batched_with_safe_limits(self) -> None:
-        out = _bun(
-            f"""
+    def test_upstream_fits_large_text_without_clipping_session_text(self) -> None:
+        out = _bun(r"""
             import assert from 'node:assert/strict';
-            import {{ compactSession }} from './plugins/lane-stack/hooks/fast-jev.ts';
-            import {{ estimateTokens }} from './plugins/lane-stack/fast-jev/src/state.ts';
-            import {{ resolveOptions }} from './plugins/lane-stack/fast-jev/src/compact.ts';
+            import { compactSession } from './plugins/lane-stack/hooks/fast-jev.ts';
+            import { estimateTokens } from './plugins/lane-stack/fast-jev/src/state.ts';
+            const longText = 'подробная история решения задачи '.repeat(3000);
+            assert(estimateTokens(longText) > 65000);
+            for (const role of ['assistant', 'user']) {
+                const input = { path: 'old.log', payload: 'input evidence '.repeat(4000) };
+                const output = 'obsolete log output '.repeat(12000);
+                const messages = [
+                    { role: 'user', text: 'Initial task constraint', toolUses: [] },
+                    { role, text: longText, toolUses: [] },
+                    { role: 'assistant', text: '', toolUses: [{tool_use_id: 'u1', tool: 'Read', input}] },
+                    { role: 'user', text: '', toolUses: [], toolResults: [{tool_use_id: 'u1', text: output}] },
+                    ...Array.from({length: 6}, () => ({role: 'assistant', text: 'Recent context', toolUses: []})),
+                ];
+                const before = JSON.stringify(messages);
+                let requests = 0;
+                const {result} = await compactSession(messages,
+                    {apiKey: 'fixture', model: 'jev-test', compactAtPercent: 60, minReductionRatio: .25},
+                    async (_, init) => {
+                        requests++;
+                        const body = JSON.parse(init.body);
+                        assert(estimateTokens(JSON.stringify(body.state)) <= 25000);
+                        assert(estimateTokens(init.body) <= 30000);
+                        assert(!JSON.stringify(body.state).includes(output));
+                        const call = body.state.history.flatMap(e => e.tool_calls ?? []).find(c => c.id === 't1');
+                        assert(call.result.includes('omitted'));
+                        assert(call.input.length <= 1000);
+                        return {ok: true, status: 200, text: JSON.stringify({answers: {
+                            call_t1: {noul: 1}, result_t1: {noul: 0},
+                        }})};
+                    });
+                assert.equal(requests, 1);
+                assert.equal(result.stats.stateStage, 'texts abridged');
+                assert.equal(result.stats.resultsDropped, 1);
+                assert(result.messages.includes(messages[1]), 'long original message keeps its handle');
+                assert.equal(result.messages[1].text, longText);
+                assert.equal(result.messages[2].toolUses[0].input, input);
+                assert.equal(JSON.stringify(messages), before, 'source transcript must not mutate');
+            }
+            console.log('long-text upstream regression: ok');
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
 
-            const messages = [{{ role: 'user', text: 'first task', toolUses: [] }}];
-            const payloads = [];
-            for (let i = 1; i <= 10; i++) {{
-                const payload = `full-input-marker-${{i}} ` + 'evidence '.repeat(2500);
-                const result = `full-result-marker-${{i}} ` + 'result '.repeat(2500);
-                payloads.push({{ payload, result }});
-                messages.push({{
-                    role: 'assistant', text: '', toolUses: [{{
-                        tool_use_id: `u${{i}}`, tool: 'read', input: {{ path: `path-${{i}}`, payload }},
-                    }}],
-                }});
-                messages.push({{ role: 'user', text: '', toolResults: [{{ tool_use_id: `u${{i}}`, text: result }}], toolUses: [] }});
-            }}
-            for (let i = 0; i < 8; i++) messages.push({{ role: 'assistant', text: 'tail context', toolUses: [] }});
+    def test_kept_and_pinned_evidence_stays_verbatim(self) -> None:
+        out = _bun(r"""
+            import assert from 'node:assert/strict';
+            import { compact } from './plugins/lane-stack/fast-jev/src/compact.ts';
+            const huge = 'full evidence '.repeat(40000);
+            const messages = [
+                {role: 'user', text: 'Task', toolUses: []},
+                {role: 'assistant', text: '', toolUses: [{tool_use_id: 'old', tool: 'Read', input: {huge}}]},
+                {role: 'user', text: '', toolUses: [], toolResults: [{tool_use_id: 'old', text: huge}]},
+                ...Array.from({length: 6}, () => ({role: 'assistant', text: 'tail', toolUses: []})),
+                {role: 'assistant', text: '', toolUses: [{tool_use_id: 'recent', tool: 'Read', input: {huge}}]},
+                {role: 'user', text: '', toolUses: [], toolResults: [{tool_use_id: 'recent', text: huge}]},
+            ];
+            const result = await compact(messages, {ask: async (_, questions) => {
+                assert.deepEqual(Object.keys(questions), ['call_t1', 'result_t1']);
+                return {answers: {call_t1: {noul: 1}, result_t1: {noul: 1}}};
+            }});
+            assert.equal(result.decisions[1].reason, 'pinned');
+            assert.deepEqual(result.messages, messages);
+            assert(result.messages.every((m, i) => m === messages[i]));
+            console.log('kept/pinned evidence: ok');
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
 
-            const limits = resolveOptions({{ maxStateTokens: Infinity, maxRequestTokens: Infinity }});
-            assert.equal(limits.maxStateTokens, 25000);
-            assert.equal(limits.maxRequestTokens, 30000);
-            const requestBodies = [];
-            const compacted = await compactSession(
-                messages,
-                {{ apiKey: 'fixture', model: 'jev-test', compactAtPercent: 60, minReductionRatio: 0.25, maxStateTokens: Infinity, maxRequestTokens: Infinity }},
-                async (_url, init) => {{
-                    const body = JSON.parse(init.body);
-                    requestBodies.push(body);
-                    const answers = Object.fromEntries(Object.keys(body.questions).map((key) => [key, {{ type: 'noul', noul: 1 }}]));
-                    return {{ status: 200, ok: true, text: JSON.stringify({{ answers }}) }};
+    def test_later_batch_failure_restores_original_event(self) -> None:
+        out = _bun(r"""
+            import assert from 'node:assert/strict';
+            import { register } from './plugins/lane-stack/hooks/fast-jev.ts';
+            import { collectToolCalls, fitState } from './plugins/lane-stack/fast-jev/src/state.ts';
+            import { resolveOptions } from './plugins/lane-stack/fast-jev/src/compact.ts';
+            const messages = [{role: 'user', text: 'Task', toolUses: []}];
+            for (let i = 0; i < 12; i++) {
+                messages.push({role: 'assistant', text: '', toolUses: [{tool_use_id: `u${i}`, tool: 'Read', input: {path: 'x'}}]});
+                messages.push({role: 'user', text: '', toolUses: [], toolResults: [{tool_use_id: `u${i}`, text: 'result '.repeat(1000)}]});
+            }
+            for (let i = 0; i < 6; i++) messages.push({role: 'assistant', text: 'tail', toolUses: []});
+            const state = fitState(messages, collectToolCalls(messages, 6), resolveOptions());
+            let handler;
+            register((name, fn) => {if (name === 'session.compact') handler = fn}, {maxRequestTokens: state.tokens + 350});
+            const before = JSON.stringify(messages);
+            const event = {messages};
+            let requests = 0, fallback;
+            await handler({
+                env: {get: async () => 'fixture'}, settings: {read: async () => ({})},
+                ui: {log() {}, toast() {}},
+                http: {fetch: async (_, init) => {
+                    if (++requests === 2) throw Error('later batch failed');
+                    return {ok: true, status: 200, text: JSON.stringify({answers:
+                        Object.fromEntries(Object.keys(JSON.parse(init.body).questions).map(k => [k, {noul: 0}]))
+                    })};
                 }},
-            );
-            assert.ok(requestBodies.length > 1, 'large history must use bounded requests');
-            const seenIds = [];
-            for (const body of requestBodies) {{
-                assert.ok(estimateTokens(JSON.stringify(body.state)) + estimateTokens(JSON.stringify(body.questions)) + 20 <= 30000);
-                for (const call of body.state.history.flatMap((entry) => entry.tool_calls ?? [])) {{
-                    seenIds.push(call.id);
-                    const index = Number(call.id.slice(1)) - 1;
-                    assert.equal(call.input, JSON.stringify({{ path: `path-${{index + 1}}`, payload: payloads[index].payload }}));
-                    assert.equal(call.result, payloads[index].result);
-                }}
-            }}
-            assert.deepEqual(seenIds.map((id) => Number(id.slice(1))).sort((a, b) => a - b), Array.from({{ length: 10 }}, (_, i) => i + 1));
-            assert.equal(compacted.result.stats.resultsDropped, 0);
-            console.log('fast-jev bounded complete-input regression: ok');
-            """
-        )
+            }, event, value => {fallback = value; return value});
+            assert(requests >= 2);
+            assert.equal(fallback, event);
+            assert.equal(JSON.stringify(messages), before);
+            console.log('later-batch fail-open: ok');
+        """)
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("bounded complete-input regression: ok", out.stdout)
-
-    def test_oversized_call_is_untouched_and_unscored(self) -> None:
-        out = _bun(
-            f"""
-            import assert from 'node:assert/strict';
-            import {{ compact }} from './plugins/lane-stack/fast-jev/src/compact.ts';
-
-            const huge = 'oversized-evidence '.repeat(40000);
-            const messages = [
-                {{ role: 'user', text: 'first task', toolUses: [] }},
-                {{ role: 'assistant', text: '', toolUses: [{{ tool_use_id: 'u1', tool: 'read', input: {{ huge }} }}] }},
-                {{ role: 'user', text: '', toolResults: [{{ tool_use_id: 'u1', text: huge }}], toolUses: [] }},
-                ...Array.from({{ length: 6 }}, () => ({{ role: 'assistant', text: 'tail', toolUses: [] }})),
-            ];
-            let requests = 0;
-            const result = await compact(messages, {{
-                async ask() {{ requests++; throw new Error('oversized calls must not be sent'); }}
-            }}, {{ maxStateTokens: 25000, maxRequestTokens: 30000 }});
-            assert.equal(requests, 0);
-            assert.deepEqual(result.messages, messages);
-            assert.equal(result.stats.requests, 0);
-            assert.equal(result.decisions[0].action, 'keep');
-            console.log('fast-jev oversized call: ok');
-            """
-        )
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("oversized call: ok", out.stdout)
-
-    def test_pinned_call_is_untouched_without_a_request(self) -> None:
-        out = _bun(
-            f"""
-            import assert from 'node:assert/strict';
-            import {{ compact }} from './plugins/lane-stack/fast-jev/src/compact.ts';
-
-            const messages = [
-                {{ role: 'user', text: 'first task', toolUses: [{{ tool_use_id: 'u1', tool: 'read', input: {{ path: 'pinned' }} }}] }},
-                {{ role: 'user', text: '', toolResults: [{{ tool_use_id: 'u1', text: 'pinned result' }}], toolUses: [] }},
-                ...Array.from({{ length: 6 }}, () => ({{ role: 'assistant', text: 'tail', toolUses: [] }})),
-            ];
-            let requests = 0;
-            const result = await compact(messages, {{ async ask() {{ requests++; throw new Error('pinned calls are not scored'); }} }});
-            assert.equal(requests, 0);
-            assert.deepEqual(result.messages, messages);
-            assert.equal(result.decisions[0].reason, 'pinned');
-            console.log('fast-jev pinned call: ok');
-            """
-        )
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("pinned call: ok", out.stdout)
-
-    def test_transport_errors_fail_open_to_original_event(self) -> None:
-        out = _bun(
-            f"""
-            import assert from 'node:assert/strict';
-            import {{ register }} from './plugins/lane-stack/hooks/fast-jev.ts';
-
-            const messages = [
-                {{ role: 'user', text: 'first task', toolUses: [] }},
-                {{ role: 'assistant', text: '', toolUses: [{{ tool_use_id: 'u1', tool: 'read', input: {{ path: 'x' }} }}] }},
-                {{ role: 'user', text: '', toolResults: [{{ tool_use_id: 'u1', text: 'result' }}], toolUses: [] }},
-                ...Array.from({{ length: 6 }}, () => ({{ role: 'assistant', text: 'tail', toolUses: [] }})),
-            ];
-            let compactHandler;
-            register((name, handler) => {{ if (name === 'session.compact') compactHandler = handler; }}, {{}});
-            let fallback;
-            const ui = {{ log() {{}}, toast() {{}} }};
-            await compactHandler(
-                {{ env: {{ get: async () => 'fixture' }}, settings: {{ read: async () => ({{}}) }}, http: {{ fetch: async () => {{ throw new Error('transport unavailable'); }} }}, ui }},
-                {{ messages }},
-                (event) => {{ fallback = event; return event; }},
-            );
-            assert.ok(fallback);
-            assert.deepEqual(fallback.messages, messages);
-            console.log('fast-jev transport fallback: ok');
-            """
-        )
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn("transport fallback: ok", out.stdout)
 
 
 if __name__ == "__main__":

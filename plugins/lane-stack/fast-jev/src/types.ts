@@ -74,11 +74,11 @@ export interface HistoryEntry {
   i: number;
   role: Role;
   text: string;
-  /** Complete structured calls selected for this bounded request. */
+  /** Structured per call, or one compact line per call once the state has to shrink. */
   tool_calls?: HistoryToolCall[] | string[];
 }
 
-/** The state sent with every Jev request: shared text plus complete selected calls. */
+/** The state sent with every Jev request: the whole history, results omitted. */
 export interface CompactionState {
   context: string;
   goal: string;
@@ -99,9 +99,9 @@ export interface CompactOptions {
   keepThreshold?: number;
   /** Newest messages never touched (the first message is always kept). Default 6. */
   preserveRecentMessages?: number;
-  /** State token ceiling; values above the safe model ceiling are clamped. */
+  /** Estimated token ceiling for the state. Default 25000. */
   maxStateTokens?: number;
-  /** Request token ceiling; values above the safe model ceiling are clamped. */
+  /** Estimated token ceiling for state plus one batch of questions. Default 30000. */
   maxRequestTokens?: number;
   /** Characters of a dropped tool result to retain. Default 300. */
   truncateHeadChars?: number;
