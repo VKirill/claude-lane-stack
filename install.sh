@@ -480,8 +480,11 @@ fi
 # Codex shares the installed core; only its host adapter is a plugin.
 if [[ "${LANE_INSTALL_CODEX_PLUGIN:-1}" != "0" ]] && command -v codex >/dev/null 2>&1 \
   && [[ -f "$STACK_ROOT/.agents/plugins/marketplace.json" ]]; then
-  codex plugin marketplace add "$STACK_ROOT"
-  codex plugin add codex-lane@claude-lane-stack
+  if ! codex plugin marketplace add "$STACK_ROOT"; then
+    echo "warning: Codex marketplace registration failed; shared core is still installed" >&2
+  elif ! codex plugin add codex-lane@claude-lane-stack; then
+    echo "warning: Codex plugin installation failed; shared core is still installed" >&2
+  fi
 fi
 
 # Machine-readable local deploy receipt consumed by merge.json.
