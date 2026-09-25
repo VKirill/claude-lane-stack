@@ -1,0 +1,20 @@
+{
+  "name": "claude-lane-stack",
+  "interface": {
+    "displayName": "Claude Lane Stack"
+  },
+  "plugins": [
+    {
+      "name": "codex-lane",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-lane"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

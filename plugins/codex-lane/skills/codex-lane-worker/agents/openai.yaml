@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codex Lane Worker"
+  short_description: "Bounded assigned-task writer protocol"
+
+policy:
+  allow_implicit_invocation: false

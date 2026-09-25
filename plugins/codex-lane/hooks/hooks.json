@@ -1,0 +1,29 @@
+{
+  "description": "Codex Lane session marker and main-session skill hint bridge",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/session-start.py\"",
+            "timeout": 5,
+            "statusMessage": "Codex Lane: loading session mode"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/user-prompt-submit.py\"",
+            "timeout": 4
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -230,6 +230,11 @@ if [[ -d "$STACK_ROOT/seo-system" ]]; then
   rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/seo-system/" "$DEST/seo-system/"
 fi
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/hooks/" "$DEST/hooks/"
+install -m 0755 "$STACK_ROOT/plugins/lane-stack/hooks/skill_hint.py" "$DEST/hooks/skill_hint.py"
+if [[ -d "$STACK_ROOT/plugins/codex-lane" ]]; then
+  mkdir -p "$DEST/codex/plugins/codex-lane"
+  rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT/plugins/codex-lane/" "$DEST/codex/plugins/codex-lane/"
+fi
 if [[ -d "$STACK_ROOT/.git/hooks" && -f "$STACK_ROOT/githooks/gitnexus-reindex" ]]; then
   install -m 0755 "$STACK_ROOT/githooks/gitnexus-reindex" "$STACK_ROOT/.git/hooks/post-commit"
   install -m 0755 "$STACK_ROOT/githooks/gitnexus-reindex" "$STACK_ROOT/.git/hooks/post-merge"
@@ -470,6 +475,13 @@ if [[ -d "$STACK_ROOT/profiles/opencode/agents" ]]; then
     [[ -f "$f" ]] || continue
     install -m 0644 "$f" "${HOME}/.config/opencode/agents/"
   done
+fi
+
+# Codex shares the installed core; only its host adapter is a plugin.
+if [[ "${LANE_INSTALL_CODEX_PLUGIN:-1}" != "0" ]] && command -v codex >/dev/null 2>&1 \
+  && [[ -f "$STACK_ROOT/.agents/plugins/marketplace.json" ]]; then
+  codex plugin marketplace add "$STACK_ROOT"
+  codex plugin add codex-lane@claude-lane-stack
 fi
 
 # Machine-readable local deploy receipt consumed by merge.json.

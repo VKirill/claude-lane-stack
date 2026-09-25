@@ -992,6 +992,8 @@ def provider_environment(
         key: value for key, value in os.environ.items() if key in allowed
     }
     environment.update({"CLAUDE_LANE_AUTOMATION": "1", "TMPDIR": "/tmp"})
+    if provider == "codex":
+        environment["LANE_CODEX_WORKER"] = "1"
     if provider == "agy":
         environment["AGY_CLI_DISABLE_AUTO_UPDATE"] = "1"
     if provider == "grok":
@@ -1297,6 +1299,15 @@ def prepare_codex_home(
     (scratch / "skills").mkdir(exist_ok=True)
     (scratch / "plugins").mkdir(exist_ok=True)
     (scratch / "rules").mkdir(exist_ok=True)
+    # Load only the packaged worker protocol, without enabling host plugins.
+    for plugin in (
+        lane_stack_root() / "plugins" / "codex-lane",
+        Path.home() / ".agents" / "codex" / "plugins" / "codex-lane",
+    ):
+        worker = plugin / "skills" / "codex-lane-worker" / "SKILL.md"
+        if worker.is_file():
+            shutil.copyfile(worker, scratch / "AGENTS.md")
+            break
     attach_project_skills(scratch, cwd)
     return scratch
 
