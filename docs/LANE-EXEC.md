@@ -337,7 +337,7 @@ for older runs. New orchestration uses `run-controller` plus `run-supervisor`;
 
 `night-review <repo-root>` is the compatibility entry point for a typed,
 read-only Codex batch. It reviews bounded chunks with the installed
-`night-review` profile (`gpt-5.6-sol`, `xhigh`, read-only, approval `never`),
+`night-review` profile (`gpt-5.6-sol`, `high`, read-only, approval `never`),
 passes an API-compatible projection of the output schema, then validates the
 result against the full local JSON Schema before persisting canonical findings
 or advancing the checkpoint.

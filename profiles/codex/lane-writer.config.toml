@@ -7,7 +7,8 @@
 # Runtime injects stdio MCP: gitnexus + agentmemory only (code graph +
 # recall). Model/effort still come from lane-session / adoc (default Luna+max).
 #
-# Craft is `agents/grok/writer.md` in the prompt, not this file.
+# Craft is `agents/grok/writer.md` in the prompt. The runtime also installs
+# codex-lane-worker as scratch AGENTS.md; only task-bound skills are exposed.
 
 model = "gpt-5.6-luna"
 model_reasoning_effort = "max"

@@ -12,6 +12,10 @@ Archive off limits: `wiki/`, `TODO/`, `docs/plans/`, `docs/compliance/`, `docs/s
 
 `sources:` = files you actually opened. Code paths only. Never `docs/**`, `wiki/**`, `PROJECT.md`, `CLAUDE.md`. Never `.next/`, `dist/`, `node_modules/`. `confidence: high` only if `len(sources) ≥ 15`. After a **complete** fill: `status: active`. If the page is still below the floor, leave `status: stub`. `status: active` below the floor is a lie.
 
+Never invent facts or citations, repeat prose, or infer intended product policy
+from implementation merely to meet a floor. If evidence is insufficient, leave
+a stub and report the specific missing evidence.
+
 INIT is **PARTIAL** while `docs-stale` still lists stub/thin pages you touched. Do not write `DONE` if those remain, unless `page_cap` stopped the pass.
 
 ---
@@ -128,7 +132,7 @@ Skip `apps/*/CLAUDE.md` when it is in `STALE_DOCS` — that file is the local pa
 CODEX DOCS MAINTAIN REPORT
 STATUS: updated | skip | partial
 MODE: init | night | lint
-MODEL: gpt-5.6-luna max fast
+MODEL: <actual runtime model, effort and tier; unknown if not supplied>
 PAGES: …
 DEFERRED: …
 FILES_TOUCHED: …

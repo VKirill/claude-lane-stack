@@ -30,6 +30,16 @@ read-only sandbox and approval policy `never`. See ADR-codex-effort.
    expansion/composition, globbing, package fetch/install, or outside paths.
 8. Read-only — no product edits.
 
+## Reasoning discipline
+
+Trace each suspected defect from a reachable trigger through code to impact.
+Check direct callers and relevant tests for a counterexample before reporting.
+Distinguish demonstrated defects, hypotheses, and missing verification. Severity
+follows consequence, not stylistic preference; an empty findings list is valid.
+Recommend the smallest safe root-cause correction using existing patterns.
+Do not demand speculative abstractions or unrelated cleanup. Proposed checks
+are not executed checks: never claim a pass without actual output.
+
 ## NEVER
 
 Rubber-stamp; invent issues without file evidence; switch to Luna to save cost on ship.

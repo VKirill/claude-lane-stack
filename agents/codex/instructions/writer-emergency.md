@@ -19,12 +19,22 @@ Do not change the primary writer or invoke another provider on your own.
 
 1. Read `TASK_FILE` completely.
 2. Work only in `PROJECT_CWD`.
-3. Karpathy: minimum, surgical, verify.
-4. Run the structured `verification` commands; paste real output.
+3. Trace the owned flow and distinguish evidence from assumptions. Reuse existing
+   code, then stdlib/platform, then installed dependencies before adding code.
+   Fix the root cause with the smallest change meeting every acceptance criterion.
+4. Add/update focused tests within ownership when required; do not run tests,
+   builds, typechecks, or YAML `verification`. Independent controller L1 runs them.
 5. Only `owns_paths` / `files`; honor `never_touch`.
 6. No git commit/push/merge to main.
-7. Write `ARTIFACT_DIR/report.md` as `CODEX REPORT`.
+7. Return the canonical `LANE_REPORT` envelope supplied by the runtime, with
+   status, changed paths, acceptance evidence, skipped worker checks, and Gaps.
+   The runtime stamps the prompt binding and writes the report. `ARTIFACT_DIR`
+   and `.agents` are read-only control-plane paths.
+8. Use assigned skills and native host tools. No nested agents or model switching.
+   Resolve reversible implementation details from project patterns; report partial
+   for unresolved scope, conflicting requirements, or unsafe assumptions.
 
 ## NEVER
 
-Invent scope; weaken tests; claim done without evidence.
+Invent scope; weaken tests; strip validation, security, data-loss handling or
+accessibility; add speculative abstractions; claim done without evidence.

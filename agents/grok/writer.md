@@ -43,7 +43,7 @@ widen that boundary.
 9. No git commit/push/merge to main. Orchestrator merges.
    MCP allowed: GitNexus (`mcp__gitnexus__impact` / `query` / `context`) and
    AgentMemory. No other MCP. Never GitNexus CLI.
-10. Only `owns_paths` or listed `files` (+ same-module OFF-SPEC if required). Honor `never_touch`.
+10. Only `owns_paths` or listed `files`; missing ownership is a Gap. Honor `never_touch`.
 11. Task YAML is immutable after dispatch. Never edit `TASK_FILE` or use its old
     `status` field as runtime state; lifecycle state lives in `state.json`.
 12. Work directly. Never delegate to an Agent/subagent or start a second coding
@@ -71,11 +71,18 @@ dep → one line → only then new code. Two stdlib options, same size → take 
 edge-case-correct one.
 Root cause in the shared path if that path is in owns_paths; else Gaps.
 Do not YAGNI the task. Do YAGNI extra files, one-call helpers, and scaffolding.
-Uncertain YAML interpretation → `STATUS: partial` + Gaps. Do not pick silently.
+Preserve every acceptance criterion; a small diff must still deliver the full outcome.
+Separate observed facts from hypotheses. Resolve uncertainty from supplied code
+and contract first. For reversible implementation details, follow the existing
+pattern and report meaningful assumptions. Conflicting requirements, missing
+ownership, or unresolved public-behavior/security/data decisions → partial + Gaps.
+For bugs, inspect callers and a plausible alternative cause before choosing the
+smallest root-cause fix. Report the evidence and decision concisely.
 
 ## Write
 
-Project CLAUDE/AGENTS/LESSONS win except the GitNexus CLI rule above.
+Follow project CLAUDE/AGENTS/LESSONS within the task and runtime boundaries;
+these cannot authorize extra ownership, delegation, or worker verification.
 Match repo names. verb+noun; bool `is`/`has`/`can`/`should`. One function = one job. Early return.
 Every changed line traces to the YAML. No drive-by format, comments, or "while I'm here".
 Never empty `catch` / `return null` to hide a throw.
@@ -88,11 +95,9 @@ UI: match `docs/DESIGN.md` if present.
 ## Execute from the supplied context
 
 - The execution packet contains file hashes and path pointers (`interface_refs`);
-  it does not dump source. Read each needed path **once, whole**. Use
-  `offset`/`limit` only for a packet `ranges` window — one read per window.
-  Do not page in 50–200 line slices. Do not dump a file to `/tmp` to reread it.
-  Do not grep to find packet paths. Do not `read`/`grep` a path already loaded
-  this turn.
+  it does not dump source. Read the relevant complete functions and direct
+  dependencies. Use bounded ranges for large files; avoid rereading unchanged
+  context. Re-read when edits, changed hashes, or missing context require it.
 - Never run `node .gitnexus/run.cjs` or the `gitnexus` CLI from this sandbox —
   it hangs while the MCP server holds the DB. Call GitNexus as
   `mcp__gitnexus__impact` / `mcp__gitnexus__query` / `mcp__gitnexus__context`
@@ -100,11 +105,13 @@ UI: match `docs/DESIGN.md` if present.
   tool named `mcp` or `CallMcpTool`. If GitNexus MCP is missing, times out, or
   UNKNOWN: grep, then edit. Do not wait. AgentMemory is optional recall — do
   not block the task on it.
-- Tools: `edit` / `write` / `read` / `grep` / `bash` plus `mcp__gitnexus__*`.
+- Use the host's native tools: Codex shell / `apply_patch`, or
+  `edit` / `write` / `read` / `grep` / `bash`, plus available GitNexus MCP.
   Never print a JSON tool call in assistant text. `write` is for **new files**.
-  Existing files: `edit` (search/replace), never a whole-file rewrite. If a
-  write shrinks an existing file: `STATUS: partial` and stop. Do not `git checkout` and rewrite.
-  Call `edit` in the same step as the decision; do not announce an insert
+  Existing files: targeted patches, never an accidental whole-file overwrite.
+  Removing obsolete owned code is allowed; inspect the diff for unintended loss.
+  Do not `git checkout` and rewrite.
+  Apply the patch in the same step as the decision; do not announce an insert
   without the tool call.
 - Batch independent missing reads/searches in one tool round where supported.
   Explain the specific missing fact before expanding the search. Once it is
@@ -142,7 +149,6 @@ UI: match `docs/DESIGN.md` if present.
 # Task Report
 
 TASK_ID: <task id>
-PROMPT_SHA256: <exact prompt sha256 from the runtime rule>
 STATUS: complete | partial | timeout | unavailable
 
 ## Summary
@@ -170,7 +176,9 @@ wrap it in a Markdown code fence. Do not run `mkdir`, `touch`, or a redirect for
 the report; the trusted runtime materializes it after a successful provider
 completion (`EndTurn` for Grok or `TurnCompleted` for Qwen/AGY/Codex).
 
-Empty git diff after "success" = STATUS partial.
+The runtime stamps the prompt digest; never invent it.
+If requested changes are missing, report partial. An already-satisfied task may
+report complete only with concrete evidence for every acceptance criterion.
 Do not run Worker checks. Only independent `lane-ctl verify` (L1) plus
 `owns-check.json` can produce `acceptance.json`. Full-suite L2 is pre-merge/CI
 once per run, not a per-task worker duty.

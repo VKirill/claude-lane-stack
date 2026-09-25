@@ -1,6 +1,6 @@
 {
   "name": "codex-lane",
-  "version": "0.1.0+codex.20260925144353",
+  "version": "0.1.0+codex.20260925145739",
   "description": "Operate Claude Lane Stack runs from Codex through the installed typed lane control plane.",
   "author": {
     "name": "VKirill",

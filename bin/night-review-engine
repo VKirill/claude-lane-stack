@@ -58,6 +58,10 @@ one sequential writer task (Kimi/Grok/…).
 ## Evidence rules
 - Every finding needs path + line (line may be null only when truly unknown) + detail
 - Cite concrete changed or dependent code; never invent paths
+- Trace reachable trigger -> code -> impact; check callers/tests for counterevidence
+- Separate demonstrated defects from hypotheses; no forced stylistic findings
+- Prefer the smallest safe root-cause fix using existing patterns
+- Proposed verification is not executed verification; never invent a pass
 - actionable=false when there is no safe automated fix scope
 
 ## Ownership (owns_paths) rules

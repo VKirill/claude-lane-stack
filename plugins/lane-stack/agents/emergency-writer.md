@@ -144,9 +144,21 @@ fi
 | idle | 900s | silent + no CPU → kill |
 | max | 7200s | absolute ceiling (detached) |
 
-Post: run `check-owns-paths` and verify the runtime report at
+Post (`finish` / `full` only): inspect the runtime report at
 `RUN_DIR/artifacts/SESSION_TASK_ID/report.md` (the `lane-session` canonical path,
-which may differ from the log `ARTIFACT_DIR`). Empty diff → partial. Never merge main.
+which may differ from the log `ARTIFACT_DIR`). Then the coordinator runs:
+
+```bash
+lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE" \
+  --project-cwd "$PROJECT_CWD"
+check-owns-paths "$TASK_FILE" --run-scope
+```
+
+These checks run outside the isolated writer. Failed checks or missing receipts
+must be reported as `FAILED`; never present a worker's `complete` as acceptance.
+Return receipts to the orchestrator for any required review and `lane-ctl accept`.
+An empty diff needs concrete evidence that the task was already satisfied;
+otherwise report partial. Never merge main.
 
 ## Completion (mandatory — Claude Code lifecycle)
 
