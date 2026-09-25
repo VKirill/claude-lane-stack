@@ -12,14 +12,15 @@ import type {
   ResolvedCompactOptions,
   ToolCall,
   ToolUse,
+  FittedState,
 } from './types.js';
 
 export const DEFAULT_OPTIONS: ResolvedCompactOptions = {
   goal: '',
   keepThreshold: 0.5,
   preserveRecentMessages: 6,
-  maxStateTokens: Number.POSITIVE_INFINITY,
-  maxRequestTokens: Number.POSITIVE_INFINITY,
+  maxStateTokens: 25_000,
+  maxRequestTokens: 30_000,
   truncateHeadChars: 300,
 };
 
@@ -28,6 +29,10 @@ const REQUEST_OVERHEAD_TOKENS = 20;
 
 function finite(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function bounded(value: number | undefined, fallback: number): number {
+  return Math.min(finite(value, fallback), fallback);
 }
 
 export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOptions {
@@ -40,10 +45,10 @@ export function resolveOptions(options: CompactOptions = {}): ResolvedCompactOpt
         finite(options.preserveRecentMessages, DEFAULT_OPTIONS.preserveRecentMessages),
       ),
     ),
-    maxStateTokens: Math.max(1, finite(options.maxStateTokens, DEFAULT_OPTIONS.maxStateTokens)),
+    maxStateTokens: Math.max(1, bounded(options.maxStateTokens, DEFAULT_OPTIONS.maxStateTokens)),
     maxRequestTokens: Math.max(
       1,
-      finite(options.maxRequestTokens, DEFAULT_OPTIONS.maxRequestTokens),
+      bounded(options.maxRequestTokens, DEFAULT_OPTIONS.maxRequestTokens),
     ),
     truncateHeadChars: Math.max(
       0,
@@ -130,6 +135,75 @@ async function askBatch(
       },
     ]),
   );
+}
+
+/** Builds bounded, sequential batches while keeping every included call atomic. */
+function planBatches(
+  messages: readonly Message[],
+  calls: readonly ToolCall[],
+  options: ResolvedCompactOptions,
+): { base: FittedState; pinned: ToolCall[]; batches: ToolCall[][] } {
+  const base = fitState(messages, [], options);
+  const pinned: ToolCall[] = [];
+  for (const call of calls) {
+    if (!call.pinned) continue;
+    try {
+      fitState(messages, [...pinned, call], options);
+      pinned.push(call);
+    } catch {
+      // An oversized pinned payload remains untouched and is deliberately not scored.
+    }
+  }
+
+  const candidates = calls.filter((call) => !call.pinned);
+  const batches: ToolCall[][] = [];
+  let current: ToolCall[] = [];
+  let currentQuestionTokens = 0;
+  const questionTokens = (call: ToolCall): number =>
+    estimateTokens(JSON.stringify(questionsFor(call)));
+  const fitsRequest = (state: FittedState, questionCount: number): boolean =>
+    state.tokens + questionCount + REQUEST_OVERHEAD_TOKENS <= options.maxRequestTokens;
+  const flush = (): void => {
+    if (current.length > 0) batches.push(current);
+    current = [];
+    currentQuestionTokens = 0;
+  };
+
+  for (const call of candidates) {
+    const nextQuestions = currentQuestionTokens + questionTokens(call);
+    let nextState: FittedState | undefined;
+    try {
+      nextState = fitState(messages, [...pinned, ...current, call], options);
+    } catch {
+      if (current.length > 0) {
+        flush();
+        try {
+          nextState = fitState(messages, [...pinned, call], options);
+        } catch {
+          continue;
+        }
+      } else {
+        continue;
+      }
+    }
+    if (!fitsRequest(nextState, nextQuestions)) {
+      if (current.length > 0) {
+        flush();
+        try {
+          nextState = fitState(messages, [...pinned, call], options);
+        } catch {
+          continue;
+        }
+      }
+      if (!fitsRequest(nextState, questionTokens(call))) {
+        continue;
+      }
+    }
+    current.push(call);
+    currentQuestionTokens += questionTokens(call);
+  }
+  flush();
+  return { base, pinned, batches };
 }
 
 function truncatedResultText(text: string, isError: boolean, headChars: number): string {
@@ -250,10 +324,9 @@ function count(decisions: readonly CallDecision[], reason: CallDecision['reason'
 /**
  * Compacts a transcript by asking Jev, for every tool call outside the pinned
  * first and newest messages, whether the call and whether its result must
- * stay. The whole history (including full tool inputs and results, fitted into
- * `maxStateTokens`) is sent as state with every batch of questions. The
- * legacy numeric ceilings are opt-in; defaults attempt the complete request
- * and let the transport decide whether it is acceptable.
+ * stay. Every request repeats the complete conversation text and pinned calls,
+ * then adds a bounded set of complete candidate calls. Oversized calls remain
+ * untouched and are left unscored.
  */
 export async function compact(
   messages: readonly Message[],
@@ -270,13 +343,18 @@ export async function compact(
   let batches: ToolCall[][] = [];
   const answers = new Map<string, CallAnswer>();
   if (candidates.length > 0) {
-    const state = fitState(messages, calls, resolved);
-    fitted = state;
-    batches = batchCalls(candidates, state.tokens, resolved);
-    const answered = await Promise.all(
-      batches.map((batch) => askBatch(asker, state.state, batch)),
-    );
-    for (const map of answered) for (const [id, answer] of map) answers.set(id, answer);
+    const plan = planBatches(messages, calls, resolved);
+    batches = plan.batches;
+    fitted = {
+      tokens: plan.base.tokens,
+      stage: plan.batches.length > 0 ? 'shared+chunks' : 'shared',
+    };
+    for (const batch of batches) {
+      const state = fitState(messages, [...plan.pinned, ...batch], resolved);
+      fitted.tokens = Math.max(fitted.tokens, state.tokens);
+      const answered = await askBatch(asker, state.state, batch);
+      for (const [id, answer] of answered) answers.set(id, answer);
+    }
   }
 
   const decisions = calls.map((call) =>

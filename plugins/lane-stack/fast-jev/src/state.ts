@@ -9,7 +9,7 @@ import type {
 } from './types.js';
 
 export const STATE_CONTEXT =
-  'A coding assistant conversation is being compacted to free context. `history` is the complete conversation so far, oldest first, including full tool inputs and outputs. Each question asks whether one tool call, or the full output of that call, still needs to stay in the history verbatim. Whatever is not kept is deleted permanently, but the assistant can always re-run a tool or re-read a file.';
+  'A coding assistant conversation is being compacted to free context. `history` is the complete conversation text so far, oldest first, plus the selected tool calls with full inputs and outputs. Calls absent from this request are not evidence that they can be dropped; preserve them when relevance is uncertain. Each question asks whether one tool call, or the full output of that call, still needs to stay in the history verbatim. Whatever is not kept is deleted permanently, but the assistant can always re-run a tool or re-read a file.';
 
 const TOKEN_PIECES = /[A-Za-z]+|\d+|[^\sA-Za-z\d]/g;
 
@@ -140,11 +140,9 @@ export function goalFromMessages(messages: readonly Message[]): string {
 }
 
 /**
- * Builds the Jev state from the whole conversation with complete message text,
- * tool inputs, and tool outputs. Throws when the complete state exceeds the
- * configured request boundary instead of silently deleting evidence. The
- * default boundary is unbounded; callers may retain the legacy numeric limit
- * when an upstream transport requires one.
+ * Builds the Jev state from complete message text and the supplied calls.
+ * Callers use this to make bounded chunks; a supplied call is always included
+ * atomically or the function throws instead of silently deleting evidence.
  */
 export function fitState(
   messages: readonly Message[],
