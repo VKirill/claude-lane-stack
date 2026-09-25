@@ -12,6 +12,7 @@ Chooses **which current skill** to open, where to write, whom to dispatch. Does 
 | Layer | Skill / path |
 |---|---|
 | Module registry | `~/.agents/seo-system/` + `seo-module` |
+| X4 scenario / command-chain planning | `cocoon-chainsmith` v3 |
 | Cocoon / IA / GIST 4.3 / Mapper | `drmax-cocoon-engine-x4` |
 | Brand SSoT | `drmax-brandcore` |
 | Last-mile prose | `drmax-text-humanization` |
@@ -26,6 +27,12 @@ Chooses **which current skill** to open, where to write, whom to dispatch. Does 
 Prefer `seo-module scenario <module> <scenario>`, then open the listed **current** original.
 
 Canonical originals: thin skill `ORIGINAL.md` / `originals/`. Do not rewrite.
+
+For an X4 scenario or step-by-step command-chain request, open
+`cocoon-chainsmith` and the bundled `drmax-cocoon-engine-x4` originals.
+Chainsmith v3 replaces the removed local `drmax-research-playbook`: use its
+nine-variable intake and original output format. It plans the chain; run X4
+only when execution is requested.
 
 Do not revive GIST 3.3, book cocoons, CVD, or LexAdapt. Current originals live in the thin DrMax skills.
 

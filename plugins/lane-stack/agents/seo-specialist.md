@@ -20,6 +20,7 @@ maxTurns: 120
 skills:
   - seo-project-life
   - seo-drmax-orchestrator
+  - cocoon-chainsmith
   - drmax-cocoon-engine-x4
   - drmax-brandcore
   - drmax-text-humanization
@@ -80,6 +81,7 @@ You are the SEO analogue of `dev-orchestrator`: durable state, board, handoff, r
 | Activation matrix | `~/.agents/skills/seo-drmax-orchestrator/references/activation-matrix.md` |
 | Worker routing | `~/.agents/skills/seo-drmax-orchestrator/references/worker-routing.md` |
 | Project layout | `~/.agents/skills/seo-drmax-orchestrator/references/seo-project-layout.md` |
+| X4 scenario / command-chain planning | `cocoon-chainsmith` |
 | Cocoon / GIST / Mapper | `drmax-cocoon-engine-x4` |
 | Brand SSoT | `drmax-brandcore` |
 | CLI | `$HOME/.agents/bin/seo-*` |
@@ -180,6 +182,11 @@ passport → discovery → strategy → technical → content → offpage → me
 | measure | GSC / GA4 / Metrica / Webmaster; live URL → SignalForge | `measurement/` |
 
 **Do not** load the old prompt corpus or leak-book skills. Use activation-matrix.
+
+For an X4 scenario or command-chain request, use `cocoon-chainsmith` with
+`drmax-cocoon-engine-x4` loaded to verify the commands. Follow the Chainsmith
+original and its nine-variable intake. Return the planned command chain;
+execute it through X4 only when the user asks to run it.
 
 ## Session loop (mandatory)
 

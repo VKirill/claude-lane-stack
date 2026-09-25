@@ -8,6 +8,7 @@ Removed from the stack (do not load): old prompt corpus, leak-book skill, seo-co
 
 | Trigger | System |
 |---|---|
+| X4 scenario, research plan, or step-by-step command chain | **`cocoon-chainsmith`** v3 + X4 originals for command validation; planning only |
 | New / dirty company facts, claims, legal | **`drmax-brandcore`** → `passport/BRANDCORE.md` |
 | Messy URL/brief, no facts yet | `seo-onboard` (harness) then BrandCore if claims matter |
 | Site / cluster / section from an idea | **`drmax-cocoon-engine-x4`** `/start` → `/кокон` |
@@ -55,6 +56,7 @@ BrandCore (if claims) → X4 → export → Humanization → ai-detect → publi
 
 | System | Current |
 |---|---|
+| COCOON CHAINSMITH | **v3**, official meta-prompt; replaces local `drmax-research-playbook` |
 | Cocoon Engine X4 | Pilot v1.9 · Mapper Total v2.2 · TGA v4.0.8 · GIST **4.3** |
 | BrandCore | v0.8 + Navigator v1.1.4 |
 | Humanization | v1.6.1 |

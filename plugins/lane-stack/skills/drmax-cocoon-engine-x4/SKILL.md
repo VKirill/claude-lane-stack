@@ -7,6 +7,11 @@ description: "DrMax Cocoon Engine X4 — one-chat system for semantic cocoon 4.0
 
 New cocoon / cluster / section work enters **here**. Not GIST 3.3, not book matriarchal cocoon, not TGA-only, not TGA Navigator (post 88).
 
+If the request is to plan an X4 scenario or command chain, start with
+`cocoon-chainsmith` v3 and load this bundle to verify its commands. The official
+Chainsmith meta-prompt replaces the local `drmax-research-playbook`. Execute
+the resulting chain here only when the user asks to run it.
+
 ## When
 
 - New or existing topical cluster, section, or site architecture
