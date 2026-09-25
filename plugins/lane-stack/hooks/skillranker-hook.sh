@@ -1,5 +1,5 @@
 #!/bin/sh
-# UserPromptSubmit: SkillRanker if present, else shared Jev catalog (write-skills.json).
+# UserPromptSubmit: SkillRanker if present, else the installed skill catalog.
 # Missing helper is a no-op so the session still runs.
 for sr in \
   "${HOME}/.agents/bin/sr" \
