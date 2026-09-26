@@ -26,7 +26,8 @@ from routing_profile import load_routing_profile  # noqa: E402
 import json  # noqa: E402
 import subprocess  # noqa: E402
 from unittest.mock import patch  # noqa: E402
-from pm_read import invoke_brief  # noqa: E402
+from pm_read import _read_body, invoke_brief  # noqa: E402
+import pm_read as pm_read_module  # noqa: E402
 from plan_critique_llm import CRITIQUE_SCHEMA_PATH  # noqa: E402
 
 
@@ -94,6 +95,16 @@ class PmReadTest(unittest.TestCase):
                     check(value, f"{path}[{index}]")
 
         check(json.loads(CRITIQUE_SCHEMA_PATH.read_text(encoding="utf-8")), "$")
+
+    def test_fat_file_keeps_question_matched_lines_past_the_cut(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            path = Path(raw) / "big.d.ts"
+            filler = "".join(f"type Filler{i} = string;\n" for i in range(40_000))
+            path.write_text(filler + "interface PluginStorage { database: Db }\n", encoding="utf-8")
+            with patch.object(pm_read_module, "MAX_FILE_BYTES", 200_000):
+                body, truncated = _read_body(path, "Where is PluginStorage?")
+        self.assertTrue(truncated)
+        self.assertIn("L40001: interface PluginStorage { database: Db }", body)
 
     def test_codex_gpt_worker_keeps_effort(self) -> None:
         cfg = normalize_pm_read(

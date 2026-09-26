@@ -390,15 +390,51 @@ def build_prompt(path: Path, question: str, body: str, lines: int) -> str:
     )
 
 
-def _read_body(path: Path) -> tuple[str, bool]:
+def _question_excerpts(text: str, question: str, budget: int, context: int = 30) -> str:
+    """Numbered windows around lines that mention the question's rarest words first."""
+    terms = {w.lower() for w in re.findall(r"[A-Za-z_][A-Za-z0-9_]{3,}", question or "")}
+    if not terms or budget <= 0:
+        return ""
+    lines = text.splitlines()
+    lowered = [line.lower() for line in lines]
+    hits = {t: [i for i, line in enumerate(lowered) if t in line] for t in terms}
+    chosen: list[tuple[int, int]] = []
+    used = 0
+    # A rare term (an identifier) pins the answer; a common one (plugin, where) only adds noise.
+    for term in sorted((t for t in hits if hits[t]), key=lambda t: len(hits[t])):
+        for i in hits[term]:
+            start, end = max(0, i - context), min(len(lines), i + context + 1)
+            if any(a <= i < b for a, b in chosen):
+                continue
+            size = sum(len(lines[n]) + 8 for n in range(start, end))
+            if used + size > budget:
+                break
+            chosen.append((start, end))
+            used += size
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(chosen):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return "\n…\n".join(
+        "\n".join(f"L{n + 1}: {lines[n]}" for n in range(start, end)) for start, end in merged
+    )
+
+
+def _read_body(path: Path, question: str = "") -> tuple[str, bool]:
     data = path.read_bytes()
     truncated = len(data) > MAX_FILE_BYTES
-    if truncated:
-        data = data[:MAX_FILE_BYTES]
-    text = data.decode("utf-8", errors="replace")
-    if truncated:
-        text += "\n\n…[truncated for worker payload]…\n"
-    return text, truncated
+    if not truncated:
+        return data.decode("utf-8", errors="replace"), False
+    # A fat file keeps its head for the map and spends the rest on the parts the question is about.
+    whole = data.decode("utf-8", errors="replace")
+    head = data[: MAX_FILE_BYTES // 2].decode("utf-8", errors="replace")
+    excerpts = _question_excerpts(whole, question, MAX_FILE_BYTES // 2)
+    text = head + "\n\n…[truncated for worker payload]…\n"
+    if excerpts:
+        text += "\n[question-matched excerpts; Lnn = line number in the full file]\n" + excerpts + "\n"
+    return text, True
 
 
 def invoke_claude(prompt: str, *, model: str, timeout: int) -> str:
@@ -485,7 +521,7 @@ def run_brief(path: Path, question: str, *, cfg: dict[str, Any] | None = None) -
     if not looks_like_text(path):
         raise SystemExit(f"pm_read: not a text file: {path}")
     lines = count_lines(path)
-    body, _ = _read_body(path)
+    body, _ = _read_body(path, question)
     prompt = build_prompt(path, question, body, lines)
     raw = invoke_brief(
         prompt,
