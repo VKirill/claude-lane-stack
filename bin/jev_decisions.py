@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -130,6 +131,64 @@ def score_value(
     return value, conf
 
 
+# Jev reads about 32k tokens of state plus the longest question and answers
+# 400 max_tokens_exceeded past it. Mirrors fast-jev's estimateTokens: a word
+# costs one token per six letters, a digit half, any other symbol nine tenths.
+MAX_STATE_TOKENS = 28_000
+_TOKEN_PIECES = re.compile(r"[A-Za-z]+|\d+|[^\sA-Za-z\d]")
+
+
+def estimate_tokens(text: str) -> int:
+    tokens = 0.0
+    for piece in _TOKEN_PIECES.findall(text):
+        if piece[0].isdigit():
+            tokens += len(piece) / 2
+        elif piece[0].isascii() and piece[0].isalpha():
+            tokens += 1 + (len(piece) - 1) // 6
+        else:
+            tokens += 0.9
+    return int(tokens + 0.999)
+
+
+def bound_state(state: object, max_tokens: int = MAX_STATE_TOKENS) -> object:
+    """Abridges the longest texts, head and tail kept, until the state fits Jev's window."""
+    copy = json.loads(json.dumps(state))
+    for _ in range(24):
+        tokens = estimate_tokens(json.dumps(copy))
+        if tokens <= max_tokens:
+            break
+        ratio = max(0.1, max_tokens / tokens * 0.95)
+        if isinstance(copy, str):
+            copy = _abridge(copy, ratio)
+            continue
+        longest: list[Any] = [None, None, -1]
+
+        def visit(value: Any, holder: Any, key: Any) -> None:
+            if isinstance(value, str):
+                if holder is not None and len(value) > longest[2]:
+                    longest[:] = [holder, key, len(value)]
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    visit(item, value, index)
+            elif isinstance(value, dict):
+                for name, item in value.items():
+                    visit(item, value, name)
+
+        visit(copy, None, None)
+        if longest[0] is None:
+            break
+        longest[0][longest[1]] = _abridge(longest[0][longest[1]], ratio)
+    return copy
+
+
+def _abridge(text: str, ratio: float) -> str:
+    keep = max(400, int(len(text) * ratio))
+    if keep >= len(text):
+        return text
+    head = int(keep * 0.7)
+    return f"{text[:head]}\n[… {len(text) - keep} chars omitted …]\n{text[len(text) - (keep - head):]}"
+
+
 def call_jev(
     state: object,
     questions: dict[str, Any],
@@ -160,7 +219,7 @@ def call_jev(
             "HTTP-Referer": "https://github.com/VKirill/claude-lane-stack",
             "X-Title": title,
         }
-    body = json.dumps({"model": model, "state": state, "questions": questions}).encode()
+    body = json.dumps({"model": model, "state": bound_state(state), "questions": questions}).encode()
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:

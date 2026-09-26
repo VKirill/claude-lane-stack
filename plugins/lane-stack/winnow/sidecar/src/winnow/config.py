@@ -147,7 +147,7 @@ class Config:
             drop=_float("WINNOW_DROP", 0.1),
             block_lines=_int("WINNOW_BLOCK_LINES", 25),
             max_blocks=_int("WINNOW_MAX_BLOCKS", 200),
-            max_state_chars=_int("WINNOW_MAX_STATE_CHARS", 120_000),
+            max_state_chars=_int("WINNOW_MAX_STATE_CHARS", 90_000),
             min_prune_ratio=_float("WINNOW_MIN_PRUNE_RATIO", 0.2),
             summary=_bool("WINNOW_SUMMARY", True),
             summary_model=_str("WINNOW_SUMMARY_MODEL", "claude-haiku-4-5"),
