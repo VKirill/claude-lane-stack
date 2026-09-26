@@ -398,6 +398,14 @@ def validate_acceptances(
     return errors
 
 
+def task_already_accepted(run_dir: Path, task_id: str) -> bool:
+    try:
+        data = json.loads((run_dir / "artifacts" / task_id / "acceptance.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("accepted") is True
+
+
 def validate_run(run_dir: Path, phase: str) -> int:
     if not run_dir.is_dir():
         raise ContractError(f"run_dir is not a directory: {run_dir}")
@@ -489,7 +497,14 @@ def validate_run(run_dir: Path, phase: str) -> int:
         elif task_cwd != project_cwd:
             errors.append(f"task {task_id}: project_cwd must equal run project_cwd")
 
-        if phase == "pre-dispatch" and task_cwd_raw.is_absolute() and task_cwd.is_dir():
+        # An accepted task already consumed its read_first and may have moved or
+        # deleted those files; the controller revalidates before later tasks.
+        if (
+            phase == "pre-dispatch"
+            and task_cwd_raw.is_absolute()
+            and task_cwd.is_dir()
+            and not task_already_accepted(run_dir, task_id)
+        ):
             for index, raw_path in enumerate(task.get("read_first") or []):
                 detail = read_first_entry_error(raw_path, task_cwd)
                 if detail:

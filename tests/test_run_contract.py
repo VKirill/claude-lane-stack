@@ -468,6 +468,23 @@ class RunContractTest(unittest.TestCase):
         self.assertIn("bare file path", result.stderr)
         self.assertIn("does not exist as a file", result.stderr)
 
+    def test_accepted_task_may_remove_its_read_first_file(self) -> None:
+        self.initialize()
+        (self.repo / "old-skill.md").write_text("old\n", encoding="utf-8")
+        path = self.write_task("001")
+        task = yaml.safe_load(path.read_text(encoding="utf-8"))
+        task["read_first"] = ["old-skill.md"]
+        path.write_text(yaml.safe_dump(task, sort_keys=False), encoding="utf-8")
+        self.write_real_spec()
+        self.assertEqual(self.run_validate().returncode, 0)
+        (self.repo / "old-skill.md").unlink()
+        self.assertIn("does not exist as a file", self.run_validate().stderr)
+        artifacts = self.run_dir / "artifacts" / "001"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "acceptance.json").write_text('{"accepted": true, "task_id": "001"}', encoding="utf-8")
+        result = self.run_validate()
+        self.assertNotIn("does not exist as a file", result.stderr)
+
     def test_rejects_writer_howto_in_interfaces_and_invariants(self) -> None:
         self.initialize()
         path = self.write_task("001")
