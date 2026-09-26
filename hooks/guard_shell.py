@@ -22,6 +22,9 @@ PM_READ_COMMANDS = {
 # lane-ctl / run-controller start|watch|status stay delegated to supervisors.
 PM_CONTROL_COMMANDS = {
     "agents-doctor",
+    "check-owns-paths",
+    "plan-critique",
+    "pm_read",
     "lane-stall-check",
     "resume-project",
     "run-board",
@@ -410,6 +413,8 @@ def _pm_redirect_target_ok(path: str) -> bool:
     """PM may only redirect to /tmp (cutover/deploy logs), not source trees."""
     if not path or path.isdigit():
         return True  # fd like 1 in 2>&1
+    if path == "/dev/null":
+        return True  # discarding output writes nothing
     try:
         resolved = Path(path).expanduser()
         # lexical check first (path may not exist yet)

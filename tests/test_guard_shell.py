@@ -112,6 +112,11 @@ class GuardShellTest(unittest.TestCase):
             "docker restart selfystudio-bot-thin-1",
             "docker compose -f docker-compose.yml up -d",
             "nohup sleep 60 &",
+            # bulk-reader, plan critique and owns check are PM contract commands
+            "pm_read --path src/big.ts --question 'where is the router'",
+            "plan-critique --run-dir /srv/app/.agents/runs/demo",
+            "check-owns-paths /srv/app/.agents/runs/demo",
+            "ls src 2>/dev/null && cat README.md 2>/dev/null | head -5",
         ):
             with self.subTest(command=command):
                 self.assertEqual(
