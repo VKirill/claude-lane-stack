@@ -23,6 +23,11 @@ from pm_read import (  # noqa: E402
     worker_brief_for_hook,
 )
 from routing_profile import load_routing_profile  # noqa: E402
+import json  # noqa: E402
+import subprocess  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+from pm_read import invoke_brief  # noqa: E402
+from plan_critique_llm import CRITIQUE_SCHEMA_PATH  # noqa: E402
 
 
 class PmReadTest(unittest.TestCase):
@@ -62,6 +67,33 @@ class PmReadTest(unittest.TestCase):
         )
         self.assertEqual(cfg["provider"], "agy")
         self.assertEqual(cfg["model"], "gemini-3.7-flash-medium")
+
+    def test_codex_brief_is_free_text_without_critique_schema(self) -> None:
+        captured: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            captured.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, stdout="PM_READ_BRIEF v1", stderr="")
+
+        with patch("plan_critique_llm._run", side_effect=fake_run), patch(
+            "plan_critique_llm._which", return_value="/usr/bin/codex"
+        ):
+            invoke_brief("prompt", provider="codex", model="gpt-5.6-terra", effort="low")
+        self.assertNotIn("--output-schema", captured[0])
+
+    def test_critique_schema_is_strict_for_structured_outputs(self) -> None:
+        def check(node: object, path: str) -> None:
+            if isinstance(node, dict):
+                if "properties" in node:
+                    self.assertIs(node.get("additionalProperties"), False, path)
+                    self.assertEqual(set(node.get("required", [])), set(node["properties"]), path)
+                for key, value in node.items():
+                    check(value, f"{path}.{key}")
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    check(value, f"{path}[{index}]")
+
+        check(json.loads(CRITIQUE_SCHEMA_PATH.read_text(encoding="utf-8")), "$")
 
     def test_codex_gpt_worker_keeps_effort(self) -> None:
         cfg = normalize_pm_read(

@@ -19,7 +19,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["severity", "code", "title", "detail", "action"],
+        "required": ["severity", "code", "title", "detail", "path", "task_id", "action"],
         "properties": {
           "severity": { "type": "string", "enum": ["error", "warn", "info"] },
           "code": {
@@ -36,8 +36,8 @@
           },
           "title": { "type": "string", "maxLength": 120 },
           "detail": { "type": "string", "maxLength": 400 },
-          "path": { "type": "string", "maxLength": 240 },
-          "task_id": { "type": "string", "maxLength": 32 },
+          "path": { "type": ["string", "null"], "maxLength": 240 },
+          "task_id": { "type": ["string", "null"], "maxLength": 32 },
           "action": {
             "type": "string",
             "enum": ["add_owns", "drop_scope", "split_task", "fix_spec", "note"]

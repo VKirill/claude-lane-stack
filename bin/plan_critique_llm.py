@@ -141,8 +141,8 @@ def build_llm_prompt(
         '"missing_invariant" | "gold_plate" | "bad_dag" | "note",\n'
         '      "title": "short",\n'
         '      "detail": "what to change",\n'
-        '      "path": "optional path",\n'
-        '      "task_id": "optional",\n'
+        '      "path": "path or null",\n'
+        '      "task_id": "task id or null",\n'
         '      "action": "add_owns" | "drop_scope" | "split_task" | '
         '"fix_spec" | "note"\n'
         "    }\n"
@@ -418,7 +418,12 @@ def invoke_kimi(
 
 
 def invoke_grok(
-    prompt: str, *, model: str, timeout: int, binary: str | None = None
+    prompt: str,
+    *,
+    model: str,
+    timeout: int,
+    binary: str | None = None,
+    schema: bool = True,
 ) -> str:
     bin_path = binary or _which("grok")
     if not bin_path:
@@ -431,7 +436,7 @@ def invoke_grok(
         argv = [bin_path, "--no-subagents", "-p", prompt]
         if model:
             argv.extend(["--model", model])
-        if CRITIQUE_SCHEMA_PATH.is_file():
+        if schema and CRITIQUE_SCHEMA_PATH.is_file():
             argv.extend(
                 [
                     "--json-schema",
@@ -447,7 +452,13 @@ def invoke_grok(
 
 
 def invoke_agy(
-    prompt: str, *, model: str, effort: str, timeout: int, binary: str | None = None
+    prompt: str,
+    *,
+    model: str,
+    effort: str,
+    timeout: int,
+    binary: str | None = None,
+    schema: bool = True,
 ) -> str:
     bin_path = binary or _which("agy")
     if not bin_path:
@@ -475,7 +486,7 @@ def invoke_agy(
             "--output-format",
             "json",
         ]
-        if CRITIQUE_SCHEMA_PATH.is_file():
+        if schema and CRITIQUE_SCHEMA_PATH.is_file():
             argv.extend(["--json-schema", str(CRITIQUE_SCHEMA_PATH)])
         completed = _run(argv, cwd=cwd, env=env, timeout=timeout)
     if completed.returncode != 0:
@@ -493,7 +504,9 @@ def invoke_codex(
     timeout: int,
     binary: str | None = None,
     service_tier: str = "standard",
+    schema: bool = True,
 ) -> str:
+    """Run Codex once. schema=False for free-text callers such as pm_read briefs."""
     bin_path = binary or _which("codex")
     if not bin_path:
         raise LlmCritiqueError("codex binary not found on PATH")
@@ -523,7 +536,7 @@ def invoke_codex(
             "-",
         ]
         extra: list[str] = []
-        if CRITIQUE_SCHEMA_PATH.is_file():
+        if schema and CRITIQUE_SCHEMA_PATH.is_file():
             extra.extend(["--output-schema", str(CRITIQUE_SCHEMA_PATH), "--json"])
         if str(service_tier or "").strip().lower() == "fast":
             extra.extend(["-c", 'service_tier="fast"', "--enable", "fast_mode"])

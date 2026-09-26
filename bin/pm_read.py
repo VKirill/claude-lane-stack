@@ -450,7 +450,11 @@ def invoke_brief(
     try:
         if provider == "agy":
             return invoke_agy(
-                prompt, model=model, effort=effort or "low", timeout=INVOKE_TIMEOUT
+                prompt,
+                model=model,
+                effort=effort or "low",
+                timeout=INVOKE_TIMEOUT,
+                schema=False,
             )
         if provider == "codex":
             return invoke_codex(
@@ -459,6 +463,7 @@ def invoke_brief(
                 effort=effort or "low",
                 timeout=INVOKE_TIMEOUT,
                 service_tier=service_tier or "fast",
+                schema=False,
             )
         if provider == "claude":
             return invoke_claude(prompt, model=model, timeout=INVOKE_TIMEOUT)
@@ -467,7 +472,7 @@ def invoke_brief(
         if provider == "kimi":
             return invoke_kimi(prompt, model=model, timeout=INVOKE_TIMEOUT)
         if provider == "grok":
-            return invoke_grok(prompt, model=model, timeout=INVOKE_TIMEOUT)
+            return invoke_grok(prompt, model=model, timeout=INVOKE_TIMEOUT, schema=False)
     except LlmCritiqueError as exc:
         raise SystemExit(f"pm_read: worker failed: {exc}") from exc
     raise SystemExit(f"pm_read: unsupported provider {provider}")
