@@ -223,6 +223,31 @@ def _unwrap_sudo_args(args: list[str]) -> list[str] | None:
     return None
 
 
+# Read-only bb CLI calls the PM may use to look around; anything that changes state stays denied.
+PM_BB_READ_COMMANDS = {
+    ("status",), ("guide",), ("thread", "show"), ("thread", "get"), ("thread", "log"), ("thread", "messages"),
+    ("thread", "list"), ("thread", "output"), ("thread", "search"), ("thread", "wait"), ("thread", "history"),
+    ("thread", "context"), ("thread", "count"),
+}
+# Agents coordinate by messaging each other's threads; starting, changing or archiving threads stays denied.
+PM_BB_MESSAGE_COMMANDS = {
+    ("thread", "tell"), ("thread", "message"),
+    ("thread", "queue", "create"), ("thread", "queue", "send"), ("thread", "queue", "list"),
+}
+# The bb CLI by name, by absolute path, or through the BB_CLI variable BB sets for agents.
+PM_BB_EXECUTABLES = {"bb", "$BB_CLI", "${BB_CLI}"}
+
+
+def _pm_bb_error(args: list[str]) -> str | None:
+    words = [arg for arg in args if not arg.startswith("-")]
+    if any(arg in {"--help", "-h", "--version", "-V"} for arg in args):
+        return None
+    allowed = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS
+    if any(tuple(words[:size]) in allowed for size in (1, 2, 3)):
+        return None
+    return "bb command neither reads nor messages a thread; delegate it"
+
+
 def _pm_segment_error(segment: list[str]) -> str | None:
     if not segment:
         return None
@@ -406,6 +431,8 @@ def _pm_segment_error(segment: list[str]) -> str | None:
         if method is not None and method.upper() not in {"GET", "HEAD"}:
             return "non-read-only curl method is forbidden"
         return None
+    if executable in PM_BB_EXECUTABLES:
+        return _pm_bb_error(args)
     return f"command {segment[0]!r} is not allowlisted for project management"
 
 
