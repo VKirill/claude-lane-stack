@@ -264,6 +264,10 @@ def _pm_segment_error(segment: list[str]) -> str | None:
         if not args:
             return "nohup requires a command"
         return _pm_segment_error(args)
+    # A shell script run by its path (./scripts/deploy.sh) is the same as `bash scripts/deploy.sh`,
+    # which the PM may already run: judge them alike instead of by the bare command name.
+    if "/" in segment[0] and segment[0].endswith(".sh"):
+        return None
     if executable in {"bash", "sh"}:
         # Script path: bash /tmp/foo.sh [args…]
         # -c: only when the inline string itself is PM-safe.
