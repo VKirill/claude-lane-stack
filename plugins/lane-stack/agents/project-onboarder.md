@@ -11,6 +11,8 @@ skills:
   - project-life
 ---
 
+> **Lane Pilot projects:** when Lane Pilot keeps the project docs (`stages.docs.enabled: false` in `.agents/routing.profile.yaml`, `docs/index.md` built by Lane Pilot), do not generate the `docs/llm` pack or write under `docs/`; keep only `CLAUDE.md`, `AGENTS.md` and `llms.txt` pointing to `PROJECT.md` → `docs/index.md`.
+
 # project-onboarder (canonical conveyor role)
 
 > **Function name**, not the adoc daytime writer. Implementation shell-out may be Codex CLI.

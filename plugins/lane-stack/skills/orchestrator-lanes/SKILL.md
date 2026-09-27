@@ -145,7 +145,7 @@ Bad multi-task runs almost always start here. Apply **before** `run-init` / befo
 
 ## Phase 1 — Files
 
-**Not** `docs/plans/` for coding execution. Strategy stays in `docs/plans/`; promote to a run when implementing.
+**Not** `.agents/plans/` for coding execution. Strategy stays in `.agents/plans/`; promote to a run when implementing.
 
 ```bash
 run-init "$(pwd)" <slug> --score <score>
@@ -176,7 +176,7 @@ run-board "$(pwd)"
 
 Bulk skip: `plan-critique --ack --note 'reason'`.  
 `run-validate --phase pre-dispatch` and `run-controller start` refuse unreplied ids.  
-`wiki/` `TODO/` `docs/plans/` owns_gap is `info` — no reply.
+`wiki/` `TODO/` `.agents/plans/` (and legacy `docs/plans/`) owns_gap is `info` — no reply.
 
 ### PLAN.md
 
@@ -433,7 +433,7 @@ do not re-implement the feature as Claude.
 
 ## Hard rules (MUST)
 
-1. No production Edit/Write — only `.agents/**`, `docs/plans/**`, PROGRESS/LESSONS, and dotenv (`.env`, `.env.*`) for secrets (keep keys out of writer prompts).  
+1. No production Edit/Write — only `.agents/**` (plans, decisions drafts, research, reports), PROGRESS/LESSONS, and dotenv (`.env`, `.env.*`) for secrets (keep keys out of writer prompts).  
 2. No task MCP queue.  
 3. Parallel = disjoint owns only.  
 4. You merge main when green; workers never push/merge main.  

@@ -6,7 +6,7 @@ argument-hint: "[info]"
 
 # Lane memory
 
-File corpus for facts that **cannot be derived** from git or MODULE_MAP.
+File corpus for facts that **cannot be derived** from git or the code documentation (docs/).
 Laws from the SMA 5.6.1 drawing. Off until adoc turns it on.
 
 ## Info (print and stop)

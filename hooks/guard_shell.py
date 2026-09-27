@@ -117,7 +117,7 @@ def _is_env_secret_file(name: str) -> bool:
 def _pm_edit_allowed(path: str, cwd: object) -> bool:
     """PM may edit control-plane docs + dotenv files — never production source.
 
-    Aligns with SOLO/dev-orchestrator: `.agents/**`, `docs/plans/**`,
+    Aligns with SOLO/dev-orchestrator: `.agents/**`, legacy `docs/plans/**`,
     living memory (`.agents/PROGRESS.md` / `.agents/LESSONS.md`, plus
     legacy root copies), and dotenv (`.env*`) for secrets the human trusts
     the PM with. Machine lifecycle receipts under a run (controller,

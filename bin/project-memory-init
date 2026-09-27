@@ -34,7 +34,11 @@ migrate_living() {
 }
 migrate_living "PROGRESS.md"
 migrate_living "LESSONS.md"
-install_if_missing "$ROOT/docs/decisions.md" "$TPL/decisions.md"
+mkdir -p "$ROOT/.agents/decisions"
+if [[ ! -f "$ROOT/.agents/decisions/README.md" ]]; then
+  printf '%s\n' '# Decision drafts' '' 'One file per decision: <date>-<slug>.md with context, decision and why.' 'The nightly docs pass publishes each draft as an ADR in docs/decisions.md.' > "$ROOT/.agents/decisions/README.md"
+  echo "created: $ROOT/.agents/decisions/README.md"
+fi
 install_if_missing "$ROOT/.agents/agent-notes/OPEN.md" "$TPL/agent-notes-OPEN.md"
 mkdir -p "$ROOT/.agents/session-log" "$ROOT/.agents/todos" "$ROOT/.agents/runs"
 install_if_missing "$ROOT/.agents/session-log/README.md" "$TPL/session-log-README.md"
@@ -51,7 +55,7 @@ for f in AGENTS.md CLAUDE.md; do
 ## Project memory (agents)
 
 On session start: read `.agents/PROGRESS.md` (if present), skim `.agents/LESSONS.md`.  
-On task done: update PROGRESS / LESSONS / `docs/decisions.md` per skill `project-memory`.  
+On task done: update PROGRESS / LESSONS per skill `project-memory`; a decision goes as a draft to `.agents/decisions/<date>-<slug>.md` (the docs pass publishes it to `docs/decisions.md`).  
 Auto handoff: `.agents/session-log/` (hooks). Ideas: `.agents/todos/`.
 EOP
     echo "appended memory pointer: $path"

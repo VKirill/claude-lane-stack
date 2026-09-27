@@ -91,7 +91,7 @@ Create the plan folder on the first turn (`references/plans.md` in project-life)
 Add a ROADMAP row. `status: draft`.
 
 Each new fact → Read the file → Edit that section. Do not wait for a perfect
-picture. Do not invent a second tree under `docs/plans/` or `~/.claude/plans/`.
+picture. Do not invent a second tree under `docs/` or `~/.claude/plans/`.
 
 ## Completeness (brief)
 

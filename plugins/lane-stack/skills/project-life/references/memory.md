@@ -4,7 +4,7 @@
 |------|----------|-------------|
 | `.agents/PROGRESS.md` | ~40 lines | End of meaningful work / session |
 | `.agents/LESSONS.md` | grow slowly | After user correction or failed approach |
-| `docs/decisions.md` | rare | Expensive irreversible choice |
+| `.agents/decisions/<date>-<slug>.md` | rare | Expensive irreversible choice — a draft; the docs pass publishes it to `docs/decisions.md` |
 | `.agents/agent-notes/OPEN.md` | grow | Debt / simplify later |
 | `.agents/session-log/*` | auto | Hooks own it — never hand-author |
 | `.agents/runs/*/artifacts/` | per run | Written during runs — immutable after |
@@ -49,7 +49,9 @@ hashes/actions in `finalize.json`. Never guess stale checklist items.
 
 Only after a real correction or landmine — not per session.
 
-## docs/decisions.md (ADR-light)
+## Decision drafts (`.agents/decisions/<date>-<slug>.md`, ADR-light)
+
+Write one file per decision. Do not edit `docs/decisions.md`: the nightly docs pass (Lane Pilot or docs-maintain) turns each draft into an ADR there, with citations to the code, and names the draft.
 
 ```markdown
 ## ADR-NNN: Title

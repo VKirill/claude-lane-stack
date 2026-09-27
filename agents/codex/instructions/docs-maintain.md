@@ -8,7 +8,7 @@ You write **prose in `<!-- body -->` plus editorial** `title/type/status/confide
 
 One page per pass for existing targets. You **may** create `docs/features/<app>-<slug>.md` when a system needs its own how-it-works page (rules below). Do not create packages, hubs, surfaces, or archive pages. Missing non-feature target → `(planned)`.
 
-Archive off limits: `wiki/`, `TODO/`, `docs/plans/`, `docs/compliance/`, `docs/seo/`. No feature code.
+Archive off limits: `wiki/`, `TODO/`, `.agents/` (plans, research, reports, decisions drafts live there), and legacy `docs/plans/`, `docs/compliance/`, `docs/seo/` where a project still has them. No feature code. Each draft in `.agents/decisions/` that `docs/decisions.md` does not name yet becomes an ADR there, with code citations and the draft path.
 
 `sources:` = files you actually opened. Code paths only. Never `docs/**`, `wiki/**`, `PROJECT.md`, `CLAUDE.md`. Never `.next/`, `dist/`, `node_modules/`. `confidence: high` only if `len(sources) ≥ 15`. After a **complete** fill: `status: active`. If the page is still below the floor, leave `status: stub`. `status: active` below the floor is a lie.
 

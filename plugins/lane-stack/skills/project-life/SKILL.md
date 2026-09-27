@@ -39,8 +39,9 @@ idea → todo → plan → run → merge
 
 Файлы
 - .agents/todos/   .agents/plans/   .agents/PROGRESS.md   .agents/LESSONS.md
-- docs/decisions.md
-- docs/plans/ = длинная стратегия, не очередь задач
+- .agents/decisions/ = черновики решений; docs/decisions.md публикует ночной проход документации
+- .agents/plans/ = длинная стратегия, не очередь задач
+- docs/ = только документация кода (её ведёт ночной проход: Lane Pilot или docs-maintain); вход — PROJECT.md → docs/index.md
 
 На диск — English. В чат — русский. Секреты не писать.
 ```
@@ -78,8 +79,9 @@ memory update after work is not.
   LESSONS.md
   agent-notes/OPEN.md
   session-log/      # hooks own it — read only
-<project>/docs/decisions.md   # ADR-light
-<project>/docs/plans/         # long-form strategy (NOT this layer)
+  decisions/        # decision drafts; the docs pass publishes them to docs/decisions.md
+<project>/.agents/plans/       # long-form strategy (NOT this layer)
+<project>/docs/                # code documentation only, kept by the docs pass
 ```
 
 Choose project root when cwd has `.git`/`package.json`/`CLAUDE.md`; use
@@ -99,7 +101,7 @@ Choose project root when cwd has `.git`/`package.json`/`CLAUDE.md`; use
 | «делай / реализуй / в работу / запускай ран» | Exit planning. Spawn a run (`lane-contract`), link it from the plan | — |
 | run закончился зелёным | Tick plan task → refresh ROADMAP → rewrite PROGRESS | `references/memory.md` |
 | поправили тебя / наступил на грабли | One LESSONS entry | `references/memory.md` |
-| зафиксировано крупное необратимое решение | ADR entry in docs/decisions.md | `references/memory.md` |
+| зафиксировано крупное необратимое решение | draft in .agents/decisions/<date>-<slug>.md (the docs pass publishes it to docs/decisions.md) | `references/memory.md` |
 | «итоги / конец сессии» | PROGRESS current, ideas filed as todos, no orphan runs | `references/memory.md` |
 | «что делали / почему так / покажи отчёт» | Read session-log INDEX, run artifacts, findings — don't write them | — |
 | «где мы / handoff / продолж» (cold start) | `~/.agents/bin/resume-project .` (Claude: skill `resume-project`), not this file | — |
@@ -138,11 +140,11 @@ Exit: «делай» → `lane-contract` / orchestrator-lanes Phase 0. Set plan
 |---|---------|
 | "we should someday…" | **todo** |
 | "we will, in this order…" | **`.agents/plans/`** (delivery map) |
-| long-form strategy / COCOON | **`docs/plans/`** (not a coding queue) |
+| long-form strategy / COCOON | **`.agents/plans/`** (not a coding queue) |
 | "change code now" | **run** (never directly from todo/plan). Run has its own `PLAN.md` — execution DAG, not the map |
 | "current state of reality" | **PROGRESS** (≤40 lines, rewrite not append) |
 | "we got burned by…" | **LESSONS** |
-| "we chose A over B forever" | **docs/decisions.md** |
+| "we chose A over B forever" | **draft in `.agents/decisions/`** → published to `docs/decisions.md` |
 | leftover debt / simplify later | **`.agents/agent-notes/OPEN.md`** |
 | planning-session notes / screenshots | **`.agents/plans/items/<slug>/artifacts/`** (until a run exists) |
 | reports, screenshots, receipts after a run | **run artifacts** (immutable, stay in the run) |
@@ -216,7 +218,8 @@ A vague ask («сделай красиво», unclear scope, two plausible readi
 - ❌ One mega-file mixing todo+plan+progress (layers keep files small)
 - ❌ Appending status updates to PROGRESS forever (rewrite it)
 - ❌ Task YAML / owns_paths inside `.agents/plans/` PLAN.md (that's lane-contract)
-- ❌ Treating `docs/plans/` as a run queue
+- ❌ Treating `.agents/plans/` as a run queue
+- ❌ Writing plans, research or reports into `docs/` — it holds only the code documentation
 - ❌ Production code straight from a todo/plan without a run
 - ❌ Plans/todos that never link the runs that shipped them
 - ❌ Orchestrator MCP / `todo_add` for ideas

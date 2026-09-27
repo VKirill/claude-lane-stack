@@ -7,6 +7,8 @@ user-invocable: false
 
 # Project onboard (Claude Lane Stack)
 
+> **Lane Pilot projects:** when Lane Pilot keeps the project's docs (`.agents/routing.profile.yaml` has `stages.docs.enabled: false` and `docs/index.md` is built by Lane Pilot), do not generate the `docs/llm` pack or write anything under `docs/`; only keep `CLAUDE.md`, `AGENTS.md` and `llms.txt` pointing to `PROJECT.md` → `docs/index.md`.
+
 ## Info (print and stop)
 
 If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:

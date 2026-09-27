@@ -30,7 +30,7 @@ After writes: `lane-memory inject .` and `lane-memory lint .`.
 Non-derivable facts: owner decisions, preferences, "always do X" rules, lessons
 with a command that still holds. English claims. One claim per file.
 
-Do **not** copy: git history, MODULE_MAP, file trees, PROGRESS checklists,
+Do **not** copy: git history, the code documentation (docs/), file trees, PROGRESS checklists,
 task YAML, raw session transcripts.
 
 ## Steps

@@ -9,7 +9,7 @@ Do not confuse:
 |------|------|
 | `.agents/plans/` | this layer — initiative map + ROADMAP |
 | `.agents/runs/<slug>/PLAN.md` | execution DAG (`lane-contract`) |
-| `docs/plans/` | long-form strategy / COCOON — not a coding queue |
+| `.agents/plans/` | long-form strategy / COCOON — not a coding queue (legacy projects may still have `docs/plans/`; read it, write new plans here) |
 
 ## Create plan
 

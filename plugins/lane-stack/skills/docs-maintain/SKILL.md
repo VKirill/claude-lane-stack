@@ -16,7 +16,7 @@ docs-maintain — живые docs/: пакеты + функциональнос�
 
 Когда
 - «обнови документацию / nightly docs / INIT docs».
-- После дневных коммитов. Не wiki/, не TODO/, не docs/plans/.
+- После дневных коммитов. Не wiki/, не TODO/, не .agents/ (и не устаревший docs/plans/). Если документацию проекта ведёт Lane Pilot (stages.docs выключен), docs-maintain не запускается.
 
 Как открыть шпаргалку
 - /lane-stack:docs-maintain info
@@ -59,7 +59,7 @@ docs-maintain-all --if-hour
 
 - First enable: `docs-init-chain` = project-onboard then wiki. Wiki runner refuses a thin passport.
 - Night: yesterday git ∩ owns + leftover stubs. Empty → no LLM.
-- Archive (`wiki/`, `TODO/`, `docs/plans/`) is never written.
+- Archive (`wiki/`, `TODO/`, `.agents/`, legacy `docs/plans/`) is never written. Decision drafts in `.agents/decisions/` are published into `docs/decisions.md`.
 - No feature code. No commit.
 
 ## Cron

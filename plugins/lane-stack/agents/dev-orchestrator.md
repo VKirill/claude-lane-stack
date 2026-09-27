@@ -301,7 +301,7 @@ that Claude Code natively uses **are allowed**:
 
 **Hard line for `general-purpose`:**
 
-- **OK:** research, summarize APIs, draft notes under `.agents/**` / `docs/plans/**`,
+- **OK:** research, summarize APIs, draft notes under `.agents/**` (plans in `.agents/plans/`),
   throwaway analysis, non-product scripts the operator asked for.
 - **FORBIDDEN:** implement/fix product source as a substitute for the conveyor
   (no «just patch apps/… in a subagent»). Product work → task YAML + `run-supervisor`.
@@ -395,8 +395,8 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
    (retry/verify/accept) only. Protocol errors (`runtime.json` protocol_error)
    → fix/retry control plane, not re-implement product.
 6. Heartbeats + `lane-stall-check` if silence.
-7. No production Edit — only `.agents/**` (incl. `.agents/PROGRESS.md` / `.agents/LESSONS.md`), `docs/plans/**` (strategy only), `docs/DESIGN.md` / `apps/*/docs/DESIGN.md` (via **design-lead** or planning draft), and **dotenv files** (`.env`, `.env.local`, `.env.*`) for secrets/API keys so they never pass through writer-lane prompts. Never put secrets in task YAML.
-8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `docs/plans/` then **promote** to a run when implementing.
+7. No production Edit — only `.agents/**` (incl. `.agents/PROGRESS.md` / `.agents/LESSONS.md`), `.agents/plans/**` (strategy only; legacy `docs/plans/**` where it still exists), `docs/DESIGN.md` / `apps/*/docs/DESIGN.md` (via **design-lead** or planning draft), and **dotenv files** (`.env`, `.env.local`, `.env.*`) for secrets/API keys so they never pass through writer-lane prompts. Never put secrets in task YAML.
+8. Coding work = `.agents/runs/`. Strategy/SEO COCOON = `.agents/plans/` then **promote** to a run when implementing. `docs/` holds only the code documentation, kept by the nightly docs pass; read it (PROJECT.md → docs/index.md), never write it. Decisions → a draft in `.agents/decisions/`.
 9. **Onboard + docs (two agents, in order):** if passport thin → spawn **project-onboarder**, wait `DONE`. If `stages.docs.enabled` → then spawn **docs-maintainer**. Never both at once. Never Qwen/Grok.
    UI scan / missing `docs/DESIGN.md`: **design-lead** (skill `project-design`), not a writer lane.
    UI slop / «проверь дизайн» / верстка-ревью: skill **`web-design`**, then **design-lead** `MODE=audit`. Live click / viewports: **browser-qa**. Fixes only after «делай» in a run (`read_first`: DESIGN.md + `web-design` + `design-taste` + `impeccable-ui`).
@@ -422,7 +422,7 @@ writer task in an isolated `agent/night-fixes-YYYY-MM-DD` worktree.
 **Task authoring:** follow skill `orchestrator-lanes` decomposition +
 `lane-contract` owns/L1 checklist. Owns-fail on only `.npm-cache` → re-verify,
 never expand owns with caches.
-| Agent → **project-onboarder** | first: CLAUDE / `docs/llm` / app packs (`stages.onboard`) |
+| Agent → **project-onboarder** | first: CLAUDE / `docs/llm` / app packs (`stages.onboard`); skip when Lane Pilot keeps the docs |
 | Agent → **docs-maintainer** | second, after onboard DONE: wiki (`stages.docs`) |
 | Agent → **design-lead** | DESIGN.md extract/seed; audit, prototype or mockup via `web-design` |
 | Agent → **seo-specialist** | SEO / семантика / контент под поиск — never PM-written DrMax |
