@@ -141,6 +141,7 @@
 | `seo-project-life` | Карта: паспорт, доска, фазы, CLI |
 | `seo-drmax-orchestrator` | Вести пайплайн DrMax |
 | `drmax-cocoon-engine-x4` | Кокон 4.0, TGA, GIST 4.3, Mapper |
+| `cocoon-chainsmith` | Официальный мета-промпт: связка команд X4 (не исполняет исследование) |
 | `drmax-brandcore` | SSoT бренда |
 | `drmax-text-humanization` | Редактура после экспорта |
 | `ai-detect` | LinguaForensic 3.9.4 |

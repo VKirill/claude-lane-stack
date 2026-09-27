@@ -1,3 +1,9 @@
+## Unreleased
+
+### Removed
+- Host leftover **`drmax-research-playbook`** (local adaptation). `install.sh`
+  treats it as stale.
+
 ## 1.60.0 — 2026-09-24
 
 ### Added
