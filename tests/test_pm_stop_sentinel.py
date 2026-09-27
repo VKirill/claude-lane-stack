@@ -154,6 +154,42 @@ class DecideStopTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn("blocked", err)
 
+    def test_pm_ignores_run_of_another_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            _ctrl(cwd, "conveyor-wave-264", "accepted")
+            transcript = cwd / "session.jsonl"
+            transcript.write_text('{"message":"who is the developer?"}\n', encoding="utf-8")
+            code, err = decide_stop(
+                {
+                    "hook_event_name": "Stop",
+                    "agent_type": "dev-orchestrator",
+                    "cwd": str(cwd),
+                    "transcript_path": str(transcript),
+                    "last_assistant_message": "The developer is Grok.",
+                }
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(err, "")
+
+    def test_pm_still_pushed_for_its_own_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            _ctrl(cwd, "owns-fix", "blocked")
+            transcript = cwd / "session.jsonl"
+            transcript.write_text('{"command":"run-controller start .agents/runs/owns-fix"}\n', encoding="utf-8")
+            code, err = decide_stop(
+                {
+                    "hook_event_name": "Stop",
+                    "agent_type": "dev-orchestrator",
+                    "cwd": str(cwd),
+                    "transcript_path": str(transcript),
+                    "last_assistant_message": "sitting idle",
+                }
+            )
+            self.assertEqual(code, 2)
+            self.assertIn("owns-fix", err)
+
     def test_pm_blocked_acked(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             cwd = Path(tmp)

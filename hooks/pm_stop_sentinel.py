@@ -96,6 +96,24 @@ def is_pm_session(payload: dict) -> bool:
     return marked in PM_AGENTS
 
 
+def foreign_run(payload: dict, slug: str) -> bool:
+    """True when this session's transcript never names the run: another PM started it."""
+    raw = payload.get("transcript_path") or payload.get("transcriptPath")
+    if not raw or not slug:
+        return False
+    needle = slug.encode("utf-8")
+    try:
+        with Path(str(raw)).expanduser().open("rb") as handle:
+            tail = b""
+            while chunk := handle.read(1 << 20):
+                if needle in tail + chunk:
+                    return False
+                tail = chunk[-len(needle):]
+    except OSError:
+        return False
+    return True
+
+
 def last_assistant_text(payload: dict) -> str:
     for key in ("last_assistant_message", "lastAssistantMessage"):
         raw = payload.get(key)
@@ -349,6 +367,8 @@ def decide_stop(payload: dict) -> tuple[int, str]:
         return 0, ""
     stage = read_stage(path)
     slug = path.parent.name
+    if foreign_run(payload, slug):
+        return 0, ""
     text = last_assistant_text(payload)
     if already_acked(text, slug, stage):
         hang = _done_hang_sec()

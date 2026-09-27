@@ -1,5 +1,10 @@
 ## Unreleased
 
+### Fixed
+- **`pm_stop_sentinel`:** a PM session is held only for runs its own transcript
+  names. Before, any PM opened in the same folder was held for another
+  session's recent run and looped on "act now (recover or merge)".
+
 ### Removed
 - Host leftover **`drmax-research-playbook`** (local adaptation). `install.sh`
   treats it as stale.
