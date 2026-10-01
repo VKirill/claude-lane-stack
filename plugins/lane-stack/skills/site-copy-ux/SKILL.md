@@ -1,6 +1,6 @@
 ---
 name: site-copy-ux
-description: "Fill the UI block of .agents/copy/pages/<slug>.md. Krug scan, Zinsser cut, Nicely Said labels. Use when микрокопи, кнопка, форма. SKIP: long-form pitch (site-copy-headlines); tokens (project-design)."
+description: "Fill the UI block of .agents/copy/pages/<slug>.md. Krug, Zinsser, Nicely Said. Use when filling that page-brief UI section. SKIP: one-off button/form/error copy in chat (copywriter); long-form pitch (site-copy-headlines); tokens (project-design)."
 argument-hint: "[info]"
 ---
 

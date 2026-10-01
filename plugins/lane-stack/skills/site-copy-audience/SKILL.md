@@ -1,6 +1,6 @@
 ---
 name: site-copy-audience
-description: "Fill .agents/copy/ANAMNESIS.md, audience.md, buyer-personas/*.md from templates. StoryBrand, Dunford, Revella. Use when ЦА, персона, оффер, BrandScript. SKIP: headlines only (site-copy-headlines)."
+description: "Fill .agents/copy/ANAMNESIS.md, audience.md, buyer-personas/*.md from templates. StoryBrand, Dunford, Revella. Use when filling those files. SKIP: one-off offer/audience copy in chat (copywriter); headlines only (site-copy-headlines)."
 argument-hint: "[info]"
 ---
 
