@@ -1,6 +1,13 @@
 ## Unreleased
 
 ### Fixed
+- **`guard_shell`: destructive checks read commands, not report text.** The hook-skip,
+  force-push, DROP/TRUNCATE, DELETE-without-WHERE and recursive-delete checks skip a
+  heredoc body handed to a non-shell program (`python3 - <<EOF`, `cat > report.md <<EOF`);
+  a heredoc piped or fed to a shell is still checked.
+- **`guard_shell`: force push is read inside `git push`.** Flags are taken from the push
+  command itself and case-sensitively: `git commit -F msg && git push` was denied as a
+  force push, while `git push -uf` and `git push origin +main` were let through.
 - **`pm_stop_sentinel`:** a PM session is held only for runs its own transcript
   names. Before, any PM opened in the same folder was held for another
   session's recent run and looped on "act now (recover or merge)".

@@ -507,6 +507,48 @@ def _pm_shell_error(command: str) -> str | None:
     return None
 
 
+# Heredoc bodies fed to anything but a shell are data (a report, a script for python), not commands.
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n(.*?)(?:\n[ \t]*\2[ \t]*(?:\n|$)|$)", re.S)
+_SHELL_CONSUMER = re.compile(r"(?:^|[\s;&|(/])(?:ba|z|da|k)?sh\b|\beval\b")
+
+
+def _without_data_heredocs(command: str) -> str:
+    def strip(match: re.Match[str]) -> str:
+        line_start = command.rfind("\n", 0, match.start()) + 1
+        line_end = command.find("\n", match.start())
+        if _SHELL_CONSUMER.search(command[line_start : line_end if line_end >= 0 else len(command)]):
+            return match.group(0)
+        return match.group(0)[: match.start(3) - match.start(0)] + "\n"
+    return _HEREDOC.sub(strip, command)
+
+
+_CONTROL_TOKENS = {";", "&&", "||", "|", "&", "(", ")", ";;", "|&"}
+
+
+def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
+    """Arguments of each real `git <subcommand>` in a command; quoted text such as a commit message stays one token."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        alternatives = "|".join(sorted(subcommands))
+        return [m.group(1).split() for m in re.finditer(rf"\bgit\s+(?:{alternatives})\b([^;&|\n]*)", command)]
+    pushes: list[list[str]] = []
+    i = 0
+    while i < len(tokens) - 1:
+        if Path(tokens[i]).name == "git" and tokens[i + 1] in subcommands:
+            j = i + 2
+            while j < len(tokens) and tokens[j] not in _CONTROL_TOKENS:
+                j += 1
+            pushes.append(tokens[i + 2 : j])
+            i = j
+        else:
+            i += 1
+    return pushes
+
+
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -530,7 +572,8 @@ def main() -> None:
             emit_deny(client, "[agent-guard] malformed shell tool payload blocked.")
         emit_allow(client)
 
-    low = cmd.lower()
+    # Destructive checks read commands, not report text a heredoc hands to a non-shell program.
+    low = _without_data_heredocs(cmd).lower()
 
     if p.get("agent_type") == "dev-orchestrator" and re.search(
         r"(?:^|[;&|(\n]\s*|\b(?:until|while|if|then|do|exec|command)\s+)"
@@ -552,16 +595,18 @@ def main() -> None:
             _deny_pm(client, error)
 
     # git hook skip
-    if re.search(r"\bgit\s+(commit|push|merge)\b", low) and (
-        "--no-verify" in low or "husky=0" in low or "husky=false" in low
+    git_writes = _git_args(_without_data_heredocs(cmd), {"commit", "push", "merge"})
+    if git_writes and (
+        any("--no-verify" in args for args in git_writes) or "husky=0" in low or "husky=false" in low
     ):
         emit_deny(client, "[agent-guard] git --no-verify / HUSKY=0 blocked. Fix the failing hook instead of bypassing it.")
 
-    # force push
-    if re.search(r"\bgit\s+push\b", low) and (
-        re.search(r"(^|[\s])--force($|[\s=])", low) or re.search(r"(^|[\s])-f($|[\s])", low)
-    ) and "--force-with-lease" not in low:
-        emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
+    # force push: flags are read inside the push command itself and case-sensitively, so
+    # `git commit -F msg && git push` is not a force push; +refspec forces too.
+    for args in _git_args(_without_data_heredocs(cmd), {"push"}):
+        forced = any(a == "--force" or a.startswith("--force=") or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) or (a.startswith("+") and len(a) > 1) for a in args)
+        if forced and not any(a.startswith("--force-with-lease") for a in args):
+            emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
 
     # SQL destroyers (simple)
     if re.search(r"\b(drop\s+(table|database|schema)|truncate\s+table)\b", low):

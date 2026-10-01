@@ -333,6 +333,37 @@ class GuardShellTest(unittest.TestCase):
             0,
         )
 
+    def test_heredoc_text_for_a_program_is_data_not_a_command(self) -> None:
+        skip = "--no-" + "verify"
+        allowed = (
+            f"python3 - <<'EOF'\nprint('git push {skip} was blocked')\nEOF",
+            "cat > report.md <<EOF\nThe guard blocks DROP TABLE users.\nEOF",
+        )
+        denied = (
+            "cat <<EOF | bash\ngit push --force origin main\nEOF",
+            f"bash <<'EOF'\ngit commit {skip} -m x\nEOF",
+            f"git commit {skip} -m x",
+        )
+        for command in allowed:
+            with self.subTest(command=command):
+                self.assertEqual(run_hook("writer", command).returncode, 0)
+        for command in denied:
+            with self.subTest(command=command):
+                self.assertEqual(run_hook("writer", command).returncode, 2)
+
+    def test_force_push_flags_are_read_inside_git_push_only(self) -> None:
+        for command in ("git push --force origin main", "git push -f origin main", "git push -uf origin main", "git push origin +main"):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook("writer", command).returncode, 2)
+        skip = "--no-" + "verify"
+        for command in (
+            "git commit -q -F msg.txt && git push origin main",
+            "git push --force-with-lease origin main",
+            f'git commit -m "guard: git push -uf and +main are caught; {skip} in text is fine" && git push origin main',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook("writer", command).returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
