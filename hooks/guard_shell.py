@@ -188,6 +188,37 @@ def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
     return pushes
 
 
+def _shell_c_payloads(command: str, depth: int = 4) -> list[str]:
+    """Nested bash/sh -c payload strings, innermost included.
+
+    The PM allowlist judges these recursively (`bash -c "git push origin main"` is
+    PM-safe because push is), so checks that match on tokens must scan the same
+    nested strings — at the top level the quoted -c payload stays ONE token and
+    adjacent git+push tokens inside it are never seen.
+    """
+    if depth <= 0:
+        return []
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return []
+    payloads: list[str] = []
+    index = 0
+    while index < len(tokens) - 2:
+        if Path(tokens[index]).name in {"bash", "sh"} and tokens[index + 1] in {"-c", "-lc"}:
+            payload = tokens[index + 2]
+            if payload not in _CONTROL_TOKENS:
+                payloads.append(payload)
+                payloads.extend(_shell_c_payloads(payload, depth - 1))
+                index += 3
+                continue
+        index += 1
+    return payloads
+
+
 def _is_env_secret_file(name: str) -> bool:
     """True for dotenv-style files the PM may write without involving writers.
 
@@ -857,11 +888,16 @@ def main() -> None:
         emit_deny(client, "[agent-guard] git --no-verify / HUSKY=0 blocked. Fix the failing hook instead of bypassing it.")
 
     # force push: flags are read inside the push command itself and case-sensitively, so
-    # `git commit -F msg && git push` is not a force push; +refspec forces too.
-    for args in _git_args(_without_data_heredocs(cmd), {"push"}):
-        forced = any(a == "--force" or a.startswith("--force=") or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) or (a.startswith("+") and len(a) > 1) for a in args)
-        if forced and not any(a.startswith("--force-with-lease") for a in args):
-            emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
+    # `git commit -F msg && git push` is not a force push; +refspec forces too. The PM
+    # allowlist judges bash/sh -c payloads recursively (push is PM-safe), so this deny
+    # must scan the same nested strings or `bash -c "git push --force origin main"`
+    # passes the allowlist and never sees adjacent git+push tokens here.
+    stripped = _without_data_heredocs(cmd)
+    for scan in (stripped, *_shell_c_payloads(stripped)):
+        for args in _git_args(scan, {"push"}):
+            forced = any(a == "--force" or a.startswith("--force=") or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) or (a.startswith("+") and len(a) > 1) for a in args)
+            if forced and not any(a.startswith("--force-with-lease") for a in args):
+                emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
 
     # SQL destroyers (simple)
     if re.search(r"\b(drop\s+(table|database|schema)|truncate\s+table)\b", low):
