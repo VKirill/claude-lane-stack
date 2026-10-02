@@ -1,3 +1,8 @@
+## Unreleased
+
+### Fixed
+- **guard_shell: force-push deny recurses into `bash -c` payloads.** The PM allowlist judges nested `bash/sh -c` strings (push is PM-safe), but the force-push check only read top-level tokens — `bash -c "git push --force origin main"` passed the allowlist and never saw adjacent `git push` tokens, so it was allowed. The deny now scans the same recursively-expanded payloads (plain `git push` and `--force-with-lease` stay allowed; the `-uf` / `+refspec` / `--force=` coverage and heredoc stripping are unchanged).
+
 ## 1.62.0 — 2026-10-02
 
 ### Changed

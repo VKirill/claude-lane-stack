@@ -351,6 +351,29 @@ class GuardShellTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(run_hook("writer", command).returncode, 2)
 
+    def test_force_push_inside_bash_c_is_denied_for_pm(self) -> None:
+        # The PM allowlist recurses into bash/sh -c payloads (push is PM-safe), so the
+        # force-push deny must judge the same nested strings — a quoted -c payload is
+        # ONE token to shlex and never yields adjacent git+push tokens at top level.
+        for command in (
+            'bash -c "git push --force origin main"',
+            "bash -c 'git push -f origin main'",
+            'bash -lc "git push --force origin main"',
+            'bash -c "git push origin +main"',
+            'bash -c "git push -uf origin main"',
+            'bash -c "bash -c \\"git push --force origin main\\""',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook("dev-orchestrator", command).returncode, 2)
+        for command in (
+            "git push origin main",
+            'bash -c "git push origin main"',
+            'bash -c "git push --force-with-lease origin main"',
+            'bash -c "git fetch origin && git push origin main"',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook("dev-orchestrator", command).returncode, 0)
+
     def test_force_push_flags_are_read_inside_git_push_only(self) -> None:
         for command in ("git push --force origin main", "git push -f origin main", "git push -uf origin main", "git push origin +main"):
             with self.subTest(command=command):
