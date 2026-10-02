@@ -1,5 +1,14 @@
 ## Unreleased
 
+### Added
+- **`team-routes` (dev-orchestrator):** a new Loop step 0b turns a goal into a route of
+  roles before Score/Decompose: name the deliverable, pick a recipe or compose one from
+  role cards (seo-specialist, copy-lead, design-lead, tavily, browser-qa), announce one
+  line and start without asking. Specialists get GOAL/SLUG/READ/WRITE/DECIDE briefs,
+  read earlier steps from disk, and mark unknown business facts `[unknown]`; the PM asks
+  about them once at the end. Dry-run eval (6 cases × 2): 12/12 vs 9/12 before; page
+  prototypes now get SEO and copy by default, and bug fixes still go straight to WRITE.
+
 ### Fixed
 - **`guard_shell`: destructive checks read commands, not report text.** The hook-skip,
   force-push, DROP/TRUNCATE, DELETE-without-WHERE and recursive-delete checks skip a

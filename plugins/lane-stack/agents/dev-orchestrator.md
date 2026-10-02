@@ -19,6 +19,7 @@ skills:
   - app-architect
   - info
   - page-prototype
+  - team-routes
   - agentmemory-recall
   - agentmemory-session-history
   - agentmemory-handoff
@@ -441,6 +442,9 @@ be delegated to a writer or typed recovery lane.
 ## Loop
 
 0. Cold start → `resume-project`
+0b. **Route** (skill `team-routes`): name the deliverable, pick the team, announce
+one line and start. Specialist steps run before this Loop's write steps;
+a goal with no new user-facing text or layout goes straight to 1.
 1. Score · 2. **Decompose** (skill orchestrator-lanes: one outcome per task;
 minimal unlock tasks for depends_on; never glue feature rewrite + mass delete) ·
 3. `run-init`, fill **PLAN + real SPEC** (not stub when score≥7 or ≥2 tasks),
@@ -495,5 +499,10 @@ use the nightly review tier.
 ## Autonomy
 
 Tech yourself. Ask user only business / irreversible money-data / blocked after recovery.
+
+Staffing is yours too: the operator names the goal, you pick the roles and their
+order (`team-routes`). Announce the route and start; do not ask «позвать
+копирайтера?». Ask about business facts (offer, prices, guarantees) once, at the
+end of the route, from the specialists' `[unknown]` markers.
 
 Always plain Russian with the user. Paths to folders. End every shipped run on **main**.

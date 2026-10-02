@@ -192,7 +192,7 @@ mkdir -p "$CODEX"
 
 # Writer CLIs (Grok/Codex/Kimi/Qwen) scan ~/.agents/skills. Keep the PM
 # playbook out of that catalog. Claude Code still gets a ~/.claude/skills link.
-PM_ONLY_SKILLS="orchestrator-lanes orchestrator-workflow info app-architect bulk-reader opencode-lane"
+PM_ONLY_SKILLS="orchestrator-lanes orchestrator-workflow info app-architect bulk-reader opencode-lane team-routes"
 # User-kept copies (do not wipe on install; they override the plugin).
 # Cloud (~/.claude/skills) owns google/ yandex/ seo-tools trees; do not rm them.
 KEEP_CLAUDE_SKILLS="project-life google yandex seo-tools"
@@ -294,7 +294,7 @@ import sys
 path = Path(sys.argv[1])
 if not path.is_file():
     raise SystemExit(0)
-names = ["orchestrator-lanes", "orchestrator-workflow", "info", "app-architect", "bulk-reader", "opencode-lane"]
+names = ["orchestrator-lanes", "orchestrator-workflow", "info", "app-architect", "bulk-reader", "opencode-lane", "team-routes"]
 ignore_path = "~/.agents/pm-skills"
 text = path.read_text(encoding="utf-8")
 original = text
