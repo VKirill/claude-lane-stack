@@ -1,3 +1,10 @@
+## 1.62.0 — 2026-10-02
+
+### Changed
+- **guard_shell: a Lane Pilot PM may ship.** In a BB chat that Lane Pilot started (`LANE_PILOT_AGENT_TYPE` set), the PM shell runs under the same rules as a plain claude-lane chat: deploy scripts with `sudo -n` and `env`, `set -a; . ./.env`, `npm run build`, `docker image inspect`, `timeout`, `xargs`, multi-line shell and `$(…)`, `git commit -m` with an attribution trailer `<…>`, `git merge-base` / `check-ignore` all pass. Destructive commands stay blocked (`rm -rf` outside build dirs, `git push --force`, DROP/TRUNCATE, `--no-verify`), and `bb` stays limited to reading and messaging threads. CLI orchestrators without that variable keep the read-only allowlist. Before, the PM of SelfyStudio had to dispatch a writer just to run the release.
+- **guard_shell: PM notes in the chat folder.** A PM may write text files under `.bb/chats/**` (not `history/` or `thread.json`).
+- The Lane Pilot additions (`lane-pilot-pm` agent type, read-only/messaging `bb` commands, data heredocs) come from the copy Lane Pilot ships, now the same file.
+
 ## 1.61.0 — 2026-10-02
 
 ### Added

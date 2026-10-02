@@ -11,6 +11,31 @@ from lib_payload import (  # type: ignore
 )
 
 PM_AGENTS = {"dev-orchestrator", "frontend-orchestrator", "marketing-orchestrator"}
+LANE_PILOT_PM_AGENT_TYPES = {"lane-pilot-pm"}
+
+
+def agent_key(agent: object) -> str | None:
+    if not isinstance(agent, str) or not agent.strip():
+        return None
+    return agent.strip().rsplit(":", 1)[-1]
+
+
+LANE_PILOT_READ_COMMANDS = {
+    "cat", "cd", "cmp", "cut", "echo", "file", "find", "grep", "head", "jq",
+    "ls", "printf", "pwd", "readlink", "realpath", "rg", "sed", "sha256sum",
+    "sort", "stat", "tail", "test", "true", "false", "type", "wc", "which",
+    "yq",
+}
+LANE_PILOT_GIT_READONLY = {"status", "diff", "log", "show"}
+LANE_PILOT_RUN_CONTROLLER_SUBCOMMANDS = {"run", "start", "status", "watch"}
+LANE_PILOT_LANE_CTL_SUBCOMMANDS = {
+    "start", "status", "tail", "events", "cancel", "retry", "fallback",
+    "verify", "accept",
+}
+LANE_PILOT_ADOC_COMMANDS = {"adoc", "agents-doctor"}
+LANE_PILOT_FORBIDDEN_SCRIPT_RUNNERS = {
+    "bash", "sh", "python", "python3", "node", "nodejs",
+}
 PM_READ_COMMANDS = {
     "cat", "cd", "cmp", "cut", "date", "df", "du", "echo", "file", "find",
     "gitnexus", "grep", "head", "journalctl", "jq", "ls", "lsof", "pgrep",
@@ -18,6 +43,21 @@ PM_READ_COMMANDS = {
     "sha256sum", "sort", "stat", "tail", "test", "true", "false", "type",
     "uniq", "wc", "which", "yq",
 }
+# Read-only bb CLI calls the PM may use to look around; anything that changes state stays denied.
+PM_BB_READ_COMMANDS = {
+    ("status",), ("guide",), ("thread", "show"), ("thread", "get"), ("thread", "log"), ("thread", "messages"),
+    ("thread", "list"), ("thread", "output"), ("thread", "search"), ("thread", "wait"), ("thread", "history"),
+    ("thread", "context"), ("thread", "count"),
+    ("memory", "search"), ("memory", "get"), ("memory", "catalog"),
+    ("project", "list"), ("project", "show"),
+}
+# Agents coordinate by messaging each other's threads; starting, changing or archiving threads stays denied.
+PM_BB_MESSAGE_COMMANDS = {
+    ("thread", "tell"), ("thread", "message"),
+    ("thread", "queue", "create"), ("thread", "queue", "send"), ("thread", "queue", "list"),
+}
+# The bb CLI by name, by absolute path, or through the BB_CLI variable BB sets for agents.
+PM_BB_EXECUTABLES = {"bb", "$BB_CLI", "${BB_CLI}"}
 # Typed control-plane CLIs the PM may run directly (not writer lifecycle).
 # lane-ctl / run-controller start|watch|status stay delegated to supervisors.
 PM_CONTROL_COMMANDS = {
@@ -48,6 +88,11 @@ _SUDO_VALUE_OPTS = {
     "-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt",
     "-R", "--chroot", "-T", "--command-timeout", "-C", "--close-from",
     "-D", "--chdir",
+}
+_ENV_VALUE_OPTS = {
+    "-u", "--unset",
+    "-C", "--chdir",
+    "-S", "--split-string",
 }
 _DOCKER_MUTATING = {"restart", "start", "stop", "kill", "pause", "unpause"}
 _DOCKER_COMPOSE_OPS = {
@@ -89,13 +134,58 @@ SQL_MUTATION = re.compile(
 )
 
 
-def _deny_pm(client: str, detail: str) -> None:
-    emit_deny(
-        client,
-        "[orchestrator-guard] "
-        f"{detail}. Keep PM work read-only/control-plane-only; delegate mutations "
-        "to the run supervisor and its writer/recovery lane.",
+def _deny_pm(client: str, detail: str, lane_pilot: bool = False) -> None:
+    # A Lane Pilot PM has no run supervisor: its writers are BB threads it dispatches itself.
+    tail = (
+        "Product changes go through lane_pilot_dispatch_writer (then poll lane_pilot_wait_writer); "
+        "Lane Pilot critiques, accepts and merges them."
+        if lane_pilot
+        else "Keep PM work read-only/control-plane-only; delegate mutations "
+        "to the run supervisor and its writer/recovery lane."
     )
+    emit_deny(client, f"[orchestrator-guard] {detail}. {tail}")
+
+
+# Heredoc bodies fed to anything but a shell are data (a report, a script for python), not commands.
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n(.*?)(?:\n[ \t]*\2[ \t]*(?:\n|$)|$)", re.S)
+_SHELL_CONSUMER = re.compile(r"(?:^|[\s;&|(/])(?:ba|z|da|k)?sh\b|\beval\b")
+
+
+def _without_data_heredocs(command: str) -> str:
+    def strip(match: re.Match[str]) -> str:
+        line_start = command.rfind("\n", 0, match.start()) + 1
+        line_end = command.find("\n", match.start())
+        if _SHELL_CONSUMER.search(command[line_start : line_end if line_end >= 0 else len(command)]):
+            return match.group(0)
+        return match.group(0)[: match.start(3) - match.start(0)] + "\n"
+    return _HEREDOC.sub(strip, command)
+
+
+_CONTROL_TOKENS = {";", "&&", "||", "|", "&", "(", ")", ";;", "|&"}
+
+
+def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
+    """Arguments of each real `git <subcommand>` in a command; quoted text such as a commit message stays one token."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        alternatives = "|".join(sorted(subcommands))
+        return [m.group(1).split() for m in re.finditer(rf"\bgit\s+(?:{alternatives})\b([^;&|\n]*)", command)]
+    pushes: list[list[str]] = []
+    i = 0
+    while i < len(tokens) - 1:
+        if Path(tokens[i]).name == "git" and tokens[i + 1] in subcommands:
+            j = i + 2
+            while j < len(tokens) and tokens[j] not in _CONTROL_TOKENS:
+                j += 1
+            pushes.append(tokens[i + 2 : j])
+            i = j
+        else:
+            i += 1
+    return pushes
 
 
 def _is_env_secret_file(name: str) -> bool:
@@ -151,6 +241,9 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     if _is_env_secret_file(normalized):
         return True
     if normalized.startswith("docs/plans/"):
+        return suffix in _PM_TEXT_SUFFIXES
+    # The chat's own folder (BB project-folders): notes, commit messages, scratch files of this PM chat.
+    if normalized.startswith(".bb/chats/") and "/history/" not in normalized and not normalized.endswith("/thread.json"):
         return suffix in _PM_TEXT_SUFFIXES
     # Worktree-local or main-repo L1 checkers (must be check.py only).
     if _PM_L1_CHECK_SCRIPT.fullmatch(normalized):
@@ -223,19 +316,30 @@ def _unwrap_sudo_args(args: list[str]) -> list[str] | None:
     return None
 
 
-# Read-only bb CLI calls the PM may use to look around; anything that changes state stays denied.
-PM_BB_READ_COMMANDS = {
-    ("status",), ("guide",), ("thread", "show"), ("thread", "get"), ("thread", "log"), ("thread", "messages"),
-    ("thread", "list"), ("thread", "output"), ("thread", "search"), ("thread", "wait"), ("thread", "history"),
-    ("thread", "context"), ("thread", "count"),
-}
-# Agents coordinate by messaging each other's threads; starting, changing or archiving threads stays denied.
-PM_BB_MESSAGE_COMMANDS = {
-    ("thread", "tell"), ("thread", "message"),
-    ("thread", "queue", "create"), ("thread", "queue", "send"), ("thread", "queue", "list"),
-}
-# The bb CLI by name, by absolute path, or through the BB_CLI variable BB sets for agents.
-PM_BB_EXECUTABLES = {"bb", "$BB_CLI", "${BB_CLI}"}
+def _unwrap_env_args(args: list[str]) -> list[str] | None:
+    """Strip env(1) flags and NAME=VALUE assignments; return the inner command."""
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token in {"--", "-"}:
+            rest = args[index + 1 :]
+            return rest or None
+        if token in _ENV_VALUE_OPTS:
+            if index + 1 >= len(args):
+                return None
+            index += 2
+            continue
+        if token.startswith("--unset=") or token.startswith("--chdir="):
+            index += 1
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
+            index += 1
+            continue
+        return args[index:]
+    return None
 
 
 def _pm_bb_error(args: list[str]) -> str | None:
@@ -264,6 +368,11 @@ def _pm_segment_error(segment: list[str]) -> str | None:
         if not args:
             return "nohup requires a command"
         return _pm_segment_error(args)
+    if executable == "env":
+        inner = _unwrap_env_args(args)
+        if not inner:
+            return "env requires a command"
+        return _pm_segment_error(inner)
     # A shell script run by its path (./scripts/deploy.sh) is the same as `bash scripts/deploy.sh`,
     # which the PM may already run: judge them alike instead of by the bare command name.
     if "/" in segment[0] and segment[0].endswith(".sh"):
@@ -293,6 +402,8 @@ def _pm_segment_error(segment: list[str]) -> str | None:
         return "unsupported export command"
     if executable in PM_CONTROL_COMMANDS or executable in PM_OPS_COMMANDS:
         return None
+    if executable in PM_BB_EXECUTABLES:
+        return _pm_bb_error(args)
     if executable in PM_READ_COMMANDS:
         if executable == "find" and any(
             arg in {
@@ -435,8 +546,6 @@ def _pm_segment_error(segment: list[str]) -> str | None:
         if method is not None and method.upper() not in {"GET", "HEAD"}:
             return "non-read-only curl method is forbidden"
         return None
-    if executable in PM_BB_EXECUTABLES:
-        return _pm_bb_error(args)
     return f"command {segment[0]!r} is not allowlisted for project management"
 
 
@@ -458,6 +567,152 @@ def _pm_redirect_target_ok(path: str) -> bool:
         return False
     text = path.replace("\\", "/")
     return text == "/tmp" or text.startswith("/tmp/")
+
+
+def _lane_pilot_redirect_target_ok(path: str, cwd: object) -> bool:
+    """Allow output only under a real temp root, after .. and symlink resolution."""
+    if not path or path.isdigit():
+        return True
+    if not isinstance(cwd, str) or not cwd:
+        return False
+    try:
+        requested = Path(path).expanduser()
+        absolute = requested if requested.is_absolute() else Path(cwd) / requested
+        target = absolute.resolve(strict=False)
+        return any(target.is_relative_to(root) for root in _PM_TMP_ROOTS)
+    except (OSError, ValueError):
+        return False
+
+
+def _lane_pilot_flag_present(args: list[str], names: set[str]) -> bool:
+    return any(token in names or any(token.startswith(f"{name}=") for name in names) for token in args)
+
+
+def _lane_pilot_segment_error(segment: list[str]) -> str | None:
+    if not segment:
+        return None
+    executable = Path(segment[0]).name
+    args = segment[1:]
+    if executable in LANE_PILOT_FORBIDDEN_SCRIPT_RUNNERS:
+        return f"script runner {executable!r} is forbidden for lane-pilot-pm"
+    if executable == "sudo":
+        inner = _unwrap_sudo_args(args)
+        if not inner:
+            return "sudo requires a command"
+        return _lane_pilot_segment_error(inner)
+    if executable == "nohup":
+        return "nohup is forbidden for lane-pilot-pm"
+    if executable in LANE_PILOT_ADOC_COMMANDS:
+        if not args:
+            return f"{executable} requires an explicit report-only flag"
+        allowed_flags = {"--json", "--no-tui"}
+        if any(token == "setup" for token in args):
+            return f"{executable} setup is forbidden"
+        if any(token.startswith("-") and token not in allowed_flags for token in args):
+            return f"unknown or mutating {executable} flag is forbidden"
+        if not any(token in allowed_flags for token in args):
+            return f"{executable} requires --json or --no-tui"
+        return None
+    if executable == "run-controller":
+        command = _subcommand(args, set())
+        return None if command in LANE_PILOT_RUN_CONTROLLER_SUBCOMMANDS else (
+            f"run-controller {command or '<missing>'} is not allowlisted"
+        )
+    if executable == "lane-ctl":
+        command = _subcommand(args, set())
+        return None if command in LANE_PILOT_LANE_CTL_SUBCOMMANDS else (
+            f"lane-ctl {command or '<missing>'} is not allowlisted"
+        )
+    if executable == "git":
+        forbidden = {"-c", "--config", "-o", "--output", "--git-dir", "--work-tree"}
+        if _lane_pilot_flag_present(args, forbidden):
+            return "git output/configuration flags are forbidden"
+        command = _subcommand(args, {"-C"})
+        if command not in LANE_PILOT_GIT_READONLY:
+            return f"git {command or '<missing>'} is not read-only"
+        return None
+    if executable in LANE_PILOT_READ_COMMANDS:
+        if executable == "find" and any(
+            token in {"-delete", "-exec", "-execdir", "-fls", "-fprint", "-fprint0", "-ok", "-okdir"}
+            for token in args
+        ):
+            return "mutating find action is forbidden"
+        if executable == "sed" and _lane_pilot_flag_present(args, {"-i", "--in-place"}):
+            return "in-place sed is forbidden"
+        if executable == "sort" and _lane_pilot_flag_present(args, {"-o", "--output"}):
+            return "sort output file is forbidden"
+        if executable == "yq" and _lane_pilot_flag_present(args, {"-i", "--inplace", "--in-place"}):
+            return "in-place yq is forbidden"
+        return None
+    if executable in PM_BB_EXECUTABLES:
+        return _pm_bb_error(args)
+    return f"command {segment[0]!r} is not allowlisted for lane-pilot-pm"
+
+
+def _lane_pilot_bb_error(command: str) -> str | None:
+    """bb in a Lane Pilot PM command: reading threads and messaging them, nothing that spawns, edits or reloads."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    segment: list[str] = []
+    for token in [*tokens, ";"]:
+        if token in {"&&", "||", ";", "|", "&"}:
+            if segment and (segment[0] in PM_BB_EXECUTABLES or Path(segment[0]).name == "bb"):
+                error = _pm_bb_error(segment[1:])
+                if error:
+                    return error
+            segment = []
+        else:
+            segment.append(token)
+    return None
+
+
+def _lane_pilot_shell_error(command: str, cwd: object) -> str | None:
+    if "\0" in command or "\n" in command or "$(" in command or "`" in command:
+        return "multiline shell or command substitution is forbidden"
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError as exc:
+        return f"shell command cannot be parsed: {exc}"
+    segments: list[list[str]] = [[]]
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"&&", "||", ";", "|"}:
+            segments.append([])
+            index += 1
+            continue
+        if token == "&":
+            return "background jobs are forbidden"
+        if token in {">", ">>", "<", "&>", ">&"} or re.fullmatch(r"\d>+", token):
+            index += 1
+            if index < len(tokens) and tokens[index] not in {
+                "&&", "||", ";", "|", "&", ">", ">>", "<", "&>", ">&",
+            } and not re.fullmatch(r"\d>+", tokens[index]):
+                target = tokens[index]
+                if not _lane_pilot_redirect_target_ok(target, cwd):
+                    return f"redirect target {target!r} is outside a real temp root"
+                index += 1
+            continue
+        if token.isdigit() and index + 2 < len(tokens) and tokens[index + 1] == ">&":
+            index += 3
+            continue
+        if any(char in token for char in "<>"):
+            return f"unsupported redirection {token!r}"
+        segments[-1].append(token)
+        index += 1
+    for segment in segments:
+        error = _lane_pilot_segment_error(segment)
+        if error:
+            return error
+    return None
 
 
 def _pm_shell_error(command: str) -> str | None:
@@ -507,48 +762,6 @@ def _pm_shell_error(command: str) -> str | None:
     return None
 
 
-# Heredoc bodies fed to anything but a shell are data (a report, a script for python), not commands.
-_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n(.*?)(?:\n[ \t]*\2[ \t]*(?:\n|$)|$)", re.S)
-_SHELL_CONSUMER = re.compile(r"(?:^|[\s;&|(/])(?:ba|z|da|k)?sh\b|\beval\b")
-
-
-def _without_data_heredocs(command: str) -> str:
-    def strip(match: re.Match[str]) -> str:
-        line_start = command.rfind("\n", 0, match.start()) + 1
-        line_end = command.find("\n", match.start())
-        if _SHELL_CONSUMER.search(command[line_start : line_end if line_end >= 0 else len(command)]):
-            return match.group(0)
-        return match.group(0)[: match.start(3) - match.start(0)] + "\n"
-    return _HEREDOC.sub(strip, command)
-
-
-_CONTROL_TOKENS = {";", "&&", "||", "|", "&", "(", ")", ";;", "|&"}
-
-
-def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
-    """Arguments of each real `git <subcommand>` in a command; quoted text such as a commit message stays one token."""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        tokens = list(lexer)
-    except ValueError:
-        alternatives = "|".join(sorted(subcommands))
-        return [m.group(1).split() for m in re.finditer(rf"\bgit\s+(?:{alternatives})\b([^;&|\n]*)", command)]
-    pushes: list[list[str]] = []
-    i = 0
-    while i < len(tokens) - 1:
-        if Path(tokens[i]).name == "git" and tokens[i + 1] in subcommands:
-            j = i + 2
-            while j < len(tokens) and tokens[j] not in _CONTROL_TOKENS:
-                j += 1
-            pushes.append(tokens[i + 2 : j])
-            i = j
-        else:
-            i += 1
-    return pushes
-
-
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -559,10 +772,29 @@ def main() -> None:
     client = detect_client(p)
     name = tool_name(p)
     agent = p.get("agent_type")
-    if agent in PM_AGENTS and is_edit_tool(name):
+    key = agent_key(agent)
+    if key in LANE_PILOT_PM_AGENT_TYPES:
+        if is_edit_tool(name):
+            path = file_path(p)
+            if not path or not _pm_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot")):
+                _deny_pm(client, f"direct {name or 'edit'} outside PM contract files is forbidden", lane_pilot=True)
+            emit_allow(client)
+        if name and not is_shell_tool(name):
+            emit_allow(client)
+        cmd = shell_command(p)
+        if not cmd.strip():
+            emit_deny(client, "[lane-pilot-guard] malformed shell tool payload blocked.")
+        # The Lane Pilot PM is the user's own chat: its shell runs under the same rules as a plain
+        # claude-lane chat (deploys, compose, npm scripts, systemctl pass; the destructive list below
+        # still blocks). Only BB thread control stays scoped, and writers are BB threads, not lanes.
+        error = _lane_pilot_bb_error(cmd)
+        if error:
+            _deny_pm(client, error, lane_pilot=True)
+    lane_pilot_chat = key in LANE_PILOT_PM_AGENT_TYPES or bool(key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE"))
+    if key in PM_AGENTS and is_edit_tool(name):
         path = file_path(p)
         if not path or not _pm_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot")):
-            _deny_pm(client, f"direct {name or 'edit'} outside PM contract files is forbidden")
+            _deny_pm(client, f"direct {name or 'edit'} outside PM contract files is forbidden", lane_pilot=lane_pilot_chat)
         emit_allow(client)
     if name and not is_shell_tool(name):
         emit_allow(client)
@@ -575,7 +807,22 @@ def main() -> None:
     # Destructive checks read commands, not report text a heredoc hands to a non-shell program.
     low = _without_data_heredocs(cmd).lower()
 
-    if p.get("agent_type") == "dev-orchestrator" and re.search(
+    # A Lane Pilot BB chat (its launcher sets LANE_PILOT_AGENT_TYPE) runs writers as BB threads,
+    # and Lane Pilot itself critiques, accepts and merges them into main.
+    if lane_pilot_chat and re.search(
+        r"(?:^|[;&|(\n]\s*|\b(?:until|while|if|then|do|exec|command)\s+)(?:[^\s;&|()]+/)?"
+        r"(?:run-controller\b|run-init\b|wt-merge-main\b|lane-ctl\s+(?:start|retry|fallback)\b|lane-bg\b|lane-exec\b)",
+        _without_data_heredocs(cmd),
+    ):
+        emit_deny(
+            client,
+            "[lane-pilot-guard] In a Lane Pilot chat writer lanes are BB threads, and Lane Pilot "
+            "merges accepted work into main itself. Dispatch each task with lane_pilot_dispatch_writer "
+            "and poll lane_pilot_wait_writer; do not start run-controller, run-init, wt-merge-main, "
+            "lane-ctl, lane-bg or lane-exec.",
+        )
+
+    if key == "dev-orchestrator" and re.search(
         r"(?:^|[;&|(\n]\s*|\b(?:until|while|if|then|do|exec|command)\s+)"
         r"(?:[^\s;&|()]+/)?run-controller\s+(?:start|watch|status)\b",
         cmd,
@@ -589,10 +836,18 @@ def main() -> None:
             "Agent(lane-supervisor) for manual status or recovery.",
         )
 
-    if agent in PM_AGENTS:
-        error = _pm_shell_error(cmd)
-        if error:
-            _deny_pm(client, error)
+    if key in PM_AGENTS:
+        # BB native PM (launcher sets LANE_PILOT_AGENT_TYPE): same shell as a
+        # plain claude-lane chat — deploys and project node scripts pass. CLI
+        # orchestrators without that env stay on the allowlist.
+        if os.environ.get("LANE_PILOT_AGENT_TYPE"):
+            error = _lane_pilot_bb_error(cmd)
+            if error:
+                _deny_pm(client, error, lane_pilot=True)
+        else:
+            error = _pm_shell_error(cmd)
+            if error:
+                _deny_pm(client, error)
 
     # git hook skip
     git_writes = _git_args(_without_data_heredocs(cmd), {"commit", "push", "merge"})
