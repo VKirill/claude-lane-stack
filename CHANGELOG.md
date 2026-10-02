@@ -1,4 +1,4 @@
-## Unreleased
+## 1.61.0 — 2026-10-02
 
 ### Added
 - **`team-routes` (dev-orchestrator):** a new Loop step 0b turns a goal into a route of

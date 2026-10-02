@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.60.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.61.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -194,7 +194,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.60.0
+cd claude-lane-stack && git checkout v1.61.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
