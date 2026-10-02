@@ -397,6 +397,14 @@ def _live_records(repo: Path, audience: str | None = None) -> list[dict[str, Any
     return out
 
 
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
+
+
+def _indexed_records(repo: Path) -> list[dict[str, Any]]:
+    """Records the git-tracked indexes may name: a sensitive record lives in .cls/local-memory, its claim too."""
+    return [rec for rec in _live_records(repo, audience="owner") if rec.get("sensitivity") not in {"sensitive", "encrypted-required"}]
+
+
 def probe_fts5() -> bool:
     conn = sqlite3.connect(":memory:")
     try:
@@ -751,19 +759,23 @@ def core_text(repo: Path) -> str:
     if not shared:
         lines.append("_no always-on shared facts_")
     for rec in shared:
-        claim = re.sub(r"<!--", "< !--", str(rec.get("claim") or ""))
-        lines.append(f"- {rec.get('id')}: {claim}")
+        lines.append(f"- {rec.get('id')}: {_core_claim(rec)}")
     if bot:
         lines.extend(["", f"## personal/{bot}", ""])
         if not personal:
             lines.append("_no personal always-on facts_")
         for rec in personal:
-            claim = re.sub(r"<!--", "< !--", str(rec.get("claim") or ""))
-            lines.append(f"- {rec.get('id')}: {claim}")
+            lines.append(f"- {rec.get('id')}: {_core_claim(rec)}")
     text = "\n".join(lines) + "\n"
     used = len(text.encode("utf-8"))
     header = f"# Memory CORE (always)  {used}/{cfg['core_budget']} bytes\n"
     return header + "\n".join(lines[1:]) + "\n"
+
+
+def _core_claim(rec: dict[str, Any]) -> str:
+    """One line, no comment or CORE markers: a claim with line breaks wrote «## SYSTEM:» into CLAUDE.md."""
+    claim = " ".join(str(rec.get("claim") or "").split())
+    return claim.replace("<!--", "< !--").replace("-->", "-- >")
 
 
 def last_episode(repo: Path) -> Path | None:
@@ -787,7 +799,7 @@ def inject_core(repo: Path) -> list[Path]:
         if CORE_MARK_START in text and CORE_MARK_END in text:
             text = re.sub(
                 re.escape(CORE_MARK_START) + r".*?" + re.escape(CORE_MARK_END),
-                block.strip(),
+                lambda _match: block.strip(),
                 text,
                 count=1,
                 flags=re.S,
@@ -810,7 +822,7 @@ def expected_memory_md(repo: Path) -> str:
     ]
     by_area: dict[str, list[str]] = {}
     core_rows = []
-    for rec in _live_records(repo, audience="owner"):
+    for rec in _indexed_records(repo):
         rid = rec.get("id")
         claim = rec.get("claim")
         row = f"- [[{rid}]] — {claim} · {rec.get('memory_type')} · {rec.get('truth_mode')}"
@@ -842,7 +854,7 @@ def rebuild_index(repo: Path) -> str:
     text = expected_memory_md(repo)
     memory_index_path(repo).write_text(text, encoding="utf-8")
     by_area: dict[str, list[str]] = {}
-    for rec in _live_records(repo, audience="owner"):
+    for rec in _indexed_records(repo):
         row = (
             f"- [[{rec.get('id')}]] — {rec.get('claim')} · "
             f"{rec.get('memory_type')} · {rec.get('truth_mode')}"
@@ -1065,11 +1077,11 @@ def lint(repo: Path) -> list[str]:
                 mem_ids.add(match)
                 if match not in ids:
                     findings.append(f"ORPHAN MEMORY.md points at [[{match}]]")
-        for rid in {str(r.get("id") or "") for r in _live_records(repo, "owner")}:
+        for rid in {str(r.get("id") or "") for r in _indexed_records(repo)}:
             if rid and rid not in mem_ids:
                 findings.append(f"ORPHAN {rid}: file not in MEMORY.md")
     by_area: dict[str, list[str]] = {}
-    for rec in _live_records(repo, audience="owner"):
+    for rec in _indexed_records(repo):
         row = (
             f"- [[{rec.get('id')}]] — {rec.get('claim')} · "
             f"{rec.get('memory_type')} · {rec.get('truth_mode')}"
@@ -1160,6 +1172,11 @@ def write_apply(
         raise ValueError("4 extract: claim must be one statement")
     log.append("4 extract: one claim")
     rid = str(meta["id"])
+    # The id and bot become file names: «../../x» wrote outside the corpus (2026-10-03 audit).
+    if not SAFE_ID.match(rid):
+        raise ValueError(f"id {rid!r}: use letters, digits, dot, dash or underscore")
+    if meta.get("bot") and not SAFE_ID.match(str(meta.get("bot")).strip()):
+        raise ValueError("bot: use letters, digits, dot, dash or underscore")
     twins = _twins(repo, claim, rid)
     if any(t.startswith("DUPE") for t in twins):
         raise ValueError(f"5 compare: {twins[0]} — update, do not spawn")
@@ -1185,6 +1202,8 @@ def write_apply(
         dest_root = corpus_dir(repo) / "bots" / bot_name
     dest_root.mkdir(parents=True, exist_ok=True)
     dest = dest_root / f"{rid}.md"
+    if dest.is_file() and str(load_record(dest).get("claim") or "").strip() != claim:
+        raise ValueError(f"{rid} already holds another claim; write a new id with supersedes: {rid}")
     if confirm is None:
         raise ValueError(f"write requires --confirm {dest}")
     if Path(confirm).resolve() != dest.resolve():
@@ -1357,9 +1376,18 @@ def history_search(repo: Path, words: str) -> list[str]:
     return hits
 
 
+def _ignore_episodes(folder: Path) -> None:
+    """Episodes are session logs, not knowledge: in git they reached 7 152 files in one project and every
+    writer worktree saw them as its own changes (owns_paths rejections, 2026-10-03 audit)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    marker = folder / ".gitignore"
+    if not marker.is_file():
+        marker.write_text("*\n!.gitignore\n", encoding="utf-8")
+
+
 def write_episode(repo: Path, text: str, *, title: str = "") -> Path:
     folder = corpus_dir(repo) / "episodes"
-    folder.mkdir(parents=True, exist_ok=True)
+    _ignore_episodes(folder)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = folder / f"{stamp}.md"
     head = title.strip() or "session"
@@ -1468,7 +1496,7 @@ def measure(repo: Path) -> dict[str, Any]:
 def init_corpus(repo: Path) -> Path:
     root = corpus_dir(repo)
     (root / "drafts").mkdir(parents=True, exist_ok=True)
-    (root / "episodes").mkdir(parents=True, exist_ok=True)
+    _ignore_episodes(root / "episodes")
     (root / "bots").mkdir(parents=True, exist_ok=True)
     cls = cls_dir(repo)
     (cls / "local-memory").mkdir(parents=True, exist_ok=True)

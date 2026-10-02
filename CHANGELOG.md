@@ -1,3 +1,11 @@
+## 1.63.0 — 2026-10-03
+
+### Fixed (memory audit against the SMA blueprints)
+- **`lane-memory write`: ids are file names.** An id or bot like `../../x` wrote outside the corpus; ids now take letters, digits, dot, dash and underscore only. The same id with another claim is refused instead of silently overwritten — write a new id with `supersedes`.
+- **CORE injection.** A backslash in a claim crashed `inject_core` after the file was written, and every later write failed with it; the CORE block now replaces through a function. Claims enter CORE as one line with comment markers defused, so a claim written past the door can no longer add a `## SYSTEM:` line to CLAUDE.md / AGENTS.md.
+- **Sensitive claims stay out of git.** `MEMORY.md` and `INDEX-*.md` listed claims of `sensitive` records whose files live in `.cls/local-memory`; indexes now skip sensitive and encrypted-required records.
+- **Episodes are not tracked.** `.agents/memory/episodes/` gets a `.gitignore` on init and on every episode write. In one project 7 152 tracked episode files made every writer worktree see them as its own changes.
+
 ## 1.62.0 — 2026-10-02
 
 ### Changed
