@@ -98,10 +98,9 @@ def _cls(repo: Path) -> Path:
 
 
 def project(repo: Path) -> str | None:
-    """The hub project of this folder: the BB session's own, a cached answer, or the hub's lookup by path."""
-    env_project = os.environ.get("BB_PROJECT_ID", "").strip()
-    if env_project:
-        return env_project
+    """The hub project of this folder: a cached answer, the hub's lookup by folder and machine, and only then the
+    BB session's own project — a session of one project may work in another project's folder."""
+    env_project = os.environ.get("BB_PROJECT_ID", "").strip() or None
     root = str(Path(repo).resolve())
     cache = _cls(repo) / "hub-project.json"
     try:
@@ -111,13 +110,12 @@ def project(repo: Path) -> str | None:
     except (OSError, json.JSONDecodeError):
         pass
     host = host_id()
-    if not host:
-        return None
-    found = call("session_memory_project", {"hostId": host, "path": root})
+    found = call("session_memory_project", {"hostId": host, "path": root}) if host else None
     project_id = (found or {}).get("projectId")
     if project_id:
         cache.write_text(json.dumps({"path": root, "projectId": project_id}), encoding="utf-8")
-    return project_id or None
+        return str(project_id)
+    return env_project
 
 
 def available(repo: Path) -> bool:

@@ -1,3 +1,8 @@
+## 1.64.1 — 2026-10-03
+
+### Fixed
+- **The folder decides the hub project.** A BB session of one project working in another project's folder wrote to the session's project; the lookup by folder and machine now comes first and `BB_PROJECT_ID` only when it finds nothing.
+
 ## 1.64.0 — 2026-10-03
 
 ### Changed

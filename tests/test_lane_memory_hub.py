@@ -96,6 +96,10 @@ class LaneMemoryHubTest(unittest.TestCase):
         self.assertEqual(hits[0]["id"], "m0")
         self.assertTrue(any("hub m0" in line for line in log))
 
+    def test_the_folder_decides_the_project_not_the_session(self) -> None:
+        os.environ["BB_PROJECT_ID"] = "proj_session"
+        self.assertEqual(self.lm._hub().project(self.repo), "proj_test")
+
     def test_a_lesson_is_a_rule_proposal_and_waits_while_the_hub_is_down(self) -> None:
         out = self.lm.lesson(self.repo, "Run npm ci in writer worktrees, never npm install", evidence="owner corrected")
         self.assertEqual(out["state"], "accepted")
