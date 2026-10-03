@@ -1,6 +1,6 @@
 ---
 name: tavily
-description: "Tavily REST search and cited research. Key in ~/secrets/tavily.env. Use when: tavily, поиск в интернете, cited report, источники с URL. SKIP: one known URL (WebFetch); X/Twitter slang (grok); SEO SERP (seo-specialist)."
+description: "Tavily REST search and cited research. Key from `$TAVILY_API_KEY` (BB: Env Catalog `TAVILY_API_KEY`; terminal outside BB: `~/secrets/tavily.env`). Use when: tavily, поиск в интернете, cited report, источники с URL. SKIP: one known URL (WebFetch); X/Twitter slang (grok); SEO SERP (seo-specialist)."
 argument-hint: "[search|research]"
 ---
 
@@ -10,12 +10,14 @@ Host skill. Not the skills.sh `tvly` CLI pack. REST only.
 
 Session agent: `tavily` (`cc tavily`). Copy-lead writes under `.agents/copy/research/inbox/`.
 
+Key, in this order: `$TAVILY_API_KEY` if it is set (BB sessions get it from the Env Catalog); else the Env Catalog entry `TAVILY_API_KEY` (`env_get`); else, only in a terminal session outside BB, the file:
+
 ```bash
-set -a; source ~/secrets/tavily.env; set +a
-test -n "$TAVILY_API_KEY" || { echo "MISSING ~/secrets/tavily.env"; exit 1; }
+if [ -z "${TAVILY_API_KEY:-}" ] && [ -f ~/secrets/tavily.env ]; then set -a; source ~/secrets/tavily.env; set +a; fi
+test -n "${TAVILY_API_KEY:-}" || { echo "MISSING TAVILY_API_KEY (env, Env Catalog or ~/secrets/tavily.env)"; exit 1; }
 ```
 
-No file / empty key → stop. Do not print the key. Do not `npx skills add`.
+Inside a BB / Lane Pilot session do not read `~/secrets/tavily.env`: the key is already in the session or in the Env Catalog. No key anywhere → stop and report. Do not print the key. Do not `npx skills add`.
 
 Query = search string, **< 400 chars**, not an essay. Split fat questions into 2–4 calls.
 
@@ -92,8 +94,8 @@ Copy `content` + `sources` into `$INBOX/$STAMP.md` (`kind: report`). Report sent
 
 ## NEVER
 
-- Print `TAVILY_API_KEY` or the env file
-- Install `tvly` / skills.sh Tavily packs
+- Print `TAVILY_API_KEY` or the env file (use it only in the `Authorization` header)
+- Install `tvly` / skills.sh Tavily packs (this skill is REST only)
 - `/research` for one URL or a top-N list
 - Raw HTML in chat
 - Treat a snippet as a confirmed customer quote

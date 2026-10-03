@@ -52,7 +52,7 @@ Empty field = skip. Invented slang = delete.
 
 Skip: Twitter/OAuth/post skills (`x-research-skill` ~340). Grok covers X.
 
-Shipped: skill `tavily` (`~/secrets/tavily.env`). Do not `npx skills add` Tavily packs.
+Shipped: skill `tavily` (key `$TAVILY_API_KEY`, see the skill). Do not `npx skills add` Tavily packs.
 
 Install Firecrawl skills only when the human has that key and asked:
 

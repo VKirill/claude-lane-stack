@@ -97,6 +97,6 @@ of the route, not after each step.
 End the route with the deliverable path, what each role contributed (one line
 each), open `[unknown]` facts, and the next sensible step (for example «в код —
 скажи "делай"»). A route that ends in code continues into the normal WRITE
-Loop: specialist steps finish first, then `run-init` with their outputs in
+Loop: specialist steps finish first, then `run-init` (Lane Pilot: `lane_pilot_dispatch_writer`, specialists via `lane_pilot_specialist`) with their outputs in
 `read_first`. This keeps the Mode XOR rule: no research teammates on a goal
 once its write run has started.

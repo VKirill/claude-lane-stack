@@ -14,7 +14,7 @@ No intro. No extra sections. Do not start a run, onboard, or design extract.
 
 # lane-stack
 
-Рабочие процессы. Одна сессия = `dev-orchestrator`.
+Рабочие процессы терминального Lane Stack. Одна сессия = `dev-orchestrator`. В чате Lane Pilot запуск ранов — `lane_pilot_dispatch_writer`.
 
 ```
 resume ──► onboard? ──► туду / план ──► архитектор? ──► дизайн? ──► ран ──► доки

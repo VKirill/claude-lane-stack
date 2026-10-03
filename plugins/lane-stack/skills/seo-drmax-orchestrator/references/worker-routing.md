@@ -42,7 +42,7 @@ Default for agents: `never_while_running` until hard ceiling or idle-after-soft.
 | Mutagen / xmlstock / GSC / GA4 / Webmaster | Main agent Bash+curl via API skills | Deterministic tools |
 | SERP harvest for clustering | `seo-serp-save` (+ proxy6 if enabled) | Persist dumps; re-cluster with new temperature |
 | Page HTML for agents | `seo-scan` → `snapshot.md` / `seo-html2md` | Fewer tokens than raw HTML |
-| Site code / template SEO fixes | `dev-orchestrator` + writer lanes | Owns paths, tests, merge |
+| Site code / template SEO fixes | `dev-orchestrator` + writer lanes (Lane Pilot: describe in the final message, the PM dispatches) | Owns paths, tests, merge |
 | Image/schema only | narrow subagent or script | Isolation |
 | Transcription | `groq` or `codex` per routing | Audio/video → text |
 | Embeddings (markers / assist) | `openai` or `gemini` per routing | Vector stage only when methodology needs it |

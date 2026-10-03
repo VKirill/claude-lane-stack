@@ -1,52 +1,16 @@
 ---
 name: seo-project-life
-description: "Карта жизни SEO-проекта: где лежат паспорт, доска, фазы, модули, CLI. Не пишет код и не запускает 18 модулей подряд. Use when: seo info, где seo, паспорт SEO, BOARD SEO, seo-resume, harness пуст, seo-module, playbook, ANAMNESIS, .agents/seo. SKIP: код сайта (→dev-orchestrator / project-life); один DrMax-промпт (→thin skill / originals)."
+description: "Карта жизни SEO-проекта: где лежат паспорт, доска, фазы, модули, CLI. Не пишет код и не запускает 18 модулей подряд. Use when: где seo, паспорт SEO, BOARD SEO, seo-resume, harness пуст, seo-module, playbook, ANAMNESIS, .agents/seo. SKIP: код сайта (→dev-orchestrator / project-life); один DrMax-промпт (→thin skill / originals)."
 argument-hint: "[info]"
 ---
 
 # SEO project life — where things live
 
-## Info (print and stop)
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) skip the `seo-*` CLI (`seo-init`, `seo-resume`, `seo-dispatch`, `seo-services`), `seodoc` and the `seo-system` catalog: work from the code, the docs and your skills, and keep artifacts in `.agents/seo/<slug>/` if it exists. Site-code fixes: describe them in your final message (files and acceptance) under a block «для PM»; the PM dispatches the writer. The loop below is the terminal SEO harness.
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `где seo` this skill:
-print the block below **verbatim** (Russian), then **stop**.
+## Info
 
-```text
-seo-project-life — карта SEO-проекта. Не код.
-
-Два слоя (не путать)
-1) Жизнь проекта  →  <repo>/.agents/seo/<slug>/
-2) Каталог умений →  ~/.agents/seo-system/modules/   (CLI: seo-module)
-
-Цепочка
-passport → discovery → strategy → technical → content → offpage → measure
-
-Как открыть
-- /lane-stack:seo-project-life info
-- агент: cc s  /  claude --agent seo-specialist
-- настройки API/моделей: seodoc
-
-Фразы → действие
-- «где мы / продолж»     → seo-resume .
-- «пустой harness»       → seo-init <slug> --domain …
-- «живой сайт с нуля»    → seo-module playbook live-site-start
-- «сайта ещё нет»        → seo-module playbook greenfield-start
-- «одна статья»          → seo-module playbook one-article
-- «какой модуль»         → seo-module list  затем  seo-module scenario <mod> <scen>
-- «после работы»         → seo-board . && seo-handoff-write .
-
-Куда писать
-- факты проекта     STATUS.md / ANAMNESIS.md / passport/
-- исследование      discovery/
-- стратегия/кокон   strategy/
-- техника           technical/   (код сайта → .agents/runs/ + dev-orchestrator)
-- черновики/GIST    content/
-- ссылки/бренд      offpage/
-- цифры/SERP        measurement/  evidence/serp/
-- прогон промпта    prompts-used/log.tsv
-
-На диск — English keys. В чат — русский. Секреты не писать.
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop.
 
 ## Two layers
 
@@ -105,7 +69,7 @@ Playbooks only chain modules. They do not hold client facts.
 | SERP / freq export | `evidence/` (dated) — else mark hypothesis |
 | one DrMax system | `seo-module scenario` → original 1:1 → artifact under the phase folder |
 | bulk / cheap pass | `seo-dispatch --stage …` (executor from `seo-routing resolve`) |
-| site code fix | `.agents/runs/` + `dev-orchestrator` — not `.agents/seo/` |
+| site code fix | `.agents/runs/` + `dev-orchestrator` (Lane Pilot: final message to the PM) — not `.agents/seo/` |
 | code todos / plans | skill `project-life` — different tree |
 | API keys | `seodoc` / `~/secrets/` — never STATUS or task YAML |
 

@@ -1,6 +1,6 @@
 ---
 name: browser-qa
-description: "Live browser QA + Playwright-compatible replay. Disk .agents/qa/. Use when: проверь в браузере, кликни сценарий, вёрстка 375, screenshot QA. SKIP: DESIGN.md taste (design-lead); product Vue/CSS (run-supervisor); L0/L1 unit/API (lane-contract)."
+description: "Live browser QA + Playwright-compatible replay. Disk .agents/qa/. Use when (terminal Lane Stack): проверь в браузере, кликни сценарий, вёрстка 375, screenshot QA. SKIP: Lane Pilot chats (PM calls `lane_pilot_browser_qa`); DESIGN.md taste (design-lead); product Vue/CSS (writer lane); L0/L1 unit/API (lane-contract)."
 argument-hint: "[info]"
 ---
 
@@ -10,25 +10,11 @@ Adapted from [lee-to/ai-factory#154](https://github.com/lee-to/ai-factory/pull/1
 replay rules. Paths and gates are lane-stack. No `.ai-factory`, no human
 «работает или нет».
 
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) do not run this file's replay and digest procedure. The PM checks an accepted task with `lane_pilot_browser_qa`; the check runs in a child thread through `bb browser-automation` (no MCP browser) and ends with the one fenced JSON verdict its prompt asks for, changing no files. `.agents/qa/` replay, `qa-digest`, `chrome-qa`, `browser-qa-jev` and `chrome-devtools` below are the terminal harness. The PM does not click in its own chat.
+
 ## Info
 
-If `$ARGUMENTS` is `info` / `справка`: print the block, **stop**.
-
-```text
-browser-qa — живой браузер, не writer.
-
-.agents/qa/context.md     безопасный setup (без паролей)
-.agents/qa/<slug>/
-  cases.md   REPORT.md   shots/   replay/TC-00N.js   replay/history/
-
-Дигесты: qa-digest cases|script|target
-Кто кликает: adoc → Stages → browser_qa. По умолчанию jev (browser-qa-jev:
-CDP + таблица контролов). provider codex = gpt-6-astra; claude = Haiku + chrome-devtools.
-Нет chrome-devtools / Playwright / codex → blocked, не pass.
-Свой Chrome для QA: chrome-qa start (профиль ~/.agents/chrome-qa, порт 9333, без диалогов)
-+ chrome-devtools MCP --browserUrl http://127.0.0.1:9333. --autoConnect к личному Chrome —
-диалог при каждом подключении; работать только в своих вкладках.
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop.
 
 ## Layout
 
@@ -55,7 +41,7 @@ Steps, Expected.
 |---------|------------|
 | `browser-ui` | Required. Live browser. Replay first. |
 | `cli` / `backend-test` / `api` | Do not click. Note `blocked: use L0/L1`. No human array-checking. |
-| `human` | Leave pending. Fable asks the operator. |
+| `human` | Leave pending. The PM asks the operator. |
 
 Default viewports if omitted: `375` `768` `1280`.
 
@@ -141,11 +127,10 @@ are not produced in jev/codex mode; receipt + shots are the proof.
 6. Supporting L0/L1 commands may be listed; they do not count as extra TC results.
 7. Last line to PM: `DONE .agents/qa/<slug>/REPORT.md` plus fail list and 3–5 shots.
 
-## NEVER
+## NEVER (each with its alternative)
 
-- Product Vue/TS/CSS or `docs/DESIGN.md`
-- `pass` without a live browser run of that `browser-ui` case
-- Human mode, `.ai-factory`, `/aif-qa`
-- Persist credentials; bake a preview host into the script
-- Open-ended browsing
-- `rm` / `git reset` / shared DB wipe
+- Product Vue/TS/CSS and `docs/DESIGN.md` are not yours: report the defect in REPORT and leave the file.
+- A `browser-ui` case is `pass` only after a live browser run of that case; without a live browser it is `blocked`.
+- Work only in cases from `cases.md`; for anything else add a `## TC-00N` first. This is the Playwright-replay harness, so no Human mode, `.ai-factory` or `/aif-qa`.
+- Credentials stay out of files, and the preview host stays out of scripts (`BASE_URL` placeholder).
+- Cleanup is read-only for shared state: no `rm`, `git reset` or shared DB wipe.

@@ -1,50 +1,16 @@
 ---
 name: project-life
-description: "Единый скилл ведения задач и жизни проекта: идеи/туду → планы/roadmap → раны → артефакты → прогресс/уроки. Use when user says info, справка, lane-stack:project-life info, туду, запиши, идея, backlog, потом, план, спланируй, планируем, пока план, не запускай, обсудим, roadmap, этапы, приоритеты, прогресс, урок, итоги — or todo, plan, planning, lesson, progress. Cold-start «где мы / handoff / продолж» is resume-project, not this skill."
+description: "Единый скилл ведения задач и жизни проекта: идеи/туду → планы/roadmap → раны → артефакты → прогресс/уроки. Use when user says туду, запиши, идея, backlog, потом, план, спланируй, планируем, пока план, не запускай, обсудим, roadmap, этапы, приоритеты, прогресс, урок, итоги — or todo, plan, planning, lesson, progress. Cold-start «где мы / handoff / продолж» is resume-project, not this skill. `$ARGUMENTS` exactly info prints the card."
 argument-hint: "[info]"
 ---
 
 # Project life — one skill for tasks & project memory
 
-## Info (print and stop)
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) the PM does not write PROGRESS, ROADMAP or plan ticks after a run: Lane Pilot's project-life helper does it (PROGRESS ≤40 lines, one CHANGELOG line, commit `chore(progress)`). The PM keeps `.agents/todos/`, `.agents/plans/` and decision drafts. «делай» = `lane_pilot_dispatch_writer` (the whole plan at once, order through `depends_on`; no waves). A lesson = `lane_pilot_lesson` (rule, audience pm, writer or both — required; `always` only for a rule true of every writer task). Project facts that cannot be derived live in the hub memory (`lane_pilot_memory_context`, `lane-memory search|context`). `run-init`, `run-finalize`, `memory-scribe`, `resume-project` CLI and `~/.agents/bin/*` below are the terminal harness.
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
-print the block below **verbatim** (Russian), then **stop**. Do not create a todo or plan unless the user already asked for that in the same message.
+## Info
 
-```text
-project-life — туду, план, память. Не ран.
-
-Цепочка
-idea → todo → plan → run → merge
-                 память: PROGRESS · уроки→хаб · decisions
-
-Как открыть шпаргалку
-- /lane-stack:project-life info
-- каталог: /lane-stack:info
-
-Фразы → действие
-- «запиши / туду / потом / не теряй»     → .agents/todos/ + INDEX
-- «покажи туду»                         → прочитай INDEX, ответь по-русски
-- «закрой / сделано / не надо»          → status done/dropped
-- «планируем / не запускай / обсудим»   → .agents/plans/items/<slug>/, ран НЕ открывать
-- «архитектор / новое приложение / сервис» → skill app-architect, artifacts/ в том же плане
-- «делай / реализуй / в работу»         → выход в orchestrator-lanes
-- «где мы / продолж»                    → это resume-project, не этот скилл
-
-План без рана
-1) .agents/plans/items/<YYYY-MM-DD-slug>/  status: draft
-2) Решения в PLAN.md + History. Чат не хранилище.
-3) UI: в Links должен быть docs/DESIGN.md (или spawn design-lead).
-4) Запрещено до «делай»: run-init, run-supervisor, Claude Plan mode, ~/.claude/plans/
-
-Файлы
-- .agents/todos/   .agents/plans/   .agents/PROGRESS.md   (lessons: `lane-memory lesson`, on the hub)
-- .agents/decisions/ = черновики решений; docs/decisions.md публикует ночной проход документации
-- .agents/plans/ = длинная стратегия, не очередь задач
-- docs/ = только документация кода (её ведёт ночной проход: Lane Pilot или docs-maintain); вход — PROJECT.md → docs/index.md
-
-На диск — English. В чат — русский. Секреты не писать.
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop. Do not create a todo or plan unless the user already asked for that in the same message.
 
 Everything lives in files under `.agents/` (project) or `~/.agents/` (global).
 **Durable files: English only.** Chat may be Russian — answer in RU, write EN
@@ -97,13 +63,13 @@ Choose project root when cwd has `.git`/`package.json`/`CLAUDE.md`; use
 | «планируем / пока план / не запускай / обсудим / спланируй / разбей на этапы» | **Planning session** — draft in `.agents/plans/`, no run | `references/plans.md` |
 | «архитектор / новое приложение / новый сервис / спроектируем продукт» | Load **app-architect**. Same plan folder, living `artifacts/`. No run | skill `app-architect` |
 | «что дальше по проекту» (already in session) | PROGRESS → ROADMAP → todos INDEX counts | — |
-| «делай / реализуй / в работу / запускай ран» | Exit planning. Spawn a run (`lane-contract`), link it from the plan | — |
-| run закончился зелёным | Tick plan task → refresh ROADMAP → rewrite PROGRESS | `references/memory.md` |
-| поправили тебя / наступил на грабли | One lesson: `lane-memory lesson "<rule>" --for pm|writer|both` (hub, not a file) | `references/memory.md` |
+| «делай / реализуй / в работу / запускай ран» | Exit planning. Lane Pilot: `lane_pilot_dispatch_writer`. Terminal: spawn a run (`lane-contract`). Link it from the plan | — |
+| run закончился зелёным | Terminal: tick plan task → refresh ROADMAP → rewrite PROGRESS. Lane Pilot: its helper does this | `references/memory.md` |
+| поправили тебя / наступил на грабли | One lesson. Lane Pilot: `lane_pilot_lesson` with audience. Terminal: `lane-memory lesson "<rule>" --for pm\|writer\|both` (hub, not a file) | `references/memory.md` |
 | зафиксировано крупное необратимое решение | draft in .agents/decisions/<date>-<slug>.md (the docs pass publishes it to docs/decisions.md) | `references/memory.md` |
 | «итоги / конец сессии» | PROGRESS current, ideas filed as todos, no orphan runs | `references/memory.md` |
 | «что делали / почему так / покажи отчёт» | Read session-log INDEX, run artifacts, findings — don't write them | — |
-| «где мы / handoff / продолж» (cold start) | `~/.agents/bin/resume-project .` (Claude: skill `resume-project`), not this file | — |
+| «где мы / handoff / продолж» (cold start) | Skill `resume-project` (terminal: `~/.agents/bin/resume-project .`), not this file | — |
 
 ## Planning session
 
@@ -130,7 +96,7 @@ UI / visual initiative: Links must include `docs/DESIGN.md`. If it is
 missing, spawn **design-lead** (skill `project-design`) or draft DESIGN.md
 here — do not `run-init` a UI lane without it.
 
-Exit: «делай» → `lane-contract` / orchestrator-lanes Phase 0. Set plan
+Exit: «делай» → Lane Pilot: `lane_pilot_dispatch_writer`; terminal: `lane-contract` / orchestrator-lanes Phase 0. Set plan
 `status: active`, link the run in the task table + `meta.yaml.runs`.
 
 ## Decision guide (where does X go?)
@@ -142,7 +108,7 @@ Exit: «делай» → `lane-contract` / orchestrator-lanes Phase 0. Set plan
 | long-form strategy / COCOON | **`.agents/plans/`** (not a coding queue) |
 | "change code now" | **run** (never directly from todo/plan). Run has its own `PLAN.md` — execution DAG, not the map |
 | "current state of reality" | **PROGRESS** (≤40 lines, rewrite not append) |
-| "we got burned by…" | **lesson** → `lane-memory lesson` |
+| "we got burned by…" | **lesson** → `lane_pilot_lesson` (Lane Pilot) / `lane-memory lesson` (terminal) |
 | "we chose A over B forever" | **draft in `.agents/decisions/`** → published to `docs/decisions.md` |
 | leftover debt / simplify later | **`.agents/agent-notes/OPEN.md`** |
 | planning-session notes / screenshots | **`.agents/plans/items/<slug>/artifacts/`** (until a run exists) |
@@ -163,11 +129,11 @@ Every hop leaves a back-link so any file leads to the full trail:
 
 **Session start:** read `.agents/PROGRESS.md` (project rules reach you through CORE and the brief) →
 ROADMAP + todos INDEX **counts only**. Don't dump session-log into context.
-Cold start / unknown repo: `~/.agents/bin/resume-project .`, then this skill
+Cold start / unknown repo: skill `resume-project` (terminal CLI: `~/.agents/bin/resume-project .`), then this skill
 for writes. Lane writers under a task contract do **not** write `.agents/`
 (the PM does) — this skill's write rules are for the PM / interactive agent.
 
-**After a green run:** tick plan task → refresh ROADMAP → rewrite PROGRESS
+**After a green run (terminal; in Lane Pilot its helper does this):** tick plan task → refresh ROADMAP → rewrite PROGRESS
 (Now/Blocked/Next/Last verify) → a lesson only if corrected → ADR only if a
 durable fork was locked. After a **wave** of tasks, refresh PROGRESS once,
 not per micro-edit. Schema-v2: declare `progress_now` / `close_next` /
@@ -209,17 +175,11 @@ A vague ask («сделай красиво», unclear scope, two plausible readi
 3. Never silently pick an interpretation for destructive or scope-changing
    work. For trivial reversible work: pick the obvious reading, say so.
 
-## Anti-patterns
+## Keeping the layers right
 
-- ❌ Chat-only todos/plans/results — if it matters, it's a file
-- ❌ Claude Plan mode / `~/.claude/plans/` as the project plan
-- ❌ `run-init` during a planning session
-- ❌ One mega-file mixing todo+plan+progress (layers keep files small)
-- ❌ Appending status updates to PROGRESS forever (rewrite it)
-- ❌ Task YAML / owns_paths inside `.agents/plans/` PLAN.md (that's lane-contract)
-- ❌ Treating `.agents/plans/` as a run queue
-- ❌ Writing plans, research or reports into `docs/` — it holds only the code documentation
-- ❌ Production code straight from a todo/plan without a run
-- ❌ Plans/todos that never link the runs that shipped them
-- ❌ Orchestrator MCP / `todo_add` for ideas
-- ❌ Russian (or any non-EN) in durable files; secrets anywhere
+- Everything that matters is a file: todos, plans and results never live only in chat.
+- The project plan is `.agents/plans/`, not Claude Plan mode or `~/.claude/plans/`; it is a delivery map, not a run queue, so it holds no task YAML or owns_paths (that is `lane-contract`) and no run starts during a planning session.
+- One layer per file: todo, plan and PROGRESS stay separate. PROGRESS is rewritten, not appended to; plans and todos link the runs that shipped them.
+- `docs/` holds only the code documentation; plans, research and reports go to `.agents/`.
+- Production code changes go through a run (a writer dispatch), never straight from a todo or plan; ideas are files, not an orchestrator MCP `todo_add`.
+- Durable files are English and contain no secrets.

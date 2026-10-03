@@ -1,6 +1,6 @@
 ---
 name: project-design
-description: Lane-stack router for design/brand. Load ui-ux-pro-max. Full DESIGN.md at root and every UI app. Use when user says info, справка, как запускать project-design, lane-stack:project-design info, дизайн, токены, DESIGN.md, brand, UI, баннер, соцсети, or a UI run has no DESIGN.md. SKIP: UI slop / layout review (web-design).
+description: Lane-stack router for design/brand. Load ui-ux-pro-max. Full DESIGN.md at root and every UI app. Use when user says дизайн, токены, DESIGN.md, brand, UI, баннер, соцсети, or a UI run has no DESIGN.md; `$ARGUMENTS` exactly info prints the card. SKIP: UI slop / layout review (web-design).
 argument-hint: "[info]"
 ---
 
@@ -10,7 +10,7 @@ Load **`ui-ux-pro-max`**. One kit: Google DESIGN.md files. No `MASTER.md`.
 
 ## Info (print and stop)
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
+If `$ARGUMENTS` is exactly `info`:
 print the block below **verbatim** (Russian), then **stop**. Do not extract. Do not spawn `design-lead`.
 
 ```text
@@ -22,7 +22,7 @@ project-design — роутер дизайна lane-stack
 - Не пишет design-system/**/MASTER.md и не вызывает --persist.
 
 Кто пишет файлы
-- Агент design-lead (сессия = dev-orchestrator, cwd = проект).
+- Агент design-lead (терминал: сессия = dev-orchestrator, cwd = проект; Lane Pilot: lane_pilot_specialist role design-lead).
 - Онбординг: project-onboarder, если has_ui и DESIGN.md ещё нет.
 - Lane writer — только если owns_paths включает DESIGN.md. Иначе match, не invent.
 
@@ -66,7 +66,7 @@ Load ui-ux-pro-max → brand/ + banner-design/.
 Агент design-lead MODE=audit. Код — ран.
 
 UI-ран
-- Нет нужного DESIGN.md → сначала design-lead, потом run-init.
+- Нет нужного DESIGN.md → сначала design-lead, потом запуск писателя (терминал: run-init; Lane Pilot: lane_pilot_specialist role design-lead, потом lane_pilot_dispatch_writer).
 - Task read_first: docs/DESIGN.md и apps/<app>/docs/DESIGN.md.
 - Не клади DESIGN.md в owns_paths, если исход не токены/доки.
 
@@ -88,4 +88,4 @@ python3 ~/.agents/skills/ui-ux-pro-max/scripts/search.py "<query>" --stack nuxtj
 - New page: `--design-system` then merge into the DESIGN.md of that surface. No `--persist`.
 - Social / voice: `brand/` + `banner-design/` → Surfaces on root and on marketing/social apps.
 - Writers: match the DESIGN.md of the app they edit (`apps/cabinet/docs/DESIGN.md` in cabinet).
-- Orchestrator: missing any required DESIGN.md → `design-lead` before `run-init`.
+- Orchestrator: missing any required DESIGN.md → `design-lead` before the writer dispatch (`lane_pilot_dispatch_writer` in Lane Pilot after `lane_pilot_specialist` role `design-lead`; `run-init` in the terminal).

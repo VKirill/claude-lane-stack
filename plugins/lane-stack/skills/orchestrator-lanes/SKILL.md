@@ -1,47 +1,16 @@
 ---
 name: orchestrator-lanes
-description: Claude Code `dev-orchestrator` only. File-based multi-lane PM playbook (score, DAG, run-controller, L0/L1/L2, ship). Use when this session IS that agent, or user says info / справка / lane-stack:orchestrator-lanes info. SKIP: Grok, Codex, Kimi, Qwen, AGY, Cursor writer CLIs and any default coding agent — do not load, do not wt-create.
+description: Terminal Lane Stack Claude Code `dev-orchestrator` only (run-controller harness: score, DAG, run-supervisor, L0/L1/L2, wt-merge-main). Use when the session runs that terminal harness, or when `$ARGUMENTS` is exactly `info`. SKIP: Lane Pilot / BB chats (dispatch there is `lane_pilot_dispatch_writer`, `LANE_PILOT_AGENT_TYPE` set); Grok, Codex, Kimi, Qwen, AGY, Cursor writer CLIs and any default coding agent — do not load, do not wt-create.
 argument-hint: "[info]"
 ---
 
 # Orchestrator lanes — solo operator
 
-## Info (print and stop)
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) do not follow this file: it is the terminal harness. Dispatch with `lane_pilot_dispatch_writer` (the whole plan at once, order through `depends_on`), poll with `lane_pilot_wait_writer`; Lane Pilot runs plan critique, acceptance and the merge into main itself, so `run-init`, `run-controller`, `run-supervisor`, `lane-ctl`, `wt-create` and `wt-merge-main` are not yours to call (the guard refuses them). Only `references/decomposition.md` still applies there.
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
-print the block below **verbatim** (Russian), then **stop**. Do not score. Do not `run-init`.
+## Info
 
-```text
-orchestrator-lanes — раны (только сессия dev-orchestrator)
-
-Когда
-- Человек сказал «делай / реализуй / в работу / запускай ран».
-- До этого — project-life, план в .agents/plans/. Ран не открывать.
-
-Как открыть шпаргалку
-- /lane-stack:orchestrator-lanes info
-- каталог всех процессов: /lane-stack:info
-
-Старт рана
-1) cwd = проект. Сессия = dev-orchestrator.
-2) Score один раз (0–2 micro … 11+ спроси).
-3) run-init → заполнить PLAN/SPEC/tasks по lane-contract (ТЗ в objective, не проза в interfaces).
-4) run-validate --phase pre-dispatch.
-5) Один Agent(run-supervisor) на ран.
-6) lane из adoc (.agents/routing.profile.yaml), не хардкод kimi.
-
-UI
-- Нужны полные docs/DESIGN.md и apps/<app>/docs/DESIGN.md.
-- Нет файла → сначала design-lead, потом run-init.
-- Task read_first: оба DESIGN.md как пути файлов. Не в owns_paths, если исход не токены.
-- YAML задач: ТЗ = objective + acceptance. Не роман в interfaces. Окна строк — context_selectors.
-
-Нельзя
-- run-init на фразе «планируем / не запускай»
-- Claude Plan mode / ~/.claude/plans/
-- второй run-supervisor на тот же ран
-- просить человека мержить main
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop. Do not score. Do not `run-init`.
 
 Load: **karpathy-guidelines**, **lane-contract**, **project-life**, **resume-project**, **project-design**, **ui-ux-pro-max**.
 Before filling `tasks/*.yaml`: Read this skill's `references/task-yaml.md`.
@@ -100,46 +69,9 @@ lists both root and that app's DESIGN.md. Do not put them in writer
 
 ---
 
-## Task decomposition (MUST — non-negotiable)
+## Task decomposition
 
-Bad multi-task runs almost always start here. Apply **before** `run-init` / before filling YAML.
-
-### One outcome per task
-
-| Rule | Do | Don't |
-|------|----|--------|
-| Single product outcome | One shippable behavior per task id | Bundle “rewrite feature A” + “delete subsystem B” in one task |
-| Unlock vs feature | Minimal **decouple** task if B must compile without A’s modules | Make a large feature rewrite block a pure deletion DAG edge |
-| Risk class | Keep similar risk/blast in one task | Mix low UI polish with high auth/schema in one YAML |
-| Owns completeness | Every file the objective **must** touch is in `owns_paths` (companions included) | Rely on OFF-SPEC edits (“I had to touch intent_qa”) |
-| depends_on | Only real compile/data edges | “002 waits on 001 because the chat summary listed them in order” |
-
-### Patterns
-
-```text
-# Good — unlock then delete then optional feature
-001-decouple  owns: callers that import doomed modules
-002-delete    depends_on: [001]   owns: modules + routes to remove
-003-ui        depends_on: []      parallel if disjoint owns
-004-feature   depends_on: [] or [001]  new behavior (e.g. SERP v4) — separate outcome
-
-# Bad — combos that stall ships
-001 = full SERP rewrite + remove all structure imports  → 002 waits on unrelated SERP work
-001 owns missing companion files the prompt forces the writer to edit
-```
-
-### Size budgets (soft, then hard)
-
-| Signal | Action |
-|--------|--------|
-| `owns_paths` ≥ 12 entries **or** objective > ~80 lines | Prefer split |
-| Two independent user-visible outcomes | Prefer two tasks or two runs |
-| Delete fan-out + new algorithm | **Always** split (delete DAG ≠ greenfield feature) |
-
-### Parallelism
-
-- Parallel only with **disjoint** `owns_paths` (and disjoint runtime side effects when possible).
-- Shared worktree is fine; do not put package caches in owns (see owns noise recovery).
+Rules (one outcome per task, disjoint `owns_paths`, real `depends_on` only, size budgets) live in `references/decomposition.md`. Read it before `run-init` and before filling YAML; skipping it is how multi-task runs stall.
 
 ---
 
@@ -277,7 +209,7 @@ Roster: `agents/claude/README.md`.
 - Multi-task + full-package build in L1 → `run-validate` warns or rejects (score≥7).  
 - Acceptance = **behavior**, not “entire monorepo green”.
 
-### L1 paths under worktree (MUST — temples-admin class bugs)
+### L1 paths under worktree (temples-admin class bugs)
 
 `verification[].cwd` is almost always **`project_cwd`** (the worktree). Relative
 script args resolve **there**, not in the main checkout.
@@ -431,7 +363,7 @@ do not re-implement the feature as Claude.
 
 ---
 
-## Hard rules (MUST)
+## Hard rules
 
 1. No production Edit/Write — only `.agents/**` (plans, decisions drafts, research, reports), PROGRESS, and dotenv (`.env`, `.env.*`) for secrets (keep keys out of writer prompts).  
 2. No task MCP queue.  

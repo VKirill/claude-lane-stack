@@ -5,6 +5,8 @@ description: "SEO harness router for current DrMax: X4 cocoons, BrandCore, Human
 
 # SEO DrMax Orchestrator
 
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) skip the `seo-*` CLI (`seo-init`, `seo-resume`, `seo-dispatch`, `seo-services`), `seodoc` and the `seo-system` catalog: work from the code, the docs and your skills, and keep artifacts in `.agents/seo/<slug>/` if it exists. Site-code fixes: describe them in your final message (files and acceptance) under a block «для PM»; the PM dispatches the writer. The `seo-dispatch` workers and the session loop below are the terminal SEO harness.
+
 Chooses **which current skill** to open, where to write, whom to dispatch. Does not replace originals.
 
 ## Source of truth
@@ -78,7 +80,7 @@ Do not revive GIST 3.3, book cocoons, CVD, or LexAdapt. Current originals live i
 | Bulk latent-intent / drafts | `seo-dispatch` + CLI |
 | SERP / freq | `mutagen` / `xmlstock` |
 | Humanization | `drmax-text-humanization` |
-| Site code | `dev-orchestrator` |
+| Site code | `dev-orchestrator` (Lane Pilot: report to the PM, who dispatches the writer) |
 
 See [references/worker-routing.md](references/worker-routing.md).
 

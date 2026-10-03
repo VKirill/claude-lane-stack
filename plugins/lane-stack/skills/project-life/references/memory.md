@@ -3,7 +3,7 @@
 | File | Max size | Update when |
 |------|----------|-------------|
 | `.agents/PROGRESS.md` | ~40 lines | End of meaningful work / session |
-| lessons → hub rules | — | After a user correction or a failed approach: `lane-memory lesson "<rule>" --for pm|writer|both` (not a file) |
+| lessons → hub rules | — | After a user correction or a failed approach: Lane Pilot: `lane_pilot_lesson` (rule + audience); terminal: `lane-memory lesson "<rule>" --for pm\|writer\|both` (not a file) |
 | `.agents/decisions/<date>-<slug>.md` | rare | Expensive irreversible choice — a draft; the docs pass publishes it to `docs/decisions.md` |
 | `.agents/agent-notes/OPEN.md` | grow | Debt / simplify later |
 | `.agents/session-log/*` | auto | Hooks own it — never hand-author |
@@ -39,7 +39,7 @@ hashes/actions in `finalize.json`. Never guess stale checklist items.
 ## Lessons → rules on the hub
 
 A lesson is one imperative rule, sent to the project's memory on the BB hub (Lane Pilot), from whatever machine
-the session runs on:
+the session runs on. Inside a Lane Pilot PM chat call the tool `lane_pilot_lesson` (rule, audience `pm`, `writer` or `both` — required, `always` only for a rule true of every writer task). In a terminal:
 
 ```bash
 ~/.agents/bin/lane-memory lesson "Run npm ci in writer worktrees, never npm install" --for writer \
@@ -47,7 +47,7 @@ the session runs on:
 ```
 
 The hub keeps lessons bounded: a lesson close to a live rule counts as its repeat, a new one goes on trial
-(at most 12 rules in force, unused ones retire), at most 30 wait. `--for pm|writer|both` says who follows it —
+(at most 12 rules in force, unused ones retire), at most 30 wait. `--for pm`, `writer` or `both` says who follows it —
 a `pm` rule never reaches a writer; `--always` marks a rule for every writer task. Writers get only the rules their
 task needs.
 Do not append to `.agents/LESSONS.md`: it grew without bound (≈150 entries in one project) and every writer
@@ -76,11 +76,9 @@ Promote durable OPEN notes or close checkboxes after a green run. Night
 audit (`~/.agents/bin/night-audit .`) closes OPEN items or spawns
 todos/runs.
 
-## Fact corpus (opt-in)
+## Facts that cannot be derived
 
-If adoc `stages.memory.enabled: true`, durable non-code facts live in
-`.agents/memory/` (skill `lane-memory`). Not a second PROGRESS. Query with
-`lane-memory context . "<task>"`. Write only via `lane-memory write`.
+Durable non-code facts live in the hub memory, not in files: skill `lane-memory` (`lane-memory search|context`; in Lane Pilot also `lane_pilot_memory_context`). Not a second PROGRESS.
 
 ## History & artifacts (read-only layers)
 

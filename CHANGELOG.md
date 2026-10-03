@@ -1,3 +1,14 @@
+## 1.64.4 — 2026-10-03
+
+### Fixed (skills audit for Lane Pilot agents)
+- **`orchestrator-lanes` no longer triggers for the Lane Pilot PM.** Its description now says terminal harness only and a banner on the first line points a Lane Pilot chat to `lane_pilot_dispatch_writer`. «Task decomposition» moved to `references/decomposition.md` (the one part Lane Pilot still uses); MUST/non-negotiable caps removed; `orchestrator-workflow` lost its `/home/ubuntu` path.
+- **Scoped Lane Pilot blocks** («Inside a Lane Pilot chat …») in `project-life`, `lane-contract` (strict task-v2 field list, writer runs `verification`), `resume-project`, `app-architect`, `browser-qa`, `project-onboard` (reference only), `docs-maintain`, `lane-memory`, `seo-project-life`, `seo-drmax-orchestrator`, `project-design`, `ui-ux-pro-max`. Terminal behaviour is unchanged.
+- **Writers.** `karpathy-guidelines`: «ask» becomes the `NEEDS_HUMAN:` first-line protocol in a Lane Pilot writer thread. `writer-practices`: «info / справка» inside a task is no longer a command (only `$ARGUMENTS` exactly `info`), references to skills a writer does not have removed, a «Done» section added.
+- **Memory.** `lane-memory` card and `references/draft-template.md` no longer teach `.agents/memory/` drafts or `stages.memory.enabled`; they describe the hub, the outbox and `LANE_MEMORY_HUB=off`. `project-life/references/memory.md`: «Fact corpus» replaced by hub memory, lessons via `lane_pilot_lesson` inside Lane Pilot; `pm\|writer\|both` escaped in tables.
+- **Info cards moved to `references/info.md`** in 10 skills (loaded only on `info`); descriptions no longer contain «info / справка» as triggers.
+- **Tavily key** is `$TAVILY_API_KEY` (BB Env Catalog) first; `~/secrets/tavily.env` only outside BB.
+- `impeccable-ui/references/typeset.md` restored from `~/.agents/skills`; `project-life` anti-pattern list and `browser-qa` NEVER list rewritten as positive rules.
+
 ## 1.64.3 — 2026-10-03
 
 ### Changed

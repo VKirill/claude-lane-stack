@@ -12,10 +12,12 @@ Derived from [Karpathy on LLM coding pitfalls](https://x.com/karpathy/status/201
 
 Don't assume. Don't hide confusion. Surface tradeoffs.
 
-- State assumptions explicitly. If uncertain, ask.  
+- State assumptions explicitly. If uncertain, ask (Lane Pilot writer: see below).  
 - Multiple interpretations → present them; don't pick silently.  
 - Prefer simpler approaches; push back when warranted.  
 - Unclear → stop, name the confusion, ask.
+
+Inside a Lane Pilot writer thread (`LANE_PILOT_AGENT_TYPE` set) nobody answers mid-task, and a question in prose is not recognised: when the contract is unclear or contradictory, change no files and make the first line of your answer `NEEDS_HUMAN: <one question for the project owner>`. Everything you can look up or decide yourself (see Autonomy zone) you decide.
 
 ## 2. Simplicity First
 
@@ -46,7 +48,7 @@ Define success criteria. Loop until verified.
 - "Fix the bug" → failing test first, then green.  
 - Multi-step: `step → verify: command` list.
 
-Strong criteria → autonomous loop. Weak ("make it work") → clarify first.
+Strong criteria → autonomous loop. Weak ("make it work") → clarify first (in a Lane Pilot writer thread: the `NEEDS_HUMAN:` first line above).
 
 ## Autonomy zone (MAY)
 

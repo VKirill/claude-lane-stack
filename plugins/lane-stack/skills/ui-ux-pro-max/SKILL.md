@@ -1,6 +1,6 @@
 ---
 name: ui-ux-pro-max
-description: "Lane-stack design + brand intelligence (vendored ui-ux-pro-max). New pages, UI additions, tokens, a11y, social banners, voice. Use when user says info, справка, lane-stack:ui-ux-pro-max info, or when designing or reviewing UI, DESIGN.md, brand, banners, or marketing surfaces. Canon is docs/DESIGN.md — never design-system/MASTER.md."
+description: "Lane-stack design + brand intelligence (vendored ui-ux-pro-max). New pages, UI additions, tokens, a11y, social banners, voice. Use when designing or reviewing UI, DESIGN.md, brand, banners, or marketing surfaces; `$ARGUMENTS` exactly info prints the card. Canon is docs/DESIGN.md — never design-system/MASTER.md."
 license: MIT
 argument-hint: "[info]"
 ---
@@ -9,7 +9,7 @@ argument-hint: "[info]"
 
 ## Info (print and stop)
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
+If `$ARGUMENTS` is exactly `info`:
 print the block below **verbatim** (Russian), then **stop**. Do not search. Do not write DESIGN.md.
 
 ```text
@@ -101,7 +101,7 @@ Use `web-design/references/designer-workflow.md` for mockup delivery and checks.
 
 ## Orchestrator
 
-UI / visual / social creative: load this skill. Missing DESIGN.md → **design-lead** before `run-init`.
+UI / visual / social creative: load this skill. Missing DESIGN.md → **design-lead** before the writer dispatch (`lane_pilot_specialist` role `design-lead`, then `lane_pilot_dispatch_writer`, in Lane Pilot; `run-init` in the terminal).
 Task YAML: `read_first` includes `docs/DESIGN.md`. Writers implement pages/components from DESIGN + search (`--stack` from package.json).
 
 ---

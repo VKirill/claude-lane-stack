@@ -29,7 +29,7 @@ Recipes: `references/helpers.md`. Helper writes inbox only. You lift.
 
 ## Tavily
 
-Load skill `tavily`. Key: `~/secrets/tavily.env`. Search = `/search`. Cited report = `/research` (ask duration).
+Load skill `tavily`. Key: `$TAVILY_API_KEY` (see the skill for the Env Catalog and terminal fallback). Search = `/search`. Cited report = `/research` (ask duration).
 
 ## Firecrawl deep-research (report-scale)
 

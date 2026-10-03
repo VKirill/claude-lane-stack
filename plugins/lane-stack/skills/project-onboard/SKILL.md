@@ -1,48 +1,17 @@
 ---
 name: project-onboard
-description: Primary project onboarding for Claude Lane Stack. Diátaxis-classified LLM pack (MODULE_MAP, API_SURFACE, TEST_INDEX, TAXONOMY, RUNBOOK, Google DESIGN.md). Schemas + validation in references/. Weekly docs-maintainer. Use when: info, справка, lane-stack:project-onboard info, /project-onboard, онбординг, init project, bootstrap CLAUDE.md, deep onboard, wiki→llm docs.
+description: Primary project onboarding for Claude Lane Stack. Diátaxis-classified LLM pack (MODULE_MAP, API_SURFACE, TEST_INDEX, TAXONOMY, RUNBOOK, Google DESIGN.md). Schemas + validation in references/. Weekly docs-maintainer. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, deep onboard, wiki→llm docs in the terminal Lane Stack; `$ARGUMENTS` exactly info prints the card. Not inside Lane Pilot chats (reference only).
 argument-hint: "[info]"
 user-invocable: false
 ---
 
 # Project onboard (Claude Lane Stack)
 
-> **Lane Pilot projects:** when Lane Pilot keeps the project's docs (`.agents/routing.profile.yaml` has `stages.docs.enabled: false` and `docs/index.md` is built by Lane Pilot), do not generate the `docs/llm` pack or write anything under `docs/`; only keep `CLAUDE.md`, `AGENTS.md` and `llms.txt` pointing to `PROJECT.md` → `docs/index.md`.
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) this skill is reference only. Do not generate `docs/llm`, and do not write `docs/`, `CLAUDE.md`, `AGENTS.md` or `llms.txt` unless the owner asked for that in this chat (Lane Pilot's nightly docs pass owns `docs/` and builds `docs/index.md`; the onboarding preview accepts only `docs/**.md` and `apps/**.md`). Orient the owner from `PROJECT.md` → `docs/index.md` and answer in Russian. The pipeline below is the terminal Lane Stack harness.
 
-## Info (print and stop)
+## Info
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
-print the block below **verbatim** (Russian), then **stop**. Do not start onboard.
-
-```text
-project-onboard — первичная карта репо (CLAUDE.md + LLM-pack)
-
-Когда
-- Нет CLAUDE.md / пустой или чужой репо.
-- Уже живой UI без DESIGN.md → design-lead (project-design), не повторный onboard.
-
-Как открыть шпаргалку
-- /lane-stack:project-onboard info
-- каталог: /lane-stack:info
-
-Запуск
-- /project-onboard
-- /project-onboard deep
-- /project-onboard /path/to/repo fast
-- CLI: project-onboard .
-- агент: project-onboarder (Codex, не Grok)
-
-Флаги
-- deep / fast — глубина
-- full / minimal — scenario
-- --seed-only — только заглушки, без модели
-
-После
-- RU-саммари: поверхности, модули, тесты, DESIGN?, RUNBOOK?
-- has_ui → docs/DESIGN.md (Google)
-- docs включены + паспорт тонкий → сначала этот скилл / project-onboarder, потом docs-maintainer
-- weekly refresh: docs-maintainer, не этот скилл
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop. Do not start onboard.
 
 ## Who runs it
 
@@ -57,7 +26,7 @@ project-onboard — первичная карта репо (CLAUDE.md + LLM-pack
 
 Default CLI = full pipeline. `--seed-only` = stubs without model. Do **not** use Grok.
 
-## References (MUST load before filling)
+## References (load before filling)
 
 | Ref | What |
 |-----|------|
@@ -101,7 +70,7 @@ Deep monorepo (≥2 apps) uses this **two-pass pipeline**. Toy/single-app stays 
 | `has_ui` | `docs/DESIGN.md` (Google format) |
 | `has_deploy` / `signals.deploy` | `docs/RUNBOOK.md` |
 
-## MUST (PM)
+## Procedure (PM, terminal)
 
 1. Passport thin: spawn **project-onboarder** (or `project-onboard`). Wait `DONE`.
 2. If `stages.docs.enabled`: then spawn **docs-maintainer**. Never both at once.

@@ -22,5 +22,6 @@ verification:
 ---
 
 Why this rule exists. Related: [[other-id]].
-Copy this file, rename to <id>.md, replace placeholders, then:
-lane-memory write --apply .agents/memory/drafts/<id>.md --confirm .agents/memory/<id>.md --yes
+Copy this file to `.cls/drafts/<id>.md` (not under `.agents/memory/`), replace placeholders, then:
+lane-memory write --apply .cls/drafts/<id>.md --confirm .agents/memory/<id>.md --yes
+(With the hub on, the record goes to the hub; `.agents/memory/<id>.md` is only the destination the CLI checks. `LANE_MEMORY_HUB=off` = old local corpus.)

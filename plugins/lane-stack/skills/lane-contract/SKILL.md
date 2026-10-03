@@ -1,53 +1,19 @@
 ---
 name: lane-contract
-description: File-based task contracts under .agents/runs/ with owns_paths, verification tiers L0/L1/L2, and solo merge rules. Use when user says info, справка, lane-stack:lane-contract info, or when authoring or reviewing task YAML, owns_paths, acceptance, or verification commands.
+description: File-based task contracts under .agents/runs/ with owns_paths, verification tiers L0/L1/L2, and solo merge rules. Use when authoring or reviewing task YAML / the task-v2 contract (Lane Pilot `plan`), owns_paths, acceptance, or verification commands; `$ARGUMENTS` exactly info prints the card.
 argument-hint: "[info]"
 ---
 
 # Lane contract (files only)
 
-## Info (print and stop)
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) the contract is the task-v2 JSON in the `plan` of `lane_pilot_dispatch_writer`, and its schema is strict: exactly `schema_version`, `id`, `title`, `risk`, `lane`, `project_cwd`, `read_first`, `interfaces`, `invariants`, `out_of_scope`, `expected_outputs`, `owns_paths`, `never_touch`, `depends_on`, `objective`, `acceptance`, `verify`, `verification[{command, cwd, timeout_sec?}]` (`timeout_sec` up to 7200). Any other field (`context_selectors`, `impact_*`, `skills`) makes Lane Pilot reject the whole contract: put line windows in `objective` or `interfaces` as `path:start-end`. The writer RUNS `verification` and Lane Pilot re-runs it at acceptance, so every task needs real verification commands. Lane Pilot owns run state; `run-init`, `run-validate --phase`, `lane-ctl`, `run-supervisor`, the L0 rule «writer does not run tests» and `lane = adoc main_write` below are the terminal Lane Stack harness.
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
-print the block below **verbatim** (Russian), then **stop**. Do not write task YAML.
+## Info
 
-```text
-lane-contract — контракт задачи (YAML в .agents/runs/)
-
-Когда
-- Оркестратор заполняет tasks после «делай».
-- Проверка owns_paths / verification / acceptance.
-
-Как открыть шпаргалку
-- /lane-stack:lane-contract info
-- каталог: /lane-stack:info
-- раны целиком: /lane-stack:orchestrator-lanes info
-
-PM до dispatch
-1) run-init → PLAN/SPEC/tasks
-2) owns_paths + never_touch + acceptance (поведение, не «всё зелёное»)
-3) read_first = существующие файлы; окна строк = context_selectors; interfaces = сигнатуры или []
-4) Одна задача = один product outcome. depends_on только compile/data.
-5) Parallel только при disjoint owns.
-6) run-validate --phase pre-dispatch
-7) Один run-supervisor. lane = adoc main_write.
-
-Писатель
-- Только owns_paths. Не `.agents` (`run-validate` rejects it — sandbox remounts `.agents` read-only). Не merge/push main.
-- Не гоняй тесты/typecheck — это L1 контроллера. Пиши тесты в owns, не запускай. Вне owns сломалось → Gaps.
-
-Тиры
-- L0 writer: код, тесты не запускать  · L1 lane-ctl verify  · L2 PM/CI
-
-Нельзя
-- timeout_sec в плане выдумывать (дефолт 900)
-- verification[].command на файл, которого нет в cwd/worktree
-- node_modules / кэши в owns
-- мутировать YAML после первого старта
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop. Do not write task YAML.
 
 Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
-`docs/decisions/ADR-codex-effort.md`, skill **orchestrator-lanes** (decomposition).
+`docs/decisions/ADR-codex-effort.md`, skill **orchestrator-lanes** (`references/decomposition.md`).
 
 ---
 
@@ -63,7 +29,7 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 8. Pre-merge validate → merge main (PM only).  
 9. Writers via durable controller (kimi/…); Codex write = recovery only.  
 10. Separate provider vs verification pools.  
-11. **Decompose** per orchestrator-lanes (one outcome per task; unlock ≠ feature).  
+11. **Decompose** per orchestrator-lanes `references/decomposition.md` (one outcome per task; unlock ≠ feature).  
 12. **SPEC.md** is real content when score ≥ 7 or ≥ 2 tasks (not the template stub).  
 
 ---
@@ -125,7 +91,7 @@ Identity (must match adoc / run): `schema_version`, `id`, `title`, `risk`, `lane
 | `owns_paths` | Owns gate | Every path the outcome must edit | never |
 | `never_touch` | Owns gate | Secrets / unrelated | `.env*` minimum |
 | `read_first` | Packet files | Existing files, no notes | `[]` if none |
-| `context_selectors` | Packet line windows | `{path, start_line, end_line}` | omit (do not put windows in `read_first`) |
+| `context_selectors` (terminal only) | Packet line windows | `{path, start_line, end_line}` | omit (do not put windows in `read_first`) |
 | `verification` | L1 `lane-ctl verify` | Focused commands | `[]` only with `verify: none` |
 | `verify` | Schema only | `tests` / `smoke` / `none` matching L1 | do not invent a second suite |
 | `depends_on` | DAG | Real compile/data ids | `[]` |
@@ -133,8 +99,8 @@ Identity (must match adoc / run): `schema_version`, `id`, `title`, `risk`, `lane
 | `invariants` | Prompt | Product constraints | `[]` |
 | `out_of_scope` | Prompt | Non-goals not already in `never_touch` | `[]` |
 | `expected_outputs` | Schema + prompt | Artifact path this task creates | one path, not “typecheck green” |
-| `impact_receipt` / `impact_targets` | Packet | Only if you captured a receipt | omit |
-| `skills` | Claude prompt inject | `impeccable-ui` on UI tasks | omit (OpenCode ignores) |
+| `impact_receipt` / `impact_targets` (terminal only) | Packet | Only if you captured a receipt | omit |
+| `skills` (terminal only) | Claude prompt inject | `impeccable-ui` on UI tasks | omit (OpenCode ignores) |
 
 `run-validate --phase pre-dispatch` rejects: `git checkout`/`restore` in the YAML; `read_first` prose (`section C4`, `lines 10-20`); missing `read_first` files; CONTINUATION / Gaps / HARD RULE / `wc -l` / edit-tool recovery in `interfaces` or `invariants`.
 

@@ -434,7 +434,7 @@ class InstallTest(unittest.TestCase):
         self.assertTrue((originals / "CP-Navigator-v1-9.md").is_file(), originals)
         life = skills / "seo-project-life" / "SKILL.md"
         self.assertTrue(life.is_file(), life)
-        self.assertIn("seo-project-life — карта SEO-проекта", life.read_text(encoding="utf-8"))
+        self.assertIn("seo-project-life — карта SEO-проекта", (life.parent / "references" / "info.md").read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "seo-system" / "modules" / "passport-onboard" / "module.yaml").is_file())
         self.assertTrue((ROOT / "docs" / "seo" / "SOLO-SEO-ORCHESTRATION.md").is_file())
 

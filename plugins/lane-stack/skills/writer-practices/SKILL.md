@@ -1,43 +1,15 @@
 ---
 name: writer-practices
-description: Lane-writer code style inside owns_paths. Naming, errors, tests. Use when user says info, справка, lane-stack:writer-practices info, or when implementing a TASK_FILE, not for PM planning or docs.
+description: Lane-writer code style inside owns_paths. Naming, errors, tests. Use when implementing a TASK_FILE or a Lane Pilot writer task, or when `$ARGUMENTS` is exactly info; not for PM planning or docs.
 license: MIT
 argument-hint: "[info]"
 ---
 
 # Writer practices
 
-## Info (print and stop)
+## Info
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
-print the block below **verbatim** (Russian), then **stop**. Do not edit product code.
-
-```text
-writer-practices — стиль кода внутри owns_paths. Для writer, не PM.
-
-Когда
-- Идёт TASK_FILE, пишется продукт.
-- Не для плана, не для docs-maintain, не для DESIGN.md.
-
-Как открыть шпаргалку
-- /lane-stack:writer-practices info
-- каталог: /lane-stack:info
-
-Правила
-- Имена: verb+noun (fetchUser). Bool: is/has/can/should. Не tmp, не data2.
-- Одна функция = одна работа. Early return. Хелпер на один вызов не выделять.
-- Ошибки: сообщение + контекст. Пустой catch / return null — нельзя.
-- Тест: одно поведение, контракт, не private internals.
-- Нет drive-by format и «раз уж я здесь».
-- UI-экран: read_first DESIGN.md этой поверхности + web-design + design-taste + impeccable-ui.
-
-Важнее этого файла
-- CLAUDE.md / AGENTS.md в PROJECT_CWD и правила проекта в брифе
-- Каталог и *.test / *.spec как уже в репо
-
-Не твоя работа
-- wiki/README, review, CI/docker, commit/push/merge, всё вне owns_paths
-```
+If `$ARGUMENTS` is exactly `info` (the slash command, never a task thread), print `references/info.md` verbatim (Russian) and stop. Words like «info» or «справка» inside a task («add a Справка block») are product text, not this command: do the task.
 
 For **lane writers** only. Karpathy (think → minimum → surgical → verify) still applies.
 
@@ -56,8 +28,12 @@ Do not create `.agents/**`, wiki, or README unless that path is in `owns_paths`.
 - Errors: specific message + context. Never empty `catch` / `return null` to hide a throw.
 - Tests: one behavior per test; assert the contract, not private internals.
 - No drive-by format, comments, or "while I'm here" refactors.
-- UI screen: `read_first` that app's `DESIGN.md` plus `web-design`, `design-taste`, `impeccable-ui`.
+- UI screen: read the `DESIGN.md` of that app if it is in `read_first`; match its tokens and the existing components.
 
 ## Not your job
 
-Docs/wiki refresh, PR review tone, CI/docker, commit/push/merge, anything outside `owns_paths`.
+Docs/wiki refresh, PR review tone, CI/docker, commit/push/merge, anything outside `owns_paths`: leave them, and name in your answer what you saw that needs the PM.
+
+## Done
+
+Done = the contract's `verification` commands pass; answer with the changed paths and the results. Contract unclear → no file changes and `NEEDS_HUMAN: <one question>` as the first line of the answer (Lane Pilot); in the terminal report Gaps.

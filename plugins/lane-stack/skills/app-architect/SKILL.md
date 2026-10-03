@@ -1,6 +1,6 @@
 ---
 name: app-architect
-description: "Owner-facing architect for a new app or service. Plain-language chat; living plan artifacts on disk. Use when user says архитектор, новое приложение, новый сервис, спроектируем, как устроить продукт, app-architect, lane-stack:app-architect, info, справка. Not a run. Not onboard."
+description: "Owner-facing architect for a new app or service. Plain-language chat; living plan artifacts on disk. Use when user says архитектор, новое приложение, новый сервис, спроектируем, как устроить продукт, app-architect, lane-stack:app-architect; `$ARGUMENTS` exactly info prints the card. Not a run. Not onboard."
 argument-hint: "[info]"
 user-invocable: false
 ---
@@ -14,37 +14,9 @@ Voice and phases come from the vechkasov AI-architect
 (`apps/ai-consultant-service/prompts/architect/system.md`). No MCP.
 Files replace `write_artifact`.
 
-## Info (print and stop)
+## Info
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
-print the block below **verbatim** (Russian), then **stop**. Do not open a plan.
-
-```text
-app-architect — обсуждение нового приложения или сервиса
-
-Когда
-- «давай спроектируем / новый сервис / новое приложение / архитектор»
-- Нужно понять, что человек хочет, и копить это в файлах
-- Не онбординг живого репо и не ран
-
-Как открыть шпаргалку
-- /lane-stack:app-architect info
-- или: /app-architect
-- каталог: /lane-stack:info
-
-Как начать (сессия dev-orchestrator, cwd = репо или будущий корень)
-Архитектор. Новое приложение. Ран не открывай. Говори обычными словами.
-
-Что происходит
-- Чат: коротко, без сленга, 2–3 вопроса за раз
-- Файлы: .agents/plans/items/<дата-slug>/artifacts/
-  brief, architecture, data, structure, risks, deploy
-- «да / формируй / создавай» → сразу пиши файлы, не переспрашивай
-
-Дальше
-- «делай» → project-life выход в ран
-- Если будет экран → сначала design-lead (project-design)
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop. Do not open a plan.
 
 ## Language
 
@@ -115,14 +87,14 @@ Stay here until «делай». No score, no `run-init`, no writers.
 4. **Outcomes.** Coarse product outcomes in `PLAN.md` Tasks (English,
    one row per outcome). Not task YAML.
 
-«делай» → project-life exit: `status: active`, then orchestrator-lanes.
-If the app has a screen and DESIGN.md is missing → `design-lead` first.
+«делай» → project-life exit: set `status: active`, then dispatch. Inside a Lane Pilot chat (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) that is `lane_pilot_dispatch_writer`; in the terminal it is orchestrator-lanes.
+If the app has a screen and DESIGN.md is missing → `design-lead` first (Lane Pilot: `lane_pilot_specialist` with role `design-lead`, then the writer dispatch).
 
 ## Recall
 
-Optional: prior decisions via agentmemory. Do not block on it.
+Optional: prior decisions via `lane-memory search` (hub memory). Do not block on it.
 Do not build a memory database. A lesson that will fire again → one
-`lane-memory lesson "<rule>" --for pm|writer|both` in English after the owner confirms it (rules live on the hub).
+a rule in English after the owner confirms it: `lane_pilot_lesson` (rule + audience) inside Lane Pilot, `lane-memory lesson "<rule>" --for pm\|writer\|both` in the terminal (rules live on the hub).
 
 ## Never
 

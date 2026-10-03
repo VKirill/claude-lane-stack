@@ -1,43 +1,16 @@
 ---
 name: docs-maintain
-description: Keep living docs/ honest after code changes. Use when: info, справка, lane-stack:docs-maintain info, nightly docs, docs-maintain, обновить документацию, актуализировать ARCHITECTURE.
+description: Keep living docs/ honest after code changes. Use when: nightly docs, docs-maintain, обновить документацию, актуализировать ARCHITECTURE; `$ARGUMENTS` exactly info prints the card.
 argument-hint: "[info]"
 ---
 
 # Docs maintain
 
-## Info (print and stop)
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / the nightly docs prompt) you are the nightly docs pass: write only the paths the prompt names, do not commit (Lane Pilot checks the pages, builds `index.md` and backlinks, and commits), and finish with the short list of the pages you wrote. Method and page contract come from `docs-methodology`. Report files under `.agents/session-log/`, `docs-init-chain`, `docs-maintain-project`, cron and the model line below are the terminal harness.
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` / `как запускать` this skill:
-print the block below **verbatim** (Russian), then **stop**. Do not start docs-maintain.
+## Info
 
-```text
-docs-maintain — живые docs/: пакеты + функциональность систем (docs/features/).
-
-Когда
-- «обнови документацию / nightly docs / INIT docs».
-- После дневных коммитов. Не wiki/, не TODO/, не .agents/ (и не устаревший docs/plans/). Если документацию проекта ведёт Lane Pilot (stages.docs выключен), docs-maintain не запускается.
-
-Как открыть шпаргалку
-- /lane-stack:docs-maintain info
-- каталог: /lane-stack:info
-
-Запуск
-- adoc → Документация → Enabled → Apply
-  (паспорт тонкий → project-onboard, потом wiki)
-- docs-init-chain /path/to/repo
-- docs-maintain-project /path/to/repo
-- docs-maintain-project /path/to/repo lint
-- docs-maintain-all --if-hour
-- агент: сначала project-onboarder, потом docs-maintainer
-
-Как работает
-1) Паспорт тонкий — ночной раннер зовёт project-onboard, потом wiki (не BLOCKED).
-2) docs-web: шапки / stubs / web.yaml / INDEX + stubs docs/features/ из apps/*/modules. Без LLM.
-3) docs-stale: owns ∪ цитаты ∪ stub/thin. Luna пишет wiki и product spec фич (Business rules). Не коммитит.
-   Отчёт: .agents/session-log/DOCS-YYYY-MM-DD.md
-   Daylog: .agents/session-log/DOCS-DAY-YYYY-MM-DD.md
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian), then stop. Do not start docs-maintain.
 
 ## Who
 
@@ -60,7 +33,7 @@ docs-maintain-all --if-hour
 - First enable: `docs-init-chain` = project-onboard then wiki. Wiki runner refuses a thin passport.
 - Night: yesterday git ∩ owns + leftover stubs. Empty → no LLM.
 - Archive (`wiki/`, `TODO/`, `.agents/`, legacy `docs/plans/`) is never written. Decision drafts in `.agents/decisions/` are published into `docs/decisions.md`.
-- No feature code. No commit.
+- Docs only: feature code goes to a writer lane. The runner commits nothing; the night shift or the owner commits.
 
 ## Cron
 

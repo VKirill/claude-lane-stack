@@ -1,13 +1,13 @@
 ---
 name: lane-memory
-description: "One project fact memory on the BB hub (Lane Pilot), the same from every machine; lessons become hub rules. Opt-in via adoc stages.memory.enabled. Use when user says память, lane-memory, corpus, CORE, урок, почему бот забыл, or an agent needs durable non-code facts. Not PROGRESS dumps."
+description: "One project fact memory on the BB hub (Lane Pilot), the same from every machine; lessons become hub rules. Use when user says память, lane-memory, corpus, CORE, урок, почему бот забыл, or an agent needs durable non-code facts; `$ARGUMENTS` exactly info prints the card. Not PROGRESS dumps."
 argument-hint: "[info]"
 ---
 
 # Lane memory
 
 Facts that **cannot be derived** from git or the code documentation (docs/).
-Laws from the SMA 5.6.1 drawing. Off until adoc turns it on.
+Laws from the SMA 5.6.1 drawing.
 
 **Where it lives.** One memory per project on the BB hub (Lane Pilot's database), whatever machine the session
 runs on: `lane-memory write`, `search`, `context` and CORE go through `bb plugin rpc call lane-pilot
@@ -16,74 +16,30 @@ session_memory_*`. Without a connection a write waits in `.cls/memory-outbox/` (
 `LANE_MEMORY_HUB=off` keeps the old local corpus.
 
 **Lessons.** A correction or a landmine is a rule, not a file line:
-`lane-memory lesson "<one imperative rule>" --for pm|writer|both [--always] --evidence "<run/test/date>"`.
+`lane-memory lesson "<one imperative rule>" --for pm|writer|both [--always] --evidence "<run/test/date>"` (inside a Lane Pilot PM chat the tool `lane_pilot_lesson` does the same: rule, audience `pm`, `writer` or `both` — required, `always` optional).
 `--for pm` — planning, task contracts, reviewing reports, merging, deploying: writers never get it. `--for writer` —
 how code is edited and checked inside one task. `--always` only for a rule that holds for every writer task whatever
 it changes (how to run or read any command); otherwise System One gives it to the tasks it fits. The hub merges
 repeats, keeps at most 12 rules in force on trial, retires unused ones and lets at most 30 wait. Never append to
 `.agents/LESSONS.md`.
 
-## Info (print and stop)
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) the hub is already on: read with `lane_pilot_memory_context` or `lane-memory search|context`, write a lesson with `lane_pilot_lesson`. Do not create `.agents/memory/` files or drafts there, and do not call agentmemory tools (`memory_save`, `memory_smart_search`): that would start a second memory.
 
-If `$ARGUMENTS` is `info`, or the user says `info` / `справка` this skill:
-print the block below **verbatim** (Russian), then **stop**.
+> **Memory-maintainer stage:** when the host gives you an accepted task and asks for a JSON array of memory candidates, answer with that array only; do not run `lane-memory`, do not edit files.
 
-```text
-lane-memory — факты проекта, которые нельзя вывести из кода
+## Info
 
-Зачем
-- Правила «всегда так» сидят в ядре и грузятся каждую сессию (не поиск).
-- Остальное — по запросу: lane-memory context / search.
-- Пишет только команда lane-memory write (одна дверь). Ночной агент не чинит сам.
-
-adoc уже пишет эти крутилки. Включить — Enabled (или enabled: true).
-stages:
-  memory:
-    enabled: false
-    maintain: true
-    inject: true
-    provider: codex
-    model: gpt-5.6-terra
-    reasoning_effort: high
-    audience: subagent
-    personal_bot: ""
-    search_engine: auto
-    core_budget: 3072
-    note_budget: 8000
-    index_budget: 65536
-    context_budget: 2500
-
-Раскладка
-.agents/memory/         корпус в git (был .claude/memory)
-.cls/local-memory/      только эта машина, не git (был .sma/local-memory)
-.cls/index/             SQLite FTS, производный (был .sma/index)
-
-Потом: lane-memory init .
-Черновик-шаблон (любой проект): drafts/_TEMPLATE.md
-  или skill references/draft-template.md
-Фон: memory-maintain-project . "24 hours ago"
-
-Спросить корпус
-lane-memory context . "почему сводку не по шаблону"
-lane-memory search . "handoff"
-lane-memory core .
-lane-memory explain . --task "подготовь поставку"
-
-Записать факт (черновик → дверь)
-lane-memory write --apply .agents/memory/drafts/<id>.md --confirm .agents/memory/<id>.md --yes
-
-Не класть сюда
-структуру репо, git-историю, PROGRESS, YAML рана — у них свои файлы.
-```
+If `$ARGUMENTS` is exactly `info`, print `references/info.md` verbatim (Russian) and stop.
 
 ## Work
 
-If `lane-memory enabled .` exits 1: do not invent a corpus. Tell the owner
-to set `stages.memory.enabled: true`.
-
-If enabled: on cold start, CORE is already in `resume-project`. For a task,
-run `lane-memory context . "<task>"` and Read named files. Recalled claim
+On cold start CORE is already in `resume-project` (Lane Pilot: in the session brief). For a task, run `lane-memory context . "<task>"` and Read the named sources. A recalled claim
 about the tree is a prompt to `lane-memory verify . <id>`, not proof.
 
-Write only through the CLI door. Author sets `memory_type` and `truth_mode`.
-One `claim`. Tags from `TAGS.md`. English files.
+Write a fact only through the CLI door, `lane-memory write`; the author sets `memory_type` and `truth_mode`, one `claim`, tags from `TAGS.md`, English text. Keep the draft file outside `.agents/memory/` (for example `.cls/drafts/<id>.md`, template in `references/draft-template.md`) and run:
+
+```bash
+lane-memory write --apply .cls/drafts/<id>.md --confirm .agents/memory/<id>.md --yes
+```
+
+With the hub on, `--confirm` only names the destination the CLI checks; the record goes to the hub and nothing is written to `.agents/memory/`. If the hub is unreachable the write waits in `.cls/memory-outbox/` (`lane-memory flush`); do not invent a local corpus.
