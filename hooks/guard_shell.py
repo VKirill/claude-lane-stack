@@ -64,11 +64,19 @@ PM_BB_MESSAGE_COMMANDS = {
 LANE_PILOT_BB_COMMANDS = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS | {
     ("version",), ("memory", "catalog"), ("project", "get"),
     ("plugin", "list"), ("plugin", "logs"), ("plugin", "info"), ("plugin", "show"), ("plugin", "status"),
-    ("plugin", "reload"), ("plugin", "install"), ("plugin", "update"),
     ("environment", "list"), ("environment", "show"), ("environment", "get"), ("environment", "providers"),
     ("host", "list"), ("host", "show"), ("provider", "list"), ("provider", "models"), ("skill", "list"),
     ("env-catalog", "list"), ("env-catalog", "request"),
 }
+# Shipping a plugin is the job of that plugin's own PM: reload/install/update only from a bb-plugin-* checkout, so a
+# product PM cannot reload Lane Pilot under running writers.
+LANE_PILOT_BB_PLUGIN_SHIP = {("plugin", "reload"), ("plugin", "install"), ("plugin", "update")}
+
+
+def _is_plugin_checkout(cwd: object) -> bool:
+    return isinstance(cwd, str) and any(part.startswith("bb-plugin-") for part in Path(cwd).parts)
+
+
 # The bb CLI by name, by absolute path, or through the BB_CLI variable BB sets for agents.
 PM_BB_EXECUTABLES = {"bb", "$BB_CLI", "${BB_CLI}"}
 # Typed control-plane CLIs the PM may run directly (not writer lifecycle).
@@ -684,16 +692,18 @@ def _lane_pilot_segment_error(segment: list[str]) -> str | None:
     return f"command {segment[0]!r} is not allowlisted for lane-pilot-pm"
 
 
-def _lane_pilot_bb_command_error(args: list[str]) -> str | None:
+def _lane_pilot_bb_command_error(args: list[str], cwd: object = None) -> str | None:
     words = [arg for arg in args if not arg.startswith("-")]
     if any(arg in {"--help", "-h", "--version", "-V"} for arg in args):
         return None
     if any(tuple(words[:size]) in LANE_PILOT_BB_COMMANDS for size in (1, 2, 3)):
         return None
+    if tuple(words[:2]) in LANE_PILOT_BB_PLUGIN_SHIP:
+        return None if _is_plugin_checkout(cwd) else f"bb {' '.join(words[:2])} runs only from a bb-plugin-* checkout (that plugin's own PM ships it)"
     return f"bb {' '.join(words[:2]) or '(none)'} is not open to the PM"
 
 
-def _lane_pilot_bb_error(command: str) -> str | None:
+def _lane_pilot_bb_error(command: str, cwd: object = None) -> str | None:
     """bb in a Lane Pilot PM command: reading threads and messaging them, nothing that spawns, edits or reloads."""
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
@@ -706,7 +716,7 @@ def _lane_pilot_bb_error(command: str) -> str | None:
     for token in [*tokens, ";"]:
         if token in {"&&", "||", ";", "|", "&"}:
             if segment and (segment[0] in PM_BB_EXECUTABLES or Path(segment[0]).name == "bb"):
-                error = _lane_pilot_bb_command_error(segment[1:])
+                error = _lane_pilot_bb_command_error(segment[1:], cwd)
                 if error:
                     return error
             segment = []
@@ -866,11 +876,11 @@ def _pm_shell_error(command: str) -> str | None:
 def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
     """The Lane Pilot PM's own shell rules, the same for the native BB PM (dev-orchestrator + LANE_PILOT_AGENT_TYPE)
     and lane-pilot-pm: bb beyond its list, and shell edits of project files."""
-    error = _lane_pilot_bb_error(cmd)
+    error = _lane_pilot_bb_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if error:
         emit_deny(client, f"[lane-pilot-guard] {error}. The PM's bb reads BB state (thread, memory, project, plugin, environment, "
-                  "host, provider and skill listings, env-catalog list/request), messages threads, and reloads, installs or updates "
-                  "plugins. A secret value: the env_get tool (never print it). A helper thread: lane_pilot_specialist or "
+                  "host, provider and skill listings, env-catalog list/request), messages threads, and in a bb-plugin-* checkout "
+                  "reloads, installs or updates plugins. A secret value: the env_get tool (never print it). A helper thread: lane_pilot_specialist or "
                   "lane_pilot_errand. A browser step: lane_pilot_browser. Product changes: lane_pilot_dispatch_writer.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if edit:

@@ -1,3 +1,7 @@
+## 1.64.6 — 2026-10-03
+
+- **`bb plugin reload|install|update` only from a `bb-plugin-*` checkout**, as the owner confirmed (thr_4autf3vdii): a plugin's own PM ships it; a product PM cannot reload Lane Pilot under running writers. BB reads stay open to every Lane Pilot PM.
+
 ## 1.64.5 — 2026-10-03
 
 - **The Lane Pilot PM may read BB state and ship plugins itself** (owner's request via thr_4autf3vdii). Its bb allowlist adds `plugin list|logs|info|show|status|reload|install|update`, `environment list|show|get|providers`, `host list|show`, `provider list|models`, `skill list`, `memory catalog`, `project get`, `version`; deploy steps (`bb-plugin-push`, rsync/ssh to the hub, restarts, tags, `gh release`) were already open. Still closed: starting, stopping or archiving threads (`lane_pilot_specialist`, `lane_pilot_errand`, `lane_pilot_dispatch_writer` do that), `bb plugin rpc`, `bb env-catalog get` (use `env_get`), the terminal run machinery and shell edits of project files.

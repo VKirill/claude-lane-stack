@@ -1,7 +1,7 @@
 {
   "name": "lane-writer",
   "description": "Lane conveyor writer for cursor-agent --plugin-dir only. Not for the IDE.",
-  "version": "1.64.5",
+  "version": "1.64.6",
   "author": {
     "name": "VKirill",
     "url": "https://github.com/VKirill/claude-lane-stack"
