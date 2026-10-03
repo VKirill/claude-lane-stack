@@ -58,6 +58,17 @@ PM_BB_MESSAGE_COMMANDS = {
     ("thread", "tell"), ("thread", "message"),
     ("thread", "queue", "create"), ("thread", "queue", "send"), ("thread", "queue", "list"),
 }
+# A Lane Pilot PM is the owner's own chat and ships too (owner, 2026-10-03): it may read BB state and reload or
+# install plugins. Starting, stopping and archiving threads stays with Lane Pilot's tools (lane_pilot_specialist,
+# lane_pilot_errand, lane_pilot_dispatch_writer), so a writer never bypasses critique and acceptance.
+LANE_PILOT_BB_COMMANDS = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS | {
+    ("version",), ("memory", "catalog"), ("project", "get"),
+    ("plugin", "list"), ("plugin", "logs"), ("plugin", "info"), ("plugin", "show"), ("plugin", "status"),
+    ("plugin", "reload"), ("plugin", "install"), ("plugin", "update"),
+    ("environment", "list"), ("environment", "show"), ("environment", "get"), ("environment", "providers"),
+    ("host", "list"), ("host", "show"), ("provider", "list"), ("provider", "models"), ("skill", "list"),
+    ("env-catalog", "list"), ("env-catalog", "request"),
+}
 # The bb CLI by name, by absolute path, or through the BB_CLI variable BB sets for agents.
 PM_BB_EXECUTABLES = {"bb", "$BB_CLI", "${BB_CLI}"}
 # Typed control-plane CLIs the PM may run directly (not writer lifecycle).
@@ -673,6 +684,15 @@ def _lane_pilot_segment_error(segment: list[str]) -> str | None:
     return f"command {segment[0]!r} is not allowlisted for lane-pilot-pm"
 
 
+def _lane_pilot_bb_command_error(args: list[str]) -> str | None:
+    words = [arg for arg in args if not arg.startswith("-")]
+    if any(arg in {"--help", "-h", "--version", "-V"} for arg in args):
+        return None
+    if any(tuple(words[:size]) in LANE_PILOT_BB_COMMANDS for size in (1, 2, 3)):
+        return None
+    return f"bb {' '.join(words[:2]) or '(none)'} is not open to the PM"
+
+
 def _lane_pilot_bb_error(command: str) -> str | None:
     """bb in a Lane Pilot PM command: reading threads and messaging them, nothing that spawns, edits or reloads."""
     try:
@@ -686,7 +706,7 @@ def _lane_pilot_bb_error(command: str) -> str | None:
     for token in [*tokens, ";"]:
         if token in {"&&", "||", ";", "|", "&"}:
             if segment and (segment[0] in PM_BB_EXECUTABLES or Path(segment[0]).name == "bb"):
-                error = _pm_bb_error(segment[1:])
+                error = _lane_pilot_bb_command_error(segment[1:])
                 if error:
                     return error
             segment = []
@@ -843,6 +863,21 @@ def _pm_shell_error(command: str) -> str | None:
     return None
 
 
+def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
+    """The Lane Pilot PM's own shell rules, the same for the native BB PM (dev-orchestrator + LANE_PILOT_AGENT_TYPE)
+    and lane-pilot-pm: bb beyond its list, and shell edits of project files."""
+    error = _lane_pilot_bb_error(cmd)
+    if error:
+        emit_deny(client, f"[lane-pilot-guard] {error}. The PM's bb reads BB state (thread, memory, project, plugin, environment, "
+                  "host, provider and skill listings, env-catalog list/request), messages threads, and reloads, installs or updates "
+                  "plugins. A secret value: the env_get tool (never print it). A helper thread: lane_pilot_specialist or "
+                  "lane_pilot_errand. A browser step: lane_pilot_browser. Product changes: lane_pilot_dispatch_writer.")
+    edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
+    if edit:
+        emit_deny(client, f"[lane-pilot-guard] {edit}: shell edits of project files skip plan critique, code critique and acceptance. "
+                  f"{_lane_pilot_edit_tail(edit.rsplit(' ', 1)[-1])} Deploy, build and test scripts are fine.")
+
+
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -868,16 +903,7 @@ def main() -> None:
         # The Lane Pilot PM is the user's own chat: its shell runs under the same rules as a plain
         # claude-lane chat (deploys, compose, npm scripts, systemctl pass; the destructive list below
         # still blocks). Only BB thread control stays scoped, and writers are BB threads, not lanes.
-        error = _lane_pilot_bb_error(cmd)
-        if error:
-            emit_deny(client, "[lane-pilot-guard] The PM's bb is limited to: thread list/show/output/log/search/wait, thread tell/message, "
-                      "memory search/get, project list/show, env-catalog list/request. A secret value: the env_get tool (never print it). "
-                      "A helper thread: lane_pilot_specialist or lane_pilot_errand. A browser step: lane_pilot_browser. "
-                      "Product changes: lane_pilot_dispatch_writer.")
-        edit = _lane_pilot_shell_write_error(cmd, p.get("cwd") or p.get("workspaceRoot"))
-        if edit:
-            emit_deny(client, f"[lane-pilot-guard] {edit}: shell edits of project files skip plan critique, code critique and acceptance. "
-                      f"{_lane_pilot_edit_tail(edit.rsplit(' ', 1)[-1])} Deploy, build and test scripts are fine.")
+        _lane_pilot_shell_checks(client, cmd, p)
     lane_pilot_chat = key in LANE_PILOT_PM_AGENT_TYPES or bool(key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE"))
     if key in PM_AGENTS and is_edit_tool(name):
         path = file_path(p)
@@ -930,9 +956,7 @@ def main() -> None:
         # plain claude-lane chat — deploys and project node scripts pass. CLI
         # orchestrators without that env stay on the allowlist.
         if os.environ.get("LANE_PILOT_AGENT_TYPE"):
-            error = _lane_pilot_bb_error(cmd)
-            if error:
-                _deny_pm(client, error, lane_pilot=True)
+            _lane_pilot_shell_checks(client, cmd, p)
         else:
             error = _pm_shell_error(cmd)
             if error:

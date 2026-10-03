@@ -1,3 +1,8 @@
+## 1.64.5 — 2026-10-03
+
+- **The Lane Pilot PM may read BB state and ship plugins itself** (owner's request via thr_4autf3vdii). Its bb allowlist adds `plugin list|logs|info|show|status|reload|install|update`, `environment list|show|get|providers`, `host list|show`, `provider list|models`, `skill list`, `memory catalog`, `project get`, `version`; deploy steps (`bb-plugin-push`, rsync/ssh to the hub, restarts, tags, `gh release`) were already open. Still closed: starting, stopping or archiving threads (`lane_pilot_specialist`, `lane_pilot_errand`, `lane_pilot_dispatch_writer` do that), `bb plugin rpc`, `bb env-catalog get` (use `env_get`), the terminal run machinery and shell edits of project files.
+- **The native BB PM now gets the Lane Pilot rules.** It arrives as `dev-orchestrator` with `LANE_PILOT_AGENT_TYPE`, which took a second branch with the old bb rule and the old `[orchestrator-guard]` text; both PM forms now share one check (`_lane_pilot_shell_checks`). The terminal orchestrator keeps its own allowlist.
+
 ## 1.64.4 — 2026-10-03
 
 ### Fixed (skills audit for Lane Pilot agents)
