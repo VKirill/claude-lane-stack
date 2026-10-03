@@ -136,7 +136,27 @@ SQL_MUTATION = re.compile(
 )
 
 
-def _deny_pm(client: str, detail: str, lane_pilot: bool = False) -> None:
+_LANE_PILOT_PM_WRITES = ".agents/ (not the Lane Pilot receipts), .bb/chats/<this chat>/, docs/plans/, .env* and /tmp"
+
+
+def _lane_pilot_edit_tail(path: str) -> str:
+    """Where a refused Lane Pilot PM edit should go instead, by what the path is."""
+    normalized = path.replace("\\", "/").lstrip("./")
+    name = normalized.rsplit("/", 1)[-1]
+    if name == "LESSONS.md":
+        return "Lessons are rules on the hub now: call lane_pilot_lesson (audience pm, writer or both)."
+    if name == "DESIGN.md":
+        return "DESIGN.md belongs to design-lead: lane_pilot_specialist with role design-lead."
+    if normalized.startswith("docs/") or "/docs/" in normalized or name in {"README.md", "PROJECT.md"}:
+        return ("Lane Pilot writes docs/, README.md and PROJECT.md nightly from the code and reverts other edits there; "
+                "record the decision as a draft in .agents/decisions/<date>-<slug>.md.")
+    return ("Product changes go through lane_pilot_dispatch_writer: Lane Pilot critiques, accepts and merges them "
+            f"(the PM writes only {_LANE_PILOT_PM_WRITES}).")
+
+
+def _deny_pm(client: str, detail: str, lane_pilot: bool = False, path: str | None = None) -> None:
+    if lane_pilot and path is not None:
+        emit_deny(client, f"[lane-pilot-guard] {detail}. {_lane_pilot_edit_tail(path)}")
     # A Lane Pilot PM has no run supervisor: its writers are BB threads it dispatches itself.
     tail = (
         "Product changes go through lane_pilot_dispatch_writer (then poll lane_pilot_wait_writer); "
@@ -234,11 +254,12 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
         return False
     relative = target.relative_to(root)
     normalized = relative.as_posix()
+    # LESSONS.md is not kept any more: lessons are rules on the hub (lane_pilot_lesson / lane-memory lesson).
+    if normalized.rsplit("/", 1)[-1] == "LESSONS.md":
+        return False
     if normalized in {
         "PROGRESS.md",
-        "LESSONS.md",
         ".agents/PROGRESS.md",
-        ".agents/LESSONS.md",
     }:
         return True
     if _is_env_secret_file(normalized):
@@ -674,6 +695,63 @@ def _lane_pilot_bb_error(command: str) -> str | None:
     return None
 
 
+def _lane_pilot_shell_write_error(command: str, cwd: object) -> str | None:
+    """A Lane Pilot PM command that edits a project file in place: sed/perl -i, tee, or a redirect into the checkout.
+    Files the PM may write (_pm_edit_allowed), paths outside the checkout and /dev/null pass; scripts are not judged."""
+    if not isinstance(cwd, str) or not cwd:
+        return None
+    try:
+        lexer = shlex.shlex(_without_data_heredocs(command), posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    root = Path(cwd).resolve()
+
+    def project_file(target: str) -> bool:
+        if not target or target.startswith("&") or target == "/dev/null":
+            return False
+        path = Path(target if os.path.isabs(target) else os.path.join(cwd, target))
+        try:
+            inside = path.resolve().is_relative_to(root)
+        except (OSError, RuntimeError):
+            return False
+        return inside and not _pm_edit_allowed(target, cwd)
+
+    for index, token in enumerate(tokens):
+        if token in {">", ">>"} and index + 1 < len(tokens) and project_file(tokens[index + 1]):
+            return f"redirect into {tokens[index + 1]}"
+    segment: list[str] = []
+    for token in [*tokens, ";"]:
+        if token in {"&&", "||", ";", "|", "&"}:
+            if segment:
+                head = Path(segment[0]).name
+                files = []
+                skip = False
+                for arg in segment[1:]:
+                    if skip:
+                        skip = False
+                        continue
+                    if arg in {"-e", "-f", "--expression", "--file"}:
+                        skip = True
+                        continue
+                    if not arg.startswith("-"):
+                        files.append(arg)
+                in_place = head in {"sed", "gsed", "perl"} and any(arg == "-i" or arg.startswith("-i") or arg.startswith("--in-place") or (head == "perl" and "i" in arg.lstrip("-") and arg.startswith("-")) for arg in segment[1:])
+                # sed/perl take their script as the first operand unless it comes with -e.
+                if in_place and "-e" not in segment[1:]:
+                    files = files[1:]
+                if (in_place or head == "tee"):
+                    for arg in files:
+                        if project_file(arg):
+                            return f"{head} {'-i ' if in_place else ''}{arg}".replace("  ", " ")
+            segment = []
+        else:
+            segment.append(token)
+    return None
+
+
 def _lane_pilot_shell_error(command: str, cwd: object) -> str | None:
     if "\0" in command or "\n" in command or "$(" in command or "`" in command:
         return "multiline shell or command substitution is forbidden"
@@ -780,7 +858,7 @@ def main() -> None:
         if is_edit_tool(name):
             path = file_path(p)
             if not path or not _pm_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot")):
-                _deny_pm(client, f"direct {name or 'edit'} outside PM contract files is forbidden", lane_pilot=True)
+                _deny_pm(client, f"{name or 'Edit'} of {path or 'this file'} is not the PM's", lane_pilot=True, path=path or "")
             emit_allow(client)
         if name and not is_shell_tool(name):
             emit_allow(client)
@@ -792,12 +870,20 @@ def main() -> None:
         # still blocks). Only BB thread control stays scoped, and writers are BB threads, not lanes.
         error = _lane_pilot_bb_error(cmd)
         if error:
-            _deny_pm(client, error, lane_pilot=True)
+            emit_deny(client, "[lane-pilot-guard] The PM's bb is limited to: thread list/show/output/log/search/wait, thread tell/message, "
+                      "memory search/get, project list/show, env-catalog list/request. A secret value: the env_get tool (never print it). "
+                      "A helper thread: lane_pilot_specialist or lane_pilot_errand. A browser step: lane_pilot_browser. "
+                      "Product changes: lane_pilot_dispatch_writer.")
+        edit = _lane_pilot_shell_write_error(cmd, p.get("cwd") or p.get("workspaceRoot"))
+        if edit:
+            emit_deny(client, f"[lane-pilot-guard] {edit}: shell edits of project files skip plan critique, code critique and acceptance. "
+                      f"{_lane_pilot_edit_tail(edit.rsplit(' ', 1)[-1])} Deploy, build and test scripts are fine.")
     lane_pilot_chat = key in LANE_PILOT_PM_AGENT_TYPES or bool(key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE"))
     if key in PM_AGENTS and is_edit_tool(name):
         path = file_path(p)
         if not path or not _pm_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot")):
-            _deny_pm(client, f"direct {name or 'edit'} outside PM contract files is forbidden", lane_pilot=lane_pilot_chat)
+            _deny_pm(client, f"{name or 'Edit'} of {path or 'this file'} is not the PM's" if lane_pilot_chat else f"direct {name or 'edit'} outside PM contract files is forbidden",
+                     lane_pilot=lane_pilot_chat, path=(path or "") if lane_pilot_chat else None)
         emit_allow(client)
     if name and not is_shell_tool(name):
         emit_allow(client)
@@ -863,6 +949,9 @@ def main() -> None:
     # `git commit -F msg && git push` is not a force push; +refspec forces too.
     for args in _git_args(_without_data_heredocs(cmd), {"push"}):
         forced = any(a == "--force" or a.startswith("--force=") or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) or (a.startswith("+") and len(a) > 1) for a in args)
+        if forced and lane_pilot_chat:
+            emit_deny(client, "[lane-pilot-guard] Force-push is not allowed in a Lane Pilot chat: origin moved, so someone else's work is there. "
+                      "Run git fetch, report what differs from origin, and dispatch a writer to integrate it; push again once that is merged.")
         if forced and not any(a.startswith("--force-with-lease") for a in args):
             emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
 
@@ -879,8 +968,8 @@ def main() -> None:
             "node_modules", "/tmp/", ".next", "dist", "build", ".cache", "coverage", ".turbo",
         ))
         if not safe:
-            trash_hint = "the trash CLI or Finder" if sys.platform == "darwin" else "gio trash"
-            emit_deny(client, f"[agent-guard] rm -rf blocked (use {trash_hint} or whitelist build/tmp paths).")
+            emit_deny(client, "[agent-guard] rm -rf is blocked outside build and tmp directories. Remove one file with unlink <file>, "
+                      "or a directory's files with find <dir> -type f -delete; project source changes go through a writer.")
 
     emit_allow(client)
 

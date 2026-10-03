@@ -9,6 +9,12 @@
 - **Tavily key** is `$TAVILY_API_KEY` (BB Env Catalog) first; `~/secrets/tavily.env` only outside BB.
 - `impeccable-ui/references/typeset.md` restored from `~/.agents/skills`; `project-life` anti-pattern list and `browser-qa` NEVER list rewritten as positive rules.
 
+### Fixed (guard texts for the Lane Pilot PM, instructions audit)
+- **Denials say where the work goes.** A refused edit names the path and its route: `docs/`, `README.md`, `PROJECT.md` are written nightly by Lane Pilot (draft a decision in `.agents/decisions/`), `DESIGN.md` belongs to design-lead, `LESSONS.md` is `lane_pilot_lesson`, other files a writer; the PM's own write set is listed. A refused `bb` lists what the PM may run and the tool for the rest (`env_get`, `lane_pilot_specialist`, `lane_pilot_errand`, `lane_pilot_browser`).
+- **Shell edits of project files are refused for the Lane Pilot PM** (`sed -i`, `perl -i`, `tee`, redirects into the checkout): they skipped critique and acceptance, and the rule was text only. Deploy, build and test scripts and temp files pass.
+- **Force-push in a Lane Pilot chat** gets the integrate-through-a-writer route instead of «use --force-with-lease», which contradicted the PM prompt. `rm -rf` denial suggests `unlink` / `find -delete` instead of Finder.
+- `LESSONS.md` is no longer a writable PM file (lessons are hub rules).
+
 ## 1.64.3 — 2026-10-03
 
 ### Changed

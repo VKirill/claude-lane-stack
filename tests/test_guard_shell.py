@@ -178,9 +178,7 @@ class GuardShellTest(unittest.TestCase):
             "/srv/app/.agents/session-log/INDEX.md",
             "/srv/app/.agents/memory/drafts/always-read.md",
             "/srv/app/PROGRESS.md",
-            "/srv/app/LESSONS.md",
             "/srv/app/.agents/PROGRESS.md",
-            "/srv/app/.agents/LESSONS.md",
             "/srv/app/docs/plans/demo.md",
             "docs/plans/demo.md",
             "/tmp/demo.md",
@@ -201,6 +199,9 @@ class GuardShellTest(unittest.TestCase):
                 self.assertEqual(run_edit_hook("dev-orchestrator", path).returncode, 0)
 
         for path in (
+            # Lessons are hub rules now (lane-memory lesson / lane_pilot_lesson), not a file.
+            "/srv/app/LESSONS.md",
+            "/srv/app/.agents/LESSONS.md",
             "/srv/app/src/app.ts",
             "/srv/app/src/config.env.ts",
             "/srv/app/.environment",
