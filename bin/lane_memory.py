@@ -400,6 +400,30 @@ def _live_records(repo: Path, audience: str | None = None) -> list[dict[str, Any
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 
 
+def _hub():
+    import lane_memory_hub  # noqa: PLC0415 — sits next to this file in bin/
+
+    return lane_memory_hub
+
+
+_HUB_STATE: dict[str, bool] = {}
+
+
+def hub_on(repo: Path) -> bool:
+    """One project memory on the BB hub (Lane Pilot); the local corpus only when the hub is off or out of reach."""
+    key = str(Path(repo).resolve())
+    if key not in _HUB_STATE:
+        _HUB_STATE[key] = _hub().available(Path(repo))
+    return _HUB_STATE[key]
+
+
+def _hub_record(row: dict[str, Any], priority: str) -> dict[str, Any]:
+    content = str(row.get("content") or "")
+    claim = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    return {"id": row.get("id"), "claim": claim, "_body": content, "_path": "hub", "memory_type": row.get("kind"),
+            "truth_mode": "hub", "context_priority": priority, "sensitivity": "internal"}
+
+
 def _indexed_records(repo: Path) -> list[dict[str, Any]]:
     """Records the git-tracked indexes may name: a sensitive record lives in .cls/local-memory, its claim too."""
     return [rec for rec in _live_records(repo, audience="owner") if rec.get("sensitivity") not in {"sensitive", "encrypted-required"}]
@@ -616,6 +640,10 @@ def search(
     mode: str = "hybrid",
 ) -> tuple[list[dict[str, Any]], str]:
     mode = (mode or "hybrid").strip().lower()
+    if hub_on(repo):
+        rows = _hub().search(Path(repo), query, limit)
+        if rows is not None:
+            return [_hub_record(row, "always" if row.get("kind") == "core" else "on-demand") for row in rows], ""
     aud = audience or settings(repo)["audience"]
     if mode == "subagent":
         aud = "subagent"
@@ -732,6 +760,10 @@ def _is_bot_record(rec: dict[str, Any], bot: str) -> bool:
 
 
 def core_records(repo: Path) -> list[dict[str, Any]]:
+    if hub_on(repo):
+        rows = _hub().core(Path(repo))
+        if rows is not None:
+            return [_hub_record(row, "always") for row in rows]
     bot = str(settings(repo).get("personal_bot") or "")
     out = []
     for rec in _live_records(repo):
@@ -1217,6 +1249,21 @@ def write_apply(
         fp["hash"] = fingerprint(repo, paths)
         fp.setdefault("product", "lane-memory")
         meta["fingerprint"] = fp
+    if hub_on(repo) and meta.get("sensitivity") not in {"sensitive", "encrypted-required"}:
+        # One memory for every machine: the record lives on the hub, not in this checkout.
+        retrieval = meta.get("retrieval") if isinstance(meta.get("retrieval"), dict) else {}
+        hint = [term.strip() for term in str((retrieval or {}).get("hint") or "").split(",") if term.strip()]
+        concepts = [str(item) for item in [rid, *list((retrieval or {}).get("areas") or []), *hint] if str(item).strip()]
+        sent = _hub().write(Path(repo), kind="core" if meta.get("context_priority") == "always" else "note",
+                            content=(claim + ("\n\n" + body.strip() if body.strip() else "")), concepts=concepts,
+                            source=f"lane-memory {rid}")
+        if sent.get("stored") is False and sent.get("reason") not in (None, "duplicate"):
+            raise ValueError(f"8 persist: hub refused: {sent.get('reason')}")
+        log.append(f"8 persist: hub {sent.get('id') or sent.get('reason') or 'queued ' + str(sent.get('queued'))}")
+        injected = inject_core(repo)
+        if injected:
+            log.append("9b inject: " + ", ".join(str(p) for p in injected))
+        return Path(f"hub:{sent.get('id') or rid}"), log
     dest.write_text(_dump_record(meta, body), encoding="utf-8")
     log.append(f"8 persist: {dest}")
     old_id = meta.get("supersedes")
@@ -1396,6 +1443,16 @@ def write_episode(repo: Path, text: str, *, title: str = "") -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def lesson(repo: Path, rule: str, *, evidence: str = "", scope: list[str] | None = None) -> dict[str, Any]:
+    """A correction becomes a rule proposal on the hub (Lane Pilot), not a line in .agents/LESSONS.md:
+    a repeat of a live rule counts towards it, a new one goes on trial within the cap, old ones expire."""
+    rule = " ".join(rule.split())
+    if len(rule) < 8:
+        raise ValueError("lesson: write one imperative rule of at least 8 characters")
+    redact_or_raise(rule + "\n" + evidence)
+    return _hub().lesson(Path(repo), rule=rule[:600], evidence=evidence, scope=scope)
 
 
 def explain(repo: Path, task: str) -> list[str]:

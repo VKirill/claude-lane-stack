@@ -50,7 +50,7 @@ Read: `.agents/onboard.scenario.yaml`, `$ARTIFACT_DIR/deep-scan.md`, `docs/llm/*
 ## Phase F — FAST depth
 
 1. Top dirs + manifests + README/docs headers.  
-2. Fill CLAUDE.md, AGENTS pointer, ARCHITECTURE, `.agents/PROGRESS.md` / `.agents/LESSONS.md`, thin MODULE_MAP (≥3 modules if easy).  
+2. Fill CLAUDE.md, AGENTS pointer, ARCHITECTURE, `.agents/PROGRESS.md` (landmines → `lane-memory lesson "<rule>"`, on the hub), thin MODULE_MAP (≥3 modules if easy).  
 3. Touch `docs/llm/INDEX.md` + `llms.txt` with real project one-liner.  
 4. No invented services. Mark `// hypothesis`.  
 5. Report `DEPTH: fast`.
@@ -126,7 +126,7 @@ Artifact: `FLOWS_TRACED:` + `STATUS:`.
 7. **DESIGN.md** — **required when `has_ui`**. Canon = **Google Labs `@google/design.md`**.  
 8. **RUNBOOK.md** — **required when deploy signal**. Start/smoke/rollback.  
 9. Full pack extras (GOTCHAS/TESTING/deployment/SECURITY/GLOSSARY) with evidence only.  
-10. Wiki↔code audit; mismatches → CLAUDE / `.agents/PROGRESS.md` / `.agents/LESSONS.md`.  
+10. Wiki↔code audit; mismatches → CLAUDE / `.agents/PROGRESS.md` / `lane-memory lesson`.  
 11. Run default verify from TEST_INDEX when possible.  
 12. Root “Where to look” must tell agents: when cwd is `apps/<name>`, load `apps/<name>/CLAUDE.md` + `apps/<name>/docs/` first.
 

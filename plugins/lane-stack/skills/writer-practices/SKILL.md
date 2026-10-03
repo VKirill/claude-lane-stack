@@ -32,7 +32,7 @@ writer-practices — стиль кода внутри owns_paths. Для writer,
 - UI-экран: read_first DESIGN.md этой поверхности + web-design + design-taste + impeccable-ui.
 
 Важнее этого файла
-- CLAUDE.md / AGENTS.md / .agents/LESSONS.md в PROJECT_CWD
+- CLAUDE.md / AGENTS.md в PROJECT_CWD и правила проекта в брифе
 - Каталог и *.test / *.spec как уже в репо
 
 Не твоя работа
@@ -45,7 +45,7 @@ Source idea: [aif-best-practices](https://github.com/lee-to/ai-factory/blob/2.x/
 
 ## Override
 
-`CLAUDE.md` / `AGENTS.md` / `.agents/LESSONS.md` in `PROJECT_CWD` beat this card.
+`CLAUDE.md` / `AGENTS.md` in `PROJECT_CWD` and the project rules in your brief beat this card.
 Match file names, casing, and `*.test` / `*.spec` already in the repo.
 Do not create `.agents/**`, wiki, or README unless that path is in `owns_paths`.
 

@@ -1,3 +1,9 @@
+## 1.64.0 — 2026-10-03
+
+### Changed
+- **One project memory on the BB hub.** `lane-memory write`, `search`, `context` and CORE go through Lane Pilot's `session_memory_*` RPCs (`bb plugin rpc call`, Lane Pilot 0.1.95+), so a PM chat on one machine and a terminal session on another read and write the same memory. The project is the BB session's own or found by folder and machine; the hub address comes from `BB_SERVER_URL` or the machine's BB config. Without a connection a write waits in `.cls/memory-outbox/` (`lane-memory flush`). `.agents/memory/*.md` is no longer written; `sensitive` records stay local. `LANE_MEMORY_HUB=off` keeps the old local corpus.
+- **Lessons are hub rules, not `.agents/LESSONS.md`.** New `lane-memory lesson "<rule>" --evidence … --scope …`: repeats merge into a live rule, new ones go on trial within the 12-rule cap, at most 30 wait. `project-life`, `app-architect`, `orchestrator-lanes`, `writer-practices`, `lane-memory`, the onboard and Grok writer instructions no longer tell agents to append to or read LESSONS.md — it had grown to ≈150 entries in one project and every writer read all of it.
+
 ## 1.63.0 — 2026-10-03
 
 ### Fixed (memory audit against the SMA blueprints)

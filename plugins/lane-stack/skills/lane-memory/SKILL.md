@@ -1,13 +1,23 @@
 ---
 name: lane-memory
-description: "SMA-style project fact corpus under .agents/memory/. Opt-in via adoc stages.memory.enabled. Use when user says память, lane-memory, corpus, CORE, почему бот забыл, or an agent needs durable non-code facts. Not PROGRESS/LESSONS dumps."
+description: "One project fact memory on the BB hub (Lane Pilot), the same from every machine; lessons become hub rules. Opt-in via adoc stages.memory.enabled. Use when user says память, lane-memory, corpus, CORE, урок, почему бот забыл, or an agent needs durable non-code facts. Not PROGRESS dumps."
 argument-hint: "[info]"
 ---
 
 # Lane memory
 
-File corpus for facts that **cannot be derived** from git or the code documentation (docs/).
+Facts that **cannot be derived** from git or the code documentation (docs/).
 Laws from the SMA 5.6.1 drawing. Off until adoc turns it on.
+
+**Where it lives.** One memory per project on the BB hub (Lane Pilot's database), whatever machine the session
+runs on: `lane-memory write`, `search`, `context` and CORE go through `bb plugin rpc call lane-pilot
+session_memory_*`. Without a connection a write waits in `.cls/memory-outbox/` (`lane-memory flush` sends it).
+`.agents/memory/*.md` files are not written any more; `sensitive` records stay local in `.cls/local-memory`.
+`LANE_MEMORY_HUB=off` keeps the old local corpus.
+
+**Lessons.** A correction or a landmine is a rule, not a file line:
+`lane-memory lesson "<one imperative rule>" --evidence "<run/test/date>"`. The hub merges repeats, keeps at most
+12 rules in force on trial, retires unused ones and lets at most 30 wait. Never append to `.agents/LESSONS.md`.
 
 ## Info (print and stop)
 

@@ -1,9 +1,9 @@
-# Memory — PROGRESS, LESSONS, decisions, history, artifacts
+# Memory — PROGRESS, lessons, decisions, history, artifacts
 
 | File | Max size | Update when |
 |------|----------|-------------|
 | `.agents/PROGRESS.md` | ~40 lines | End of meaningful work / session |
-| `.agents/LESSONS.md` | grow slowly | After user correction or failed approach |
+| lessons → hub rules | — | After a user correction or a failed approach: `lane-memory lesson "<rule>"` (not a file) |
 | `.agents/decisions/<date>-<slug>.md` | rare | Expensive irreversible choice — a draft; the docs pass publishes it to `docs/decisions.md` |
 | `.agents/agent-notes/OPEN.md` | grow | Debt / simplify later |
 | `.agents/session-log/*` | auto | Hooks own it — never hand-author |
@@ -36,18 +36,21 @@ Schema-v2 runs: declare exact `progress_now`, `close_next`, and `close_open`
 in `run.yaml`. Post-merge `run-finalize` applies them and records
 hashes/actions in `finalize.json`. Never guess stale checklist items.
 
-## LESSONS.md entry
+## Lessons → rules on the hub
 
-```markdown
-### YYYY-MM-DD — short title
-- **Symptom:** …
-- **Wrong approach:** …
-- **Do:** …
-- **Don't:** …
-- **Evidence:** path or test name
+A lesson is one imperative rule, sent to the project's memory on the BB hub (Lane Pilot), from whatever machine
+the session runs on:
+
+```bash
+~/.agents/bin/lane-memory lesson "Run npm ci in writer worktrees, never npm install" \
+  --evidence "owner corrected 2026-10-03; run lprun_… task gc-…" --scope apps/marketing
 ```
 
-Only after a real correction or landmine — not per session.
+The hub keeps lessons bounded: a lesson close to a live rule counts as its repeat, a new one goes on trial
+(at most 12 rules in force, unused ones retire), at most 30 wait. Writers get only the rules their task needs.
+Do not append to `.agents/LESSONS.md`: it grew without bound (≈150 entries in one project) and every writer
+read all of it. Only after a real correction or landmine — not per session. Without a connection the lesson
+waits in `.cls/memory-outbox/` and goes out with the next call (`lane-memory flush`).
 
 ## Decision drafts (`.agents/decisions/<date>-<slug>.md`, ADR-light)
 
@@ -91,6 +94,6 @@ If adoc `stages.memory.enabled: true`, durable non-code facts live in
 1. PROGRESS rewritten (Now/Blocked/Next/Last verify).
 2. New ideas from chat → todo items, not lost.
 3. Plan task rows / ROADMAP reflect finished runs.
-4. LESSONS/ADR only if genuinely earned.
+4. A lesson (`lane-memory lesson`) or ADR only if genuinely earned.
 5. OPEN checkboxes updated if debt changed.
 6. Nothing important exists only in chat.

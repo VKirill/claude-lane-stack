@@ -103,7 +103,7 @@ look-and-feel, hard limits. Missing piece → one question, then patch the file.
 
 Stay here until «делай». No score, no `run-init`, no writers.
 
-1. **Listen (2–5 turns).** Read `.agents/LESSONS.md` if present. Ask what it
+1. **Listen (2–5 turns).** Project rules reach you in CORE; `lane-memory search` finds more. Ask what it
    is, who suffers, whether an analog exists, time/money if it matters.
    After 2–3 real answers → write `brief.md` and a stub `PLAN.md` Goal.
 2. **Shape.** One stack proposal in plain words (or reuse what the repo
@@ -122,7 +122,7 @@ If the app has a screen and DESIGN.md is missing → `design-lead` first.
 
 Optional: prior decisions via agentmemory. Do not block on it.
 Do not build a memory database. A lesson that will fire again → one
-`LESSONS.md` line in English after the owner confirms it.
+`lane-memory lesson "<rule>"` in English after the owner confirms it (rules live on the hub).
 
 ## Never
 

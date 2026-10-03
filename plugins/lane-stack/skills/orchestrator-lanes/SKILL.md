@@ -213,7 +213,7 @@ Where the TZ lives:
 Immutable after first start. `verification[]` = **L1 focused** only (see below).
 `run-validate --phase pre-dispatch` rejects the bad column.
 
-Repeated correction rule: if you retype the same path/command fix twice in a project, persist it in CLAUDE.md / LESSONS.md first, then regenerate the plan.
+Repeated correction rule: if you retype the same path/command fix twice in a project, persist it as a rule first (`lane-memory lesson "<rule>"`, kept on the hub), then regenerate the plan.
 
 ---
 
@@ -433,7 +433,7 @@ do not re-implement the feature as Claude.
 
 ## Hard rules (MUST)
 
-1. No production Edit/Write — only `.agents/**` (plans, decisions drafts, research, reports), PROGRESS/LESSONS, and dotenv (`.env`, `.env.*`) for secrets (keep keys out of writer prompts).  
+1. No production Edit/Write — only `.agents/**` (plans, decisions drafts, research, reports), PROGRESS, and dotenv (`.env`, `.env.*`) for secrets (keep keys out of writer prompts).  
 2. No task MCP queue.  
 3. Parallel = disjoint owns only.  
 4. You merge main when green; workers never push/merge main.  

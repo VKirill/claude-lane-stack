@@ -101,6 +101,14 @@ def main(argv: list[str] | None = None) -> int:
     p_ep.add_argument("--title", default="")
     add_repo(p_ep)
 
+    p_les = sub.add_parser("lesson")
+    p_les.add_argument("rule")
+    p_les.add_argument("--evidence", default="")
+    p_les.add_argument("--scope", default="")
+    add_repo(p_les)
+
+    add_repo(sub.add_parser("flush"))
+
     p_exw = sub.add_parser("export-worktree")
     p_exw.add_argument("--from", dest="worktree", required=True)
     add_repo(p_exw)
@@ -191,6 +199,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "episode":
         text = args.text or sys.stdin.read()
         print(lm.write_episode(repo, text, title=args.title))
+        return 0
+    if args.cmd == "lesson":
+        scope = [part for part in args.scope.split(",") if part.strip()]
+        print(json.dumps(lm.lesson(repo, args.rule, evidence=args.evidence, scope=scope), ensure_ascii=False))
+        return 0
+    if args.cmd == "flush":
+        print(f"sent {lm._hub().flush(repo)}")
         return 0
     if args.cmd == "export-worktree":
         copied = lm.export_worktree(repo, Path(args.worktree).resolve())

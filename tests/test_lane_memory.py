@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bin"))
+import os  # noqa: E402
+os.environ.setdefault("LANE_MEMORY_HUB", "off")  # the local corpus; the hub has its own tests
 import lane_memory as lm  # noqa: E402
 
 

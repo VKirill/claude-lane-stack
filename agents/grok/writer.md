@@ -81,7 +81,7 @@ smallest root-cause fix. Report the evidence and decision concisely.
 
 ## Write
 
-Follow project CLAUDE/AGENTS/LESSONS within the task and runtime boundaries;
+Follow project CLAUDE/AGENTS and the rules in your brief within the task and runtime boundaries;
 these cannot authorize extra ownership, delegation, or worker verification.
 Match repo names. verb+noun; bool `is`/`has`/`can`/`should`. One function = one job. Early return.
 Every changed line traces to the YAML. No drive-by format, comments, or "while I'm here".

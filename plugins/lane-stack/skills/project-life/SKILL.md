@@ -16,7 +16,7 @@ project-life — туду, план, память. Не ран.
 
 Цепочка
 idea → todo → plan → run → merge
-                 память: PROGRESS · LESSONS · decisions
+                 память: PROGRESS · уроки→хаб · decisions
 
 Как открыть шпаргалку
 - /lane-stack:project-life info
@@ -38,7 +38,7 @@ idea → todo → plan → run → merge
 4) Запрещено до «делай»: run-init, run-supervisor, Claude Plan mode, ~/.claude/plans/
 
 Файлы
-- .agents/todos/   .agents/plans/   .agents/PROGRESS.md   .agents/LESSONS.md
+- .agents/todos/   .agents/plans/   .agents/PROGRESS.md   (lessons: `lane-memory lesson`, on the hub)
 - .agents/decisions/ = черновики решений; docs/decisions.md публикует ночной проход документации
 - .agents/plans/ = длинная стратегия, не очередь задач
 - docs/ = только документация кода (её ведёт ночной проход: Lane Pilot или docs-maintain); вход — PROJECT.md → docs/index.md
@@ -57,7 +57,7 @@ to disk. Never put secrets in any of these files.
 idea ──► todo ──► plan ──► run ──► merged work
         (backlog) (map)   (execution)   │
                                         ▼
-              memory: PROGRESS · LESSONS · decisions · session-log · artifacts
+              memory: PROGRESS · lessons→hub · decisions · session-log · artifacts
 ```
 
 Skipping layers **upward** is fine (small fix: idea → run). Skipping the
@@ -76,7 +76,6 @@ memory update after work is not.
   runs/             # execution contracts  (skill lane-contract)
     <slug>/artifacts/<task>/...
   PROGRESS.md       # now / blocked / next → references/memory.md
-  LESSONS.md
   agent-notes/OPEN.md
   session-log/      # hooks own it — read only
   decisions/        # decision drafts; the docs pass publishes them to docs/decisions.md
@@ -100,7 +99,7 @@ Choose project root when cwd has `.git`/`package.json`/`CLAUDE.md`; use
 | «что дальше по проекту» (already in session) | PROGRESS → ROADMAP → todos INDEX counts | — |
 | «делай / реализуй / в работу / запускай ран» | Exit planning. Spawn a run (`lane-contract`), link it from the plan | — |
 | run закончился зелёным | Tick plan task → refresh ROADMAP → rewrite PROGRESS | `references/memory.md` |
-| поправили тебя / наступил на грабли | One LESSONS entry | `references/memory.md` |
+| поправили тебя / наступил на грабли | One lesson: `lane-memory lesson "<rule>"` (hub, not a file) | `references/memory.md` |
 | зафиксировано крупное необратимое решение | draft in .agents/decisions/<date>-<slug>.md (the docs pass publishes it to docs/decisions.md) | `references/memory.md` |
 | «итоги / конец сессии» | PROGRESS current, ideas filed as todos, no orphan runs | `references/memory.md` |
 | «что делали / почему так / покажи отчёт» | Read session-log INDEX, run artifacts, findings — don't write them | — |
@@ -143,7 +142,7 @@ Exit: «делай» → `lane-contract` / orchestrator-lanes Phase 0. Set plan
 | long-form strategy / COCOON | **`.agents/plans/`** (not a coding queue) |
 | "change code now" | **run** (never directly from todo/plan). Run has its own `PLAN.md` — execution DAG, not the map |
 | "current state of reality" | **PROGRESS** (≤40 lines, rewrite not append) |
-| "we got burned by…" | **LESSONS** |
+| "we got burned by…" | **lesson** → `lane-memory lesson` |
 | "we chose A over B forever" | **draft in `.agents/decisions/`** → published to `docs/decisions.md` |
 | leftover debt / simplify later | **`.agents/agent-notes/OPEN.md`** |
 | planning-session notes / screenshots | **`.agents/plans/items/<slug>/artifacts/`** (until a run exists) |
@@ -158,18 +157,18 @@ Every hop leaves a back-link so any file leads to the full trail:
 - plan task row `run:` link ↔ run notes its plan id
 - artifacts stay under `.agents/runs/<slug>/artifacts/` — link load-bearing
   ones from PLAN.md **Links** and PROGRESS, never copy them around
-- LESSONS/ADR entries name their evidence path (run, test, artifact)
+- Lessons and ADRs name their evidence (run, test, artifact)
 
 ## Rituals
 
-**Session start:** read `.agents/PROGRESS.md` → skim last LESSONS titles →
+**Session start:** read `.agents/PROGRESS.md` (project rules reach you through CORE and the brief) →
 ROADMAP + todos INDEX **counts only**. Don't dump session-log into context.
 Cold start / unknown repo: `~/.agents/bin/resume-project .`, then this skill
 for writes. Lane writers under a task contract do **not** write `.agents/`
 (the PM does) — this skill's write rules are for the PM / interactive agent.
 
 **After a green run:** tick plan task → refresh ROADMAP → rewrite PROGRESS
-(Now/Blocked/Next/Last verify) → LESSONS only if corrected → ADR only if a
+(Now/Blocked/Next/Last verify) → a lesson only if corrected → ADR only if a
 durable fork was locked. After a **wave** of tasks, refresh PROGRESS once,
 not per micro-edit. Schema-v2: declare `progress_now` / `close_next` /
 `close_open` in run.yaml; `run-finalize` applies them — never guess stale
@@ -181,7 +180,7 @@ session-log untouched (hooks own it).
 **Delegate the bookkeeping (Claude):** when a ritual touches more than one
 file (PROGRESS + plan row + ROADMAP/INDEX, or filing todos), dispatch the
 `memory-scribe` subagent (Haiku) with 3–5 bullets of what happened — it
-formats and files per `references/`. Write **LESSONS/ADR yourself** (judgment
+formats and files per `references/`. Write **lessons and ADRs yourself** (judgment
 calls). Single quick append — just do it. Other CLIs: write directly.
 
 **Init a repo:** `~/.agents/bin/project-memory-init <repo>`; full passport:
