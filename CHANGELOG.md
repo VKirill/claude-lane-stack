@@ -1,3 +1,8 @@
+## 1.64.3 — 2026-10-03
+
+### Changed
+- **Lane Pilot PM guard.** The PM may run `bb env-catalog list` and `bb env-catalog request` (names, not values). A denied `bb` command now names `lane_pilot_browser` (one step in the owner's Chrome) and `lane_pilot_errand` (a helper for consoles, mail, accounts, recordings) — Lane Pilot 0.1.98. Same file as Lane Pilot's copy; installed on the Mac mini, OVH and MacBook.
+
 ## 1.64.2 — 2026-10-03
 
 ### Changed

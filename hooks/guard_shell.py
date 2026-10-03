@@ -50,6 +50,8 @@ PM_BB_READ_COMMANDS = {
     ("thread", "context"), ("thread", "count"),
     ("memory", "search"), ("memory", "get"), ("memory", "catalog"),
     ("project", "list"), ("project", "show"),
+    # Which accounts exist and asking the owner for a missing one; values stay with the errand helper.
+    ("env-catalog", "list"), ("env-catalog", "request"),
 }
 # Agents coordinate by messaging each other's threads; starting, changing or archiving threads stays denied.
 PM_BB_MESSAGE_COMMANDS = {
@@ -138,7 +140,8 @@ def _deny_pm(client: str, detail: str, lane_pilot: bool = False) -> None:
     # A Lane Pilot PM has no run supervisor: its writers are BB threads it dispatches itself.
     tail = (
         "Product changes go through lane_pilot_dispatch_writer (then poll lane_pilot_wait_writer); "
-        "Lane Pilot critiques, accepts and merges them."
+        "Lane Pilot critiques, accepts and merges them. A browser step in the owner's Chrome goes through "
+        "lane_pilot_browser; other work outside the code (consoles, mail, accounts, recordings) through lane_pilot_errand."
         if lane_pilot
         else "Keep PM work read-only/control-plane-only; delegate mutations "
         "to the run supervisor and its writer/recovery lane."
