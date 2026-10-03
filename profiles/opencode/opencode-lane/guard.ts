@@ -2,7 +2,9 @@ import { existsSync, statSync } from "node:fs"
 import { join, resolve } from "node:path"
 
 const GIT_RESTORE = /\bgit\s+(?:checkout|restore|reset|switch)\b/i
-const ALLOWED_SKILLS = new Set(["ui-ux-pro-max"])
+// Lane Pilot gives every writer writer-practices and karpathy-guidelines (its writer role profile); the guard
+// refused them with «skill blocked» on OpenCode writers (2026-10-03).
+const ALLOWED_SKILLS = new Set(["ui-ux-pro-max", "writer-practices", "karpathy-guidelines"])
 const ALLOWED_MCP = new Set(["gitnexus", "agentmemory"])
 const MCP_NAME = /^mcp__([^_]+?)__/i
 
@@ -74,7 +76,7 @@ export function guardTool(tool: string, args: unknown, cwd = process.cwd()): str
       return (
         "[opencode-lane guard] skill blocked" +
         (skill ? `: ${skill}` : "") +
-        ". Writer may load ui-ux-pro-max on UI tasks, or a skill bound on this session."
+        ". Writer may load writer-practices, karpathy-guidelines, ui-ux-pro-max on UI tasks, or a skill bound on this session."
       )
     }
   }

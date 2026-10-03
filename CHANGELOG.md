@@ -1,3 +1,7 @@
+## 1.64.7 — 2026-10-03
+
+- **OpenCode writer guard allows the Lane Pilot writer skills.** `writer-practices` and `karpathy-guidelines` (the Lane Pilot writer role profile) were refused with «[opencode-lane guard] skill blocked»; installed on the Mac mini and OVH.
+
 ## 1.64.6 — 2026-10-03
 
 - **`bb plugin reload|install|update` only from a `bb-plugin-*` checkout**, as the owner confirmed (thr_4autf3vdii): a plugin's own PM ships it; a product PM cannot reload Lane Pilot under running writers. BB reads stay open to every Lane Pilot PM.
