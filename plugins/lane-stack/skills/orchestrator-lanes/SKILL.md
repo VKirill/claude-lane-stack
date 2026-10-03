@@ -213,7 +213,7 @@ Where the TZ lives:
 Immutable after first start. `verification[]` = **L1 focused** only (see below).
 `run-validate --phase pre-dispatch` rejects the bad column.
 
-Repeated correction rule: if you retype the same path/command fix twice in a project, persist it as a rule first (`lane-memory lesson "<rule>"`, kept on the hub), then regenerate the plan.
+Repeated correction rule: if you retype the same path/command fix twice in a project, persist it as a rule first (`lane-memory lesson "<rule>" --for pm|writer|both`, kept on the hub), then regenerate the plan.
 
 ---
 

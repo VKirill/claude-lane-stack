@@ -16,8 +16,12 @@ session_memory_*`. Without a connection a write waits in `.cls/memory-outbox/` (
 `LANE_MEMORY_HUB=off` keeps the old local corpus.
 
 **Lessons.** A correction or a landmine is a rule, not a file line:
-`lane-memory lesson "<one imperative rule>" --evidence "<run/test/date>"`. The hub merges repeats, keeps at most
-12 rules in force on trial, retires unused ones and lets at most 30 wait. Never append to `.agents/LESSONS.md`.
+`lane-memory lesson "<one imperative rule>" --for pm|writer|both [--always] --evidence "<run/test/date>"`.
+`--for pm` — planning, task contracts, reviewing reports, merging, deploying: writers never get it. `--for writer` —
+how code is edited and checked inside one task. `--always` only for a rule that holds for every writer task whatever
+it changes (how to run or read any command); otherwise System One gives it to the tasks it fits. The hub merges
+repeats, keeps at most 12 rules in force on trial, retires unused ones and lets at most 30 wait. Never append to
+`.agents/LESSONS.md`.
 
 ## Info (print and stop)
 

@@ -1,3 +1,8 @@
+## 1.64.2 — 2026-10-03
+
+### Changed
+- **A lesson says who follows it.** `lane-memory lesson "<rule>" --for pm|writer|both [--always]` — `--for` is required. A `pm` rule (planning, task contracts, reviews, merges, deploys) never reaches a Lane Pilot writer; `--always` marks a rule every writer task gets without System One's per-task pick (not allowed for `pm`). Lane Pilot 0.1.97 stores both; the skills that mention lessons say so.
+
 ## 1.64.1 — 2026-10-03
 
 ### Fixed

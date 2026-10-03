@@ -3,7 +3,7 @@
 | File | Max size | Update when |
 |------|----------|-------------|
 | `.agents/PROGRESS.md` | ~40 lines | End of meaningful work / session |
-| lessons → hub rules | — | After a user correction or a failed approach: `lane-memory lesson "<rule>"` (not a file) |
+| lessons → hub rules | — | After a user correction or a failed approach: `lane-memory lesson "<rule>" --for pm|writer|both` (not a file) |
 | `.agents/decisions/<date>-<slug>.md` | rare | Expensive irreversible choice — a draft; the docs pass publishes it to `docs/decisions.md` |
 | `.agents/agent-notes/OPEN.md` | grow | Debt / simplify later |
 | `.agents/session-log/*` | auto | Hooks own it — never hand-author |
@@ -42,12 +42,14 @@ A lesson is one imperative rule, sent to the project's memory on the BB hub (Lan
 the session runs on:
 
 ```bash
-~/.agents/bin/lane-memory lesson "Run npm ci in writer worktrees, never npm install" \
+~/.agents/bin/lane-memory lesson "Run npm ci in writer worktrees, never npm install" --for writer \
   --evidence "owner corrected 2026-10-03; run lprun_… task gc-…" --scope apps/marketing
 ```
 
 The hub keeps lessons bounded: a lesson close to a live rule counts as its repeat, a new one goes on trial
-(at most 12 rules in force, unused ones retire), at most 30 wait. Writers get only the rules their task needs.
+(at most 12 rules in force, unused ones retire), at most 30 wait. `--for pm|writer|both` says who follows it —
+a `pm` rule never reaches a writer; `--always` marks a rule for every writer task. Writers get only the rules their
+task needs.
 Do not append to `.agents/LESSONS.md`: it grew without bound (≈150 entries in one project) and every writer
 read all of it. Only after a real correction or landmine — not per session. Without a connection the lesson
 waits in `.cls/memory-outbox/` and goes out with the next call (`lane-memory flush`).

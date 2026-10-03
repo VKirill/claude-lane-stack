@@ -169,8 +169,8 @@ def write(repo: Path, *, kind: str, content: str, concepts: list[str], source: s
     return _send(repo, "session_memory_write", {"kind": kind, "content": content, "concepts": concepts[:24], "source": source[:300]})
 
 
-def lesson(repo: Path, *, rule: str, evidence: str = "", scope: list[str] | None = None) -> dict[str, Any]:
-    payload: dict[str, Any] = {"rule": rule}
+def lesson(repo: Path, *, rule: str, evidence: str = "", scope: list[str] | None = None, audience: str = "both", always: bool = False) -> dict[str, Any]:
+    payload: dict[str, Any] = {"rule": rule, "audience": audience, "always": always}
     if evidence:
         payload["evidence"] = evidence[:1000]
     if scope:

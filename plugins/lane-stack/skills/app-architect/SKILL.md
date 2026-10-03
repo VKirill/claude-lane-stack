@@ -122,7 +122,7 @@ If the app has a screen and DESIGN.md is missing → `design-lead` first.
 
 Optional: prior decisions via agentmemory. Do not block on it.
 Do not build a memory database. A lesson that will fire again → one
-`lane-memory lesson "<rule>"` in English after the owner confirms it (rules live on the hub).
+`lane-memory lesson "<rule>" --for pm|writer|both` in English after the owner confirms it (rules live on the hub).
 
 ## Never
 

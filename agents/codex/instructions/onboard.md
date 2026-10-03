@@ -50,7 +50,7 @@ Read: `.agents/onboard.scenario.yaml`, `$ARTIFACT_DIR/deep-scan.md`, `docs/llm/*
 ## Phase F — FAST depth
 
 1. Top dirs + manifests + README/docs headers.  
-2. Fill CLAUDE.md, AGENTS pointer, ARCHITECTURE, `.agents/PROGRESS.md` (landmines → `lane-memory lesson "<rule>"`, on the hub), thin MODULE_MAP (≥3 modules if easy).  
+2. Fill CLAUDE.md, AGENTS pointer, ARCHITECTURE, `.agents/PROGRESS.md` (landmines → `lane-memory lesson "<rule>" --for pm|writer|both`, on the hub), thin MODULE_MAP (≥3 modules if easy).  
 3. Touch `docs/llm/INDEX.md` + `llms.txt` with real project one-liner.  
 4. No invented services. Mark `// hypothesis`.  
 5. Report `DEPTH: fast`.

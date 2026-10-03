@@ -101,9 +101,11 @@ class LaneMemoryHubTest(unittest.TestCase):
         self.assertEqual(self.lm._hub().project(self.repo), "proj_test")
 
     def test_a_lesson_is_a_rule_proposal_and_waits_while_the_hub_is_down(self) -> None:
-        out = self.lm.lesson(self.repo, "Run npm ci in writer worktrees, never npm install", evidence="owner corrected")
+        out = self.lm.lesson(self.repo, "Run npm ci in writer worktrees, never npm install", evidence="owner corrected", audience="writer", always=True)
         self.assertEqual(out["state"], "accepted")
-        self.assertEqual(self.store()["lessons"][0]["rule"], "Run npm ci in writer worktrees, never npm install")
+        sent = self.store()["lessons"][0]
+        self.assertEqual(sent["rule"], "Run npm ci in writer worktrees, never npm install")
+        self.assertEqual((sent["audience"], sent["always"]), ("writer", True))
         data = self.store()
         data["down"] = True
         self.bb.with_suffix(".json").write_text(json.dumps(data), encoding="utf-8")
@@ -114,6 +116,12 @@ class LaneMemoryHubTest(unittest.TestCase):
         self.bb.with_suffix(".json").write_text(json.dumps(data), encoding="utf-8")
         self.assertEqual(self.lm._hub().flush(self.repo), 1)
         self.assertEqual(len(self.store()["lessons"]), 2)
+
+    def test_a_pm_lesson_is_never_marked_for_every_writer_task(self) -> None:
+        self.lm.lesson(self.repo, "Write owns_paths with every sibling test", audience="pm", always=True)
+        self.assertEqual((self.store()["lessons"][0]["audience"], self.store()["lessons"][0]["always"]), ("pm", False))
+        with self.assertRaises(ValueError):
+            self.lm.lesson(self.repo, "Some other rule for someone", audience="owner")
 
 
 if __name__ == "__main__":

@@ -1445,14 +1445,16 @@ def write_episode(repo: Path, text: str, *, title: str = "") -> Path:
     return path
 
 
-def lesson(repo: Path, rule: str, *, evidence: str = "", scope: list[str] | None = None) -> dict[str, Any]:
+def lesson(repo: Path, rule: str, *, evidence: str = "", scope: list[str] | None = None, audience: str = "both", always: bool = False) -> dict[str, Any]:
     """A correction becomes a rule proposal on the hub (Lane Pilot), not a line in .agents/LESSONS.md:
     a repeat of a live rule counts towards it, a new one goes on trial within the cap, old ones expire."""
     rule = " ".join(rule.split())
     if len(rule) < 8:
         raise ValueError("lesson: write one imperative rule of at least 8 characters")
     redact_or_raise(rule + "\n" + evidence)
-    return _hub().lesson(Path(repo), rule=rule[:600], evidence=evidence, scope=scope)
+    if audience not in ("pm", "writer", "both"):
+        raise ValueError("lesson: audience is pm, writer or both")
+    return _hub().lesson(Path(repo), rule=rule[:600], evidence=evidence, scope=scope, audience=audience, always=always and audience != "pm")
 
 
 def explain(repo: Path, task: str) -> list[str]:

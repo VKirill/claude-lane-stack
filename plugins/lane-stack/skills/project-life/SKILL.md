@@ -99,7 +99,7 @@ Choose project root when cwd has `.git`/`package.json`/`CLAUDE.md`; use
 | «что дальше по проекту» (already in session) | PROGRESS → ROADMAP → todos INDEX counts | — |
 | «делай / реализуй / в работу / запускай ран» | Exit planning. Spawn a run (`lane-contract`), link it from the plan | — |
 | run закончился зелёным | Tick plan task → refresh ROADMAP → rewrite PROGRESS | `references/memory.md` |
-| поправили тебя / наступил на грабли | One lesson: `lane-memory lesson "<rule>"` (hub, not a file) | `references/memory.md` |
+| поправили тебя / наступил на грабли | One lesson: `lane-memory lesson "<rule>" --for pm|writer|both` (hub, not a file) | `references/memory.md` |
 | зафиксировано крупное необратимое решение | draft in .agents/decisions/<date>-<slug>.md (the docs pass publishes it to docs/decisions.md) | `references/memory.md` |
 | «итоги / конец сессии» | PROGRESS current, ideas filed as todos, no orphan runs | `references/memory.md` |
 | «что делали / почему так / покажи отчёт» | Read session-log INDEX, run artifacts, findings — don't write them | — |
