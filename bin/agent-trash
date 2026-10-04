@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Move files and folders to the Trash instead of deleting them for good; the agents' replacement for rm.
+
+Takes rm's flags (-r, -f, -R, -v, --) so `rm -rf x` becomes `agent-trash -rf x`. With -f a missing path is
+not an error. macOS: the Finder Trash (`/usr/bin/trash`, else a move into ~/.Trash). Linux: the XDG Trash
+(~/.local/share/Trash, the same place `gio trash` uses); on each call entries deleted more than
+AGENT_TRASH_KEEP_DAYS (default 7) days ago are emptied, so a server disk does not fill up with old trash.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import os
+import shutil
+import subprocess
+import sys
+import urllib.parse
+from pathlib import Path
+
+
+def parse(argv: list[str]) -> tuple[bool, bool, list[str]]:
+    force = verbose = False
+    paths: list[str] = []
+    options = True
+    for token in argv:
+        if options and token == "--":
+            options = False
+        elif options and token.startswith("-") and token != "-":
+            if token in {"-h", "--help"}:
+                print(__doc__.strip())
+                sys.exit(0)
+            force = force or "f" in token or token == "--force"
+            verbose = verbose or "v" in token or token == "--verbose"
+        else:
+            paths.append(token)
+    return force, verbose, paths
+
+
+def unique_name(files: Path, info: Path, name: str) -> str:
+    candidate, counter = name, 1
+    while (files / candidate).exists() or (files / candidate).is_symlink() or (info / f"{candidate}.trashinfo").exists():
+        counter += 1
+        candidate = f"{name}.{counter}"
+    return candidate
+
+
+def xdg_trash(path: Path, home_trash: Path) -> Path:
+    files, info = home_trash / "files", home_trash / "info"
+    files.mkdir(parents=True, exist_ok=True)
+    info.mkdir(parents=True, exist_ok=True)
+    name = unique_name(files, info, path.name or "item")
+    stamp = dt.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    record = f"[Trash Info]\nPath={urllib.parse.quote(str(path))}\nDeletionDate={stamp}\n"
+    descriptor = os.open(info / f"{name}.trashinfo", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        handle.write(record)
+    try:
+        shutil.move(str(path), str(files / name))
+    except BaseException:
+        (info / f"{name}.trashinfo").unlink(missing_ok=True)
+        raise
+    return files / name
+
+
+def empty_old(home_trash: Path, keep_days: float) -> None:
+    info = home_trash / "info"
+    if not info.is_dir():
+        return
+    limit = dt.datetime.now() - dt.timedelta(days=keep_days)
+    for record in info.glob("*.trashinfo"):
+        try:
+            line = next(row for row in record.read_text().splitlines() if row.startswith("DeletionDate="))
+            deleted = dt.datetime.fromisoformat(line.split("=", 1)[1].strip())
+        except (StopIteration, ValueError, OSError):
+            continue
+        if deleted >= limit:
+            continue
+        item = home_trash / "files" / record.name[: -len(".trashinfo")]
+        if item.is_dir() and not item.is_symlink():
+            shutil.rmtree(item, ignore_errors=True)
+        else:
+            item.unlink(missing_ok=True)
+        record.unlink(missing_ok=True)
+
+
+def main(argv: list[str]) -> int:
+    force, verbose, raw = parse(argv)
+    if not raw:
+        if force:
+            return 0
+        print("agent-trash: missing operand (usage: agent-trash [-rfv] <path>...)", file=sys.stderr)
+        return 1
+    paths: list[Path] = []
+    status = 0
+    for item in raw:
+        path = Path(os.path.abspath(os.path.expanduser(item)))
+        if not os.path.lexists(path):
+            if not force:
+                print(f"agent-trash: {item}: No such file or directory", file=sys.stderr)
+                status = 1
+            continue
+        if path == Path("/") or path == Path.home():
+            print(f"agent-trash: refusing to trash {path}", file=sys.stderr)
+            status = 1
+            continue
+        paths.append(path)
+    if sys.platform == "darwin":
+        if paths and Path("/usr/bin/trash").exists():
+            result = subprocess.run(["/usr/bin/trash", *map(str, paths)], check=False)
+            status = status or result.returncode
+        else:
+            for path in paths:
+                xdg_target = Path.home() / ".Trash" / unique_name(Path.home() / ".Trash", Path("/nonexistent"), path.name)
+                shutil.move(str(path), str(xdg_target))
+        if verbose:
+            for path in paths:
+                print(f"trashed {path}")
+        return status
+    home_trash = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "Trash"
+    for path in paths:
+        try:
+            target = xdg_trash(path, home_trash)
+            if verbose:
+                print(f"trashed {path} -> {target}")
+        except OSError as error:
+            print(f"agent-trash: {path}: {error}", file=sys.stderr)
+            status = 1
+    try:
+        empty_old(home_trash, float(os.environ.get("AGENT_TRASH_KEEP_DAYS", "7")))
+    except OSError:
+        pass
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

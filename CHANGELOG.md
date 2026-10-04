@@ -1,3 +1,9 @@
+## 1.64.8
+
+- `bin/agent-trash`: moves files and folders to the Trash instead of deleting them for good; takes rm's flags. macOS uses the Finder Trash, Linux the XDG Trash (`~/.local/share/Trash`), emptying entries older than `AGENT_TRASH_KEEP_DAYS` (7).
+- Guard: rm, unlink, shred, `find -delete` and `xargs rm` outside regenerated folders (node_modules, dist, build, caches, /tmp, a mktemp `$tmp`) are refused with a pointer to agent-trash. Commands are parsed, so `rm -rf` inside a grep pattern or an echo no longer trips the guard. The old hint to use unlink / find -delete is gone.
+- Test fix: the OpenCode guard test expected writer-practices to be blocked (allowed since 1.64.7).
+
 ## 1.64.7 — 2026-10-03
 
 - **OpenCode writer guard allows the Lane Pilot writer skills.** `writer-practices` and `karpathy-guidelines` (the Lane Pilot writer role profile) were refused with «[opencode-lane guard] skill blocked»; installed on the Mac mini and OVH.

@@ -339,6 +339,95 @@ def _safe_psql(args: list[str]) -> bool:
     return bool(queries) and all(not SQL_MUTATION.search(query) for query in queries)
 
 
+# Folders whose contents a tool regenerates: deleting them for good loses nothing.
+_DISPOSABLE_SEGMENTS = {
+    "node_modules", "dist", "build", ".next", ".nuxt", ".output", ".cache", "coverage", ".turbo", ".vite",
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "tmp", ".tmp",
+}
+_DISPOSABLE_ROOTS = ("/tmp/", "/private/tmp/", "/var/tmp/", "/var/folders/", "/dev/null")
+_TRASH_HINT = (
+    "move it to the Trash instead: ~/.agents/bin/agent-trash <path>... (takes rm's -r/-f; on servers the Trash "
+    "keeps it 7 days). Build output, node_modules, caches and /tmp can still be removed with rm."
+)
+
+
+def _disposable_path(path: str) -> bool:
+    if path.startswith(("$TMPDIR", "${TMPDIR")) or any(path.startswith(root) for root in _DISPOSABLE_ROOTS):
+        return True
+    variable = re.match(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)", path)
+    if variable and re.search(r"te?mp", variable.group(1), re.I):  # a mktemp folder: tmp=$(mktemp -d); rm -rf "$tmp"
+        return True
+    return any(part in _DISPOSABLE_SEGMENTS for part in path.replace("\\", "/").split("/"))
+
+
+def _delete_targets(args: list[str]) -> list[str] | None:
+    """What a real delete command removes, or None if it is not one. Unknown targets (xargs) come back as ["?"]."""
+    while args and args[0] in {"sudo", "env", "command", "nice", "nohup", "time"}:
+        inner = _unwrap_sudo_args(args[1:]) if args[0] == "sudo" else _unwrap_env_args(args[1:]) if args[0] == "env" else args[1:]
+        if not inner:
+            return None
+        args = inner
+    if not args:
+        return None
+    name = Path(args[0]).name
+    if name in {"rm", "unlink", "shred"}:
+        operands, after_dashdash = [], False
+        for token in args[1:]:
+            if after_dashdash or not token.startswith("-") or token == "-":
+                operands.append(token)
+            elif token == "--":
+                after_dashdash = True
+        return operands or ["?"]
+    if name == "find" and "-delete" in args:
+        roots = []
+        for token in args[1:]:
+            if token.startswith("-") or token in {"(", "!"}:
+                break
+            roots.append(token)
+        return roots or ["."]
+    if name == "xargs":
+        rest = [token for token in args[1:] if not token.startswith("-")]
+        if rest and Path(rest[0]).name in {"rm", "unlink", "shred"}:
+            return ["?"]
+    if name in {"sh", "bash", "zsh"} and "-c" in args:
+        index = args.index("-c")
+        if index + 1 < len(args):
+            for nested in _delete_commands(args[index + 1]):
+                return nested
+    return None
+
+
+def _delete_commands(command: str) -> list[list[str]]:
+    """Targets of every real rm/unlink/shred/find -delete in a command; text inside quotes (a grep pattern) is not one."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return [["?"]] if re.search(r"(?:^|[;&|(]\s*)(?:sudo\s+)?(?:rm|unlink|shred)\s", command) else []
+    found: list[list[str]] = []
+    segment: list[str] = []
+    for token in [*tokens, ";"]:
+        if token in _CONTROL_TOKENS:
+            targets = _delete_targets(segment)
+            if targets is not None:
+                found.append(targets)
+            segment = []
+        else:
+            segment.append(token)
+    return found
+
+
+def _permanent_delete_error(command: str) -> str | None:
+    for targets in _delete_commands(command):
+        kept = [target for target in targets if not _disposable_path(target)]
+        if kept:
+            shown = "files piped through xargs" if kept == ["?"] else " ".join(kept[:3]) + (" ..." if len(kept) > 3 else "")
+            return f"[agent-guard] Deleting {shown} for good is blocked: {_TRASH_HINT}"
+    return None
+
+
 def _unwrap_sudo_args(args: list[str]) -> list[str] | None:
     """Return inner argv after sudo flags, or None if sudo has no command."""
     index = 0
@@ -996,14 +1085,10 @@ def main() -> None:
     if re.search(r"\bdelete\s+from\s+\w+\s*;?\s*$", low) and "where" not in low:
         emit_deny(client, "[agent-guard] DELETE without WHERE blocked.")
 
-    # rm -rf outside known build dirs
-    if re.search(r"\brm\s+(-[a-zA-Z]*f[a-zA-Z]*|--force).*-[a-zA-Z]*r|rm\s+-rf\b|rm\s+-fr\b", low):
-        safe = any(x in low for x in (
-            "node_modules", "/tmp/", ".next", "dist", "build", ".cache", "coverage", ".turbo",
-        ))
-        if not safe:
-            emit_deny(client, "[agent-guard] rm -rf is blocked outside build and tmp directories. Remove one file with unlink <file>, "
-                      "or a directory's files with find <dir> -type f -delete; project source changes go through a writer.")
+    # Deleting for good (rm, unlink, shred, find -delete) outside regenerated folders: the Trash can be undone.
+    delete_error = _permanent_delete_error(_without_data_heredocs(cmd))
+    if delete_error:
+        emit_deny(client, delete_error)
 
     emit_allow(client)
 

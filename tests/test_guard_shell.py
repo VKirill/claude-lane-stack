@@ -366,5 +366,28 @@ class GuardShellTest(unittest.TestCase):
                 self.assertEqual(run_hook("writer", command).returncode, 0)
 
 
+
+class PermanentDeleteTest(unittest.TestCase):
+    def test_deleting_for_good_points_to_the_trash(self) -> None:
+        for command in (
+            "rm -f src/a.ts", "rm -rf apps/web", "rm notes.md", "unlink src/a.ts", "shred -u secret.txt",
+            "find src -name '*.bak' -delete", "sudo rm -rf /etc/x", "ls | xargs rm", "bash -c 'rm -rf src'",
+            "cd apps && rm -rf web",
+        ):
+            with self.subTest(command=command):
+                result = run_hook("writer", command)
+                self.assertIn("deny", result.stdout)
+                self.assertIn("agent-trash", result.stdout)
+
+    def test_regenerated_folders_tmp_and_quoted_text_pass(self) -> None:
+        for command in (
+            "rm -rf node_modules dist .turbo", "rm -rf /tmp/x", 'tmp=$(mktemp -d); rm -rf "$tmp"', "find dist -delete",
+            "grep -rn 'rm -rf' src", "echo 'rm -f x'", "git rm src/a.ts", "agent-trash -rf apps/web",
+            "~/.agents/bin/agent-trash src/a.ts",
+        ):
+            with self.subTest(command=command):
+                self.assertNotIn("deny", run_hook("writer", command).stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
