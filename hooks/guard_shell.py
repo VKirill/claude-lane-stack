@@ -12,6 +12,14 @@ from lib_payload import (  # type: ignore
 
 PM_AGENTS = {"dev-orchestrator", "frontend-orchestrator", "marketing-orchestrator"}
 LANE_PILOT_PM_AGENT_TYPES = {"lane-pilot-pm"}
+LANE_PILOT_HELPER_ROLES = {
+    "errand", "specialist", "browser-qa", "pm-read", "pm-reader",
+    "critic", "plan-critic", "code-critic", "specialist-reviewer",
+    "night-reviewer", "docs", "docs-maintainer", "onboarder",
+    "memory-maintainer", "project-life", "gate-triage", "council-seat",
+    "rules-analyzer",
+    "design-lead", "copy-lead", "seo-specialist", "tavily",
+}
 
 
 def agent_key(agent: object) -> str | None:
@@ -162,6 +170,9 @@ def _lane_pilot_edit_tail(path: str) -> str:
     """Where a refused Lane Pilot PM edit should go instead, by what the path is."""
     normalized = path.replace("\\", "/").lstrip("./")
     name = normalized.rsplit("/", 1)[-1]
+    if name in {"PROGRESS.md", "CHANGELOG.md"}:
+        return ("Lane Pilot keeps PROGRESS.md and CHANGELOG.md; the PM records decisions in .agents/decisions/ "
+                "and plans in .agents/plans/.")
     if name == "LESSONS.md":
         return "Lessons are rules on the hub now: call lane_pilot_lesson (audience pm, writer or both)."
     if name == "DESIGN.md":
@@ -170,7 +181,9 @@ def _lane_pilot_edit_tail(path: str) -> str:
         return ("Lane Pilot writes docs/, README.md and PROJECT.md nightly from the code and reverts other edits there; "
                 "record the decision as a draft in .agents/decisions/<date>-<slug>.md.")
     return ("Product changes go through lane_pilot_dispatch_writer: Lane Pilot critiques, accepts and merges them "
-            f"(the PM writes only {_LANE_PILOT_PM_WRITES}).")
+            f"(the PM writes only {_LANE_PILOT_PM_WRITES}). Send this edit as a lane_pilot_dispatch_writer task "
+            "(a one-line change is a fine task); never hand the owner a command to paste and never route a repository "
+            "edit through an errand.")
 
 
 def _deny_pm(client: str, detail: str, lane_pilot: bool = False, path: str | None = None) -> None:
@@ -185,7 +198,7 @@ def _deny_pm(client: str, detail: str, lane_pilot: bool = False, path: str | Non
         else "Keep PM work read-only/control-plane-only; delegate mutations "
         "to the run supervisor and its writer/recovery lane."
     )
-    emit_deny(client, f"[orchestrator-guard] {detail}. {tail}")
+    emit_deny(client, f"[lane-pilot-guard] {detail}. {tail}" if lane_pilot else f"[orchestrator-guard] {detail}. {tail}")
 
 
 # Heredoc bodies fed to anything but a shell are data (a report, a script for python), not commands.
@@ -276,11 +289,12 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     # LESSONS.md is not kept any more: lessons are rules on the hub (lane_pilot_lesson / lane-memory lesson).
     if normalized.rsplit("/", 1)[-1] == "LESSONS.md":
         return False
-    if normalized in {
-        "PROGRESS.md",
-        ".agents/PROGRESS.md",
-    }:
+    # The repository-local git exclude (main repo or a linked worktree's): the PM keeps local ignores there.
+    if re.fullmatch(r"\.git/(?:worktrees/[^/]+/)?info/exclude", normalized):
         return True
+    # Lane Pilot bookkeeping files are owned by Lane Pilot project-life / living memory; PM never edits them.
+    if normalized.rsplit("/", 1)[-1] in {"PROGRESS.md", "CHANGELOG.md"}:
+        return False
     if _is_env_secret_file(normalized):
         return True
     if normalized.startswith("docs/plans/"):
@@ -977,6 +991,119 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
                   f"{_lane_pilot_edit_tail(edit.rsplit(' ', 1)[-1])} Deploy, build and test scripts are fine.")
 
 
+HELPER_DENIAL = "Helpers do not change the repository; report what should change and the PM dispatches a writer task."
+
+
+def is_helper_role(key: str | None) -> bool:
+    if not key:
+        return False
+    if key in LANE_PILOT_HELPER_ROLES:
+        return True
+    if key.startswith("specialist:"):
+        return True
+    return False
+
+
+def _helper_edit_allowed(path: str, cwd: object, role: str) -> bool:
+    """Helper write permissions: /tmp, its own .bb/chats/<thread>/, and (.agents/ for specialists only)."""
+    if not isinstance(cwd, str) or not cwd:
+        return False
+    root = Path(cwd).resolve()
+    requested = Path(path)
+    lexical = Path(os.path.abspath(requested if requested.is_absolute() else root / requested))
+    target = lexical.resolve()
+    suffix = target.suffix.lower()
+    if requested.is_absolute() and any(target.is_relative_to(r) for r in _PM_TMP_ROOTS):
+        return True
+    if not target.is_relative_to(root):
+        return False
+    relative = target.relative_to(root)
+    normalized = relative.as_posix()
+    if normalized.startswith(".bb/chats/") and "/history/" not in normalized and not normalized.endswith("/thread.json"):
+        return True
+    is_specialist = role == "specialist" or role.startswith("specialist:") or role in {"design-lead", "copy-lead", "seo-specialist", "tavily"}
+    if is_specialist:
+        if normalized == ".agents" or normalized.startswith(".agents/"):
+            return True
+    return False
+
+
+def _helper_shell_write_error(command: str, cwd: object, role: str) -> str | None:
+    if not isinstance(cwd, str) or not cwd:
+        return None
+    no_heredocs = _without_data_heredocs(command)
+    try:
+        lexer = shlex.shlex(no_heredocs, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    root = Path(cwd).resolve()
+
+    def project_file(target: str) -> bool:
+        if not target or target.startswith("&") or target == "/dev/null":
+            return False
+        path = Path(target if os.path.isabs(target) else os.path.join(cwd, target))
+        try:
+            inside = path.resolve().is_relative_to(root)
+        except (OSError, RuntimeError):
+            return False
+        return inside and not _helper_edit_allowed(target, cwd, role)
+
+    for index, token in enumerate(tokens):
+        if token in {">", ">>"} and index + 1 < len(tokens) and project_file(tokens[index + 1]):
+            return f"redirect into {tokens[index + 1]}"
+
+    segment: list[str] = []
+    for token in [*tokens, ";"]:
+        if token in {"&&", "||", ";", "|", "&"}:
+            if segment:
+                head = Path(segment[0]).name
+                files = []
+                skip = False
+                for arg in segment[1:]:
+                    if skip:
+                        skip = False
+                        continue
+                    if arg in {"-e", "-f", "--expression", "--file", "-t", "--target-directory"}:
+                        skip = True
+                        continue
+                    if not arg.startswith("-"):
+                        files.append(arg)
+                in_place = head in {"sed", "gsed", "perl"} and any(
+                    arg == "-i" or arg.startswith("-i") or arg.startswith("--in-place") or
+                    (head == "perl" and "i" in arg.lstrip("-") and arg.startswith("-"))
+                    for arg in segment[1:]
+                )
+                if in_place and "-e" not in segment[1:]:
+                    files = files[1:]
+                if in_place or head == "tee":
+                    for arg in files:
+                        if project_file(arg):
+                            return f"{head} {arg}"
+                if head in {"cp", "mv"}:
+                    # If target is inside project
+                    if files and project_file(files[-1]):
+                        return f"{head} into {files[-1]}"
+            segment = []
+        else:
+            segment.append(token)
+    return None
+
+
+def _helper_shell_checks(client: str, cmd: str, payload: dict, role: str) -> None:
+    no_heredocs = _without_data_heredocs(cmd)
+    git_mutations = _git_args(no_heredocs, {"add", "commit", "push", "merge", "checkout", "restore", "reset", "rebase", "tag", "branch"})
+    if git_mutations:
+        emit_deny(client, f"[helper-guard] {HELPER_DENIAL}")
+
+    cwd = payload.get("cwd") or payload.get("workspaceRoot")
+    write_err = _helper_shell_write_error(cmd, cwd, role)
+    if write_err:
+        emit_deny(client, f"[helper-guard] {HELPER_DENIAL}")
+
+
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -988,7 +1115,20 @@ def main() -> None:
     name = tool_name(p)
     agent = p.get("agent_type")
     key = agent_key(agent)
-    if key in LANE_PILOT_PM_AGENT_TYPES:
+    if is_helper_role(key):
+        if is_edit_tool(name):
+            path = file_path(p)
+            if not path or not _helper_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot"), key or ""):
+                emit_deny(client, f"[helper-guard] {HELPER_DENIAL}")
+            emit_allow(client)
+        if name and not is_shell_tool(name):
+            emit_allow(client)
+        cmd = shell_command(p)
+        if not cmd.strip():
+            emit_deny(client, "[helper-guard] malformed shell tool payload blocked: supply a command string in command.")
+        _helper_shell_checks(client, cmd, p, key or "")
+        # Fall through to general safety checks (destructive SQL, permanent delete, etc.)
+    elif key in LANE_PILOT_PM_AGENT_TYPES:
         if is_edit_tool(name):
             path = file_path(p)
             if not path or not _pm_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot")):
@@ -998,7 +1138,7 @@ def main() -> None:
             emit_allow(client)
         cmd = shell_command(p)
         if not cmd.strip():
-            emit_deny(client, "[lane-pilot-guard] malformed shell tool payload blocked.")
+            emit_deny(client, "[lane-pilot-guard] malformed shell tool payload blocked: supply a command string in command.")
         # The Lane Pilot PM is the user's own chat: its shell runs under the same rules as a plain
         # claude-lane chat (deploys, compose, npm scripts, systemctl pass; the destructive list below
         # still blocks). Only BB thread control stays scoped, and writers are BB threads, not lanes.
@@ -1015,7 +1155,7 @@ def main() -> None:
     cmd = shell_command(p)
     if not cmd.strip():
         if is_shell_tool(name):
-            emit_deny(client, "[agent-guard] malformed shell tool payload blocked.")
+            emit_deny(client, "[agent-guard] malformed shell tool payload blocked: supply a command string in command.")
         emit_allow(client)
 
     # Destructive checks read commands, not report text a heredoc hands to a non-shell program.
@@ -1080,10 +1220,10 @@ def main() -> None:
 
     # SQL destroyers (simple)
     if re.search(r"\b(drop\s+(table|database|schema)|truncate\s+table)\b", low):
-        emit_deny(client, "[agent-guard] DROP/TRUNCATE blocked. Use migrations / explicit review.")
+        emit_deny(client, "[agent-guard] DROP/TRUNCATE blocked. Run schema changes through project migrations or have the owner review them explicitly.")
 
-    if re.search(r"\bdelete\s+from\s+\w+\s*;?\s*$", low) and "where" not in low:
-        emit_deny(client, "[agent-guard] DELETE without WHERE blocked.")
+    if re.search(r"\bdelete\s+from\s+\w+\b", low) and "where" not in low:
+        emit_deny(client, "[agent-guard] DELETE without WHERE blocked. Add a WHERE clause scoping the deleted rows, or use TRUNCATE via migrations if a table wipe is intended.")
 
     # Deleting for good (rm, unlink, shred, find -delete) outside regenerated folders: the Trash can be undone.
     delete_error = _permanent_delete_error(_without_data_heredocs(cmd))
