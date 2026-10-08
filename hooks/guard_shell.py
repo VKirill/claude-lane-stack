@@ -85,7 +85,7 @@ LANE_PILOT_BB_COMMANDS = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS | {
 }
 # Shipping a plugin is the job of that plugin's own PM: reload/install/update only from a bb-plugin-* checkout, so a
 # product PM cannot reload Lane Pilot under running writers.
-LANE_PILOT_BB_PLUGIN_SHIP = {("plugin", "reload"), ("plugin", "install"), ("plugin", "update")}
+LANE_PILOT_BB_PLUGIN_SHIP = {("plugin", "build"), ("plugin", "reload"), ("plugin", "install"), ("plugin", "update")}
 
 
 def _is_plugin_checkout(cwd: object) -> bool:
@@ -989,7 +989,7 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
     error = _lane_pilot_bb_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if error:
         emit_deny(client, f"[lane-pilot-guard] {error}. The PM's bb reads BB state (thread, memory, project, plugin, environment, "
-                  "host, provider and skill listings, env-catalog, lane-pilot), messages threads, and in a bb-plugin-* checkout "
+                  "host, provider and skill listings, env-catalog, lane-pilot), messages threads, and in a bb-plugin-* checkout builds, "
                   "reloads, installs or updates plugins. A helper thread: lane_pilot_specialist or "
                   "lane_pilot_errand. A browser step: lane_pilot_browser. Product changes: lane_pilot_dispatch_writer.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
