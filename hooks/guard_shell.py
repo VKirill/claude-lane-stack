@@ -58,9 +58,17 @@ PM_BB_READ_COMMANDS = {
     ("thread", "context"), ("thread", "count"),
     ("memory", "search"), ("memory", "get"), ("memory", "catalog"),
     ("project", "list"), ("project", "show"),
-    # Which accounts exist and asking the owner for a missing one; values stay with the errand helper.
-    ("env-catalog", "list"), ("env-catalog", "request"),
+    # Env Catalog and Lane Pilot's own CLI (accounts, settings, schedules, anamnesis) are used by the PM directly: no caller fences (owner decision 2026-10-08).
+    ("env-catalog", "list"), ("env-catalog", "request"), ("env-catalog", "get"), ("env-catalog", "set"), ("env-catalog", "delete"), ("env-catalog", "export"),
+    ("lane-pilot",),
 }
+# `bb plugin rpc call <plugin> ...` and `bb plugin run lane-pilot ...` for the plugins an agent works with every day.
+_PM_OPEN_PLUGINS = {"lane-pilot", "bb-plugin-lane-pilot", "env-catalog"}
+
+
+def _pm_plugin_call_open(words: list[str]) -> bool:
+    return (words[:3] == ["plugin", "rpc", "call"] and len(words) > 3 and words[3] in _PM_OPEN_PLUGINS) or (
+        words[:3] == ["plugin", "run", "lane-pilot"])
 # Agents coordinate by messaging each other's threads; starting, changing or archiving threads stays denied.
 PM_BB_MESSAGE_COMMANDS = {
     ("thread", "tell"), ("thread", "message"),
@@ -74,7 +82,6 @@ LANE_PILOT_BB_COMMANDS = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS | {
     ("plugin", "list"), ("plugin", "logs"), ("plugin", "info"), ("plugin", "show"), ("plugin", "status"),
     ("environment", "list"), ("environment", "show"), ("environment", "get"), ("environment", "providers"),
     ("host", "list"), ("host", "show"), ("provider", "list"), ("provider", "models"), ("skill", "list"),
-    ("env-catalog", "list"), ("env-catalog", "request"),
 }
 # Shipping a plugin is the job of that plugin's own PM: reload/install/update only from a bb-plugin-* checkout, so a
 # product PM cannot reload Lane Pilot under running writers.
@@ -493,7 +500,7 @@ def _pm_bb_error(args: list[str]) -> str | None:
     if any(arg in {"--help", "-h", "--version", "-V"} for arg in args):
         return None
     allowed = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS
-    if any(tuple(words[:size]) in allowed for size in (1, 2, 3)):
+    if any(tuple(words[:size]) in allowed for size in (1, 2, 3)) or _pm_plugin_call_open(words):
         return None
     return "bb command neither reads nor messages a thread; delegate it"
 
@@ -799,7 +806,7 @@ def _lane_pilot_bb_command_error(args: list[str], cwd: object = None) -> str | N
     words = [arg for arg in args if not arg.startswith("-")]
     if any(arg in {"--help", "-h", "--version", "-V"} for arg in args):
         return None
-    if any(tuple(words[:size]) in LANE_PILOT_BB_COMMANDS for size in (1, 2, 3)):
+    if any(tuple(words[:size]) in LANE_PILOT_BB_COMMANDS for size in (1, 2, 3)) or _pm_plugin_call_open(words):
         return None
     if tuple(words[:2]) in LANE_PILOT_BB_PLUGIN_SHIP:
         return None if _is_plugin_checkout(cwd) else f"bb {' '.join(words[:2])} runs only from a bb-plugin-* checkout (that plugin's own PM ships it)"
@@ -982,8 +989,8 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
     error = _lane_pilot_bb_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if error:
         emit_deny(client, f"[lane-pilot-guard] {error}. The PM's bb reads BB state (thread, memory, project, plugin, environment, "
-                  "host, provider and skill listings, env-catalog list/request), messages threads, and in a bb-plugin-* checkout "
-                  "reloads, installs or updates plugins. A secret value: the PM does not read one; name the account in lane_pilot_errand accounts or in a check secrets. A helper thread: lane_pilot_specialist or "
+                  "host, provider and skill listings, env-catalog, lane-pilot), messages threads, and in a bb-plugin-* checkout "
+                  "reloads, installs or updates plugins. A helper thread: lane_pilot_specialist or "
                   "lane_pilot_errand. A browser step: lane_pilot_browser. Product changes: lane_pilot_dispatch_writer.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if edit:
@@ -1108,23 +1115,6 @@ LANE_PILOT_WRITER_ROLES = {"writer", "emergency-writer"}
 
 # The bb CLI by name (bb, bb-app, bb.js, npm names with a version), whatever the path or runner in front of it.
 _BB_NAME = re.compile(r"^(?:@[\w.-]+/)?bb(?:-app|-cli)?(?:\.[cm]?js)?(?:@[\w.-]+)?$")
-_ENV_CATALOG_WRITES = {"set", "delete", "export", "import-machine-env"}
-_LANE_PILOT_PLUGIN_IDS = {"lane-pilot", "bb-plugin-lane-pilot"}
-_LANE_PILOT_RPC_WRITES = re.compile(
-    r"^(?:(?:save|reset|set)_.*|stack_install|stack_connect|stack_rollback|native_install_start|decide_rule_proposal"
-    r"|rule_set_audience|memory_record_delete|prepare_native_session"
-    # The schedule board: what the hub runs on its own, with the owner's accounts and machines. An agent asks through lane_pilot_schedule.
-    r"|schedule_(?:upsert|delete|pause|resume|run_now|cancel_run)"
-    # The owner's anamnesis: one RPC for every op (list with sensitive records, edit, forget all), so the whole method is the owner's.
-    r"|anamnesis)$"
-)
-_LANE_PILOT_CLI_WRITES = {"configure", "budget", "host-run-cli", "host-install", "host-rollback", "host-connect-opencode", "host-import-config"}
-# `bb lane-pilot schedule <sub>`: listing, showing and the history are reads; the rest changes or starts scheduled work.
-_LANE_PILOT_SCHEDULE_WRITES = {"create", "update", "delete", "pause", "resume", "run-now", "cancel-run"}
-# `bb lane-pilot anamnesis <sub>`: the PM reads (status, list, show, whoami, card, review ...); these change the owner's records. `sources --set`,
-# `config --authors/--roots` and `load --run` too (see _anamnesis_error). A non-PM agent (strict) gets no subcommand at all: the server refuses
-# them as well (anamnesis/wiring.ts deny()).
-_ANAMNESIS_WRITES = {"add", "edit", "confirm", "reject", "forget"}
 _SECRET_CLI_WRAPPERS = {
     "sudo", "doas", "nohup", "env", "command", "exec", "time", "nice", "ionice", "stdbuf", "timeout", "xargs", "builtin", "setsid", "unbuffer",
 }
@@ -1258,17 +1248,8 @@ def _hub_target(args: list[str]) -> bool:
             names.append(name)
     return any(_resolves_to_hub(name) for name in names[:_DNS_LOOKUPS])
 _REMOTE_SHELLS = {"ssh", "scp", "sftp", "rsync", "mosh", "autossh"}
-# A script handed to a shell as base64 hides what it runs from every check here.
-_BASE64_TO_SHELL = re.compile(
-    r"\bbase64\b[^;&\n]*\|\s*(?:(?:env|sudo|exec)\s+)?(?:\S*/)?(?:ba|z|da|k)?sh\b"
-    r"|\b(?:eval|source|(?:ba|z|da|k)?sh)\b[^;&|\n]*(?:\$\(|<\(|`)[^;&\n]*\bbase64\b"
-)
-_SECRET_CLI_TEXT = re.compile(
-    r"\benv-catalog\b[^;&|\n]*?\b(?:set|delete|export|import-machine-env)\b"
-    r"|\bplugin\s+rpc\s+call\s+(?:env-catalog\b|(?:bb-plugin-)?lane-pilot\s+(?:save_|reset_|set_|anamnesis\b|schedule_(?:upsert|delete|pause|resume|run_now|cancel_run)))"
-    r"|\blane-pilot\s+schedule\s+(?:create|update|delete|pause|resume|run-now|cancel-run)\b"
-    r"|\blane-pilot\s+anamnesis\s+(?:add|edit|confirm|reject|forget)\b"
-)
+# The same plugin admin commands read as plain text, for a command line that is not valid shell.
+_PLUGIN_ADMIN_TEXT = re.compile(r"\bplugin\s+(?:" + "|".join(sorted(_BB_PLUGIN_ADMIN)) + r")\b")
 
 
 def _names_bb(word: str) -> bool:
@@ -1285,58 +1266,14 @@ def _lane_pilot_agent_session(key: str | None) -> bool:
     return bool(os.environ.get("LANE_PILOT_AGENT_TYPE")) or key in LANE_PILOT_PM_AGENT_TYPES or key in LANE_PILOT_WRITER_ROLES or is_helper_role(key)
 
 
-def _anamnesis_error(sub: str, rest: list[str], strict: bool, prefix: str) -> str | None:
-    """`bb lane-pilot anamnesis <sub> ...` for an agent. A non-PM agent (strict) gets none of it. The PM reads (status, list, show, history,
-    whoami, card, review, host) and does not change the owner's records: add, edit, confirm, reject, forget, `sources --set`, `config --authors/--roots`,
-    `load --run`. A subcommand the guard cannot read (a variable) counts as a write."""
-    flags = {arg.split("=", 1)[0] for arg in rest if arg.startswith("-")}
-    write = (
-        sub in _ANAMNESIS_WRITES
-        or any(ch in sub for ch in "$`")
-        or (sub == "sources" and "--set" in flags)
-        or (sub == "config" and bool(flags & {"--authors", "--roots"}))
-        or (sub == "load" and "--run" in flags)
-    )
-    return f"bb {prefix} anamnesis {sub}".replace("  ", " ").strip() if strict or write else None
-
-
 def _bb_args_error(args: list[str], strict: bool = False) -> str | None:
-    """What `bb <args>` would change that only the owner may: Env Catalog entries, Lane Pilot's settings and config.
-    strict (every agent but the PM): also a secret's raw value and the plugin's own admin commands."""
-    if "env-catalog" in args:
-        rest = [arg for arg in args[args.index("env-catalog") + 1 :] if not arg.startswith("-")]
-        sub = rest[0] if rest else ""
-        if sub in _ENV_CATALOG_WRITES or any(ch in sub for ch in "$`"):
-            return f"bb env-catalog {sub or '(dynamic)'}"
-        if any(arg == "--raw" or arg.startswith("--raw=") for arg in args):
-            return " ".join(["bb env-catalog", sub, "--raw"]).replace("  ", " ")
+    """What `bb <args>` would do that can break the hub or BB's plugin runtime by mistake. strict (every agent but the PM): the plugin's own
+    admin commands (config, token, remove, safe-mode ...). Env Catalog, Lane Pilot's settings, schedules and anamnesis are not judged."""
     words = [arg for arg in args if not arg.startswith("-")]
     if strict:
         for index in range(min(len(words), 3)):
             if words[index] == "plugin" and len(words) > index + 1 and words[index + 1] in _BB_PLUGIN_ADMIN:
                 return f"bb plugin {words[index + 1]}"
-    for index in range(min(len(words), 3)):
-        if words[index : index + 3] == ["plugin", "rpc", "call"]:
-            plugin_id = words[index + 3] if len(words) > index + 3 else ""
-            method = words[index + 4] if len(words) > index + 4 else ""
-            if any(ch in plugin_id + method for ch in "$`"):
-                return "bb plugin rpc call with a plugin or method the guard cannot read"
-            if plugin_id == "env-catalog":
-                return f"bb plugin rpc call env-catalog {method}".strip()
-            if plugin_id in _LANE_PILOT_PLUGIN_IDS and _LANE_PILOT_RPC_WRITES.match(method):
-                return f"bb plugin rpc call {plugin_id} {method}"
-    if words and words[0] in _LANE_PILOT_PLUGIN_IDS | {"lane-pilot"} and len(words) > 1 and words[1] in _LANE_PILOT_CLI_WRITES:
-        return f"bb {words[0]} {words[1]}"
-    if words and words[0] in _LANE_PILOT_PLUGIN_IDS | {"lane-pilot"} and len(words) > 2 and words[1] == "schedule" and (words[2] in _LANE_PILOT_SCHEDULE_WRITES or any(ch in words[2] for ch in "$`")):
-        return f"bb {words[0]} schedule {words[2]}"
-    if words and words[0] in _LANE_PILOT_PLUGIN_IDS | {"lane-pilot"} and len(words) > 1 and words[1] == "anamnesis":
-        return _anamnesis_error(words[2] if len(words) > 2 else "", args[args.index("anamnesis") + 1 :], strict, words[0])
-    if len(words) > 3 and words[:3] == ["plugin", "run", "lane-pilot"] and words[3] == "anamnesis":
-        return _anamnesis_error(words[4] if len(words) > 4 else "", args[args.index("anamnesis") + 1 :], strict, "plugin run lane-pilot")
-    if len(words) > 3 and words[:3] == ["plugin", "run", "lane-pilot"] and words[3] in _LANE_PILOT_CLI_WRITES:
-        return f"bb plugin run lane-pilot {words[3]}"
-    if len(words) > 4 and words[:3] == ["plugin", "run", "lane-pilot"] and words[3] == "schedule" and (words[4] in _LANE_PILOT_SCHEDULE_WRITES or any(ch in words[4] for ch in "$`")):
-        return f"bb plugin run lane-pilot schedule {words[4]}"
     return None
 
 
@@ -1355,7 +1292,7 @@ def _secret_cli_segment(segment: list[str], depth: int, strict: bool = False) ->
         tokens = tokens[1:]
         while tokens and (tokens[0].startswith("-") or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[0]) or re.fullmatch(r"[0-9.]+[smhd]?", tokens[0])):
             if head == "env" and tokens[0].startswith("--split-string="):
-                # env -S 'bb env-catalog set A B': the value is a command line.
+                # env -S 'bb plugin remove x': the value is a command line.
                 nested = _secret_cli_error(tokens[0].split("=", 1)[1], depth + 1, strict)
                 if nested:
                     return nested
@@ -1387,8 +1324,8 @@ def _secret_cli_segment(segment: list[str], depth: int, strict: bool = False) ->
         return f"{head} to the hub"
     if _names_bb(executable):
         return _bb_args_error(args, strict)
-    if head in {"env-catalog", "plugin", "lane-pilot"}:
-        # `$(which bb) env-catalog set ...`: the substitution ended the segment that named bb, and the arguments stand alone.
+    if head == "plugin":
+        # `$(which bb) plugin remove ...`: the substitution ended the segment that named bb, and the arguments stand alone.
         return _bb_args_error(tokens, strict)
     if head in _SECRET_CLI_RUNNERS:
         # npx bb ..., pnpm dlx bb ..., node /path/to/bb ...: the first word that names bb starts its arguments.
@@ -1407,13 +1344,11 @@ def _secret_cli_segment(segment: list[str], depth: int, strict: bool = False) ->
 
 
 def _secret_cli_error(command: str, depth: int = 0, strict: bool = False) -> str | None:
-    """A Lane Pilot agent's shell command that changes the Env Catalog or Lane Pilot's settings through the bb CLI.
+    """A Lane Pilot agent's shell command that would break the hub by mistake: bb plugin admin commands, ssh to the hub.
     Reads the command as a shell would: quoting, env prefixes and wrappers, `sh -c`, substitutions, runners such as npx.
     A command it cannot read as shell text (an unbalanced quote) is looked at as text."""
     if depth > 4:
         return "a command nested too deep to read"
-    if _BASE64_TO_SHELL.search(command):
-        return "a base64 script run by a shell"
     text = _without_data_heredocs(command).replace("`", " ; ")
     try:
         lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|<>()")
@@ -1421,7 +1356,7 @@ def _secret_cli_error(command: str, depth: int = 0, strict: bool = False) -> str
         lexer.commenters = ""
         tokens = list(lexer)
     except ValueError:
-        match = _SECRET_CLI_TEXT.search(text)
+        match = _PLUGIN_ADMIN_TEXT.search(text) if strict else None
         return match.group(0) if match else None
     segment: list[str] = []
     for token in [*tokens, ";"]:
@@ -1438,34 +1373,10 @@ def _secret_cli_error(command: str, depth: int = 0, strict: bool = False) -> str
             if error:
                 return error
     # A script a shell reads from a pipe or a here-string cannot be followed token by token.
-    if _SHELL_CONSUMER.search(text):
-        match = _SECRET_CLI_TEXT.search(text)
+    if strict and _SHELL_CONSUMER.search(text):
+        match = _PLUGIN_ADMIN_TEXT.search(text)
         if match:
             return match.group(0)
-    return None
-
-
-def _env_catalog_tool(name: str) -> str | None:
-    """env_get / env_list / env_set / env_delete / env_request from any spelling of the tool name
-    (mcp__bb-bridge__env_set, bb-bridge.env_set, env_set)."""
-    base = re.split(r"__|[./:]", name or "")[-1]
-    return base if base in {"env_get", "env_list", "env_set", "env_delete", "env_request"} else None
-
-
-def _env_catalog_denial(key: str | None, tool: str) -> str | None:
-    """BB's session policy narrows plugins, not their tools, so Env Catalog arrives whole in a helper's session.
-    This is the tool-level cut (audit 2026-10-08, S2): nobody a prompt can steer writes or deletes catalog entries
-    (the owner does, in the Env Catalog tab; an agent asks with env_request), the PM never reads a value (an errand
-    helper does, for the accounts the PM names), and a browser check does not list the catalog."""
-    if tool in {"env_set", "env_delete"}:
-        return (f"[env-guard] {tool} is not available to Lane Pilot agents: the owner changes the catalog in the Env Catalog tab; "
-                "to get a missing key call env_request so the owner gets a form.")
-    if key in LANE_PILOT_PM_AGENT_TYPES or (key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE")):
-        if tool == "env_get":
-            return ("[env-guard] The PM does not read secret values: name the Env Catalog accounts in lane_pilot_errand `accounts` "
-                    "(the helper reads them), or in a check's `secrets`. env_list and env_request are yours.")
-    if key == "browser-qa" and tool == "env_list":
-        return "[env-guard] A browser check does not list the catalog: read only the login its case names, with env_get and its exact name."
     return None
 
 
@@ -1480,19 +1391,13 @@ def main() -> None:
     name = tool_name(p)
     agent = p.get("agent_type")
     key = agent_key(agent)
-    env_tool = _env_catalog_tool(name)
-    if env_tool and (is_helper_role(key) or key in LANE_PILOT_PM_AGENT_TYPES or (key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE"))):
-        env_denial = _env_catalog_denial(key, env_tool)
-        if env_denial:
-            emit_deny(client, env_denial)
     if is_shell_tool(name) and _lane_pilot_agent_session(key):
         # The PM ships its own plugin (reload/install/update) and reads BB state; every other Lane Pilot agent gets the stricter list.
         pm_session = key in LANE_PILOT_PM_AGENT_TYPES or bool(key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE"))
         secret_cli = _secret_cli_error(shell_command(p), strict=not pm_session)
         if secret_cli:
-            emit_deny(client, f"[env-guard] {secret_cli} is not available to Lane Pilot agents: the owner changes Env Catalog entries, Lane Pilot's "
-                      "settings, schedules and anamnesis (the Env Catalog tab, Lane Pilot settings, the schedule board, the owner's own terminal), not an agent's shell. For a missing key use "
-                      "env_request or `bb env-catalog request <NAME>`; the owner gets a form. For a schedule use the PM tool lane_pilot_schedule: it asks the owner.")
+            emit_deny(client, f"[hub-guard] {secret_cli} is not available to Lane Pilot agents: it can break the hub or BB's plugin runtime by mistake. "
+                      "Ask the owner to run it in their own terminal.")
     if is_helper_role(key):
         if is_edit_tool(name):
             path = file_path(p)
