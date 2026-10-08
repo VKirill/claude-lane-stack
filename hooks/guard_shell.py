@@ -983,7 +983,7 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
     if error:
         emit_deny(client, f"[lane-pilot-guard] {error}. The PM's bb reads BB state (thread, memory, project, plugin, environment, "
                   "host, provider and skill listings, env-catalog list/request), messages threads, and in a bb-plugin-* checkout "
-                  "reloads, installs or updates plugins. A secret value: the env_get tool (never print it). A helper thread: lane_pilot_specialist or "
+                  "reloads, installs or updates plugins. A secret value: the PM does not read one; name the account in lane_pilot_errand accounts or in a check secrets. A helper thread: lane_pilot_specialist or "
                   "lane_pilot_errand. A browser step: lane_pilot_browser. Product changes: lane_pilot_dispatch_writer.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if edit:
@@ -1104,6 +1104,30 @@ def _helper_shell_checks(client: str, cmd: str, payload: dict, role: str) -> Non
         emit_deny(client, f"[helper-guard] {HELPER_DENIAL}")
 
 
+def _env_catalog_tool(name: str) -> str | None:
+    """env_get / env_list / env_set / env_delete / env_request from any spelling of the tool name
+    (mcp__bb-bridge__env_set, bb-bridge.env_set, env_set)."""
+    base = re.split(r"__|[./:]", name or "")[-1]
+    return base if base in {"env_get", "env_list", "env_set", "env_delete", "env_request"} else None
+
+
+def _env_catalog_denial(key: str | None, tool: str) -> str | None:
+    """BB's session policy narrows plugins, not their tools, so Env Catalog arrives whole in a helper's session.
+    This is the tool-level cut (audit 2026-10-08, S2): nobody a prompt can steer writes or deletes catalog entries
+    (the owner does, in the Env Catalog tab; an agent asks with env_request), the PM never reads a value (an errand
+    helper does, for the accounts the PM names), and a browser check does not list the catalog."""
+    if tool in {"env_set", "env_delete"}:
+        return (f"[env-guard] {tool} is not available to Lane Pilot agents: the owner changes the catalog in the Env Catalog tab; "
+                "to get a missing key call env_request so the owner gets a form.")
+    if key in LANE_PILOT_PM_AGENT_TYPES or (key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE")):
+        if tool == "env_get":
+            return ("[env-guard] The PM does not read secret values: name the Env Catalog accounts in lane_pilot_errand `accounts` "
+                    "(the helper reads them), or in a check's `secrets`. env_list and env_request are yours.")
+    if key == "browser-qa" and tool == "env_list":
+        return "[env-guard] A browser check does not list the catalog: read only the login its case names, with env_get and its exact name."
+    return None
+
+
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -1115,6 +1139,11 @@ def main() -> None:
     name = tool_name(p)
     agent = p.get("agent_type")
     key = agent_key(agent)
+    env_tool = _env_catalog_tool(name)
+    if env_tool and (is_helper_role(key) or key in LANE_PILOT_PM_AGENT_TYPES or (key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE"))):
+        env_denial = _env_catalog_denial(key, env_tool)
+        if env_denial:
+            emit_deny(client, env_denial)
     if is_helper_role(key):
         if is_edit_tool(name):
             path = file_path(p)
