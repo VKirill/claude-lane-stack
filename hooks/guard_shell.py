@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse: block destructive shell across CLIs."""
 from __future__ import annotations
-import os, re, shlex, sys
+import ipaddress, os, re, shlex, socket, sys, threading
 from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1114,13 +1114,25 @@ _LANE_PILOT_RPC_WRITES = re.compile(
     r"^(?:(?:save|reset|set)_.*|stack_install|stack_connect|stack_rollback|native_install_start|decide_rule_proposal"
     r"|rule_set_audience|memory_record_delete|prepare_native_session"
     # The schedule board: what the hub runs on its own, with the owner's accounts and machines. An agent asks through lane_pilot_schedule.
-    r"|schedule_(?:upsert|delete|pause|resume|run_now|cancel_run))$"
+    r"|schedule_(?:upsert|delete|pause|resume|run_now|cancel_run)"
+    # The owner's anamnesis: one RPC for every op (list with sensitive records, edit, forget all), so the whole method is the owner's.
+    r"|anamnesis)$"
 )
 _LANE_PILOT_CLI_WRITES = {"configure", "budget", "host-run-cli", "host-install", "host-rollback", "host-connect-opencode", "host-import-config"}
 # `bb lane-pilot schedule <sub>`: listing, showing and the history are reads; the rest changes or starts scheduled work.
 _LANE_PILOT_SCHEDULE_WRITES = {"create", "update", "delete", "pause", "resume", "run-now", "cancel-run"}
+# `bb lane-pilot anamnesis <sub>`: the PM reads (status, list, show, whoami, card, review ...); these change the owner's records. `sources --set`,
+# `config --authors/--roots` and `load --run` too (see _anamnesis_error). A non-PM agent (strict) gets no subcommand at all: the server refuses
+# them as well (anamnesis/wiring.ts deny()).
+_ANAMNESIS_WRITES = {"add", "edit", "confirm", "reject", "forget"}
 _SECRET_CLI_WRAPPERS = {
     "sudo", "doas", "nohup", "env", "command", "exec", "time", "nice", "ionice", "stdbuf", "timeout", "xargs", "builtin", "setsid", "unbuffer",
+}
+# Options of a wrapper that take a value as the next word (`sudo -u root bb ...`, `timeout -s KILL 5 bb ...`, `exec -a x bb ...`): the value is not the command.
+_WRAPPER_VALUE_OPTS = {
+    "sudo": _SUDO_VALUE_OPTS, "doas": {"-u", "-C"}, "env": _ENV_VALUE_OPTS, "timeout": {"-s", "--signal", "-k", "--kill-after"}, "exec": {"-a"},
+    "nice": {"-n", "--adjustment"}, "ionice": {"-c", "-n", "-p", "-P", "-u"}, "stdbuf": {"-i", "-o", "-e"}, "time": {"-f", "-o"},
+    "xargs": {"-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a", "-l", "--max-args", "--max-procs", "--delimiter", "--arg-file"},
 }
 _SECRET_CLI_RUNNERS = {"npx", "pnpx", "bunx", "npm", "pnpm", "yarn", "bun", "node", "nodejs", "deno", "tsx", "ts-node"}
 _SECRET_CLI_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "ash", "fish"}
@@ -1128,7 +1140,123 @@ _SECRET_CLI_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "ash", "fish"}
 # the PM's, see LANE_PILOT_BB_PLUGIN_SHIP); a writer or helper has no use for them (audit 2026-10-08 r3, P0-2).
 _BB_PLUGIN_ADMIN = {"config", "token", "disable", "enable", "reload", "remove", "safe-mode"}
 # The hub and the machines behind it: a writer or helper never needs a shell there (it has `bb`, and the hub's data.db and master.key sit under one user).
-_HUB_HOST = re.compile(r"(?<![\w.-])(?:[\w.-]+@)?(?:ovh-main|ovh-vps|vechkasov-ovh|selfystudio-work|claude-dev-key|10\.8\.0\.1|54\.37\.129\.153)(?![\w.-])")
+_HUB_NAMES = {"ovh-main", "ovh-vps", "vechkasov-ovh", "selfystudio-work", "claude-dev-key", "rescue-vps"}
+# 10.8.0.1 (the WireGuard address of the hub) and 54.37.129.153 (its public address) as 32-bit numbers.
+_HUB_ADDRESSES = {(10 << 24) | (8 << 16) | 1, (54 << 24) | (37 << 16) | (129 << 8) | 153}
+_DNS_NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
+_DNS_TIMEOUT = 1.5
+_DNS_LOOKUPS = 6
+
+
+def _ipv4_number(text: str) -> int | None:
+    """An IPv4 address in any notation inet_aton reads (a.b.c.d, a.b.c, a.b, a; each part decimal, 0x hex or 0 octal) as a 32-bit number."""
+    parts = text.split(".")
+    if not 1 <= len(parts) <= 4:
+        return None
+    numbers: list[int] = []
+    for part in parts:
+        if re.fullmatch(r"0[xX][0-9a-fA-F]*", part):
+            numbers.append(int(part[2:] or "0", 16))
+        elif re.fullmatch(r"0[0-7]*", part):
+            numbers.append(int(part or "0", 8))
+        elif re.fullmatch(r"[1-9][0-9]*", part):
+            numbers.append(int(part))
+        else:
+            return None
+    *head, last = numbers
+    if any(number > 255 for number in head) or last >= 256 ** (4 - len(head)):
+        return None
+    value = last
+    for position, number in enumerate(head):
+        value |= number << (24 - 8 * position)
+    return value
+
+
+def _address_number(text: str) -> int | None:
+    """The IPv4 number of an address in any notation, also one inside an IPv6 address: ::ffff:a.b.c.d, ::ffff:xxxx:xxxx, the long forms, ::a.b.c.d, 64:ff9b::/96."""
+    if ":" not in text:
+        return _ipv4_number(text)
+    try:
+        address = ipaddress.IPv6Address(text.split("%", 1)[0])
+    except ValueError:
+        return None
+    if address.ipv4_mapped is not None:
+        return int(address.ipv4_mapped)
+    packed = address.packed
+    if packed[:12] == bytes(12) or packed[:12] == bytes.fromhex("0064ff9b0000000000000000"):
+        return int.from_bytes(packed[12:], "big")
+    return None
+
+
+def _is_hub_literal(candidate: str) -> bool:
+    return candidate in _HUB_NAMES or _address_number(candidate) in _HUB_ADDRESSES
+
+
+def _ssh_config_hostnames() -> dict[str, str]:
+    """Alias -> HostName from ~/.ssh/config (plain Host lines; wildcards and Include are not followed)."""
+    table: dict[str, str] = {}
+    try:
+        lines = (Path(os.path.expanduser("~")) / ".ssh" / "config").read_text(errors="replace").splitlines()
+    except OSError:
+        return table
+    aliases: list[str] = []
+    for line in lines:
+        match = re.match(r"\s*(Host|HostName)\s*[=\s]\s*(.+?)\s*$", line, re.I)
+        if not match:
+            continue
+        if match.group(1).lower() == "host":
+            aliases = [name.lower() for name in match.group(2).split() if not any(ch in name for ch in "*?!")]
+        else:
+            for alias in aliases:
+                table.setdefault(alias, match.group(2).split()[0].lower())
+    return table
+
+
+def _resolves_to_hub(name: str) -> bool:
+    """The name resolves (DNS or hosts file) to an address of the hub. It gives up after a moment: a name that does not answer in time is not refused."""
+    found: list[bool] = []
+
+    def lookup() -> None:
+        try:
+            infos = socket.getaddrinfo(name, None, type=socket.SOCK_STREAM)
+            found.append(any(_address_number(str(info[4][0])) in _HUB_ADDRESSES for info in infos))
+        except (OSError, UnicodeError):
+            found.append(False)
+
+    worker = threading.Thread(target=lookup, daemon=True)
+    worker.start()
+    worker.join(_DNS_TIMEOUT)
+    return bool(found and found[0])
+
+
+def _host_candidates(word: str) -> list[str]:
+    """The host-looking pieces of one argument: user@host, host:path, ssh://user@host:port/, [v6]:path, -oHostName=host, ProxyJump a,b."""
+    pieces = re.findall(r"\[([^\]]+)\]", word)
+    for chunk in re.split(r"[=,]", word):
+        chunk = re.sub(r"^[A-Za-z][A-Za-z0-9+.-]*://", "", chunk).split("/", 1)[0].rsplit("@", 1)[-1].strip("[]")
+        pieces.append(chunk if chunk.count(":") >= 2 else chunk.split(":", 1)[0])
+    return [piece.lower().rstrip(".") for piece in pieces if piece]
+
+
+def _hub_target(args: list[str]) -> bool:
+    """Does an ssh/scp/sftp/rsync command line reach the hub: by a name of it, by its address in any notation (10.8.1, 0x0a080001, 168296449,
+    012.010.0.1, ::ffff:10.8.0.1, ::ffff:a08:1), by an alias of ~/.ssh/config whose HostName is one of those, or by a name that resolves to it."""
+    words: list[str] = []
+    for arg in args:
+        words.append(arg)
+        words.extend(piece for piece in re.split(r"[\s'\"]+", arg) if piece and piece != arg)  # a hop inside a quoted remote command
+    candidates = [candidate for word in words for candidate in _host_candidates(word)]
+    if any(_is_hub_literal(candidate) for candidate in candidates):
+        return True
+    aliases = _ssh_config_hostnames()
+    if any(candidate in aliases and _is_hub_literal(aliases[candidate]) for candidate in candidates):
+        return True
+    names: list[str] = []
+    for candidate in candidates:
+        name = aliases.get(candidate, candidate)
+        if _DNS_NAME.match(name) and _address_number(name) is None and not os.path.exists(name) and name not in names:
+            names.append(name)
+    return any(_resolves_to_hub(name) for name in names[:_DNS_LOOKUPS])
 _REMOTE_SHELLS = {"ssh", "scp", "sftp", "rsync", "mosh", "autossh"}
 # A script handed to a shell as base64 hides what it runs from every check here.
 _BASE64_TO_SHELL = re.compile(
@@ -1137,15 +1265,39 @@ _BASE64_TO_SHELL = re.compile(
 )
 _SECRET_CLI_TEXT = re.compile(
     r"\benv-catalog\b[^;&|\n]*?\b(?:set|delete|export|import-machine-env)\b"
-    r"|\bplugin\s+rpc\s+call\s+(?:env-catalog\b|(?:bb-plugin-)?lane-pilot\s+(?:save_|reset_|set_|schedule_(?:upsert|delete|pause|resume|run_now|cancel_run)))"
+    r"|\bplugin\s+rpc\s+call\s+(?:env-catalog\b|(?:bb-plugin-)?lane-pilot\s+(?:save_|reset_|set_|anamnesis\b|schedule_(?:upsert|delete|pause|resume|run_now|cancel_run)))"
     r"|\blane-pilot\s+schedule\s+(?:create|update|delete|pause|resume|run-now|cancel-run)\b"
+    r"|\blane-pilot\s+anamnesis\s+(?:add|edit|confirm|reject|forget)\b"
 )
+
+
+def _names_bb(word: str) -> bool:
+    """The word is the bb CLI: by name at any path (/opt/homebrew/bin/bb, ~/.local/bin/bb, bb-app, bb.js), through $BB_CLI, or the file BB_CLI points at."""
+    if _BB_NAME.match(Path(word).name) or "BB_CLI" in word:
+        return True
+    cli = os.environ.get("BB_CLI", "")
+    return bool(cli) and (word == cli or (Path(word).name == Path(cli).name and Path(cli).name not in _SECRET_CLI_RUNNERS | _SECRET_CLI_SHELLS))
 
 
 def _lane_pilot_agent_session(key: str | None) -> bool:
     """Any Lane Pilot agent: the launcher sets LANE_PILOT_AGENT_TYPE for every native session (a sub-agent inherits it),
     and the role names cover the sessions that arrive with an agent_type only."""
     return bool(os.environ.get("LANE_PILOT_AGENT_TYPE")) or key in LANE_PILOT_PM_AGENT_TYPES or key in LANE_PILOT_WRITER_ROLES or is_helper_role(key)
+
+
+def _anamnesis_error(sub: str, rest: list[str], strict: bool, prefix: str) -> str | None:
+    """`bb lane-pilot anamnesis <sub> ...` for an agent. A non-PM agent (strict) gets none of it. The PM reads (status, list, show, history,
+    whoami, card, review, host) and does not change the owner's records: add, edit, confirm, reject, forget, `sources --set`, `config --authors/--roots`,
+    `load --run`. A subcommand the guard cannot read (a variable) counts as a write."""
+    flags = {arg.split("=", 1)[0] for arg in rest if arg.startswith("-")}
+    write = (
+        sub in _ANAMNESIS_WRITES
+        or any(ch in sub for ch in "$`")
+        or (sub == "sources" and "--set" in flags)
+        or (sub == "config" and bool(flags & {"--authors", "--roots"}))
+        or (sub == "load" and "--run" in flags)
+    )
+    return f"bb {prefix} anamnesis {sub}".replace("  ", " ").strip() if strict or write else None
 
 
 def _bb_args_error(args: list[str], strict: bool = False) -> str | None:
@@ -1177,6 +1329,10 @@ def _bb_args_error(args: list[str], strict: bool = False) -> str | None:
         return f"bb {words[0]} {words[1]}"
     if words and words[0] in _LANE_PILOT_PLUGIN_IDS | {"lane-pilot"} and len(words) > 2 and words[1] == "schedule" and (words[2] in _LANE_PILOT_SCHEDULE_WRITES or any(ch in words[2] for ch in "$`")):
         return f"bb {words[0]} schedule {words[2]}"
+    if words and words[0] in _LANE_PILOT_PLUGIN_IDS | {"lane-pilot"} and len(words) > 1 and words[1] == "anamnesis":
+        return _anamnesis_error(words[2] if len(words) > 2 else "", args[args.index("anamnesis") + 1 :], strict, words[0])
+    if len(words) > 3 and words[:3] == ["plugin", "run", "lane-pilot"] and words[3] == "anamnesis":
+        return _anamnesis_error(words[4] if len(words) > 4 else "", args[args.index("anamnesis") + 1 :], strict, "plugin run lane-pilot")
     if len(words) > 3 and words[:3] == ["plugin", "run", "lane-pilot"] and words[3] in _LANE_PILOT_CLI_WRITES:
         return f"bb plugin run lane-pilot {words[3]}"
     if len(words) > 4 and words[:3] == ["plugin", "run", "lane-pilot"] and words[3] == "schedule" and (words[4] in _LANE_PILOT_SCHEDULE_WRITES or any(ch in words[4] for ch in "$`")):
@@ -1195,8 +1351,21 @@ def _secret_cli_segment(segment: list[str], depth: int, strict: bool = False) ->
         head = Path(tokens[0]).name
         if head not in _SECRET_CLI_WRAPPERS:
             break
+        value_options = _WRAPPER_VALUE_OPTS.get(head, set())
         tokens = tokens[1:]
         while tokens and (tokens[0].startswith("-") or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[0]) or re.fullmatch(r"[0-9.]+[smhd]?", tokens[0])):
+            if head == "env" and tokens[0].startswith("--split-string="):
+                # env -S 'bb env-catalog set A B': the value is a command line.
+                nested = _secret_cli_error(tokens[0].split("=", 1)[1], depth + 1, strict)
+                if nested:
+                    return nested
+            if tokens[0] in value_options and len(tokens) > 1:
+                if head == "env" and tokens[0] in {"-S", "--split-string"}:
+                    nested = _secret_cli_error(tokens[1], depth + 1, strict)
+                    if nested:
+                        return nested
+                tokens = tokens[2:]
+                continue
             tokens = tokens[1:]
     if not tokens:
         return None
@@ -1214,9 +1383,9 @@ def _secret_cli_segment(segment: list[str], depth: int, strict: bool = False) ->
             if arg in {"-exec", "-execdir", "-ok", "-okdir"}:
                 return _secret_cli_segment(args[position + 1 :], depth, strict)
         return None
-    if strict and head in _REMOTE_SHELLS and _HUB_HOST.search(" ".join(args)):
+    if strict and head in _REMOTE_SHELLS and _hub_target(args):
         return f"{head} to the hub"
-    if _BB_NAME.match(head) or "BB_CLI" in executable:
+    if _names_bb(executable):
         return _bb_args_error(args, strict)
     if head in {"env-catalog", "plugin", "lane-pilot"}:
         # `$(which bb) env-catalog set ...`: the substitution ended the segment that named bb, and the arguments stand alone.
@@ -1224,7 +1393,7 @@ def _secret_cli_segment(segment: list[str], depth: int, strict: bool = False) ->
     if head in _SECRET_CLI_RUNNERS:
         # npx bb ..., pnpm dlx bb ..., node /path/to/bb ...: the first word that names bb starts its arguments.
         for position, arg in enumerate(args):
-            if _BB_NAME.match(Path(arg).name):
+            if _names_bb(arg):
                 return _bb_args_error(args[position + 1 :], strict)
             if arg.startswith("-") or arg in {"dlx", "exec", "x", "run"}:
                 continue
@@ -1322,7 +1491,7 @@ def main() -> None:
         secret_cli = _secret_cli_error(shell_command(p), strict=not pm_session)
         if secret_cli:
             emit_deny(client, f"[env-guard] {secret_cli} is not available to Lane Pilot agents: the owner changes Env Catalog entries, Lane Pilot's "
-                      "settings and schedules (the Env Catalog tab, Lane Pilot settings, the schedule board), not an agent's shell. For a missing key use "
+                      "settings, schedules and anamnesis (the Env Catalog tab, Lane Pilot settings, the schedule board, the owner's own terminal), not an agent's shell. For a missing key use "
                       "env_request or `bb env-catalog request <NAME>`; the owner gets a form. For a schedule use the PM tool lane_pilot_schedule: it asks the owner.")
     if is_helper_role(key):
         if is_edit_tool(name):
