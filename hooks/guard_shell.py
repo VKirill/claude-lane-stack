@@ -1104,6 +1104,147 @@ def _helper_shell_checks(client: str, cmd: str, payload: dict, role: str) -> Non
         emit_deny(client, f"[helper-guard] {HELPER_DENIAL}")
 
 
+LANE_PILOT_WRITER_ROLES = {"writer", "emergency-writer"}
+
+# The bb CLI by name (bb, bb-app, bb.js, npm names with a version), whatever the path or runner in front of it.
+_BB_NAME = re.compile(r"^(?:@[\w.-]+/)?bb(?:-app|-cli)?(?:\.[cm]?js)?(?:@[\w.-]+)?$")
+_ENV_CATALOG_WRITES = {"set", "delete", "export", "import-machine-env"}
+_LANE_PILOT_PLUGIN_IDS = {"lane-pilot", "bb-plugin-lane-pilot"}
+_LANE_PILOT_RPC_WRITES = re.compile(
+    r"^(?:(?:save|reset|set)_.*|stack_install|stack_connect|stack_rollback|native_install_start|decide_rule_proposal"
+    r"|rule_set_audience|memory_record_delete|prepare_native_session)$"
+)
+_LANE_PILOT_CLI_WRITES = {"configure", "budget", "host-run-cli", "host-install", "host-rollback", "host-connect-opencode", "host-import-config"}
+_SECRET_CLI_WRAPPERS = {
+    "sudo", "doas", "nohup", "env", "command", "exec", "time", "nice", "ionice", "stdbuf", "timeout", "xargs", "builtin", "setsid", "unbuffer",
+}
+_SECRET_CLI_RUNNERS = {"npx", "pnpx", "bunx", "npm", "pnpm", "yarn", "bun", "node", "nodejs", "deno", "tsx", "ts-node"}
+_SECRET_CLI_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "ash", "fish"}
+_SECRET_CLI_TEXT = re.compile(
+    r"\benv-catalog\b[^;&|\n]*?\b(?:set|delete|export|import-machine-env)\b"
+    r"|\bplugin\s+rpc\s+call\s+(?:env-catalog\b|(?:bb-plugin-)?lane-pilot\s+(?:save_|reset_|set_))"
+)
+
+
+def _lane_pilot_agent_session(key: str | None) -> bool:
+    """Any Lane Pilot agent: the launcher sets LANE_PILOT_AGENT_TYPE for every native session (a sub-agent inherits it),
+    and the role names cover the sessions that arrive with an agent_type only."""
+    return bool(os.environ.get("LANE_PILOT_AGENT_TYPE")) or key in LANE_PILOT_PM_AGENT_TYPES or key in LANE_PILOT_WRITER_ROLES or is_helper_role(key)
+
+
+def _bb_args_error(args: list[str]) -> str | None:
+    """What `bb <args>` would change that only the owner may: Env Catalog entries, Lane Pilot's settings and config."""
+    if "env-catalog" in args:
+        rest = [arg for arg in args[args.index("env-catalog") + 1 :] if not arg.startswith("-")]
+        sub = rest[0] if rest else ""
+        if sub in _ENV_CATALOG_WRITES or any(ch in sub for ch in "$`"):
+            return f"bb env-catalog {sub or '(dynamic)'}"
+    words = [arg for arg in args if not arg.startswith("-")]
+    for index in range(min(len(words), 3)):
+        if words[index : index + 3] == ["plugin", "rpc", "call"]:
+            plugin_id = words[index + 3] if len(words) > index + 3 else ""
+            method = words[index + 4] if len(words) > index + 4 else ""
+            if any(ch in plugin_id + method for ch in "$`"):
+                return "bb plugin rpc call with a plugin or method the guard cannot read"
+            if plugin_id == "env-catalog":
+                return f"bb plugin rpc call env-catalog {method}".strip()
+            if plugin_id in _LANE_PILOT_PLUGIN_IDS and _LANE_PILOT_RPC_WRITES.match(method):
+                return f"bb plugin rpc call {plugin_id} {method}"
+    if words and words[0] in _LANE_PILOT_PLUGIN_IDS | {"lane-pilot"} and len(words) > 1 and words[1] in _LANE_PILOT_CLI_WRITES:
+        return f"bb {words[0]} {words[1]}"
+    if len(words) > 3 and words[:3] == ["plugin", "run", "lane-pilot"] and words[3] in _LANE_PILOT_CLI_WRITES:
+        return f"bb plugin run lane-pilot {words[3]}"
+    return None
+
+
+def _secret_cli_segment(segment: list[str], depth: int) -> str | None:
+    index = 0
+    while index < len(segment) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", segment[index]):
+        index += 1
+    tokens = segment[index:]
+    for _ in range(8):
+        if not tokens:
+            return None
+        head = Path(tokens[0]).name
+        if head not in _SECRET_CLI_WRAPPERS:
+            break
+        tokens = tokens[1:]
+        while tokens and (tokens[0].startswith("-") or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[0]) or re.fullmatch(r"[0-9.]+[smhd]?", tokens[0])):
+            tokens = tokens[1:]
+    if not tokens:
+        return None
+    executable, args = tokens[0], tokens[1:]
+    head = Path(executable).name
+    if head in _SECRET_CLI_SHELLS:
+        for position, arg in enumerate(args):
+            if arg.startswith("-") and not arg.startswith("--") and "c" in arg[1:] and position + 1 < len(args):
+                return _secret_cli_error(args[position + 1], depth + 1)
+        return None
+    if head == "eval":
+        return _secret_cli_error(" ".join(args), depth + 1)
+    if head == "find":
+        for position, arg in enumerate(args):
+            if arg in {"-exec", "-execdir", "-ok", "-okdir"}:
+                return _secret_cli_segment(args[position + 1 :], depth)
+        return None
+    if _BB_NAME.match(head) or "BB_CLI" in executable:
+        return _bb_args_error(args)
+    if head in {"env-catalog", "plugin", "lane-pilot"}:
+        # `$(which bb) env-catalog set ...`: the substitution ended the segment that named bb, and the arguments stand alone.
+        return _bb_args_error(tokens)
+    if head in _SECRET_CLI_RUNNERS:
+        # npx bb ..., pnpm dlx bb ..., node /path/to/bb ...: the first word that names bb starts its arguments.
+        for position, arg in enumerate(args):
+            if _BB_NAME.match(Path(arg).name):
+                return _bb_args_error(args[position + 1 :])
+            if arg.startswith("-") or arg in {"dlx", "exec", "x", "run"}:
+                continue
+            if head in {"node", "nodejs", "deno", "tsx", "ts-node"}:
+                break
+        return None
+    if any(ch in head for ch in "$`*?[{"):
+        # An executable the guard cannot read (a variable, a substitution, a glob) may be bb.
+        return _bb_args_error(args)
+    return None
+
+
+def _secret_cli_error(command: str, depth: int = 0) -> str | None:
+    """A Lane Pilot agent's shell command that changes the Env Catalog or Lane Pilot's settings through the bb CLI.
+    Reads the command as a shell would: quoting, env prefixes and wrappers, `sh -c`, substitutions, runners such as npx.
+    A command it cannot read as shell text (an unbalanced quote) is looked at as text."""
+    if depth > 4:
+        return "a command nested too deep to read"
+    text = _without_data_heredocs(command).replace("`", " ; ")
+    try:
+        lexer = shlex.shlex(text, posix=True, punctuation_chars=";&|<>()")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        match = _SECRET_CLI_TEXT.search(text)
+        return match.group(0) if match else None
+    segment: list[str] = []
+    for token in [*tokens, ";"]:
+        if token and all(ch in ";&|<>()" for ch in token):
+            if segment:
+                error = _secret_cli_segment(segment, depth)
+                if error:
+                    return error
+            segment = []
+            continue
+        segment.append(token)
+        if ("$(" in token or "`" in token) and depth < 4:
+            error = _secret_cli_error(token, depth + 1)
+            if error:
+                return error
+    # A script a shell reads from a pipe or a here-string cannot be followed token by token.
+    if _SHELL_CONSUMER.search(text):
+        match = _SECRET_CLI_TEXT.search(text)
+        if match:
+            return match.group(0)
+    return None
+
+
 def _env_catalog_tool(name: str) -> str | None:
     """env_get / env_list / env_set / env_delete / env_request from any spelling of the tool name
     (mcp__bb-bridge__env_set, bb-bridge.env_set, env_set)."""
@@ -1144,6 +1285,12 @@ def main() -> None:
         env_denial = _env_catalog_denial(key, env_tool)
         if env_denial:
             emit_deny(client, env_denial)
+    if is_shell_tool(name) and _lane_pilot_agent_session(key):
+        secret_cli = _secret_cli_error(shell_command(p))
+        if secret_cli:
+            emit_deny(client, f"[env-guard] {secret_cli} is not available to Lane Pilot agents: the owner changes Env Catalog entries and Lane Pilot's "
+                      "settings (the Env Catalog tab, Lane Pilot settings), not an agent's shell. For a missing key use env_request or "
+                      "`bb env-catalog request <NAME>`; the owner gets a form.")
     if is_helper_role(key):
         if is_edit_tool(name):
             path = file_path(p)
