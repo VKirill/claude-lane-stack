@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 
-MATCHER = "Bash|Edit|Write|MultiEdit|NotebookEdit"
+MATCHER = "Bash|Edit|Write|MultiEdit|NotebookEdit|WebSearch|WebFetch|mcp__bb-bridge__lane_pilot_helpers"  # web tools: the Lane Pilot PM calls lane_pilot_route first (2026-10-09)
 GUARD_COMMAND = re.compile(
     r"(?:^|[\s/])(?:guard_shell\.py|guard-orchestrator-no-direct-edits\.sh)"
     r"(?:['\"])?(?:\s|$)"

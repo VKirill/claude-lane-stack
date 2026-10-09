@@ -871,7 +871,7 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(len(guards), 1)
             self.assertEqual(
                 guards[0]["matcher"],
-                "Bash|Edit|Write|MultiEdit|NotebookEdit",
+                "Bash|Edit|Write|MultiEdit|NotebookEdit|WebSearch|WebFetch|mcp__bb-bridge__lane_pilot_helpers",
             )
             self.assertNotIn(
                 "guard-orchestrator-no-direct-edits.sh",
