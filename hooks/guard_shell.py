@@ -1416,6 +1416,13 @@ def _pm_research_before_route(name: str, p: dict) -> bool:
     return research and _route_called_this_turn(p.get("transcript_path")) is False
 
 
+def _route_first(client: str, name: str, p: dict) -> None:
+    if name and _pm_research_before_route(name, p):
+        emit_deny(client, "[lane-pilot-guard] Call lane_pilot_route with the owner's request first: posts, insights, research, reels, "
+                  "a cocoon or a digest have ready workflows that collect, check and file the result. When the router answers "
+                  "that no workflow fits, this search is allowed in the same turn.")
+
+
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -1453,10 +1460,7 @@ def main() -> None:
             if not path or not _pm_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot")):
                 _deny_pm(client, f"{name or 'Edit'} of {path or 'this file'} is not the PM's", lane_pilot=True, path=path or "")
             emit_allow(client)
-        if name and _pm_research_before_route(name, p):
-            emit_deny(client, "[lane-pilot-guard] Call lane_pilot_route with the owner's request first: posts, insights, research, reels, "
-                      "a cocoon or a digest have ready workflows that collect, check and file the result. When the router answers "
-                      "that no workflow fits, this search is allowed in the same turn.")
+        _route_first(client, name, p)
         if name and not is_shell_tool(name):
             emit_allow(client)
         cmd = shell_command(p)
@@ -1473,6 +1477,9 @@ def main() -> None:
             _deny_pm(client, f"{name or 'Edit'} of {path or 'this file'} is not the PM's" if lane_pilot_chat else f"direct {name or 'edit'} outside PM contract files is forbidden",
                      lane_pilot=lane_pilot_chat, path=(path or "") if lane_pilot_chat else None)
         emit_allow(client)
+    if lane_pilot_chat:
+        # The BB PM comes in as dev-orchestrator with LANE_PILOT_AGENT_TYPE set (hook trace, 2026-10-09).
+        _route_first(client, name, p)
     if name and not is_shell_tool(name):
         emit_allow(client)
     cmd = shell_command(p)
