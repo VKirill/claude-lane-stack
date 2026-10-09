@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """PreToolUse: block destructive shell across CLIs."""
 from __future__ import annotations
-import ipaddress, os, re, shlex, socket, sys, threading
+import ipaddress, json, os, re, shlex, socket, sys, threading
 from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib_payload import (  # type: ignore
     read_payload, detect_client, tool_name, shell_command, file_path,
-    is_shell_tool, is_edit_tool, emit_allow, emit_deny,
+    is_shell_tool, is_edit_tool, emit_allow, emit_deny, tool_input,
 )
 
 PM_AGENTS = {"dev-orchestrator", "frontend-orchestrator", "marketing-orchestrator"}
@@ -1380,6 +1380,42 @@ def _secret_cli_error(command: str, depth: int = 0, strict: bool = False) -> str
     return None
 
 
+def _route_called_this_turn(transcript: object) -> bool | None:
+    """Whether the PM called lane_pilot_route after the owner's last message; None when the transcript cannot be read."""
+    if not isinstance(transcript, str) or not os.path.isfile(transcript):
+        return None
+    try:
+        with open(transcript, encoding="utf-8") as fh:
+            lines = fh.readlines()[-400:]
+    except OSError:
+        return None
+    called = False
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        message = entry.get("message") if isinstance(entry, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if entry.get("type") == "user":
+            # An owner's message (text, not a tool result) opens a new turn.
+            if isinstance(content, str) or (isinstance(content, list) and any(isinstance(c, dict) and c.get("type") == "text" for c in content)):
+                called = False
+        elif entry.get("type") == "assistant" and isinstance(content, list):
+            if any(isinstance(c, dict) and c.get("type") == "tool_use" and str(c.get("name", "")).endswith("lane_pilot_route") for c in content):
+                called = True
+    return called
+
+
+def _pm_research_before_route(name: str, p: dict) -> bool:
+    """A web search, fetch or tavily specialist before lane_pilot_route in this turn (thr_n6ukbhcv9t, 2026-10-09)."""
+    ti = tool_input(p)
+    research = name in {"WebSearch", "WebFetch"} or (
+        name.endswith("lane_pilot_helpers") and ti.get("action") == "specialist" and ti.get("role") == "tavily"
+    )
+    return research and _route_called_this_turn(p.get("transcript_path")) is False
+
+
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -1417,6 +1453,10 @@ def main() -> None:
             if not path or not _pm_edit_allowed(path, p.get("cwd") or p.get("workspaceRoot")):
                 _deny_pm(client, f"{name or 'Edit'} of {path or 'this file'} is not the PM's", lane_pilot=True, path=path or "")
             emit_allow(client)
+        if name and _pm_research_before_route(name, p):
+            emit_deny(client, "[lane-pilot-guard] Call lane_pilot_route with the owner's request first: posts, insights, research, reels, "
+                      "a cocoon or a digest have ready workflows that collect, check and file the result. When the router answers "
+                      "that no workflow fits, this search is allowed in the same turn.")
         if name and not is_shell_tool(name):
             emit_allow(client)
         cmd = shell_command(p)
