@@ -1,6 +1,6 @@
 # Claude Lane Stack
 
-**v1.64.8** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
+**v1.65.0** · [English](README.en.md) · [Changelog](CHANGELOG.md) · [Новичкам](docs/BEGINNER.ru.md) · [MIT](LICENSE)
 
 Один человек. Один ИИ-PM. Настоящие CLI-писатели на конвейере из файлов и git.
 
@@ -194,7 +194,7 @@
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.64.8
+cd claude-lane-stack && git checkout v1.65.0
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
@@ -206,6 +206,8 @@ export PATH="$HOME/.agents/bin:$PATH"
 Нужно: Claude Code · Git · Python 3 (+ PyYAML/jsonschema) · Node · rsync · `flock`. Writers — по желанию.
 
 **macOS:** `brew install flock`; PyYAML/jsonschema через `pip3 install --break-system-packages pyyaml jsonschema`; Cursor/AGY/Codex CLI — отдельно, как на Linux. Песочница write-лейнов — встроенный `sandbox-exec` (Seatbelt), переключается `LANE_SANDBOX_BACKEND=auto|bubblewrap|seatbelt`. `install.sh` дописывает PATH и в `~/.zshrc` (дефолтный шелл). `lane-bg` — на `nohup`, без пользовательского systemd.
+
+**Jev-провайдер.** Jev-вызовы (fast-jev compact, router, opencode-lane, winnow, `jev_decisions`) идут в OpenLux (`jev-1.13.0:stable`, таймаут +1.5 с), если есть `OPENLUX_API_KEY` — из окружения или `~/secrets/openlux.env`. Иначе — в TypeSafe (`jev-latest`), как раньше: `TYPESAFE_API_KEY` / `JEV_API_KEY`. `JEV_PROVIDER=openlux|typesafe` выбирает провайдера принудительно. Ключи не пишутся в репозиторий; `merge_claude_settings.py` берёт провайдера из настройки Lane Pilot `jev.provider` (не задана = openlux), ключ OpenLux из Env Catalog и пишет `JEV_PROVIDER` + `OPENLUX_API_KEY` в env Claude (`--refresh-jev` обновляет только это).
 
 ### 2. Один раз в проекте
 

@@ -1,5 +1,6 @@
 import type { On, PluginOptions, Register, SessionMessage } from 'claude-code'
 
+import { jevTimeoutMs, resolveJevRoute, type JevRoute } from '../fast-jev/src/provider.js'
 import { buildJevRequest, parseJevResponse } from '../fast-jev/src/request.js'
 import {
   ROUTE_QUESTIONS,
@@ -31,19 +32,22 @@ function lastUser(messages: readonly SessionMessage[]): string {
   return ''
 }
 
-async function getApiKey($: {
+async function getJevRoute($: {
   env: { get: (name: string) => Promise<string | undefined> }
   settings: { read: () => Promise<Readonly<Record<string, unknown>>> }
-}): Promise<string | undefined> {
-  const fromEnv = await $.env.get('TYPESAFE_API_KEY')
-  if (fromEnv) return fromEnv
-  const settings = await $.settings.read()
-  const env = settings['env']
-  if (env && typeof env === 'object') {
-    const value = (env as Record<string, unknown>)['TYPESAFE_API_KEY']
-    if (typeof value === 'string' && value) return value
+}): Promise<JevRoute | null> {
+  const read = async (name: string): Promise<string | undefined> => {
+    const fromEnv = await $.env.get(name)
+    if (fromEnv) return fromEnv
+    const settings = await $.settings.read()
+    const env = settings['env']
+    if (env && typeof env === 'object') {
+      const value = (env as Record<string, unknown>)[name]
+      if (typeof value === 'string' && value) return value
+    }
+    return undefined
   }
-  return undefined
+  return resolveJevRoute(read)
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -70,13 +74,17 @@ async function classify(
   current: SessionEffort,
 ): Promise<Route> {
   if (!prompt) return defaultRoute(current)
-  const apiKey = await getApiKey($)
-  if (!apiKey) return defaultRoute(current)
+  const jev = await getJevRoute($)
+  if (!jev) return defaultRoute(current)
   try {
-    const request = buildJevRequest({ apiKey }, { task: prompt }, ROUTE_QUESTIONS)
+    const request = buildJevRequest(
+      { apiKey: jev.key, provider: jev.provider.id },
+      { task: prompt },
+      ROUTE_QUESTIONS,
+    )
     const response = await withTimeout(
       $.http.fetch(request.url, { method: request.method, headers: request.headers, body: request.body }),
-      ROUTE_TIMEOUT_MS,
+      jevTimeoutMs(ROUTE_TIMEOUT_MS, jev.provider),
     )
     const parsed = parseJevResponse(response.status, response.ok, response.text)
     return parseRoute(parsed.answers, current)

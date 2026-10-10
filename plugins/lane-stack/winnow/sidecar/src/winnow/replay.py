@@ -406,10 +406,10 @@ class LexicalJudge:
 def build_replay_judge(name: str, cfg: Config) -> Judge:
     if name == "lexical":
         return LexicalJudge()
-    from winnow.judge import AdapterJudge, TypeSafeJudge
+    from winnow.judge import AdapterJudge, typesafe_judge
 
     if name == "typesafe":
-        return TypeSafeJudge(cfg.model, cfg.judge_timeout)
+        return typesafe_judge(cfg)
     if name == "adapter":
         return AdapterJudge(cfg.adapter_provider, cfg.adapter_model)
     raise ValueError(f"unknown judge {name!r}; expected lexical, typesafe, or adapter")

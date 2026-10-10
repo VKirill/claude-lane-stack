@@ -12,7 +12,7 @@
 Talk to Claude Code — it runs Codex / Qwen / Grok / Kimi / AGY, checks work, **merges to `main`**, reviews at night.
 
 <p>
-  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.64.8"><img src="https://img.shields.io/badge/version-v1.64.8-orange?style=for-the-badge" alt="version" /></a>
+  <a href="https://github.com/VKirill/claude-lane-stack/releases/tag/v1.65.0"><img src="https://img.shields.io/badge/version-v1.65.0-orange?style=for-the-badge" alt="version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="license" /></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/PM-Claude%20Code-111?style=for-the-badge" alt="Claude Code" /></a>
   <a href="https://github.com/openai/codex"><img src="https://img.shields.io/badge/Review-Codex%20CLI-412991?style=for-the-badge" alt="Codex" /></a>
@@ -257,7 +257,7 @@ This repo **is a Claude Code plugin marketplace**. `./install.sh` installs the h
 
 ```bash
 git clone https://github.com/VKirill/claude-lane-stack.git
-cd claude-lane-stack && git checkout v1.64.8   # or: main
+cd claude-lane-stack && git checkout v1.65.0   # or: main
 ./install.sh
 export PATH="$HOME/.agents/bin:$PATH"
 ```
@@ -279,6 +279,8 @@ From a local clone: `claude plugin marketplace add .` then the same `install` li
 **Optional:** Codex · Qwen · Grok · Kimi · AGY · Linux: `bubblewrap`
 
 **macOS:** `brew install flock`; PyYAML/jsonschema via `pip3 install --break-system-packages pyyaml jsonschema`; Cursor/AGY/Codex CLIs install separately, same as on Linux. Writer lane sandboxing uses the built-in `sandbox-exec` (Seatbelt) — switch backends with `LANE_SANDBOX_BACKEND=auto|bubblewrap|seatbelt`. `install.sh` also appends PATH to `~/.zshrc` (the default login shell). `lane-bg` runs on the `nohup` backend — no user systemd.
+
+**Jev provider.** Jev calls (fast-jev compaction, the router, opencode-lane, winnow, `jev_decisions`) go to OpenLux (`jev-1.13.0:stable`, +1.5 s timeout) when `OPENLUX_API_KEY` is set, from the environment or `~/secrets/openlux.env`. Otherwise they go to TypeSafe (`jev-latest`) as before, via `TYPESAFE_API_KEY` / `JEV_API_KEY`. `JEV_PROVIDER=openlux|typesafe` forces one. Keys never go into the repo; `merge_claude_settings.py` copies `OPENLUX_API_KEY` into Claude's env without overwriting an existing value.
 
 ### ② Prepare your project once
 

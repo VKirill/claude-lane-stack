@@ -1203,7 +1203,9 @@ def attach_lane_contract_env(
     environment["LANE_STACK_ROOT"] = str(lane_stack_root())
     for key in (
         "TYPESAFE_API_KEY",
+        "OPENLUX_API_KEY",
         "JEV_API_KEY",
+        "JEV_PROVIDER",
         "LANE_JEV_EFFORT",
         "LANE_OPENCODE_JEV",
     ):

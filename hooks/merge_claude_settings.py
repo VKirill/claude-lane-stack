@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -503,6 +504,127 @@ def merge_typesafe_key(
     return settings
 
 
+def merge_openlux_key(
+    settings: dict[str, Any], secrets_dir: Path | None = None
+) -> dict[str, Any]:
+    """Copy OPENLUX_API_KEY into Claude env so Jev calls prefer OpenLux.
+
+    Reads ~/secrets/openlux.env. Leaves an existing settings value alone and
+    never reads the process environment, as merge_typesafe_key does.
+    """
+    env = settings.setdefault("env", {})
+    if not isinstance(env, dict):
+        env = {}
+        settings["env"] = env
+    current = env.get("OPENLUX_API_KEY")
+    if isinstance(current, str) and current.strip():
+        return settings
+    root = secrets_dir if secrets_dir is not None else Path.home() / "secrets"
+    found = _env_file_value(root / "openlux.env", ("OPENLUX_API_KEY",))
+    if found:
+        env["OPENLUX_API_KEY"] = found
+    return settings
+
+
+BB_PROVIDER_DEFAULT = "openlux"
+JEV_PROVIDERS = ("openlux", "typesafe")
+
+
+def find_bb() -> str | None:
+    """The bb CLI: LANE_BB_BIN, then PATH, then the copy BB installs under ~/.bb-machines."""
+    override = os.environ.get("LANE_BB_BIN")
+    if override:
+        return override if Path(override).is_file() else None
+    found = shutil.which("bb")
+    if found:
+        return found
+    home = Path.home()
+    for pattern in (
+        ".bb-machines/*/npm/lib/node_modules/bb-app/host-daemon/dist/bb",
+        ".local/bin/bb",
+    ):
+        for candidate in sorted(home.glob(pattern)):
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
+def _run_bb(args: list[str], timeout: int = 60) -> str | None:
+    """Stdout of a bb command, or None when bb is missing, fails or times out."""
+    bb = find_bb()
+    if bb is None:
+        return None
+    try:
+        done = subprocess.run(
+            [bb, *args], capture_output=True, text=True, timeout=timeout, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+def lane_pilot_jev_provider(run: Any = _run_bb) -> str | None:
+    """Lane Pilot's global `jev.provider`: openlux (also when unset) or typesafe.
+
+    None when Lane Pilot cannot be asked (no bb, plugin not installed, hub down).
+    """
+    with tempfile.TemporaryDirectory() as raw:
+        request = Path(raw) / "get_screen.json"
+        request.write_text(json.dumps({"projectId": "*"}), encoding="utf-8")
+        out = run(
+            ["plugin", "rpc", "call", "lane-pilot", "get_screen",
+             "--input-file", str(request), "--json"]
+        )
+    if not out:
+        return None
+    try:
+        values = json.loads(out)["values"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(values, dict):
+        return None
+    chosen = values.get("jev.provider")
+    return chosen if chosen in JEV_PROVIDERS else BB_PROVIDER_DEFAULT
+
+
+def env_catalog_value(name: str, run: Any = _run_bb) -> str:
+    out = run(["env-catalog", "get", name, "--raw"])
+    return out.strip() if out else ""
+
+
+def merge_jev_provider(
+    settings: dict[str, Any],
+    secrets_dir: Path | None = None,
+    run: Any = _run_bb,
+) -> dict[str, Any]:
+    """Make console Jev calls follow Lane Pilot's `jev.provider`.
+
+    Writes JEV_PROVIDER and OPENLUX_API_KEY (Env Catalog, else ~/secrets/openlux.env)
+    into the Claude env. TYPESAFE_API_KEY stays: computer-use and the TypeSafe
+    fallback use it. Without bb the settings are left as they are. When Lane Pilot
+    wants OpenLux but no OpenLux key exists, JEV_PROVIDER is dropped so the callers
+    fall back to TypeSafe, as Lane Pilot itself does.
+    """
+    provider = lane_pilot_jev_provider(run)
+    if provider is None:
+        return merge_openlux_key(settings, secrets_dir)
+    catalog = env_catalog_value("OPENLUX_API_KEY", run)
+    env = settings.setdefault("env", {})
+    if not isinstance(env, dict):
+        env = {}
+        settings["env"] = env
+    if catalog:
+        env["OPENLUX_API_KEY"] = catalog
+    else:
+        merge_openlux_key(settings, secrets_dir)
+    has_key = bool(str(env.get("OPENLUX_API_KEY", "")).strip())
+    if provider == "typesafe" or has_key:
+        env["JEV_PROVIDER"] = provider
+    else:
+        env.pop("JEV_PROVIDER", None)
+    return settings
+
+
 def marketplace_spec(*, local: bool, stack_root: Path | None = None) -> dict[str, Any]:
     if local:
         if stack_root is None:
@@ -596,6 +718,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     parser.add_argument(
+        "--refresh-jev",
+        action="store_true",
+        help="only re-read Lane Pilot's jev.provider and the OpenLux key into the settings env",
+    )
+    parser.add_argument(
         "--statusline",
         type=Path,
         default=None,
@@ -636,11 +763,15 @@ def main() -> int:
     settings = load_settings(args.settings)
     if args.check:
         return 0
+    if args.refresh_jev:
+        write_settings(args.settings, merge_jev_provider(settings))
+        return 0
     if args.guard is None:
-        parser.error("guard path is required unless --check is used")
+        parser.error("guard path is required unless --check or --refresh-jev is used")
     settings = merge_guard(settings, args.guard)
     settings = merge_stack_capabilities(settings)
     settings = merge_typesafe_key(settings)
+    settings = merge_jev_provider(settings)
     plugin_local = args.plugin_local or os.environ.get(
         "LANE_INSTALL_LOCAL_MARKETPLACE", "0"
     ) not in {"", "0"}

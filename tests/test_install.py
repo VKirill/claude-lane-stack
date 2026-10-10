@@ -6,13 +6,17 @@ import shutil
 import site
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 import urllib.request
 from pathlib import Path
 
-import jsonschema
+try:
+    import jsonschema
+except ImportError:  # the sandbox python may not ship it; one test needs it
+    jsonschema = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -468,6 +472,7 @@ class InstallTest(unittest.TestCase):
                     missing.append(f"{path.name}: missing {tool}")
         self.assertEqual(missing, [])
 
+    @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
     def test_acceptance_template_includes_report_digest(self) -> None:
         acceptance = json.loads(
             (ROOT / "templates" / "run-contract" / "acceptance-v2.json").read_text(
@@ -481,6 +486,28 @@ class InstallTest(unittest.TestCase):
             )
         )
         jsonschema.Draft202012Validator(schema).validate(acceptance)
+
+    def test_openlux_key_merge_copies_once_and_keeps_existing(self) -> None:
+        sys.path.insert(0, str(ROOT / "hooks"))
+        try:
+            from merge_claude_settings import merge_openlux_key
+        finally:
+            sys.path.pop(0)
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            secrets = Path(raw_tmp)
+            (secrets / "openlux.env").write_text(
+                "OPENLUX_API_KEY=fixture-key\n", encoding="utf-8"
+            )
+            out = merge_openlux_key({}, secrets)
+            self.assertEqual(out["env"]["OPENLUX_API_KEY"], "fixture-key")
+            out["env"]["OPENLUX_API_KEY"] = "kept"
+            (secrets / "openlux.env").write_text(
+                "OPENLUX_API_KEY=other\n", encoding="utf-8"
+            )
+            again = merge_openlux_key(out, secrets)
+            self.assertEqual(again["env"]["OPENLUX_API_KEY"], "kept")
+            missing = merge_openlux_key({}, Path(raw_tmp) / "missing")
+            self.assertNotIn("OPENLUX_API_KEY", missing.get("env", {}))
 
     def test_installs_lane_board_and_serves_health_check(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:

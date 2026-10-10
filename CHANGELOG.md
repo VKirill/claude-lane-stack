@@ -1,3 +1,13 @@
+## 1.65.0 — 2026-10-10
+
+- **Jev via OpenLux, TypeSafe as fallback.** One provider table per language (`plugins/lane-stack/fast-jev/src/provider.ts`, `bin/jev_provider.py`, and a mirror in the winnow sidecar). OpenLux is used when `OPENLUX_API_KEY` exists (env or `~/secrets/openlux.env`): `https://api.openlux.ai/v1/systemone`, model `jev-1.13.0:stable`, +1.5 s on every timeout. Otherwise TypeSafe, `jev-latest`, unchanged. `JEV_PROVIDER=openlux|typesafe` forces one.
+- Callers that now pick the provider: fast-jev `session.compact` hook, `jev-router` hook, `bin/jev_decisions.py` native path (the OpenRouter fallback is unchanged; `JEV_NATIVE_MODEL` still wins), winnow judge (model follows the provider unless `WINNOW_MODEL`), opencode-lane `jev.ts` and sidecar start.
+- **Follows Lane Pilot's `jev.provider`.** `merge_claude_settings.py` reads the global setting through `bb plugin rpc call lane-pilot get_screen` (unset = openlux), takes `OPENLUX_API_KEY` from Env Catalog (`bb env-catalog get`, else `~/secrets/openlux.env`) and writes `JEV_PROVIDER` + `OPENLUX_API_KEY` into the Claude settings env. `TYPESAFE_API_KEY` stays. If Lane Pilot wants OpenLux but no OpenLux key exists, `JEV_PROVIDER` is dropped and callers use TypeSafe, as Lane Pilot does. Without `bb` the settings are left as they are. After changing the setting in Lane Pilot run `python3 ~/.agents/hooks/merge_claude_settings.py --refresh-jev ~/.claude/settings.json`. `install.sh` writes `OPENLUX_API_KEY` to `~/.winnow/env` with the TypeSafe key.
+- Winnow with OpenLux passes the SDK the host `https://api.openlux.ai` (the SDK appends `/v1/systemone`), the OpenLux key and the OpenLux model; the replay judge uses the same builder.
+- If the installed `typesafe-sdk` takes no `base_url`, winnow refuses to start its judge against OpenLux and says so.
+- `tests/test_install.py`: `jsonschema` is optional; only the acceptance-template test is skipped without it.
+- Tests: `tests/test_jev_provider.py` (provider choice, forced provider, model ids, padding, native call path, and that the three tables agree).
+
 ## 1.64.8
 
 - `bin/agent-trash`: moves files and folders to the Trash instead of deleting them for good; takes rm's flags. macOS uses the Finder Trash, Linux the XDG Trash (`~/.local/share/Trash`), emptying entries older than `AGENT_TRASH_KEEP_DAYS` (7).

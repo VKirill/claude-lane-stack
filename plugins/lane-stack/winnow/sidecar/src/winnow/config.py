@@ -16,6 +16,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from winnow.jev_provider import JEV_PROVIDERS, JevProvider, choose_jev_provider
+
 
 def _str(name: str, default: str) -> str:
     value = os.environ.get(name)
@@ -89,10 +91,20 @@ def load_env_file(path: Path | None = None) -> list[str]:
     return loaded
 
 
+def _jev_provider() -> JevProvider:
+    """The judge's provider: JEV_PROVIDER, else OpenLux when its key exists, else TypeSafe."""
+    keys = {
+        "openlux": os.environ.get("OPENLUX_API_KEY", ""),
+        "typesafe": os.environ.get("TYPESAFE_API_KEY") or os.environ.get("JEV_API_KEY", ""),
+    }
+    route = choose_jev_provider(keys, os.environ.get("JEV_PROVIDER"))
+    return route[0] if route else JEV_PROVIDERS["typesafe"]
+
+
 def credential_status() -> dict[str, str]:
     """Where each key is coming from, for ``winnow doctor``."""
     result: dict[str, str] = {}
-    for name in ("TYPESAFE_API_KEY", "ANTHROPIC_API_KEY"):
+    for name in ("OPENLUX_API_KEY", "TYPESAFE_API_KEY", "ANTHROPIC_API_KEY"):
         value = os.environ.get(name, "")
         result[name] = f"set ({value[:6]}...)" if len(value) > 8 else ("set" if value else "not set")
     return result
@@ -127,14 +139,16 @@ class Config:
     context_gate: float
     context_max_chars: int
     context_max_candidates: int
+    provider: str = "typesafe"
 
     @classmethod
     def from_env(cls) -> "Config":
+        provider = _jev_provider()
         return cls(
             home=default_home(),
             mode=_str("WINNOW_MODE", "active").strip().lower(),
             judge=_str("WINNOW_JUDGE", "typesafe").strip().lower(),
-            model=_str("WINNOW_MODEL", "jev-latest"),
+            model=_str("WINNOW_MODEL", "") or provider.model,
             judge_timeout=_float("WINNOW_JUDGE_TIMEOUT", 15.0),
             adapter_provider=_str("WINNOW_ADAPTER_PROVIDER", "anthropic"),
             adapter_model=_str("WINNOW_ADAPTER_MODEL", "claude-haiku-4-5"),
@@ -158,6 +172,7 @@ class Config:
             context_gate=_float("WINNOW_CONTEXT_GATE", 0.5),
             context_max_chars=_int("WINNOW_CONTEXT_MAX_CHARS", 8_000),
             context_max_candidates=_int("WINNOW_CONTEXT_MAX_CANDIDATES", 60),
+            provider=provider.id,
         )
 
     @property

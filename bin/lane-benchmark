@@ -392,6 +392,8 @@ def _clean_benchmark_env() -> dict[str, str]:
     # A benchmark arm must use the explicit CLI effort, independent of Jev.
     for key in (
         "JEV_API_KEY",
+        "OPENLUX_API_KEY",
+        "JEV_PROVIDER",
         "LANE_JEV_EFFORT",
         "LANE_OPENCODE_JEV",
         "LANE_STACK_ROOT",

@@ -96,25 +96,34 @@ from pathlib import Path
 dest = Path.home() / ".winnow" / "env"
 if dest.exists():
     raise SystemExit
-key = ""
 root = Path.home() / "secrets"
-for name in ("typesafe.env", "jev.env"):
-    path = root / name
-    if not path.is_file():
-        continue
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
+
+
+def find_key(files, names):
+    for name in files:
+        path = root / name
+        if not path.is_file():
             continue
-        k, _, v = stripped.partition("=")
-        if k.strip() in ("TYPESAFE_API_KEY", "JEV_API_KEY"):
-            key = v.strip().strip('"').strip("'")
-            break
-    if key:
-        break
-if key:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            k, _, v = stripped.partition("=")
+            if k.strip() in names:
+                return v.strip().strip('"').strip("'")
+    return ""
+
+
+lines = []
+openlux = find_key(("openlux.env",), ("OPENLUX_API_KEY",))
+if openlux:
+    lines.append(f"OPENLUX_API_KEY={openlux}")
+typesafe = find_key(("typesafe.env", "jev.env"), ("TYPESAFE_API_KEY", "JEV_API_KEY"))
+if typesafe:
+    lines.append(f"TYPESAFE_API_KEY={typesafe}")
+if lines:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(f"TYPESAFE_API_KEY={key}\n", encoding="utf-8")
+    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
     dest.chmod(0o600)
 PY
 # SkillRanker advice. Do not clobber a config the user already edited.

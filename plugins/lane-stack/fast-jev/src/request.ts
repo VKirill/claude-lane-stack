@@ -1,8 +1,6 @@
+import { JEV_PROVIDERS, type JevProviderId } from './provider.js';
 import { estimateTokens } from './state.js';
 import type { JevAnswer, JevQuestions, JevResponse, JevState } from './types.js';
-
-export const SYSTEM_ONE_URL = 'https://api.typesafe.ai/v1/systemone';
-export const DEFAULT_MODEL = 'jev-latest';
 
 /**
  * Jev reads at most about 32k tokens of state plus the longest question and
@@ -54,25 +52,31 @@ export interface JevRequest {
   body: string;
 }
 
-/** The HTTP request for one Jev call, for any fetch-like transport. */
+/**
+ * The HTTP request for one Jev call, for any fetch-like transport. The URL and
+ * model come from the provider table (TypeSafe when `provider` is omitted);
+ * `model` and `baseUrl` override them.
+ */
 export function buildJevRequest(
   params: {
     apiKey: string;
+    provider?: JevProviderId;
     model?: string;
     baseUrl?: string;
   },
   state: JevState,
   questions: JevQuestions,
 ): JevRequest {
+  const provider = JEV_PROVIDERS[params.provider ?? 'typesafe'];
   return {
-    url: params.baseUrl ?? SYSTEM_ONE_URL,
+    url: params.baseUrl ?? provider.url,
     method: 'POST',
     headers: {
       authorization: `Bearer ${params.apiKey}`,
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: params.model ?? DEFAULT_MODEL,
+      model: params.model ?? provider.model,
       state: boundState(state),
       questions,
     }),

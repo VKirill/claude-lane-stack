@@ -14,11 +14,14 @@ objects.
 
 from __future__ import annotations
 
+import inspect
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from winnow.config import Config
+from winnow.jev_provider import JEV_PROVIDERS
 
 
 @dataclass(frozen=True)
@@ -67,15 +70,26 @@ def _collect(response: Any, questions: Mapping[str, Any], model: str, started: f
 class TypeSafeJudge:
     name = "typesafe"
 
-    def __init__(self, model: str, timeout: float) -> None:
+    def __init__(self, model: str, timeout: float, base_url: str | None = None, api_key: str | None = None) -> None:
         from typesafe_sdk import RetryPolicy, TypeSafeClient
 
+        options: dict[str, Any] = {
+            "model": model,
+            "retry": RetryPolicy(max_retries=1, timeout=timeout),
+            "timeout": timeout,
+        }
+        if base_url is not None:
+            # OpenLux needs the SDK to take a base URL; refuse rather than send
+            # an OpenLux model id to the TypeSafe endpoint.
+            if "base_url" not in inspect.signature(TypeSafeClient).parameters:
+                raise ValueError(
+                    "typesafe-sdk cannot target OpenLux (its client takes no base_url); "
+                    "set JEV_PROVIDER=typesafe or WINNOW_JUDGE=off"
+                )
+            options["base_url"] = base_url
+            options["api_key"] = api_key
         self.model = model
-        self._client = TypeSafeClient(
-            model=model,
-            retry=RetryPolicy(max_retries=1, timeout=timeout),
-            timeout=timeout,
-        )
+        self._client = TypeSafeClient(**options)
 
     def nouls(self, state: Any, questions: Mapping[str, Any]) -> JudgeResult:
         started = time.perf_counter()
@@ -104,11 +118,25 @@ class AdapterJudge:
         return _collect(response, questions, self.model, started)
 
 
+def typesafe_judge(cfg: Config) -> TypeSafeJudge:
+    """The System One judge on the configured provider. The SDK appends /v1/systemone to its base URL, so OpenLux gets the host only."""
+    provider = JEV_PROVIDERS.get(cfg.provider, JEV_PROVIDERS["typesafe"])
+    if provider.id == "typesafe":
+        return TypeSafeJudge(cfg.model, cfg.judge_timeout)
+    host = provider.url.removesuffix("/systemone").removesuffix("/v1")
+    return TypeSafeJudge(
+        cfg.model,
+        cfg.judge_timeout + provider.timeout_pad_s,
+        base_url=host,
+        api_key=os.environ.get(provider.key_name, ""),
+    )
+
+
 def build_judge(cfg: Config) -> Judge | None:
     if cfg.judge in ("off", "none", "0"):
         return None
     if cfg.judge == "typesafe":
-        return TypeSafeJudge(cfg.model, cfg.judge_timeout)
+        return typesafe_judge(cfg)
     if cfg.judge == "adapter":
         return AdapterJudge(cfg.adapter_provider, cfg.adapter_model)
     raise ValueError(f"unknown WINNOW_JUDGE={cfg.judge!r}; expected typesafe, adapter, or off")

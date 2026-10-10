@@ -15,6 +15,7 @@ from merge_claude_settings import (  # noqa: E402
     PLUGIN_ID,
     MARKETPLACE_NAME,
     merge_plugin_marketplace,
+    merge_jev_provider,
     merge_typesafe_key,
     persist_known_marketplace,
     merge_stack_capabilities,
@@ -301,6 +302,50 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
             self.assertEqual(again["env"]["TYPESAFE_API_KEY"], "kept")
             empty = merge_typesafe_key({}, Path(raw) / "missing")
             self.assertNotIn("TYPESAFE_API_KEY", empty.get("env", {}))
+
+    def _bb(self, screen: dict | None, catalog: str = "") -> object:
+        def run(args: list[str], timeout: int = 60) -> str | None:
+            if args[:3] == ["plugin", "rpc", "call"]:
+                return None if screen is None else json.dumps(screen)
+            if args[:2] == ["env-catalog", "get"]:
+                return catalog + "\n" if catalog else None
+            return None
+
+        return run
+
+    def test_jev_provider_follows_lane_pilot_setting(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            empty = Path(raw)
+            unset = merge_jev_provider({}, empty, self._bb({"values": {}}, "o-key"))
+            self.assertEqual(unset["env"]["JEV_PROVIDER"], "openlux")
+            self.assertEqual(unset["env"]["OPENLUX_API_KEY"], "o-key")
+            picked = merge_jev_provider(
+                {"env": {"TYPESAFE_API_KEY": "t"}},
+                empty,
+                self._bb({"values": {"jev.provider": "typesafe"}}, "o-key"),
+            )
+            self.assertEqual(picked["env"]["JEV_PROVIDER"], "typesafe")
+            self.assertEqual(picked["env"]["TYPESAFE_API_KEY"], "t")
+
+    def test_jev_provider_openlux_without_key_falls_back_to_typesafe(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            out = merge_jev_provider(
+                {"env": {"JEV_PROVIDER": "openlux"}}, Path(raw), self._bb({"values": {}})
+            )
+            self.assertNotIn("JEV_PROVIDER", out["env"])
+            self.assertNotIn("OPENLUX_API_KEY", out["env"])
+
+    def test_jev_provider_uses_secrets_file_and_survives_missing_bb(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            secrets = Path(raw)
+            (secrets / "openlux.env").write_text("OPENLUX_API_KEY=f-key\n", encoding="utf-8")
+            out = merge_jev_provider({}, secrets, self._bb({"values": {}}))
+            self.assertEqual(out["env"]["OPENLUX_API_KEY"], "f-key")
+            self.assertEqual(out["env"]["JEV_PROVIDER"], "openlux")
+            kept = merge_jev_provider(
+                {"env": {"JEV_PROVIDER": "typesafe"}}, Path(raw) / "none", self._bb(None)
+            )
+            self.assertEqual(kept["env"]["JEV_PROVIDER"], "typesafe")
 
     def test_merge_plugin_marketplace_local(self) -> None:
         out = merge_plugin_marketplace({}, ROOT, local=True)

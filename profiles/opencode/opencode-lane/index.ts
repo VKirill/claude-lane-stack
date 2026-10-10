@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { askJev, stackRoot, typesafeKey } from "./jev.ts"
+import { askJev, jevKeys, stackRoot } from "./jev.ts"
 import { laneLog, setLaneLogSink, setLaneSession, withLaneSession } from "./log.ts"
 import { createTelemetry, eventSessionID } from "./telemetry.ts"
 import {
@@ -57,14 +57,18 @@ async function sidecarHealthy(): Promise<boolean> {
 async function ensureSidecar(): Promise<boolean> {
   if (await sidecarHealthy()) return true
   const project = `${stackRoot()}/plugins/lane-stack/winnow/sidecar`
-  const key = typesafeKey()
+  const keys = jevKeys()
   const started = spawnSync(
     "uv",
     ["run", "-q", "--project", project, "python", "-m", "winnow", "serve", "--ensure"],
     {
       timeout: 20_000,
       stdio: "ignore",
-      env: key ? { ...process.env, TYPESAFE_API_KEY: key } : process.env,
+      env: {
+        ...process.env,
+        ...(keys.openlux ? { OPENLUX_API_KEY: keys.openlux } : {}),
+        ...(keys.typesafe ? { TYPESAFE_API_KEY: keys.typesafe } : {}),
+      },
     },
   )
   if (started.status !== 0) {
