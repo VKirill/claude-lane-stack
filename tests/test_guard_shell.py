@@ -3,6 +3,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -294,7 +295,8 @@ class GuardShellTest(unittest.TestCase):
         self.assertEqual(run_payload(malformed_arguments, client="codex").returncode, 2)
 
     def test_pm_edit_paths_are_canonicalized_from_payload_cwd(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        # The PM may write in its temp folders ($TMPDIR included); this project sits in one, so the hook gets another $TMPDIR.
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"TMPDIR": "/nonexistent-lane-stack-tmp"}):
             project = Path(tmp) / "project"
             outside = Path(tmp) / "outside"
             (project / "docs" / "plans").mkdir(parents=True)

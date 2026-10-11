@@ -69,15 +69,19 @@ _PM_OPEN_PLUGINS = {"lane-pilot", "bb-plugin-lane-pilot", "env-catalog"}
 def _pm_plugin_call_open(words: list[str]) -> bool:
     return (words[:3] == ["plugin", "rpc", "call"] and len(words) > 3 and words[3] in _PM_OPEN_PLUGINS) or (
         words[:3] == ["plugin", "run", "lane-pilot"])
-# Agents coordinate by messaging each other's threads; starting, changing or archiving threads stays denied.
+# Agents coordinate by messaging each other's threads; starting or changing threads stays denied.
 PM_BB_MESSAGE_COMMANDS = {
     ("thread", "tell"), ("thread", "message"),
     ("thread", "queue", "create"), ("thread", "queue", "send"), ("thread", "queue", "list"),
 }
+# A Lane Pilot PM stops a stuck thread, archives it and cancels its plan (owner, 2026-10-09). Starting one (bb thread new) stays
+# with Lane Pilot's tools (lane_pilot_dispatch_writer, lane_pilot_specialist, lane_pilot_errand), so a writer never bypasses critique.
+PM_BB_THREAD_CONTROL = {("thread", "stop"), ("thread", "archive"), ("thread", "unarchive"), ("thread", "cancel-plan")}
+# Settings are read-only for the PM; the setters (bb settings general …) stay denied.
+PM_BB_SETTINGS_READ = {("settings", "show"), ("settings", "usage"), ("settings", "version")}
 # A Lane Pilot PM is the owner's own chat and ships too (owner, 2026-10-03): it may read BB state and reload or
-# install plugins. Starting, stopping and archiving threads stays with Lane Pilot's tools (lane_pilot_specialist,
-# lane_pilot_errand, lane_pilot_dispatch_writer), so a writer never bypasses critique and acceptance.
-LANE_PILOT_BB_COMMANDS = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS | {
+# install plugins.
+LANE_PILOT_BB_COMMANDS = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS | PM_BB_THREAD_CONTROL | PM_BB_SETTINGS_READ | {
     ("version",), ("memory", "catalog"), ("project", "get"),
     ("plugin", "list"), ("plugin", "logs"), ("plugin", "info"), ("plugin", "show"), ("plugin", "status"),
     ("environment", "list"), ("environment", "show"), ("environment", "get"), ("environment", "providers"),
@@ -163,6 +167,8 @@ _PM_TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".json", ".txt"}
 # literal against a resolved target would wrongly deny allowed temp paths.
 # On Linux these roots are not symlinks, so resolving them is a no-op.
 _PM_TMP_ROOTS = tuple(candidate.resolve() for candidate in (Path("/tmp"), Path("/var/tmp")))
+# The PM's temp folders: the same roots plus $TMPDIR (on macOS a folder under /var/folders, which the roots above do not cover).
+_PM_TEMP_ROOTS = _PM_TMP_ROOTS + tuple(Path(folder).resolve() for folder in [os.environ.get("TMPDIR", "")] if folder)
 SQL_MUTATION = re.compile(
     r"\b(?:insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|"
     r"comment|vacuum|reindex|cluster|refresh)\b",
@@ -210,20 +216,52 @@ def _deny_pm(client: str, detail: str, lane_pilot: bool = False, path: str | Non
 
 # Heredoc bodies fed to anything but a shell are data (a report, a script for python), not commands.
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n(.*?)(?:\n[ \t]*\2[ \t]*(?:\n|$)|$)", re.S)
+# Loose text match for a shell reading a script from a pipe or here-string (the strict secret-CLI check); heredocs use _feeds_shell.
 _SHELL_CONSUMER = re.compile(r"(?:^|[\s;&|(/])(?:ba|z|da|k)?sh\b|\beval\b")
+_HEREDOC_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "ash", "eval"}
+_HEREDOC_WRAPPERS = {"sudo", "env", "nohup", "time", "command", "exec", "nice", "timeout", "xargs", "doas"}
+_REDIRECT_TOKENS = {"<", "<<", "<<-", "<<<", "<&", ">", ">>", ">&", ">|", "&>", "&>>"}
+_CONTROL_TOKENS = {";", "&&", "||", "|", "&", "(", ")", ";;", "|&"}
+
+
+def _feeds_shell(header: str) -> bool:
+    """Whether the command line that opens a heredoc runs a shell (or eval) on its body. Only a command word counts:
+    `skill-eval/REPORT.md` or `cd .../eval` name a path, not eval (2026-10-09: a REPORT.md heredoc was refused as shell)."""
+    try:
+        lexer = shlex.shlex(header, posix=True, punctuation_chars=";&|()<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return bool(re.search(r"(?:^|[\s;&|(/])(?:ba|z|da|k)?sh\b|\beval\b", header))
+    command_word = True
+    skip_target = False
+    for token in tokens:
+        if skip_target:
+            skip_target = False
+            continue
+        if token in _CONTROL_TOKENS:
+            command_word = True
+        elif token in _REDIRECT_TOKENS:
+            skip_target = True  # a redirect's target (or the heredoc's delimiter) is not a command word
+        elif command_word:
+            name = Path(token).name
+            if name in _HEREDOC_SHELLS:
+                return True
+            command_word = name in _HEREDOC_WRAPPERS or "=" in name
+    return False
 
 
 def _without_data_heredocs(command: str) -> str:
+    """The command with the bodies of heredocs fed to something other than a shell removed: they are data (a report, a
+    script for python), not shell syntax. A quoted or unquoted delimiter alike."""
     def strip(match: re.Match[str]) -> str:
         line_start = command.rfind("\n", 0, match.start()) + 1
         line_end = command.find("\n", match.start())
-        if _SHELL_CONSUMER.search(command[line_start : line_end if line_end >= 0 else len(command)]):
+        if _feeds_shell(command[line_start : line_end if line_end >= 0 else len(command)]):
             return match.group(0)
         return match.group(0)[: match.start(3) - match.start(0)] + "\n"
     return _HEREDOC.sub(strip, command)
-
-
-_CONTROL_TOKENS = {";", "&&", "||", "|", "&", "(", ")", ";;", "|&"}
 
 
 def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
@@ -275,6 +313,9 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     the PM with. Machine lifecycle receipts under a run (controller,
     state/report under artifacts, events, sessions) stay tool-owned.
 
+    Any file under a temp folder (/tmp, /private/tmp, $TMPDIR) and any file in the
+    chat's own `.bb/chats/<chat>/` is the PM's, except that chat's thread.json and history/.
+
     Exception: basename exactly ``check.py`` under a run's artifacts (or run
     root) — pre-authored L1 verification scripts required before dispatch.
     """
@@ -287,8 +328,8 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
     suffix = target.suffix.lower()
     if lexical.is_relative_to(root) and not target.is_relative_to(root):
         return False
-    if requested.is_absolute() and any(target.is_relative_to(root) for root in _PM_TMP_ROOTS):
-        return suffix in _PM_TEXT_SUFFIXES
+    if requested.is_absolute() and any(target.is_relative_to(temp) for temp in _PM_TEMP_ROOTS):
+        return True
     if not target.is_relative_to(root):
         return False
     relative = target.relative_to(root)
@@ -306,9 +347,9 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
         return True
     if normalized.startswith("docs/plans/"):
         return suffix in _PM_TEXT_SUFFIXES
-    # The chat's own folder (BB project-folders): notes, commit messages, scratch files of this PM chat.
+    # The chat's own folder (BB project-folders): reports, labels, scratch files of this PM chat, any file type.
     if normalized.startswith(".bb/chats/") and "/history/" not in normalized and not normalized.endswith("/thread.json"):
-        return suffix in _PM_TEXT_SUFFIXES
+        return True
     # Worktree-local or main-repo L1 checkers (must be check.py only).
     if _PM_L1_CHECK_SCRIPT.fullmatch(normalized):
         return True
@@ -816,7 +857,7 @@ def _lane_pilot_bb_command_error(args: list[str], cwd: object = None) -> str | N
 def _lane_pilot_bb_error(command: str, cwd: object = None) -> str | None:
     """bb in a Lane Pilot PM command: reading threads and messaging them, nothing that spawns, edits or reloads."""
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer = shlex.shlex(_without_data_heredocs(command), posix=True, punctuation_chars=";&|<>")
         lexer.whitespace_split = True
         lexer.commenters = ""
         tokens = list(lexer)
@@ -835,9 +876,39 @@ def _lane_pilot_bb_error(command: str, cwd: object = None) -> str | None:
     return None
 
 
+_WRITE_REDIRECTS = {">", ">>", ">|", "&>", "&>>"}
+
+
+def _shell_path(word: str, here: str) -> str:
+    """The absolute path a shell word names when the command runs in folder `here`: ~ and $TMPDIR (the shell's temp folder) expanded."""
+    tmp = os.environ.get("TMPDIR") or "/tmp"
+    expanded = re.sub(r"^\$(?:\{TMPDIR\}|TMPDIR)(?=/|$)", lambda _: tmp.rstrip("/") or "/", os.path.expanduser(word))
+    return os.path.normpath(os.path.join(here, expanded))
+
+
+def _shell_commands(tokens: list[str]) -> list[tuple[list[str], list[str]]]:
+    """Each command of a shell line as (words, write targets). A redirect's word is its target, not a command word."""
+    commands: list[tuple[list[str], list[str]]] = [([], [])]
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        index += 1
+        if token in _CONTROL_TOKENS:
+            commands.append(([], []))
+        elif token in _REDIRECT_TOKENS:
+            if index < len(tokens) and tokens[index] not in _CONTROL_TOKENS:
+                if token in _WRITE_REDIRECTS:
+                    commands[-1][1].append(tokens[index])
+                index += 1
+        else:
+            commands[-1][0].append(token)
+    return commands
+
+
 def _lane_pilot_shell_write_error(command: str, cwd: object) -> str | None:
     """A Lane Pilot PM command that edits a project file in place: sed/perl -i, tee, or a redirect into the checkout.
-    Files the PM may write (_pm_edit_allowed), paths outside the checkout and /dev/null pass; scripts are not judged."""
+    A relative target resolves from the command's folder, which a `cd X &&` before it moves. Files the PM may write
+    (_pm_edit_allowed), paths outside the checkout and /dev/null pass; scripts are not judged."""
     if not isinstance(cwd, str) or not cwd:
         return None
     try:
@@ -849,46 +920,48 @@ def _lane_pilot_shell_write_error(command: str, cwd: object) -> str | None:
         return None
     root = Path(cwd).resolve()
 
-    def project_file(target: str) -> bool:
+    def project_file(target: str, here: str) -> bool:
         if not target or target.startswith("&") or target == "/dev/null":
             return False
-        path = Path(target if os.path.isabs(target) else os.path.join(cwd, target))
         try:
-            inside = path.resolve().is_relative_to(root)
-        except (OSError, RuntimeError):
+            # Judged as a checkout-relative path, so a checkout that itself lies under /tmp keeps its own rules.
+            relative = Path(_shell_path(target, here)).resolve().relative_to(root)
+        except (OSError, RuntimeError, ValueError):
             return False
-        return inside and not _pm_edit_allowed(target, cwd)
+        return not _pm_edit_allowed(relative.as_posix(), cwd)
 
-    for index, token in enumerate(tokens):
-        if token in {">", ">>"} and index + 1 < len(tokens) and project_file(tokens[index + 1]):
-            return f"redirect into {tokens[index + 1]}"
-    segment: list[str] = []
-    for token in [*tokens, ";"]:
-        if token in {"&&", "||", ";", "|", "&"}:
-            if segment:
-                head = Path(segment[0]).name
-                files = []
+    here = cwd
+    for words, targets in _shell_commands(tokens):
+        for target in targets:
+            if project_file(target, here):
+                return f"redirect into {target}"
+        if words and Path(words[0]).name == "cd":
+            if len(words) == 1:
+                here = os.path.expanduser("~")
+            elif len(words) == 2 and not words[1].startswith("-"):
+                here = _shell_path(words[1], here)
+            continue
+        head = Path(words[0]).name if words else ""
+        args = words[1:]
+        files = []
+        skip = False
+        for arg in args:
+            if skip:
                 skip = False
-                for arg in segment[1:]:
-                    if skip:
-                        skip = False
-                        continue
-                    if arg in {"-e", "-f", "--expression", "--file"}:
-                        skip = True
-                        continue
-                    if not arg.startswith("-"):
-                        files.append(arg)
-                in_place = head in {"sed", "gsed", "perl"} and any(arg == "-i" or arg.startswith("-i") or arg.startswith("--in-place") or (head == "perl" and "i" in arg.lstrip("-") and arg.startswith("-")) for arg in segment[1:])
-                # sed/perl take their script as the first operand unless it comes with -e.
-                if in_place and "-e" not in segment[1:]:
-                    files = files[1:]
-                if (in_place or head == "tee"):
-                    for arg in files:
-                        if project_file(arg):
-                            return f"{head} {'-i ' if in_place else ''}{arg}".replace("  ", " ")
-            segment = []
-        else:
-            segment.append(token)
+                continue
+            if arg in {"-e", "-f", "--expression", "--file"}:
+                skip = True
+                continue
+            if not arg.startswith("-"):
+                files.append(arg)
+        in_place = head in {"sed", "gsed", "perl"} and any(arg == "-i" or arg.startswith("-i") or arg.startswith("--in-place") or (head == "perl" and "i" in arg.lstrip("-") and arg.startswith("-")) for arg in args)
+        # sed/perl take their script as the first operand unless it comes with -e.
+        if in_place and "-e" not in args:
+            files = files[1:]
+        if in_place or head == "tee":
+            for arg in files:
+                if project_file(arg, here):
+                    return f"{head} {'-i ' if in_place else ''}{arg}".replace("  ", " ")
     return None
 
 
@@ -989,9 +1062,10 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
     error = _lane_pilot_bb_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if error:
         emit_deny(client, f"[lane-pilot-guard] {error}. The PM's bb reads BB state (thread, memory, project, plugin, environment, "
-                  "host, provider and skill listings, env-catalog, lane-pilot), messages threads, and in a bb-plugin-* checkout builds, "
-                  "reloads, installs or updates plugins. A helper thread: lane_pilot_specialist or "
-                  "lane_pilot_errand. A browser step: lane_pilot_browser. Product changes: lane_pilot_dispatch_writer.")
+                  "host, provider, skill and settings listings, env-catalog, lane-pilot), messages threads, stops, archives, unarchives "
+                  "and cancels the plans of threads, and in a bb-plugin-* checkout builds, reloads, installs or updates plugins. "
+                  "Starting a thread (bb thread new) goes through lane_pilot_dispatch_writer for a writer, lane_pilot_specialist or "
+                  "lane_pilot_errand for a helper; a browser step: lane_pilot_browser. Settings are changed in BB, not by the PM.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if edit:
         emit_deny(client, f"[lane-pilot-guard] {edit}: shell edits of project files skip plan critique, code critique and acceptance. "
