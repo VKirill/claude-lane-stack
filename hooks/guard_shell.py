@@ -84,6 +84,7 @@ PM_BB_SETTINGS_READ = {("settings", "show"), ("settings", "usage"), ("settings",
 LANE_PILOT_BB_COMMANDS = PM_BB_READ_COMMANDS | PM_BB_MESSAGE_COMMANDS | PM_BB_THREAD_CONTROL | PM_BB_SETTINGS_READ | {
     ("version",), ("memory", "catalog"), ("project", "get"),
     ("plugin", "list"), ("plugin", "logs"), ("plugin", "info"), ("plugin", "show"), ("plugin", "status"),
+    ("plugin", "source"), ("plugin", "outdated"), ("plugin", "install-jobs"), ("plugin", "update-jobs"),
     ("environment", "list"), ("environment", "show"), ("environment", "get"), ("environment", "providers"),
     ("host", "list"), ("host", "show"), ("provider", "list"), ("provider", "models"), ("skill", "list"),
 }
@@ -1063,7 +1064,9 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
     if error:
         emit_deny(client, f"[lane-pilot-guard] {error}. The PM's bb reads BB state (thread, memory, project, plugin, environment, "
                   "host, provider, skill and settings listings, env-catalog, lane-pilot), messages threads, stops, archives, unarchives "
-                  "and cancels the plans of threads, and in a bb-plugin-* checkout builds, reloads, installs or updates plugins. "
+                  "and cancels the plans of threads, and in a bb-plugin-* checkout builds, reloads, installs or updates plugins "
+                  "(a path plugin runs from the hub's copy of its folder: bb-plugin-push <id> from BB-сервис/infrastructure/plugin-deploy "
+                  "copies the code there and reloads; bb plugin reload alone re-reads the old copy). "
                   "Starting a thread (bb thread new) goes through lane_pilot_dispatch_writer for a writer, lane_pilot_specialist or "
                   "lane_pilot_errand for a helper; a browser step: lane_pilot_browser. Settings are changed in BB, not by the PM.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
