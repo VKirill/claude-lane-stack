@@ -1,3 +1,8 @@
+## 1.65.2 — 2026-10-13
+
+- **`install.sh` updates the OpenCode plugin on hosts whose config is `opencode.jsonc`.** The copy of `opencode-lane` ran only when `~/.config/opencode/opencode.json` existed, so the Mac mini and the MacBook (`opencode.jsonc`) kept an old plugin and would have kept the writer guard in the owner's sessions after 1.65.1. A `.jsonc` config now gets the plugin too, a warning if its `plugin` list lacks `./plugins/opencode-lane.ts`, and the old `compaction: {auto: false, prune: false}` block cut out as text (comments stay).
+  - Tests: `tests/test_install.py` (an `opencode.jsonc` home: the new plugin is installed, the block is gone, the owner's comment and plugin list stay).
+
 ## 1.65.1 — 2026-10-13
 
 Lane rules stay out of the owner's own sessions. `install.sh` puts hooks and plugins into the machine's global config, and some lane-only behaviour ran in sessions that have nothing to do with lanes (a plain OpenCode session was refused `pokecut-theme` and `bb-plugin-authoring`: «[opencode-lane guard] skill blocked …»).

@@ -759,6 +759,36 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(existing.stat().st_mode & 0o777, 0o600)
 
+    def test_opencode_jsonc_host_gets_the_plugin_and_its_default_compaction(self) -> None:
+        # Mac mini and MacBook keep opencode.jsonc: the plugin was never updated there (2026-10-13).
+        with tempfile.TemporaryDirectory() as raw_tmp:
+            tmp = Path(raw_tmp)
+            home = tmp / "home"
+            config = home / ".config" / "opencode" / "opencode.jsonc"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                '{\n  // the owner\'s comment\n  "model": "router9/x",\n'
+                '  "plugin": ["./plugins/opencode-lane.ts"],\n'
+                '  "compaction": {\n    "auto": false,\n    "prune": false\n  }\n}\n',
+                encoding="utf-8",
+            )
+            work = tmp / "outside-repo"
+            work.mkdir()
+            env = _fake_home_env(home)
+            env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
+            env.pop("CODEX_HOME", None)
+            result = subprocess.run(
+                [str(INSTALL)], cwd=work, env=env, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            guard = home / ".config" / "opencode" / "plugins" / "opencode-lane" / "guard.ts"
+            self.assertIn("laneMarked", guard.read_text(encoding="utf-8"))
+            text = config.read_text(encoding="utf-8")
+            self.assertNotIn("compaction", text)
+            self.assertIn("// the owner's comment", text)
+            self.assertIn('"plugin": ["./plugins/opencode-lane.ts"]', text)
+
     def test_doctor_apply_requires_explicit_project_option(self) -> None:
         with tempfile.TemporaryDirectory() as raw_tmp:
             tmp = Path(raw_tmp)

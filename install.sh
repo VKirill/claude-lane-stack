@@ -155,7 +155,12 @@ if [[ -f "$HOME/.config/opencode/plugin/cursor-acp.js" ]]; then
     "$HOME/.config/opencode/plugin/cursor-acp.js" \
     || echo "warning: cursor-acp mcp remap patch failed" >&2
 fi
-if [[ -f "$HOME/.config/opencode/opencode.json" && -f "$STACK_ROOT/profiles/opencode/opencode-lane.ts" ]]; then
+# A host keeps its OpenCode config as opencode.json or opencode.jsonc (Mac mini, MacBook): both get the plugin.
+OPENCODE_CONFIG=""
+for name in opencode.json opencode.jsonc; do
+  if [[ -f "$HOME/.config/opencode/$name" ]]; then OPENCODE_CONFIG="$HOME/.config/opencode/$name"; break; fi
+done
+if [[ -n "$OPENCODE_CONFIG" && -f "$STACK_ROOT/profiles/opencode/opencode-lane.ts" ]]; then
   mkdir -p "$HOME/.config/opencode/plugins/opencode-lane"
   install -m 0644 "$STACK_ROOT/profiles/opencode/opencode-lane.ts" "$HOME/.config/opencode/plugins/opencode-lane.ts"
   rm -f "$HOME/.config/opencode/plugins/lane-context.ts"
@@ -163,10 +168,21 @@ if [[ -f "$HOME/.config/opencode/opencode.json" && -f "$STACK_ROOT/profiles/open
   mkdir -p "$HOME/.config/opencode/commands"
   install -m 0644 "$STACK_ROOT/profiles/opencode/commands/opencode-lane.md" \
     "$HOME/.config/opencode/commands/opencode-lane.md"
-  python3 - <<'PY'
+  python3 - "$OPENCODE_CONFIG" <<'PY'
 import json
+import re
+import sys
 from pathlib import Path
-path = Path.home() / ".config" / "opencode" / "opencode.json"
+path = Path(sys.argv[1])
+if path.suffix == ".jsonc":
+    # Comments stay: the plugin entry is checked and the old compaction block is cut out as text.
+    text = path.read_text(encoding="utf-8")
+    if "./plugins/opencode-lane.ts" not in text:
+        print(f"warning: add \"./plugins/opencode-lane.ts\" to plugin in {path}", file=sys.stderr)
+    cut = re.sub(r',(\s*)"compaction"\s*:\s*\{\s*"auto"\s*:\s*false\s*,\s*"prune"\s*:\s*false\s*\}', "", text)
+    if cut != text:
+        path.write_text(cut, encoding="utf-8")
+    raise SystemExit(0)
 data = json.loads(path.read_text(encoding="utf-8"))
 plugins = data.get("plugin")
 if not isinstance(plugins, list):
