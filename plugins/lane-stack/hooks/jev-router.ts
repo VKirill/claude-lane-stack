@@ -1,11 +1,10 @@
-import type { On, PluginOptions, Register, SessionMessage } from 'claude-code'
+import type { On, PluginOptions, Register } from 'claude-code'
 
 import { jevTimeoutMs, resolveJevRoute, type JevRoute } from '../fast-jev/src/provider.js'
 import { buildJevRequest, parseJevResponse } from '../fast-jev/src/request.js'
 import {
   ROUTE_QUESTIONS,
   ROUTE_TIMEOUT_MS,
-  asSessionEffort,
   claudeSessionEffort,
   defaultRoute,
   parseRoute,
@@ -19,17 +18,6 @@ const RAW_TASK_MARKER = /^--- RAW TASK YAML \(verbatim\) ---\r?$/m
 function canonicalTask(text: string): string {
   const marker = RAW_TASK_MARKER.exec(text)
   return marker ? text.slice(marker.index + marker[0].length).trim() : text
-}
-
-function lastUser(messages: readonly SessionMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (m.role !== 'user') continue
-    if (m.toolResults && m.toolResults.length > 0) continue
-    const text = m.text.trim()
-    if (text) return canonicalTask(text)
-  }
-  return ''
 }
 
 async function getJevRoute($: {
@@ -93,8 +81,8 @@ async function classify(
   }
 }
 
-// Routing runs only in a lane session (the owner's own sessions keep the effort they chose) and once, at the session's
-// first turn, not on every message (owner 2026-10-13). A subagent is routed once at its spawn.
+// Routing picks a subagent's model and effort once, when a lane session spawns it. The session's own turns (the owner's
+// messages) keep the effort the owner chose, and the owner's plain sessions are never routed (owner 2026-10-13).
 const LANE_MARKERS = ['LANE_PILOT_AGENT_TYPE', 'LANE_PILOT_ROLE', 'LANE_STACK_SESSION', 'LANE_PROMPT_FILE', 'LANE_TASK_FILE']
 
 async function laneRouting($: { env: { get: (name: string) => Promise<string | undefined> } }): Promise<boolean> {
@@ -104,7 +92,6 @@ async function laneRouting($: { env: { get: (name: string) => Promise<string | u
 }
 
 export const register: Register = (on: On, _options: PluginOptions) => {
-  let sessionRoute: Route | undefined
   const byAgent = new Map<string, Route>()
 
   on('agent.spawn', async ($, e, next) => {
@@ -120,21 +107,9 @@ export const register: Register = (on: On, _options: PluginOptions) => {
   on('turn.step', async function* ($, e, next) {
     if (!(await laneRouting($))) return yield* next(e)
     try {
-      if (e.agentId) {
-        const cached = byAgent.get(e.agentId)
-        if (!cached) return yield* next(e)
-        const nextEffort = claudeSessionEffort(cached.effort)
-        if (nextEffort === e.effort) return yield* next(e)
-        return yield* next({ ...e, effort: nextEffort })
-      }
-      let route = sessionRoute
-      if (!route) {
-        if (e.index !== 0) return yield* next(e)
-        const messages = await $.session.messages()
-        route = await classify($, lastUser(messages), asSessionEffort(e.effort))
-        sessionRoute = route
-      }
-      const nextEffort = claudeSessionEffort(route.effort)
+      const cached = e.agentId ? byAgent.get(e.agentId) : undefined
+      if (!cached) return yield* next(e)
+      const nextEffort = claudeSessionEffort(cached.effort)
       if (nextEffort === e.effort) return yield* next(e)
       return yield* next({ ...e, effort: nextEffort })
     } catch {

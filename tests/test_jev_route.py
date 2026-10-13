@@ -465,8 +465,9 @@ class JevRouteTest(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("ok", out.stdout)
 
-    def test_claude_router_routes_lane_sessions_once(self) -> None:
-        # Owner 2026-10-13: effort routing only in a lane session, once at its first turn, never per message.
+    def test_claude_router_routes_only_lane_subagents(self) -> None:
+        # Owner 2026-10-13: Jev picks a subagent's model and effort once, when a lane session spawns it; the session's own
+        # turns (the owner's messages) keep their effort, and a plain session is never routed.
         router = (ROOT / "plugins" / "lane-stack" / "hooks" / "jev-router.ts").as_uri()
         script = f"""
             import assert from 'node:assert/strict';
@@ -491,19 +492,28 @@ class JevRouteTest(unittest.TestCase):
                         tier: {{ choice: 'standard', confidence: 0.9 }}, effort: {{ choice: 'high', confidence: 0.9 }}, risk: {{ noul: 0.1 }}
                     }} }}) }}; }} }},
                 }};
-                const efforts = [];
-                for (const turnId of ['t1', 't2', 't3']) {{
-                    const next = async function* (e) {{ efforts.push(e.effort); }};
-                    for await (const _ of handlers['turn.step']($, {{ turnId, index: 0, effort: 'medium' }}, next)) {{}}
+                async function turn(agentId) {{
+                    let effort;
+                    const next = async function* (e) {{ effort = e.effort; }};
+                    for await (const _ of handlers['turn.step']($, {{ turnId: 't', index: 0, effort: 'medium', agentId }}, next)) {{}}
+                    return effort;
                 }}
-                return {{ calls, efforts }};
+                const main = [await turn(), await turn(), await turn()];
+                let spawned;
+                await handlers['agent.spawn']($, {{ prompt: 'Review lease.ts', model: undefined }}, async (e) => {{ spawned = e; return {{ agentId: 'a1' }}; }});
+                const sub = [await turn('a1'), await turn('a1')];
+                return {{ calls, main, sub, model: spawned.model }};
             }}
             const plain = await session({{ TYPESAFE_API_KEY: 'k' }});
             assert.equal(plain.calls, 0);
-            assert.deepEqual(plain.efforts, ['medium', 'medium', 'medium']);
+            assert.deepEqual(plain.main, ['medium', 'medium', 'medium']);
+            assert.deepEqual(plain.sub, ['medium', 'medium']);
+            assert.equal(plain.model, undefined);
             const lane = await session({{ TYPESAFE_API_KEY: 'k', LANE_PILOT_AGENT_TYPE: 'dev-orchestrator' }});
-            assert.equal(lane.calls, 1);
-            assert.deepEqual(lane.efforts, ['high', 'high', 'high']);
+            assert.equal(lane.calls, 1, 'one Jev call, for the spawn only');
+            assert.deepEqual(lane.main, ['medium', 'medium', 'medium'], 'turns of the session itself keep their effort');
+            assert.deepEqual(lane.sub, ['high', 'high']);
+            assert.equal(lane.model, 'sonnet');
             console.log('ok');
         """
         out = _node(script)

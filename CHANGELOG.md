@@ -1,3 +1,8 @@
+## 1.65.3 — 2026-10-13
+
+- **Jev routes only the subagents a lane session spawns; the session's own turns keep their effort.** 1.65.1 still routed the first turn of a lane session (a Lane Pilot PM chat, a lane-pm session), so the owner's first message there changed the effort. The Claude Code `jev-router` hook now acts only on `agent.spawn` in a session with a lane marker: it picks the subagent's model and effort once, and the subagent's turns keep that effort. Turns of the session itself, the owner's messages, are never routed. (OpenCode writers are tasks Lane Pilot or lane-session launch, and they are still routed once at the task's start.)
+  - Tests: `tests/test_jev_route.py` (plain session: no Jev call, nothing changed; lane session: one Jev call for the spawn, the session's turns keep `medium`, the subagent gets `sonnet` and `high`), `tests/test_plain_session_scope.py`.
+
 ## 1.65.2 — 2026-10-13
 
 - **`install.sh` updates the OpenCode plugin on hosts whose config is `opencode.jsonc`.** The copy of `opencode-lane` ran only when `~/.config/opencode/opencode.json` existed, so the Mac mini and the MacBook (`opencode.jsonc`) kept an old plugin and would have kept the writer guard in the owner's sessions after 1.65.1. A `.jsonc` config now gets the plugin too, a warning if its `plugin` list lacks `./plugins/opencode-lane.ts`, and the old `compaction: {auto: false, prune: false}` block cut out as text (comments stay).

@@ -38,7 +38,7 @@ SCOPE = {
     "skillranker-hook.sh": (MACHINE, "skill suggestions for the main session"),
     "fast-jev": (MACHINE, "/compact without a summary"),
     "winnow": (MACHINE, "trims large tool output"),
-    "jev-router": (MACHINE, "reasoning effort routing"),
+    "jev-router": (LANE, "picks model and effort of a subagent a lane session spawns; never the session's own turns"),
     # codex-lane plugin
     "session-start.py": (LANE, "prints only for LANE_CODEX_WORKER"),
     "user-prompt-submit.py": (MACHINE, "skill suggestions, same as skillranker-hook.sh"),
