@@ -34,4 +34,6 @@ command -v claude >/dev/null 2>&1 || {
   exit 1
 }
 
+# Lane hooks that must not touch the owner's own sessions (teammate idle sentinel) check this marker.
+export LANE_STACK_SESSION=1
 exec claude --agent "$AGENT" --name "$NAME" "$@"

@@ -28,9 +28,10 @@ session_hook = load_module(SESSION_PATH, "codex_lane_session_hook")
 
 
 class HookTests(unittest.TestCase):
-    def test_session_start_marks_main_and_worker(self) -> None:
+    def test_session_start_marks_only_the_worker(self) -> None:
+        # The owner's own Codex session gets no lane banner.
         for marker, expected in (
-            (None, "Codex Lane active"),
+            (None, ""),
             ("1", "Codex Lane worker mode"),
         ):
             output = io.StringIO()
@@ -39,7 +40,10 @@ class HookTests(unittest.TestCase):
                     os.environ["LANE_CODEX_WORKER"] = marker
                 with patch("sys.stdout", output):
                     self.assertEqual(session_hook.main(), 0)
-            self.assertIn(expected, output.getvalue())
+            if expected:
+                self.assertIn(expected, output.getvalue())
+            else:
+                self.assertEqual(output.getvalue(), "")
 
     def test_prompt_hook_skips_worker_and_fails_open_on_timeout(self) -> None:
         with patch.dict(os.environ, {"LANE_CODEX_WORKER": "1"}, clear=True), patch.object(

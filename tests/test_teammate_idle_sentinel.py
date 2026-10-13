@@ -35,7 +35,35 @@ def run_hook(payload: dict, *, env_extra: dict | None = None) -> subprocess.Comp
     )
 
 
+def setUpModule() -> None:
+    # Most cases below are teammates of a lane PM; the plain-team case clears the marker itself.
+    os.environ["LANE_STACK_SESSION"] = "1"
+
+
+def tearDownModule() -> None:
+    os.environ.pop("LANE_STACK_SESSION", None)
+
+
 class SentinelUnitTests(unittest.TestCase):
+    def test_owner_team_outside_lane_idles_freely(self) -> None:
+        saved = {key: os.environ.pop(key, None) for key in ("LANE_STACK_SESSION", "LANE_PILOT_AGENT_TYPE")}
+        try:
+            payload = {
+                "hook_event_name": "TeammateIdle",
+                "teammate_name": "researcher",
+                "agent_type": "general-purpose",
+                "last_assistant_message": "Here is a long report without a close line.",
+            }
+            self.assertEqual(decide(payload), (0, ""))
+            lane = decide({**payload, "agent_type": "lane-stack:copy-lead"})
+            self.assertEqual(lane[0], 2)
+            supervisor = decide({**payload, "teammate_name": "rs-demo", "agent_type": ""})
+            self.assertEqual(supervisor[0], 2)
+        finally:
+            for key, value in saved.items():
+                if value is not None:
+                    os.environ[key] = value
+
     def test_supervisor_cannot_park_with_wait(self) -> None:
         for identity in [
             {"teammate_name": "rs-demo"},

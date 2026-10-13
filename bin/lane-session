@@ -1024,8 +1024,8 @@ def provider_environment(
                 "OPENCODE_PERMISSION": '{"task":"deny"}',
                 # Parallel writers share cwd: OpenCode's snapshot git index
                 # races across processes. Lane owns change tracking/acceptance.
-                # Compaction is off in host opencode.json and via DISABLE_* flags
-                # after every merge layer so a project .opencode cannot re-enable.
+                # Compaction is off here and via DISABLE_* flags after every merge
+                # layer, so neither the host config nor a project .opencode re-enables it.
                 "OPENCODE_CONFIG_CONTENT": json.dumps(
                     {
                         "snapshot": False,

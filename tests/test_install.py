@@ -383,8 +383,11 @@ class InstallTest(unittest.TestCase):
             (ROOT / "profiles" / "opencode" / "commands" / "opencode-lane.md").is_file()
         )
         self.assertIn("commands/opencode-lane.md", install)
-        self.assertIn('compaction["auto"] = False', install)
-        self.assertIn('compaction["prune"] = False', install)
+        # The owner's own OpenCode sessions keep OpenCode's default compaction; writers turn it off per process.
+        self.assertNotIn('compaction["auto"] = False', install)
+        self.assertIn('del data["compaction"]', install)
+        session = (ROOT / "bin" / "lane-session").read_text(encoding="utf-8")
+        self.assertIn('"OPENCODE_DISABLE_AUTOCOMPACT": "1"', session)
 
     def test_seo_specialist_pack_is_shipped(self) -> None:
         agent = ROOT / "plugins" / "lane-stack" / "agents" / "seo-specialist.md"

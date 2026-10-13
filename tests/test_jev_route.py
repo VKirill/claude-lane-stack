@@ -31,10 +31,19 @@ def _node(script: str) -> subprocess.CompletedProcess[str]:
 class JevRouteTest(unittest.TestCase):
     def test_opencode_routes_the_task_after_the_writer_contract(self) -> None:
         out = _node(f"""
-            import {{ OpenCodeLanePlugin }} from {INDEX.as_uri()!r};
             import assert from 'node:assert/strict';
+            import {{ registerHooks }} from 'node:module';
+            // OpenCode runs plugins on bun, which maps a sibling's .js import to its .ts source; node needs this hook.
+            registerHooks({{ resolve(spec, ctx, next) {{
+                try {{ return next(spec, ctx); }} catch (err) {{
+                    if (spec.startsWith('.') && spec.endsWith('.js')) return next(spec.slice(0, -3) + '.ts', ctx);
+                    throw err;
+                }}
+            }} }});
+            const {{ OpenCodeLanePlugin }} = await import({INDEX.as_uri()!r});
             process.env.LANE_OPENCODE_JEV = '0';
             process.env.LANE_JEV_EFFORT = '1';
+            process.env.LANE_PILOT_ROLE = 'writer';
             process.env.TYPESAFE_API_KEY = 'fixture-key';
             process.env.LANE_STACK_ROOT = {str(ROOT)!r};
             const tasks = [];
@@ -73,7 +82,10 @@ class JevRouteTest(unittest.TestCase):
             assert.equal(tasks.length, 2, 'a new task in a warm session must be reclassified');
             await route(prefix + marker + second);
             assert.equal(tasks.length, 2, 'unchanged task keeps the cached route');
-            assert.equal(await route('Fix the local typo'), 'Fix the local typo');
+            await route('The check failed, please fix the typo in lease.ts');
+            assert.equal(tasks.length, 2, 'a follow-up message keeps the session route');
+            input.sessionID = 'fresh-session';
+            assert.equal(await route('Fix the local typo'), 'Fix the local typo', 'a plain first message is routed whole');
             const large = 'schema_version: 2\\n' + 'a'.repeat(15000) + '\\nobjective: Keep this goal';
             assert.equal(await route(prefix + marker + large), large);
             assert.ok(tasks.every(task => !task.includes('GENERAL WRITER') && !task.includes('synthetic noise')));
@@ -447,6 +459,78 @@ class JevRouteTest(unittest.TestCase):
             "  const ssOk = guardTool('skill', { name: 'selfystudio' }, dir); "
             "  if (ssOk) throw new Error('ss-ok ' + ssOk); "
             "} finally { rmSync(dir, { recursive: true, force: true }); } "
+            "console.log('ok')"
+        )
+        out = _node(script)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("ok", out.stdout)
+
+    def test_claude_router_routes_lane_sessions_once(self) -> None:
+        # Owner 2026-10-13: effort routing only in a lane session, once at its first turn, never per message.
+        router = (ROOT / "plugins" / "lane-stack" / "hooks" / "jev-router.ts").as_uri()
+        script = f"""
+            import assert from 'node:assert/strict';
+            import {{ registerHooks }} from 'node:module';
+            // The hook imports its siblings as .js (a bundler convention); the sources are .ts.
+            registerHooks({{ resolve(spec, ctx, next) {{
+                try {{ return next(spec, ctx); }} catch (err) {{
+                    if (spec.startsWith('.') && spec.endsWith('.js')) return next(spec.slice(0, -3) + '.ts', ctx);
+                    throw err;
+                }}
+            }} }});
+            const {{ register }} = await import({router!r});
+            async function session(env) {{
+                const handlers = {{}};
+                register((name, fn) => {{ handlers[name] = fn; }}, {{}});
+                let calls = 0;
+                const $ = {{
+                    env: {{ get: async (name) => env[name] }},
+                    settings: {{ read: async () => ({{}}) }},
+                    session: {{ messages: async () => [{{ role: 'user', text: 'Fix the lease fencing race' }}] }},
+                    http: {{ fetch: async () => {{ calls++; return {{ status: 200, ok: true, text: JSON.stringify({{ answers: {{
+                        tier: {{ choice: 'standard', confidence: 0.9 }}, effort: {{ choice: 'high', confidence: 0.9 }}, risk: {{ noul: 0.1 }}
+                    }} }}) }}; }} }},
+                }};
+                const efforts = [];
+                for (const turnId of ['t1', 't2', 't3']) {{
+                    const next = async function* (e) {{ efforts.push(e.effort); }};
+                    for await (const _ of handlers['turn.step']($, {{ turnId, index: 0, effort: 'medium' }}, next)) {{}}
+                }}
+                return {{ calls, efforts }};
+            }}
+            const plain = await session({{ TYPESAFE_API_KEY: 'k' }});
+            assert.equal(plain.calls, 0);
+            assert.deepEqual(plain.efforts, ['medium', 'medium', 'medium']);
+            const lane = await session({{ TYPESAFE_API_KEY: 'k', LANE_PILOT_AGENT_TYPE: 'dev-orchestrator' }});
+            assert.equal(lane.calls, 1);
+            assert.deepEqual(lane.efforts, ['high', 'high', 'high']);
+            console.log('ok');
+        """
+        out = _node(script)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("ok", out.stdout)
+
+    def test_plain_session_gets_no_writer_guard_or_notes(self) -> None:
+        # The plugin sits in the machine's global OpenCode config: a session the owner starts by hand has no lane marker
+        # and must not meet the writer guard (skills were refused there, 2026-10-13).
+        script = (
+            "import assert from 'node:assert/strict'; "
+            "globalThis.fetch = async () => new Response('ok'); "
+            "for (const key of ['LANE_PROMPT_FILE', 'LANE_TASK_FILE', 'LANE_PILOT_ROLE']) delete process.env[key]; "
+            f"const {{ OpenCodeLanePlugin, laneMarked }} = await import({INDEX.resolve().as_uri()!r}); "
+            "assert.equal(laneMarked({}), false); "
+            "assert.equal(laneMarked({ LANE_PILOT_ROLE: 'writer' }), true); "
+            "assert.equal(laneMarked({ LANE_PROMPT_FILE: '/tmp/p.md' }), true); "
+            "const plain = await OpenCodeLanePlugin(); "
+            "await plain['tool.execute.before']({ tool: 'skill', sessionID: 's1' }, { args: { name: 'pokecut-theme' } }); "
+            "await plain['tool.execute.before']({ tool: 'mcp__metamcp__search', sessionID: 's1' }, { args: {} }); "
+            "await plain['tool.execute.before']({ tool: 'bash', sessionID: 's1' }, { args: { command: 'git checkout main' } }); "
+            "const messages = [{ info: { role: 'user' }, parts: [{ type: 'text', text: 'hi' }] }]; "
+            "await plain['experimental.chat.messages.transform']({ sessionID: 's1' }, { messages }); "
+            "assert.equal(messages.length, 1); "
+            "process.env.LANE_PILOT_ROLE = 'writer'; "
+            "const lane = await OpenCodeLanePlugin(); "
+            "await assert.rejects(lane['tool.execute.before']({ tool: 'skill', sessionID: 's2' }, { args: { name: 'pokecut-theme' } }), /skill blocked/); "
             "console.log('ok')"
         )
         out = _node(script)

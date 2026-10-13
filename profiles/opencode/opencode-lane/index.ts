@@ -15,7 +15,7 @@ import { diagnoseFailure } from "./diagnose.ts"
 import { skillHint } from "./skill-hint.ts"
 import { evidenceNotes } from "./evidence.ts"
 import { recentAttempts, recordTool, repeatHint, toolRepeatN } from "./budget.ts"
-import { guardTool } from "./guard.ts"
+import { guardTool, laneMarked } from "./guard.ts"
 import { sessionKey } from "./session.ts"
 
 export {
@@ -30,7 +30,7 @@ export { looksFailed } from "./diagnose.ts"
 export { parseAcceptance, collectBashEvidence } from "./evidence.ts"
 export { WRITE_SKILLS, skillPhase } from "./skill-hint.ts"
 export { toolFingerprint, recordTool, recentAttempts, toolRepeatN } from "./budget.ts"
-export { guardTool } from "./guard.ts"
+export { guardTool, laneMarked } from "./guard.ts"
 export { rewriteCursorMcpCall } from "./mcp-dispatch.ts"
 export { askCacheKey } from "./jev.ts"
 export { sessionKey, pickSessionID } from "./session.ts"
@@ -80,6 +80,8 @@ async function ensureSidecar(): Promise<boolean> {
 
 const lastPrompt = new Map<string, string>()
 const lastRoute = new Map<string, { prompt: string; effort: string }>()
+// A prompt carrying the raw task YAML is a new task in a warm lane-session; any other message keeps the session's route.
+const newTask = new Map<string, boolean>()
 const sessionNotes = new Map<string, string[]>()
 
 function rememberPrompt(
@@ -95,6 +97,7 @@ function rememberPrompt(
   const marker = /^--- RAW TASK YAML \(verbatim\) ---\r?$/m.exec(text)
   const task = marker ? text.slice(marker.index + marker[0].length).trim() : text
   lastPrompt.set(sessionID, task)
+  newTask.set(sessionID, Boolean(marker))
 }
 
 function modelIdOf(model: { id?: string; modelID?: string } | undefined): string {
@@ -135,7 +138,7 @@ async function routeChatParams(
   const current = fromId || core.asSessionEffort(output.options?.reasoningEffort, "medium")
   let effort = current
   const cached = lastRoute.get(sessionID)
-  if (cached && cached.prompt === prompt) {
+  if (cached && (cached.prompt === prompt || !newTask.get(sessionID))) {
     effort = cached.effort
   } else {
     try {
@@ -215,6 +218,8 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
     )
   }
   const telemetry = createTelemetry()
+  // Writer guard, notes, sticky contract and effort routing only in a lane process; winnow and telemetry run in every session.
+  const lane = laneMarked()
   laneLog({
     mod: "startup",
     ok: true,
@@ -243,6 +248,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
       await withLaneSession(sessionID, async () => {
         setLaneSession(sessionID)
         rememberPrompt(sessionID, output.parts ?? [])
+        if (!lane) return
         try {
           const hint = await skillHint(
             sessionID,
@@ -262,6 +268,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
       },
       output: { options?: Record<string, unknown> },
     ) => {
+      if (!lane) return
       try {
         const sessionID = sessionKey(input)
         await withLaneSession(sessionID, async () => {
@@ -276,6 +283,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
       input: { tool: string; sessionID: string; callID?: string },
       output: { args?: unknown },
     ) => {
+      if (!lane) return
       const msg = guardTool(input.tool, output.args)
       if (!msg) return
       laneLog({ mod: "guard", ok: false, session: input.sessionID || "", err: msg })
@@ -299,6 +307,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
             laneLog({ mod: "winnow", ok: false, session: sessionID, err: String(err) })
           }
         }
+        if (!lane) return
         try {
           const note = await diagnoseFailure(task, original, output.metadata?.exit)
           if (note) {
@@ -339,6 +348,7 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
       input: { sessionID?: string },
       output: { messages: OcMessage[] },
     ) => {
+      if (!lane) return
       const sessionID = sessionKey(input, output.messages, lastPrompt)
       await withLaneSession(sessionID, async () => {
         setLaneSession(sessionID)

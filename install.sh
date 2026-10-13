@@ -175,13 +175,11 @@ new = "./plugins/opencode-lane.ts"
 plugins = [item for item in plugins if item not in ("./plugins/lane-context.ts", new)]
 plugins.append(new)
 data["plugin"] = plugins
-# Default compaction.auto is true and wipes tool history on large sessions.
-compaction = data.get("compaction")
-if not isinstance(compaction, dict):
-    compaction = {}
-compaction["auto"] = False
-compaction["prune"] = False
-data["compaction"] = compaction
+# Writers turn auto-compaction off in their own process (lane-session: OPENCODE_CONFIG_CONTENT and
+# OPENCODE_DISABLE_AUTOCOMPACT; Lane Pilot: OPENCODE_DISABLE_AUTOCOMPACT). The owner's own sessions keep
+# OpenCode's default, so drop the block an older install wrote here (2026-10-13).
+if data.get("compaction") == {"auto": False, "prune": False}:
+    del data["compaction"]
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 PY
 fi

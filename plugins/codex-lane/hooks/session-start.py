@@ -13,9 +13,7 @@ def main() -> int:
             "Codex Lane worker mode: follow the assigned task contract and finish with the canonical LANE_REPORT.\n"
         )
         return 0
-    sys.stdout.write(
-        "Codex Lane active: use the codex-lane skill for typed run status, resume, review, verification, and acceptance.\n"
-    )
+    # The owner's own Codex sessions get no lane banner (2026-10-13); the codex-lane skill is still listed for them.
     return 0
 
 

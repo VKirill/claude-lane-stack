@@ -93,14 +93,23 @@ async function classify(
   }
 }
 
+// Routing runs only in a lane session (the owner's own sessions keep the effort they chose) and once, at the session's
+// first turn, not on every message (owner 2026-10-13). A subagent is routed once at its spawn.
+const LANE_MARKERS = ['LANE_PILOT_AGENT_TYPE', 'LANE_PILOT_ROLE', 'LANE_STACK_SESSION', 'LANE_PROMPT_FILE', 'LANE_TASK_FILE']
+
+async function laneRouting($: { env: { get: (name: string) => Promise<string | undefined> } }): Promise<boolean> {
+  if (!routeEnabled(await $.env.get('LANE_JEV_EFFORT'))) return false
+  for (const name of LANE_MARKERS) if ((await $.env.get(name))?.trim()) return true
+  return false
+}
+
 export const register: Register = (on: On, _options: PluginOptions) => {
-  const byTurn = new Map<string, Route>()
+  let sessionRoute: Route | undefined
   const byAgent = new Map<string, Route>()
 
   on('agent.spawn', async ($, e, next) => {
     if (e.fork) return next(e)
-    const off = await $.env.get('LANE_JEV_EFFORT')
-    if (!routeEnabled(off)) return next(e)
+    if (!(await laneRouting($))) return next(e)
     const route = await classify($, canonicalTask(e.prompt.trim()), 'medium')
     if (route.reason === 'fail-open') return next(e)
     const result = await next({ ...e, model: route.subagent })
@@ -109,8 +118,7 @@ export const register: Register = (on: On, _options: PluginOptions) => {
   })
 
   on('turn.step', async function* ($, e, next) {
-    const off = await $.env.get('LANE_JEV_EFFORT')
-    if (!routeEnabled(off)) return yield* next(e)
+    if (!(await laneRouting($))) return yield* next(e)
     try {
       if (e.agentId) {
         const cached = byAgent.get(e.agentId)
@@ -119,12 +127,12 @@ export const register: Register = (on: On, _options: PluginOptions) => {
         if (nextEffort === e.effort) return yield* next(e)
         return yield* next({ ...e, effort: nextEffort })
       }
-      let route = byTurn.get(e.turnId)
+      let route = sessionRoute
       if (!route) {
         if (e.index !== 0) return yield* next(e)
         const messages = await $.session.messages()
         route = await classify($, lastUser(messages), asSessionEffort(e.effort))
-        byTurn.set(e.turnId, route)
+        sessionRoute = route
       }
       const nextEffort = claudeSessionEffort(route.effort)
       if (nextEffort === e.effort) return yield* next(e)

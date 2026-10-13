@@ -8,6 +8,9 @@ run-supervisor may run as a teammate; it must not park with WAIT.
 After DONE|FAILED, idle is allowed for LANE_PM_DONE_HANG_SEC (default 300);
 past that the hook pokes the supervisor to tell the PM to close the task.
 Disable: LANE_TEAMMATE_IDLE_SENTINEL=0
+
+Only lane teams: a lane-stack agent or rs-* teammate, or a session started by lane-pm (LANE_STACK_SESSION) or
+Lane Pilot (LANE_PILOT_AGENT_TYPE). The owner's own agent teams keep Claude Code's plain idle (2026-10-13).
 """
 from __future__ import annotations
 
@@ -168,6 +171,19 @@ def has_sentinel(text: str) -> bool:
     return SENTINEL_RE.search(tail) is not None
 
 
+def _lane_team(payload: dict) -> bool:
+    if any(os.environ.get(key, "").strip() for key in ("LANE_STACK_SESSION", "LANE_PILOT_AGENT_TYPE")):
+        return True
+    agent = _payload_str(payload, "agent_type", "agentType")
+    role = agent.rsplit(":", 1)[-1]
+    name = _payload_str(payload, "teammate_name", "teammateName")
+    return (
+        agent.startswith("lane-stack:")
+        or role == "run-supervisor"
+        or any(re.fullmatch(r"rs\d*-[A-Za-z0-9_.-]+", identity) for identity in (name, role))
+    )
+
+
 def decide(payload: dict) -> tuple[int, str]:
     """Return (exit_code, stderr_message)."""
     if _disabled():
@@ -176,6 +192,8 @@ def decide(payload: dict) -> tuple[int, str]:
         return 0, ""
     event = str(payload.get("hook_event_name") or payload.get("hookEventName") or "")
     if event and event not in {"TeammateIdle", "teammate_idle"}:
+        return 0, ""
+    if not _lane_team(payload):
         return 0, ""
     text = last_assistant_text(payload)
     name = _payload_str(payload, "teammate_name", "teammateName")

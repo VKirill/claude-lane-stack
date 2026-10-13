@@ -45,6 +45,13 @@ function projectHasSkill(cwd: string, name: string): boolean {
   return false
 }
 
+// The plugin is installed for every OpenCode session on the machine. Only a lane process carries one of these: lane-session sets
+// LANE_PROMPT_FILE/LANE_TASK_FILE, Lane Pilot sets LANE_PILOT_ROLE on the threads it starts. The owner's own sessions have none
+// and get no writer guard or writer notes (skills were refused in a plain session, 2026-10-13).
+export function laneMarked(env: NodeJS.ProcessEnv = process.env): boolean {
+  return ["LANE_PROMPT_FILE", "LANE_TASK_FILE", "LANE_PILOT_ROLE"].some((key) => Boolean(env[key]?.trim()))
+}
+
 export function guardTool(tool: string, args: unknown, cwd = process.cwd()): string {
   const name = tool.toLowerCase()
   if (name === "write" || name === "write_file" || name === "oc_write") {
