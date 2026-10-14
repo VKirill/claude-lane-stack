@@ -1,3 +1,8 @@
+## 1.65.4 — 2026-10-14
+
+- **`/compact` runs through Jev again; winnow and jev-router are back.** Claude Code 2.1.299 refuses a function-hook module whose `$.env.get` takes anything but a literal name, and `fast-jev.ts` read `OPENLUX_API_KEY`/`JEV_PROVIDER` as `$.env.get(name)`. The whole `lane-mods.ts` module did not load («hooks module lane-stack@claude-lane-stack failed to load … $.env.get takes a literal name»), so `/compact` fell back to the built-in Opus summary (~17 s) on every host, and winnow and the jev-router were off too. `fast-jev.ts` and `jev-router.ts` now read each variable and lane marker by its literal name. Measured on the Mac mini: the module loads, `/compact` keeps 12/20 messages with no summary in 0.95 s (OpenLux `jev-1.13.0:stable`).
+  - Tests: `tests/test_hook_module_literals.py` (every `$.env.get` in `plugins/lane-stack/hooks/*.ts` takes a literal name; red on 1.65.3).
+
 ## 1.65.3 — 2026-10-13
 
 - **Jev routes only the subagents a lane session spawns; the session's own turns keep their effort.** 1.65.1 still routed the first turn of a lane session (a Lane Pilot PM chat, a lane-pm session), so the owner's first message there changed the effort. The Claude Code `jev-router` hook now acts only on `agent.spawn` in a session with a lane marker: it picks the subagent's model and effort once, and the subagent's turns keep that effort. Turns of the session itself, the owner's messages, are never routed. (OpenCode writers are tasks Lane Pilot or lane-session launch, and they are still routed once at the task's start.)

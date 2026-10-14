@@ -243,9 +243,15 @@ async function getJevRoute(
   },
   config: HookConfig,
 ): Promise<JevRoute | null> {
+  // The engine accepts only a literal name in $.env.get, so each variable is read by name.
+  const fromEnv: Record<string, string | undefined> = {
+    OPENLUX_API_KEY: await $.env.get('OPENLUX_API_KEY'),
+    TYPESAFE_API_KEY: await $.env.get('TYPESAFE_API_KEY'),
+    JEV_API_KEY: await $.env.get('JEV_API_KEY'),
+    JEV_PROVIDER: await $.env.get('JEV_PROVIDER'),
+  };
   const read = async (name: string): Promise<string | undefined> => {
-    const fromEnv = await $.env.get(name);
-    if (fromEnv) return fromEnv;
+    if (fromEnv[name]) return fromEnv[name];
     const settings = await $.settings.read();
     const env = settings['env'];
     if (env && typeof env === 'object') {

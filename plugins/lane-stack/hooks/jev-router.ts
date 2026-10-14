@@ -24,9 +24,15 @@ async function getJevRoute($: {
   env: { get: (name: string) => Promise<string | undefined> }
   settings: { read: () => Promise<Readonly<Record<string, unknown>>> }
 }): Promise<JevRoute | null> {
+  // The engine accepts only a literal name in $.env.get, so each variable is read by name.
+  const fromEnv: Record<string, string | undefined> = {
+    OPENLUX_API_KEY: await $.env.get('OPENLUX_API_KEY'),
+    TYPESAFE_API_KEY: await $.env.get('TYPESAFE_API_KEY'),
+    JEV_API_KEY: await $.env.get('JEV_API_KEY'),
+    JEV_PROVIDER: await $.env.get('JEV_PROVIDER'),
+  }
   const read = async (name: string): Promise<string | undefined> => {
-    const fromEnv = await $.env.get(name)
-    if (fromEnv) return fromEnv
+    if (fromEnv[name]) return fromEnv[name]
     const settings = await $.settings.read()
     const env = settings['env']
     if (env && typeof env === 'object') {
@@ -83,12 +89,17 @@ async function classify(
 
 // Routing picks a subagent's model and effort once, when a lane session spawns it. The session's own turns (the owner's
 // messages) keep the effort the owner chose, and the owner's plain sessions are never routed (owner 2026-10-13).
-const LANE_MARKERS = ['LANE_PILOT_AGENT_TYPE', 'LANE_PILOT_ROLE', 'LANE_STACK_SESSION', 'LANE_PROMPT_FILE', 'LANE_TASK_FILE']
-
+// The engine accepts only a literal name in $.env.get, so each marker is read by name.
 async function laneRouting($: { env: { get: (name: string) => Promise<string | undefined> } }): Promise<boolean> {
   if (!routeEnabled(await $.env.get('LANE_JEV_EFFORT'))) return false
-  for (const name of LANE_MARKERS) if ((await $.env.get(name))?.trim()) return true
-  return false
+  const markers = [
+    await $.env.get('LANE_PILOT_AGENT_TYPE'),
+    await $.env.get('LANE_PILOT_ROLE'),
+    await $.env.get('LANE_STACK_SESSION'),
+    await $.env.get('LANE_PROMPT_FILE'),
+    await $.env.get('LANE_TASK_FILE'),
+  ]
+  return markers.some((value) => Boolean(value?.trim()))
 }
 
 export const register: Register = (on: On, _options: PluginOptions) => {
