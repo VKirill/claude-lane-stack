@@ -289,6 +289,50 @@ def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
     return pushes
 
 
+def _shell_c_payloads(command: str, depth: int = 4) -> list[str]:
+    """Nested bash/sh -c strings, bounded to four wrappers and parsed as commands.
+
+    Quoted payloads stay one shlex token, so token-based git checks must scan
+    them separately. Fail closed at the nesting limit rather than skip a body.
+    Non-shell heredocs remain data at every level.
+    """
+    lexer = shlex.shlex(_without_data_heredocs(command), posix=True, punctuation_chars=";&|()<>\n")
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    payloads: list[str] = []
+    tokens = [";" if token.strip("\n") == "" else token for token in lexer]
+    for words, _ in _shell_commands(tokens):
+        while words:
+            head = Path(words[0]).name
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]) or head in {"command", "exec"}:
+                words = words[1:]
+            elif head == "env":
+                words = _unwrap_env_args(words[1:]) or []
+            else:
+                break
+        if not words or Path(words[0]).name not in {"bash", "sh"}:
+            continue
+        index = 1
+        while index < len(words):
+            flag = words[index]
+            if flag in {"--rcfile", "--init-file", "-o", "-O"}:
+                index += 2
+                continue
+            if re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", flag):
+                if index + 1 < len(words):
+                    if depth <= 0:
+                        raise ValueError("shell -c nesting exceeds four wrappers")
+                    payload = _without_data_heredocs(words[index + 1])
+                    payloads.append(payload)
+                    payloads.extend(_shell_c_payloads(payload, depth - 1))
+                break
+            if not flag.startswith("-") or flag == "--":
+                break
+            index += 1
+    return payloads
+
+
 def _is_env_secret_file(name: str) -> bool:
     """True for dotenv-style files the PM may write without involving writers.
 
@@ -1566,7 +1610,12 @@ def main() -> None:
         emit_allow(client)
 
     # Destructive checks read commands, not report text a heredoc hands to a non-shell program.
-    low = _without_data_heredocs(cmd).lower()
+    stripped = _without_data_heredocs(cmd)
+    low = stripped.lower()
+    try:
+        push_scans = (stripped, *_shell_c_payloads(stripped))
+    except ValueError as exc:
+        emit_deny(client, f"[agent-guard] shell command cannot be safely parsed: {exc}")
 
     # A Lane Pilot BB chat (its launcher sets LANE_PILOT_AGENT_TYPE) runs writers as BB threads,
     # and Lane Pilot itself critiques, accepts and merges them into main.
@@ -1617,13 +1666,16 @@ def main() -> None:
 
     # force push: flags are read inside the push command itself and case-sensitively, so
     # `git commit -F msg && git push` is not a force push; +refspec forces too.
-    for args in _git_args(_without_data_heredocs(cmd), {"push"}):
-        forced = any(a == "--force" or a.startswith("--force=") or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) or (a.startswith("+") and len(a) > 1) for a in args)
-        if forced and lane_pilot_chat:
-            emit_deny(client, "[lane-pilot-guard] Force-push is not allowed in a Lane Pilot chat: origin moved, so someone else's work is there. "
-                      "Run git fetch, report what differs from origin, and dispatch a writer to integrate it; push again once that is merged.")
-        if forced and not any(a.startswith("--force-with-lease") for a in args):
-            emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
+    # Shell -c strings must be checked under the same policy as direct commands.
+    for scan in push_scans:
+        for args in _git_args(scan, {"push"}):
+            forced = any(a == "--force" or a.startswith("--force=") or re.fullmatch(r"-[a-zA-Z]*f[a-zA-Z]*", a) or (a.startswith("+") and len(a) > 1) for a in args)
+            if forced and lane_pilot_chat:
+                emit_deny(client, "[lane-pilot-guard] Force-push is not allowed in a Lane Pilot chat: origin moved, so someone else's work is there. "
+                          "Run git fetch, report what differs from origin, and dispatch a writer to integrate it; push again once that is merged.")
+            if forced and not any(a.startswith("--force-with-lease") for a in args):
+                emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
+
 
     # SQL destroyers (simple)
     if re.search(r"\b(drop\s+(table|database|schema)|truncate\s+table)\b", low):

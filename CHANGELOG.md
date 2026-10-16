@@ -1,3 +1,7 @@
+## Unreleased
+
+- **Nested force-push guard (PR #3).** Inspect bash/sh `-c` payloads, including `sh -lc`, `env` wrappers and nested shells; reject nesting beyond four wrappers. Preserve Lane Pilot's stricter force-push policy and the ordinary `--force-with-lease` exemption. Keep echo text and non-shell heredocs as data. Thanks @gasyoun for reporting the bypass and contributing the fix.
+
 ## 1.65.4 — 2026-10-14
 
 - **`/compact` runs through Jev again; winnow and jev-router are back.** Claude Code 2.1.299 refuses a function-hook module whose `$.env.get` takes anything but a literal name, and `fast-jev.ts` read `OPENLUX_API_KEY`/`JEV_PROVIDER` as `$.env.get(name)`. The whole `lane-mods.ts` module did not load («hooks module lane-stack@claude-lane-stack failed to load … $.env.get takes a literal name»), so `/compact` fell back to the built-in Opus summary (~17 s) on every host, and winnow and the jev-router were off too. `fast-jev.ts` and `jev-router.ts` now read each variable and lane marker by its literal name. Measured on the Mac mini: the module loads, `/compact` keeps 12/20 messages with no summary in 0.95 s (OpenLux `jev-1.13.0:stable`).
