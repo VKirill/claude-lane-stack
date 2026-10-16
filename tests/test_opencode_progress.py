@@ -48,13 +48,14 @@ recordTool("redaction", "mcp__server__search", {
 }, JSON.stringify({ result: "safe-mcp-value", token: secret, authorization: `Bearer ${bearer}` }))
 for (let i = 0; i < 3; i++) recordTool("redaction", "shell", { command: "printf evidence" }, `shell ${i}`)
 await repeatHint(JSON.stringify({ task: "progress", token: secret }), "shell", "shell 2", 3, "redaction")
+if (!requestBody) throw new Error("Jev request was not exercised")
 if (requestBody.includes(secret)) throw new Error("secret reached Jev")
 if (requestBody.includes(bearer)) throw new Error("bearer reached Jev")
 if (!requestBody.includes("safe-mcp-value")) throw new Error("safe evidence was lost")
 if (!requestBody.includes("shell 0")) throw new Error("prior evidence was lost")
 console.log("redaction-ok")
 '''
-        env = {**os.environ, "LANE_LOG": "0"}
+        env = {**os.environ, "LANE_LOG": "0", "LANE_STACK_ROOT": str(ROOT), "JEV_PROVIDER": "typesafe"}
         result = subprocess.run(["bun", "-e", script], cwd=ROOT, env=env, capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("redaction-ok", result.stdout)
