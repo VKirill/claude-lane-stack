@@ -1238,6 +1238,10 @@ class NightReviewTest(unittest.TestCase):
 
     def test_max_fix_tasks_caps_compiled_writer_tasks(self) -> None:
         # Persist more than 5 findings, then compile with cap=5.
+        # Every read_first target must exist in the snapshot used by the writer.
+        for index in range(7):
+            self._write_commit(f"file-{index}.txt", f"fixture {index}\n", f"seed file {index}")
+        self.head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.repo, text=True).strip()
         reviewed = self.run_review(
             "--codex-bin",
             str(self.fake_codex),

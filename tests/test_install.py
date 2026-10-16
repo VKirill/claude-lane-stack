@@ -34,6 +34,15 @@ USER_SITE_PACKAGES = site.getusersitepackages()
 def _fake_home_env(home: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["HOME"] = str(home)
+    # These tests cover file/config installation, not npm package delivery.
+    # Keep their temporary homes offline and independent of the npm registry.
+    fake_bin = home / "test-bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    npm = fake_bin / "npm"
+    npm.write_text("#!/bin/sh\nexit 0\n")
+    npm.chmod(0o755)
+    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
+    env["LANE_INSTALL_CODEX_PLUGIN"] = "0"
     if USER_SITE_PACKAGES and Path(USER_SITE_PACKAGES).is_dir():
         env["PYTHONPATH"] = os.pathsep.join(
             part for part in (USER_SITE_PACKAGES, env.get("PYTHONPATH", "")) if part
@@ -695,7 +704,7 @@ class InstallTest(unittest.TestCase):
                 ROOT,
                 stack,
                 ignore=shutil.ignore_patterns(
-                    ".agents", ".claude-bridge", ".git", "__pycache__", "*.pyc"
+                    ".agents", ".bb", ".gitnexus", ".claude-bridge", ".git", "__pycache__", "*.pyc"
                 ),
             )
             cache = stack / "bin" / "__pycache__"

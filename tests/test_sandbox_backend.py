@@ -143,9 +143,14 @@ class BuildSeatbeltProfileTest(unittest.TestCase):
             writable_paths=(self.cwd,),
             hidden_paths=(),
         )
-        for root in ("/private/tmp", "/private/var/folders", "/dev"):
+        for root in sandbox_backend.SYSTEM_WRITABLE_ROOTS:
+            resolved = root.resolve()
             with self.subTest(root=root):
-                self.assertIn(f'(subpath "{root}")', text)
+                rule = f'(subpath "{resolved}")'
+                if resolved.exists():
+                    self.assertIn(rule, text)
+                else:
+                    self.assertNotIn(rule, text)
 
     def test_control_root_write_deny_comes_after_write_allows(self) -> None:
         text = sandbox_backend.build_seatbelt_profile(

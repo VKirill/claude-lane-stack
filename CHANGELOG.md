@@ -1,6 +1,9 @@
-## Unreleased
+## 1.65.5 — 2026-10-16
 
 - **Nested force-push guard (PR #3).** Inspect bash/sh `-c` payloads, including `sh -lc`, `env` wrappers and nested shells; reject nesting beyond four wrappers. Preserve Lane Pilot's stricter force-push policy and the ordinary `--force-with-lease` exemption. Keep echo text and non-shell heredocs as data. Thanks @gasyoun for reporting the bypass and contributing the fix.
+
+- **CI restored.** Reinstate the workflow removed in August with Python 3.12, Node 24, Bun 1.4.3, ripgrep and real bubblewrap checks. Isolate installation and cron-PATH tests from installed CLIs and npm delivery; supply real files to the night-review fixture; make Seatbelt assertions reflect existing system paths. Run Jev source-consumer tests under Bun and check retained local history plus the intentionally abridged outbound evidence.
+- **Issue #1 revalidated.** The teammate-idle sentinel already resolves the teammate's own transcript (426ff49, August 28); parent-versus-teammate regression tests pass. Thanks @VKirill for the report and follow-up that informed this release.
 
 ## 1.65.4 — 2026-10-14
 

@@ -28,10 +28,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
       - name: Install test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends bubblewrap rsync
+          sudo apt-get install --yes --no-install-recommends bubblewrap rsync ripgrep
           # Ubuntu hosted runners restrict unprivileged uid maps. Bubblewrap's
           # supported setuid mode keeps the tests unprivileged while allowing
           # their real namespace boundary to run in this ephemeral VM.

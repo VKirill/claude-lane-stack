@@ -132,7 +132,7 @@ class PmReadTest(unittest.TestCase):
             block, lines, reason = should_block_read(path, cfg=on)
             self.assertTrue(block)
             self.assertEqual(lines, 400)
-            self.assertIn("pm_read --path", reason)
+            self.assertRegex(reason, r"pm_read(?:\.py)? --path")
             self.assertIn("/bulk-reader", reason)
             self.assertIn(BRIEF_MARK, reason)
             self.assertIn("Redirect, not a failure", reason)
@@ -162,7 +162,7 @@ class PmReadTest(unittest.TestCase):
             hit, lines, reason = should_block_bash(cmd, Path(tmp), on)
             self.assertEqual(hit, path.resolve())
             self.assertEqual(lines, 400)
-            self.assertIn("pm_read --path", reason)
+            self.assertRegex(reason, r"pm_read(?:\.py)? --path")
             self.assertIsNone(should_block_bash(f"cat {path.name} | grep foo", Path(tmp), on)[0])
             self.assertEqual(
                 should_block_bash(f"sed -n 1,40p {path.name}", Path(tmp), on)[0],

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -100,22 +101,21 @@ class DocsMaintainProjectTest(unittest.TestCase):
     def test_cron_path_finds_codex(self) -> None:
         script = (ROOT / "bin" / "lane-cron-path.sh").read_text(encoding="utf-8")
         self.assertIn(".local/bin", script)
-        result = subprocess.run(
-            [
-                "env",
-                "-i",
-                f"HOME={os.environ.get('HOME', '/home/ubuntu')}",
-                "PATH=/usr/bin:/bin",
-                "bash",
-                "-c",
-                f". {ROOT / 'bin' / 'lane-cron-path.sh'}; command -v codex",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("codex", result.stdout)
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            codex = home / ".local" / "bin" / "codex"
+            codex.parent.mkdir(parents=True)
+            codex.write_text("#!/bin/sh\nexit 0\n")
+            codex.chmod(0o755)
+            result = subprocess.run(
+                [
+                    "env", "-i", f"HOME={home}", "PATH=/usr/bin:/bin", "bash", "-c",
+                    f". {shlex.quote(str(ROOT / 'bin' / 'lane-cron-path.sh'))}; command -v codex",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), str(codex))
 
 
 if __name__ == "__main__":

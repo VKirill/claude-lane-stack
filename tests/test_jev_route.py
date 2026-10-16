@@ -28,6 +28,12 @@ def _node(script: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _bun(script: str) -> subprocess.CompletedProcess[str]:
+    # fast-jev's source imports .js specifiers resolved to .ts by Bun (as in OpenCode).
+    env = {**os.environ, "LANE_LOG": "0", "JEV_PROVIDER": "typesafe"}
+    return subprocess.run(["bun", "-e", script], cwd=ROOT, capture_output=True, text=True, env=env, timeout=30)
+
+
 class JevRouteTest(unittest.TestCase):
     def test_opencode_routes_the_task_after_the_writer_contract(self) -> None:
         out = _node(f"""
@@ -157,7 +163,7 @@ class JevRouteTest(unittest.TestCase):
 
     def test_diagnosis_requires_failed_exit_not_error_words(self) -> None:
         diagnose = ROOT / "profiles/opencode/opencode-lane/diagnose.ts"
-        out = _node(f"""
+        out = _bun(f"""
             import {{ diagnoseFailure }} from {diagnose.as_uri()!r};
             import assert from 'node:assert/strict';
             process.env.LANE_OPENCODE_JEV = '1';
@@ -188,7 +194,7 @@ class JevRouteTest(unittest.TestCase):
 
     def test_jev_consumers_keep_full_tasks_results_and_criteria(self) -> None:
         modules = ROOT / "profiles/opencode/opencode-lane"
-        out = _node(f"""
+        out = _bun(f"""
             import {{ skillHint, skillPhase }} from {(modules / 'skill-hint.ts').as_uri()!r};
             import {{ recordTool, recentAttempts, repeatHint }} from {(modules / 'budget.ts').as_uri()!r};
             import {{ evidenceNotes }} from {(modules / 'evidence.ts').as_uri()!r};
@@ -222,11 +228,17 @@ class JevRouteTest(unittest.TestCase):
             const command = 'long command '.repeat(100) + 'FINAL ARGUMENT';
             for (let i = 0; i < 10; i++) recordTool('full-budget', 'shell', {{ command }}, result + i);
             assert.equal(recentAttempts('full-budget').length, 10);
+            assert.equal(recentAttempts('full-budget')[0].tail, result + '0');
             await repeatHint(task, 'shell', result, 3, 'full-budget');
-            assert.equal(requests.at(-1).state.output, result);
+            // Local history stays verbatim; only the outbound Jev request is bounded.
+            assert.ok(requests.at(-1).state.output.length < result.length);
+            assert.match(requests.at(-1).state.output, /chars omitted/);
+            assert.ok(requests.at(-1).state.output.startsWith('Earlier test output'));
+            assert.ok(requests.at(-1).state.output.endsWith('AssertionError: LAST FAILURE'));
             assert.equal(requests.at(-1).state.prior.length, 10);
             assert.ok(requests.at(-1).state.prior[0].cmd.endsWith('FINAL ARGUMENT|'));
-            assert.equal(requests.at(-1).state.prior[0].tail, result + '0');
+            assert.ok(requests.at(-1).state.prior[0].tail.startsWith('Earlier test output'));
+            assert.ok(requests.at(-1).state.prior[0].tail.endsWith('AssertionError: LAST FAILURE0'));
             const dir = mkdtempSync('/tmp/lane-evidence-full-');
             try {{
                 process.env.LANE_TASK_FILE = dir + '/task.yaml';
