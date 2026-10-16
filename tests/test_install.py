@@ -797,7 +797,14 @@ class InstallTest(unittest.TestCase):
             home.mkdir()
             project.mkdir()
             subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+            # Exercise installation without relying on a CLI in the developer's PATH.
+            fake_bin = tmp / "bin"
+            fake_bin.mkdir()
+            claude = fake_bin / "claude"
+            claude.write_text("#!/bin/sh\necho 'claude test stub'\n")
+            claude.chmod(0o755)
             env = _fake_home_env(home)
+            env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
             env["LANE_INSTALL_CLAUDE_PLUGIN"] = "0"
             env.pop("CODEX_HOME", None)
 

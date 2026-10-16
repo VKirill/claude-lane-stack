@@ -15,7 +15,12 @@ BIN = ROOT / "bin" / "project-onboard"
 
 def _env(tmp: str) -> dict[str, str]:
     env = os.environ.copy()
-    env["PATH"] = f"{ROOT / 'bin'}:{env.get('PATH', '')}"
+    fake_bin = Path(tmp) / "test-bin"
+    fake_bin.mkdir(exist_ok=True)
+    claude = fake_bin / "claude"
+    claude.write_text("#!/bin/sh\necho 'claude test stub'\n")
+    claude.chmod(0o755)
+    env["PATH"] = f"{fake_bin}:{ROOT / 'bin'}:{env.get('PATH', '')}"
     env["HOME"] = tmp
     env["ONBOARD_DRY_RUN"] = "1"
     return env
