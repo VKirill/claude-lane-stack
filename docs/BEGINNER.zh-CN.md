@@ -308,3 +308,14 @@ claude --agent dev-orchestrator
 | 项目记忆（PROGRESS / LESSONS） | [PROJECT-MEMORY.md](PROJECT-MEMORY.md) |
 
 > 🏭 在本页任何地方卡住了？打开 PM 聊天问一句：*「用大白话解释一下这个」*。教会你**本来就是**它工作的一部分。
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)

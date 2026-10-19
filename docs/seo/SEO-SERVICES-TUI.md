@@ -342,3 +342,8 @@ Claude registration: MCP server name **`dataforseo`**
 2. Resolve worker via `seo-routing resolve <stage>` or `seo-dispatch --stage`
 3. Prefer `snapshot.md` and SERP dumps over raw HTML
 4. If credentials missing → tell human to run `seodoc`
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/seo/SOLO-SEO-ORCHESTRATION.md](SOLO-SEO-ORCHESTRATION.md)

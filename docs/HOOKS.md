@@ -1,4 +1,31 @@
-# Agent hooks / guards — multi-CLI (2026-07)
+---
+title: Agent hooks / guards — multi-CLI
+type: component
+created: 2026-07-11
+updated: 2026-10-19
+status: active
+confidence: medium
+tags: [hooks, guards, cli]
+sources:
+  - hooks/guard_shell.py
+  - hooks/session_ledger.py
+  - hooks/pm_stop_sentinel.py
+  - plugins/lane-stack/hooks/jev-router.ts
+  - profiles/cursor/lane-writer/scripts/before_read.py
+  - profiles/opencode/opencode-lane/index.ts
+  - plugins/lane-stack/winnow/sidecar/src/winnow/serve.py
+  - plugins/lane-stack/winnow/sidecar/src/winnow/extract.py
+  - plugins/lane-stack/winnow/sidecar/src/winnow/policy.py
+  - plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py
+  - plugins/lane-stack/winnow/sidecar/src/winnow/chunk.py
+---
+# Agent hooks / guards — multi-CLI
+
+TL;DR: Shared host hooks enforce shell and lifecycle policy; provider-specific adapters translate each CLI event into the same guarded behavior, while Winnow filters supported tool output and fails open on unavailable judgment (`hooks/guard_shell.py:1-40`, `plugins/lane-stack/winnow/sidecar/src/winnow/serve.py:92-120`).
+
+## Purpose
+
+Document the hook entry points, shared guards, and adapter-specific failure behavior across supported CLIs (`plugins/lane-stack/hooks/jev-router.ts:105-129`, `profiles/cursor/lane-writer/scripts/before_read.py:25-37`).
 
 Deterministic guards that catch agents mid-flight. Shared logic lives in
 `~/.agents/hooks/`; each CLI wires its own config format.
@@ -43,9 +70,7 @@ Config: `~/.claude/settings.json` → `hooks`
 
 Legacy scripts still in `~/.codex/hooks/` (`block-dangerous-shell.py`, handoff-*) — optional; new wiring uses shared Python.
 
-**Trust:** first time may need hook trust (`--dangerously-bypass-hook-trust` only for automation). Restart Codex after editing hooks.json.
-
-Matcher notes: Codex PreToolUse often matches **Bash/shell**; file edits via `apply_patch`.
+Restart Codex after editing its hooks configuration.
 
 ---
 
@@ -139,11 +164,11 @@ Community names (X / blogs 2026):
 ### Night audit recipe
 
 ```bash
-# recent sessions
+: 'recent sessions'
 head -30 .agents/session-log/INDEX.md
-# open debt
+: 'open debt'
 cat .agents/agent-notes/OPEN.md
-# for each session: verify tests cover touched paths, close OPEN items
+: 'for each session: verify tests cover touched paths, close OPEN items'
 ```
 
 ### Run reports (lanes)
@@ -156,6 +181,30 @@ Session ledger is the automatic cross-CLI layer; run reports are richer for inte
 See [PROJECT-MEMORY.md](./PROJECT-MEMORY.md). Init: `~/.agents/bin/project-memory-init .` 
 Night: `~/.agents/bin/night-audit .` 
 Skill: `project-life`.
+
+## Cursor read gate
+
+The Cursor `before_read.py` hook reads one JSON payload from stdin, imports `decide_read`, and writes its permission response. A malformed result or exception returns `{"permission":"allow"}` (`profiles/cursor/lane-writer/scripts/before_read.py:25-37`). This hook therefore fails open on its own import or parsing failures.
+
+## Jev agent-spawn routing
+
+The `jev-router` plugin routes only lane-marked non-fork agent spawns. It strips a raw task YAML preamble before classification, falls back to the default route on missing credentials, timeout, or request/parse errors, caches the result by spawned agent ID, then applies the cached effort to that agent’s turn steps (`plugins/lane-stack/hooks/jev-router.ts:16-20`, `plugins/lane-stack/hooks/jev-router.ts:61-88`, `plugins/lane-stack/hooks/jev-router.ts:90-129`).
+
+## OpenCode lane plugin
+
+`OpenCodeLanePlugin` starts telemetry and the Winnow sidecar in every session, and gates writer guard, notes, sticky task context, and effort routing on lane markers (`profiles/opencode/opencode-lane/index.ts:207-234`). Lane chat messages update per-session prompt state and add a skill hint; failures are logged and contained (`profiles/opencode/opencode-lane/index.ts:243-262`).
+
+## Winnow response filtering
+
+`handle_with_meta` increments request counters, skips unworthy post-tool events, obtains the judge runtime, and dispatches post-tool or user-prompt handlers. If runtime startup fails, it sends one notice and leaves tool results untouched; event exceptions are logged without breaking the tool call (`plugins/lane-stack/winnow/sidecar/src/winnow/serve.py:92-120`).
+
+The response extractor rewrites Bash `stdout`, Read file content, Grep content, or a string response. Other response shapes return `None` and remain unchanged (`plugins/lane-stack/winnow/sidecar/src/winnow/extract.py:30-82`). `decide` keeps blocks with missing probabilities and uncertain scores; it prunes only scores below `drop`, unless the error score reaches `keep` or the proposed pruning ratio is below `min_prune_ratio` (`plugins/lane-stack/winnow/sidecar/src/winnow/policy.py:23-59`).
+
+`winnow_recall` uses the stub’s key to load cached output, optionally returns an inclusive line range, and reports a missing key when the cache entry is absent (`plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py:21-37`).
+
+## Before-read extraction limits
+
+Winnow splits extracted text into numbered blocks. It closes a block at `block_lines` or at a blank line after at least half that size, and increases block size to stay within `max_blocks` (`plugins/lane-stack/winnow/sidecar/src/winnow/chunk.py:22-57`).
 
 ## Orchestrator guard (PM allowlist)
 
@@ -190,3 +239,49 @@ Policy lives in `hooks/guard_shell.py` and is installed into
 Mid-session policy flips without install are a defect class
 (`orchestrator-guard-midsession-tightening`); pin by not rewriting
 `settings.json` mid-run and always passing `agent_type` on tool payloads.
+
+## How it works
+
+1. The host CLI emits a hook event and payload.
+2. The adapter normalizes that payload and calls shared policy or provider-specific logic (`hooks/guard_shell.py:1-40`, `profiles/cursor/lane-writer/scripts/before_read.py:25-37`).
+3. A guard returns an allow/deny response or raises a provider-recognized error; observer hooks append session or telemetry data (`hooks/session_ledger.py:1-40`, `profiles/opencode/opencode-lane/index.ts:282-309`).
+
+| Hook mode | Input | Output | Failure behavior |
+|---|---|---|---|
+| Shell guard | Tool command and session context | Allow or deny response | Guard policy is evaluated before shell execution (`hooks/guard_shell.py:1-40`). |
+| Cursor before-read | JSON hook payload from stdin | `permission: allow|deny` | Malformed output or exception returns allow (`profiles/cursor/lane-writer/scripts/before_read.py:25-37`). |
+| Jev agent route | Non-fork lane-agent prompt | Model and effort route | Missing route or classification error uses the default route (`plugins/lane-stack/hooks/jev-router.ts:61-88`). |
+| Winnow post-tool | Tool name, input, and result | Rewritten output or pass-through | Unsupported output or unavailable judge leaves original output intact (`plugins/lane-stack/winnow/sidecar/src/winnow/serve.py:101-120`, `plugins/lane-stack/winnow/sidecar/src/winnow/extract.py:30-82`). |
+
+## Business rules
+
+- A non-fork spawn is routed only when a lane marker is present (`plugins/lane-stack/hooks/jev-router.ts:90-113`).
+- Winnow keeps missing-probability and uncertain blocks; it prunes only low-probability blocks when the overall savings pass the configured threshold (`plugins/lane-stack/winnow/sidecar/src/winnow/policy.py:29-59`).
+- Winnow recall line bounds are inclusive and use the line numbering printed in the stub (`plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py:22-37`).
+
+## Public commands
+
+| Command / tool | Purpose |
+|---|---|
+| `winnow_recall(key, start?, end?)` | Restore all or a line range from cached output (`plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py:21-37`). |
+| `winnow doctor` | Diagnose a missing Winnow judge runtime (`plugins/lane-stack/winnow/sidecar/src/winnow/serve.py:103-110`). |
+
+## Gotchas
+
+- Cursor’s before-read adapter explicitly allows on exceptions, so adapter failure does not deny a read (`profiles/cursor/lane-writer/scripts/before_read.py:25-37`).
+- Winnow chunk IDs are zero-based indexes formatted with a `b` prefix; line starts are one-based (`plugins/lane-stack/winnow/sidecar/src/winnow/chunk.py:9-19`, `plugins/lane-stack/winnow/sidecar/src/winnow/chunk.py:43-57`).
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [Beginner guide](BEGINNER.ru.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)
+- [Claude Lane Stack architecture](architecture.md)
+- [Claude Lane Stack overview](overview.md)

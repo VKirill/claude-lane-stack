@@ -1,6 +1,40 @@
+---
+title: Claude Companion code-review pack
+type: component
+created: 2026-07-18
+updated: 2026-10-19
+status: stale
+confidence: medium
+tags: [review, night-shift, historical]
+sources:
+  - bin/jev_slots.py
+  - bin/run-validate
+  - board/server/server.mjs
+  - schemas/finding-v1.schema.json
+  - schemas/task-review-receipt-v2.schema.json
+---
 # Claude Companion code-review pack
 
+TL;DR: This is a historical reviewer checklist; its open questions have not all been re-audited against current code. The current night triage considers only actionable open findings and dismisses findings below the configured Jev cutoff (`bin/jev_slots.py:12-59`).
+
+The run validator checks acceptance schema and task identity before accepting receipt evidence (`bin/run-validate:348-421`). The board server exposes project, search, todo, task, review, and event reads, with unsupported API methods rejected (`board/server/server.mjs:126-227`). A task re-review receipt binds the verdict to a task hash, immutable base ref, reviewed diff hash, and reviewed tree hash (`schemas/task-review-receipt-v2.schema.json:18-50`).
+
 Reviewer-only pass. Do not modify source files.
+
+## How it works
+
+1. Read the linked plan and suggestions, then review only the listed implementation scope.
+2. For night findings, triage considers dictionary items marked actionable with status `open`, `needs_human`, or `in_progress`; no eligible items produce an empty result (`bin/jev_slots.py:16-26`).
+3. Jev evaluates eligible findings for code defects; a judge error returns without dismissing findings, while scores below `0.35` mark findings non-actionable and dismissed (`bin/jev_slots.py:47-59`).
+4. Before treating acceptance as valid, check the receipt schema, task identity and hash, current attempt, and accepted state (`bin/run-validate:348-398`).
+
+| Mode or state | What changes | Failure behavior |
+|---|---|---|
+| No eligible findings | Jev is not called and triage returns an empty list (`bin/jev_slots.py:16-26`). | Nothing is dismissed. |
+| Judge succeeds | Findings below the `0.35` cutoff are dismissed; findings at or above it keep their current status (`bin/jev_slots.py:12`, `bin/jev_slots.py:47-59`). | — |
+| Judge errors | Triage returns an empty dismissed-fingerprint list (`bin/jev_slots.py:47-50`). | Findings remain unchanged by this function. |
+| Acceptance valid | Schema and task evidence checks finish without errors (`bin/run-validate:348-398`). | — |
+| Acceptance missing, malformed, stale, or inconsistent | Validation adds an error for the missing file, parse/schema problem, mismatched task/hash/attempt, or non-accepted state (`bin/run-validate:348-398`). | Receipt validation fails. |
 
 ## Plan
 

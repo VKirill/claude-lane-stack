@@ -123,3 +123,8 @@ seo-resume
 - HANDOFF regenerated
 - Open tasks reflected on BOARD
 - No invented metrics left unmarked as hypotheses
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [DrMax SEO system](DRMAX-SYSTEM-2026.md)

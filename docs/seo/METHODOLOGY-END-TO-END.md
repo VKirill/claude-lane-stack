@@ -206,3 +206,8 @@ Multi-stage content PE, semantic cocoon (Matriarch/Mixed/Support), agentic chain
 | Bulk drafts | grok/qwen via seo-dispatch |
 | APIs | seo-services env + skills |
 | Code on site | dev-orchestrator |
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/seo/SOLO-SEO-ORCHESTRATION.md](SOLO-SEO-ORCHESTRATION.md)

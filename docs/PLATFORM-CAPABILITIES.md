@@ -90,3 +90,8 @@ adoc `main_write: qwen|grok|codex|cursor|opencode|…` selects the **process**, 
    until receipts and owns/verify stay identical.
 4. Prefer **role agent names** in new prompts; keep vendor aliases only for
    transition.
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md)

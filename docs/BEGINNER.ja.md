@@ -308,3 +308,14 @@ claude --agent dev-orchestrator
 | プロジェクトメモリ（PROGRESS / LESSONS） | [PROJECT-MEMORY.md](PROJECT-MEMORY.md) |
 
 > 🏭 このページのどこかで詰まった？ PM チャットを開いて聞きましょう：*「これを簡単に説明して」*。あなたに教えることも PM の仕事の**一部**です。
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)

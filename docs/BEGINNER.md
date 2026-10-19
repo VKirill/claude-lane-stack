@@ -338,3 +338,15 @@ Each CLI (Claude/Grok / Codex) talks to its own vendor exactly as it would stand
 | Project memory (PROGRESS / LESSONS) | [PROJECT-MEMORY.md](PROJECT-MEMORY.md) |
 
 > 🏭 Stuck anywhere on this page? Open the PM chat and ask: *«explain this simply»*. Teaching you **is** part of its job.
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)
+- [docs/COMPARISON.md](COMPARISON.md)

@@ -308,3 +308,14 @@ claude --agent dev-orchestrator
 | 프로젝트 메모리 (PROGRESS / LESSONS) | [PROJECT-MEMORY.md](PROJECT-MEMORY.md) |
 
 > 🏭 이 페이지 어딘가에서 막혔나요? PM 채팅을 열고 물어보세요: *«이거 쉽게 설명해줘»*. 당신을 가르치는 것도 PM 일의 **일부**예요.
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)

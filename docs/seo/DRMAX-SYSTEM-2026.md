@@ -1,4 +1,22 @@
-# DrMax SEO system (host stack) — 2026-08
+---
+title: DrMax SEO system
+type: overview
+created: 2026-08-29
+updated: 2026-10-19
+status: active
+confidence: medium
+tags: [seo, drmax, skills]
+sources:
+  - seo-system/modules/content-gist/module.yaml
+  - seo-system/modules/content-gist/scenarios/creation.yaml
+  - plugins/lane-stack/skills/seo-drmax-orchestrator/SKILL.md
+  - plugins/lane-stack/skills/seo-drmax-orchestrator/references/worker-routing.md
+---
+# DrMax SEO system
+
+TL;DR: The current content-GIST module is pinned to v4.3; this page’s source inventory remains a historical integration record and should not be used as an exhaustive current module catalog (`seo-system/modules/content-gist/module.yaml:1-27`).
+
+The current module registry describes the content module as X4 GIST v4.3 and configures the creation scenario with that version (`seo-system/modules/content-gist/module.yaml:6`, `seo-system/modules/content-gist/module.yaml:27`, `seo-system/modules/content-gist/scenarios/creation.yaml:9`).
 
 ## What was integrated
 
@@ -38,7 +56,7 @@ Templates: `~/.agents/templates/seo-project/{PROJECT,STATUS,BOARD}.md`
 | 4–6 | Assessor MC lite/full + Spam | Quality / scaled spam before publish |
 | 7 | Trend v4 | Early demand shifts |
 | 12 | SEO TITAN OS | Wide strategic OS analysis |
-| 13–20, 71–72 | GIST family → **v3.3 canonical** | Page creation/audit non-replaceable content |
+| 13–20, 71–72 | GIST family → **v4.3 current module** | Page creation/audit non-replaceable content (`seo-system/modules/content-gist/module.yaml:1-27`, `seo-system/modules/content-gist/scenarios/creation.yaml:1-16`) |
 | 21–22 | page-audit-001, SERP Barrier Breaker | Ranking pipeline / “good but loses” |
 | 23 | Chunk Sentinel | RAG chunking / extractability |
 | 25–37 | Reddit Mapper 0–6 | Audience voice → clusters |
@@ -82,7 +100,7 @@ Copy new DrMax originals 1:1 into the matching thin skill (`ORIGINAL.md` / `orig
 ```bash
 export PATH="$HOME/.agents/bin:$PATH"
 ccs                                    # claude --agent seo-specialist
-# or: cc → key s
+printf '%s\n' 'or: cc → key s'
 
 seo-init <slug> --domain example.com
 seo-resume .

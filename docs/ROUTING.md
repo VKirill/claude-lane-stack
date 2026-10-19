@@ -1,14 +1,54 @@
+---
+title: Model routing (Fable conductor — solo)
+type: component
+created: 2026-07-11
+updated: 2026-10-19
+status: active
+confidence: high
+tags: [routing, providers, jev]
+sources:
+  - bin/pipeline_stages.py
+  - bin/routing_profile.py
+  - plugins/lane-stack/hooks/jev-router.ts
+  - plugins/lane-stack/hooks/jev-route-core.ts
+  - plugins/lane-stack/fast-jev/src/provider.ts
+  - plugins/lane-stack/fast-jev/src/request.ts
+  - profiles/opencode/opencode-lane/index.ts
+  - board/web/js/router.js
+---
 # Model routing (Fable conductor — solo)
+
+TL;DR: Routing defaults come from `stages:`; Jev provider selection is credential-aware, while agent-spawn routing classifies eligible lane agents and caches each selected route for later effort updates (`bin/pipeline_stages.py:205-300`, `plugins/lane-stack/hooks/jev-router.ts:90-129`).
+
+## Purpose
+
+Describe the provider, model, and effort decisions used by configured run stages and lane agent hooks (`bin/pipeline_stages.py:205-300`, `plugins/lane-stack/hooks/jev-router.ts:105-129`).
 
 **No GPT-5.5.** Codex model choices in adoc come from the local Codex catalog,
 including GPT-6 Astra/Sol/Luna. Existing project model settings are preserved.
 
-Jev receives complete task text and evidence: no character, item-count, or local
-request-size truncation before classification, review, or context selection.
-Credential redaction and post-decision semantic pruning remain enabled. Provider
-errors use each integration's existing fallback; they never trigger input clipping.
-The OpenCode lane does not add history compaction during message transforms.
-Loaded Claude/OpenCode hooks require a new process to pick up plugin updates.
+Jev request state is bounded to 28,000 estimated tokens. The request builder
+repeatedly abridges the longest text fields, retaining head and tail, until the
+state fits; this is a request-size bound, not an unbounded full-text transfer
+(`plugins/lane-stack/fast-jev/src/request.ts:5-38`, `plugins/lane-stack/fast-jev/src/request.ts:41-46`).
+The request body contains the provider model, bounded state, and questions
+(`plugins/lane-stack/fast-jev/src/request.ts:60-83`). The OpenCode lane logs
+history compaction as off at startup (`profiles/opencode/opencode-lane/index.ts:220-228`).
+
+## Jev provider and agent route
+
+Provider IDs are `openlux` and `typesafe`; a forced `JEV_PROVIDER` with no
+matching key returns no route, otherwise OpenLux is selected first when its key
+exists and TypeSafe is the next option (`plugins/lane-stack/fast-jev/src/provider.ts:4-30`, `plugins/lane-stack/fast-jev/src/provider.ts:39-67`). The TypeScript provider table sets the OpenLux model to `jev-1.13.0:stable` with 1,500 ms timeout padding, and TypeSafe to `jev-latest` with no padding (`plugins/lane-stack/fast-jev/src/provider.ts:15-29`).
+
+`jev-router` classifies only non-fork lane agent spawns. It removes the raw-task
+YAML marker before sending the prompt; missing credentials, timeout, or request
+failure returns the default route. A successful route is cached by agent ID and
+its effort is applied on later turn steps (`plugins/lane-stack/hooks/jev-router.ts:16-20`, `plugins/lane-stack/hooks/jev-router.ts:61-88`, `plugins/lane-stack/hooks/jev-router.ts:105-129`).
+
+The `board/web/js/router.js` hash parser is separate from model routing: it maps
+`#/p/<project>` to the board and recognizes `todos`, `runs`, and `reviews`
+sections (`board/web/js/router.js:9-27`).
 
 ## Roles (full stack)
 
@@ -48,11 +88,9 @@ extension / `chrome-devtools --autoConnect`), `chrome-qa` (dedicated profile fro
 
 ```bash
 plan-critique --run-dir .agents/runs/<slug>
-# Read decision before dispatch:
-#   ship | revise | revise_required  (+ pm_action)
-# gate mode after fail:
+: 'Read decision before dispatch: ship | revise | revise_required (+ pm_action)'
 plan-critique --run-dir ... --ack --note "micro path, thin plan OK"
-# structural only (skip LLM):
+: 'structural only (skip LLM):'
 plan-critique --run-dir ... --structural-only
 ```
 
@@ -165,9 +203,9 @@ ten successful tasks (`workspace.session_max_tasks` in `routing.profile.yaml`,
 adoc Work tab `[` `]` / `,` `.`; `1` = new session every task). Review remains
 an independent cold session.
 Classified provider availability failures are sanitized in `runtime.json`. The
-controller waits 30 seconds by default, retries the exact selected model once, then
-may use one ephemeral `gpt-5.6-sol` + `high` writer attempt. It cannot switch on
-ownership, verification, cancellation, or an unknown failure.
+controller uses a 30-second retry backoff by default, retries eligible tasks, and
+can start one Codex fallback only when provider metadata marks the failure
+fallback-eligible (`bin/run-controller:1196-1257`, `bin/run-controller:1682-1725`).
 
 ## Parallelism (solo)
 
@@ -191,3 +229,57 @@ produce `owns-check.json`, and run `lane-ctl accept` immediately. Its
 3. NEVER = safety + never_touch + no merge to main 
 4. DONE = immutable task hash + report + owns check + independent verification + acceptance receipt
 5. Model ids live in wrappers / profile YAML — not invent 5.5 
+
+## How it works
+
+1. Stage defaults are created from the selected write provider and optional night-review provider (`bin/pipeline_stages.py:205-256`).
+2. The router checks lane markers and classifies eligible spawned agents with Jev (`plugins/lane-stack/hooks/jev-router.ts:90-113`).
+3. Provider selection reads explicit provider and credentials; the default order is OpenLux then TypeSafe (`plugins/lane-stack/fast-jev/src/provider.ts:39-67`).
+4. Requests are bounded to the configured token budget by abridging the longest string fields while retaining their head and tail (`plugins/lane-stack/fast-jev/src/request.ts:11-46`).
+5. The router caches successful route choice by agent ID and applies its effort on turn steps (`plugins/lane-stack/hooks/jev-router.ts:105-129`).
+
+| Route case | Inputs | Output | Failure behavior |
+|---|---|---|---|
+| Default stages | Write provider/model/effort and night settings | Full stage map; invalid write provider resolves to Kimi (`bin/pipeline_stages.py:205-256`). |
+| Forced Jev provider | `JEV_PROVIDER` and matching API key | Selected OpenLux or TypeSafe route | Missing forced-provider key returns no route (`plugins/lane-stack/fast-jev/src/provider.ts:39-54`). |
+| Automatic Jev provider | Available provider keys | OpenLux if keyed, otherwise TypeSafe | No key returns no route (`plugins/lane-stack/fast-jev/src/provider.ts:39-67`). |
+| Agent-spawn classifier | Non-fork prompt plus lane marker | Cached subagent model and effort | Missing credentials, timeout, or parse/fetch error uses the current effort and Sonnet default route (`plugins/lane-stack/hooks/jev-router.ts:61-88`, `plugins/lane-stack/hooks/jev-route-core.ts:124-126`). |
+| Request state | Arbitrary Jev state and questions | JSON request with bounded state | Longest fields are head/tail abridged until estimated state size fits (`plugins/lane-stack/fast-jev/src/request.ts:11-46`, `plugins/lane-stack/fast-jev/src/request.ts:60-83`). |
+
+## Business rules
+
+- `default_stages` accepts only configured write-stage providers; invalid write provider falls back to Kimi (`bin/pipeline_stages.py:33-50`, `bin/pipeline_stages.py:205-215`).
+- A forced Jev provider is not silently replaced when its key is absent (`plugins/lane-stack/fast-jev/src/provider.ts:39-54`).
+- AGY effort suffix wins over requested effort; `xhigh` maps to `high` because the CLI accepts low, medium, and high (`bin/routing_profile.py:44-59`).
+- Browser hash routes are a separate UI router and map project pages to board, todos, runs, or reviews (`board/web/js/router.js:9-27`).
+
+## Public commands and interfaces
+
+| Interface | Purpose |
+|---|---|
+| `default_stages(...)` | Construct defaults for plan critique, write, review, specialist, onboarding, memory, docs, and browser QA (`bin/pipeline_stages.py:205-300`). |
+| `resolveJevRoute(read)` | Resolve provider key from environment/settings (`plugins/lane-stack/fast-jev/src/provider.ts:57-67`). |
+| `register(on, options)` | Register lane agent spawn and turn-step hooks (`plugins/lane-stack/hooks/jev-router.ts:105-129`). |
+| `parseRoute(hash)` | Parse Lane Board hash navigation (`board/web/js/router.js:9-20`). |
+
+## Gotchas
+
+- Jev does not receive unlimited text: `boundState` abridges long state fields (`plugins/lane-stack/fast-jev/src/request.ts:11-46`).
+- A Jev route error leaves the original spawned model and effort in use (`plugins/lane-stack/hooks/jev-router.ts:61-88`, `plugins/lane-stack/hooks/jev-router.ts:105-113`).
+- AGY effort values outside the accepted set normalize to high (`bin/routing_profile.py:47-59`).
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [Beginner guide](BEGINNER.ru.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)
+- [docs/SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md)
+- [Claude Lane Stack architecture](architecture.md)
+- [Claude Lane Stack overview](overview.md)

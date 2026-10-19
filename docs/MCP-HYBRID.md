@@ -85,3 +85,8 @@ Install browser extensions there only when a case needs them. `chrome-qa stop`
 closes it. With `--autoConnect` the agent must open its own page (`new_page`),
 never touch other tabs and close its pages; Chrome shows the consent dialog each
 time the MCP server connects and that cannot be pre-approved on the default profile.
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/MCP-LEAN.md](MCP-LEAN.md)
