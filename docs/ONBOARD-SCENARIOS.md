@@ -50,3 +50,10 @@ ONBOARD_DRY_RUN=1 project-onboard .   # wire-check without calling the model
 ONBOARD_REFRESH=weekly  # docs-maintainer ≈ 7 days
 ```
 
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)
+- [docs/COMPARISON.md](COMPARISON.md)
+- [docs/SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md)

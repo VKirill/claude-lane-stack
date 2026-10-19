@@ -160,3 +160,16 @@ PROGRESS.md ← Now/Next updated
 ## Language
 
 All agent-written files **English**. Chat with human **Russian**. See [LANGUAGE.md](LANGUAGE.md).
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)
+- [docs/seo/SOLO-SEO-ORCHESTRATION.md](seo/SOLO-SEO-ORCHESTRATION.md)

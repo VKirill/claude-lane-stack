@@ -42,3 +42,9 @@ Always English:
 
 - Legal/marketing copy that is product content for RU users (app UI strings, customer emails) — product locale, not agent ops docs.
 - User explicitly asks for a RU human-facing doc (blog post, client brief) — then that artifact may be RU; still keep CLAUDE/runs/todos in EN.
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/FILE-CONTRACT.md](FILE-CONTRACT.md)
+- [docs/SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md)

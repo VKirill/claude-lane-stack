@@ -358,3 +358,15 @@ claim, or a `status: done` line in legacy YAML is not sufficient for schema v2.
 ## Task decomposition (PM)
 
 See skill `orchestrator-lanes`: one product outcome per task; minimal unlock tasks for `depends_on`; L1 focused verification; never put package caches in `owns_paths`. SPEC.md must be filled when score≥7 or the run has ≥2 tasks (`run-validate` enforces).
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)

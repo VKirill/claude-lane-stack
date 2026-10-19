@@ -379,3 +379,19 @@ This is not a reset command: cascaded dependency blocks and terminal
 the PM creates a replacement run for unresolved tasks with updated dependencies.
 Do not edit `controller.json` by hand or repeatedly call `start` expecting it
 to reopen a terminal run.
+
+<!-- lane-pilot:backlinks -->
+## Referenced by
+
+- [docs/BEGINNER.de.md](BEGINNER.de.md)
+- [docs/BEGINNER.es.md](BEGINNER.es.md)
+- [docs/BEGINNER.fr.md](BEGINNER.fr.md)
+- [docs/BEGINNER.ja.md](BEGINNER.ja.md)
+- [docs/BEGINNER.ko.md](BEGINNER.ko.md)
+- [docs/BEGINNER.md](BEGINNER.md)
+- [docs/BEGINNER.pt-BR.md](BEGINNER.pt-BR.md)
+- [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md)
+- [docs/COMPARISON.md](COMPARISON.md)
+- [docs/FILE-CONTRACT.md](FILE-CONTRACT.md)
+- [Model routing (Fable conductor — solo)](ROUTING.md)
+- [docs/SOLO-ORCHESTRATION.md](SOLO-ORCHESTRATION.md)
