@@ -20,7 +20,7 @@ OPENCODE = ROOT / "profiles" / "opencode"
 INDEX = OPENCODE / "opencode-lane" / "index.ts"
 
 HARNESS = r"""
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import plugin from "%(index)s"
@@ -29,12 +29,19 @@ import * as lane from "%(index)s"
 globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => "" })
 const dir = mkdtempSync(join(tmpdir(), "oc-v2-"))
 writeFileSync(join(dir, "existing.txt"), "x")
-const agents = { "sess-lane": "lane-writer", "sess-plain": "build" }
+mkdirSync(join(dir, ".opencode", "skills", "linked-skill"), { recursive: true })
+writeFileSync(join(dir, ".opencode", "skills", "linked-skill", "SKILL.md"), "---\nname: linked-skill\n---\n")
+const agents = { "sess-lane": "lane-writer", "sess-plain": "build", "sess-pilot": "lane-pilot" }
 const rules = {
   "lane-writer": [
     { action: "*", resource: "*", effect: "allow" },
     { action: "shell", resource: "git commit*", effect: "deny" },
     { action: "webfetch", resource: "*", effect: "deny" },
+    { action: "skill", resource: "*", effect: "deny" },
+  ],
+  "lane-pilot": [
+    { action: "*", resource: "*", effect: "allow" },
+    { action: "shell", resource: "git push*", effect: "deny" },
   ],
 }
 const hooks = {}
@@ -47,7 +54,7 @@ const ctx = {
   permission: hook("permission"),
   // agent.get and mcp.list answer { location, data }, as measured on 2.1.2
   agent: { get: async ({ agentID }) => ({ location: {}, data: { id: agentID, permissions: rules[agentID] ?? [] } }) },
-  mcp: { list: async () => ({ data: [{ name: "gitnexus" }, { name: "agentmemory" }, { name: "metamcp" }] }) },
+  mcp: { list: async () => ({ data: [{ name: "gitnexus" }, { name: "agentmemory" }, { name: "metamcp" }, { name: "bb_opencode2_0123456789abcdef0123" }, { name: "other" }] }) },
   storage: { get: async () => undefined, set: async () => {} },
 }
 const cleanup = await plugin.setup(ctx)
@@ -132,6 +139,45 @@ out.plainMcp = await refuses(() => call("build", "metamcp_search", {}))
         self.assertIn("skill blocked", out["laneSkillBlocked"])
         self.assertIs(out["laneSkillOk"], False)
         self.assertEqual((out["plainWrite"], out["plainCommit"], out["plainMcp"]), (False, False, False))
+
+    def test_lane_pilot_keeps_bb_tools_metamcp_and_linked_skills(self) -> None:
+        out = run_harness(r"""
+const before = hooks["tool.execute.before"]
+const call = (agent, tool, input) => before({ tool, sessionID: agent === "lane-pilot" ? "sess-pilot" : "sess-lane", agent, input })
+for (const agent of ["lane-pilot", "lane-writer"]) {
+  out[agent] = {
+    bb: await refuses(() => call(agent, "bb_opencode2_0123456789abcdef0123_lane_pilot_route", {})),
+    metamcp: await refuses(() => call(agent, "metamcp_mcp_call", {})),
+    gitnexus: await refuses(() => call(agent, "gitnexus_query", {})),
+    other: await refuses(() => call(agent, "other_tool", {})),
+    linked: await refuses(() => call(agent, "skill", { id: "linked-skill" })),
+    host: await refuses(() => call(agent, "skill", { id: "ru-text" })),
+    commit: await refuses(() => call(agent, "shell", { command: "git commit -m x" })),
+    web: await refuses(() => call(agent, "webfetch", { url: "https://example.com" })),
+  }
+}
+// the permission hook leaves a linked skill alone even where the agent file says deny and a session rule had allowed it
+const ask = async (agent, action, resource) => {
+  const event = { sessionID: agent === "lane-pilot" ? "sess-pilot" : "sess-lane", agent, action, resources: [resource], effect: "allow" }
+  await hooks["permission.evaluate"](event)
+  return event.effect
+}
+out.writerLinkedSkill = await ask("lane-writer", "skill", "linked-skill")
+out.writerHostSkill = await ask("lane-writer", "skill", "ru-text")
+out.pilotPush = await ask("lane-pilot", "shell", "git push origin main")
+out.pilotWeb = await ask("lane-pilot", "websearch", "lane pilot")
+""")
+        pilot, writer = out["lane-pilot"], out["lane-writer"]
+        self.assertEqual((pilot["bb"], pilot["metamcp"], pilot["gitnexus"]), (False, False, False))
+        self.assertIn("MCP blocked: other", pilot["other"])
+        self.assertIs(pilot["linked"], False)
+        self.assertIn("skill blocked: ru-text", pilot["host"])
+        self.assertIn("git commit/push/merge blocked", pilot["commit"])
+        self.assertIs(pilot["web"], False)
+        self.assertIn("MCP blocked: bb_opencode2_", writer["bb"])  # the conveyor agents keep the strict list
+        self.assertIn("MCP blocked: metamcp", writer["metamcp"])
+        self.assertEqual((out["writerLinkedSkill"], out["writerHostSkill"]), ("allow", "deny"))
+        self.assertEqual((out["pilotPush"], out["pilotWeb"]), ("deny", "allow"))
 
     def test_permission_hook_denies_hub_shell_and_agent_rules_only_for_lane_agents(self) -> None:
         deny = [
@@ -265,7 +311,7 @@ def frontmatter(path: Path) -> dict:
 
 class AgentFileTests(unittest.TestCase):
     def test_lane_agents_are_v2_files_that_load_as_primary_capable(self) -> None:
-        for name in ("lane-writer", "lane-critic", "lane-reviewer"):
+        for name in ("lane-writer", "lane-critic", "lane-reviewer", "lane-pilot"):
             meta = frontmatter(OPENCODE / "agents" / f"{name}.md")
             self.assertEqual(meta["mode"], "all", name)  # a writer thread picks it as its primary agent
             self.assertNotIn("permission", meta, name)  # v2 prefers the legacy key over `permissions`, so never both
@@ -281,6 +327,18 @@ class AgentFileTests(unittest.TestCase):
             rules = frontmatter(OPENCODE / "agents" / f"{name}.md")["permissions"]
             self.assertIn({"action": "edit", "resource": "*", "effect": "deny"}, rules)
             self.assertIn({"action": "shell", "resource": "*", "effect": "deny"}, rules)
+
+    def test_lane_pilot_agent_has_no_conveyor_prompt_and_v1_guard_parity(self) -> None:
+        path = OPENCODE / "agents" / "lane-pilot.md"
+        text = path.read_text(encoding="utf-8")
+        self.assertEqual(text.split("\n---\n", 1)[1].strip(), "")  # no body: OpenCode keeps its own system prompt
+        rules = frontmatter(path)["permissions"]
+        for command in ("commit", "push", "merge", "checkout", "restore", "reset", "switch"):
+            self.assertIn({"action": "shell", "resource": f"git {command}*", "effect": "deny"}, rules)
+        self.assertIn({"action": "subagent", "resource": "*", "effect": "deny"}, rules)
+        for rule in rules:  # edit, shell, skills and the web stay open
+            self.assertIn(rule["action"], {"subagent", "shell"})
+            self.assertEqual(rule["effect"], "deny")
 
     def test_command_uses_only_documented_v2_keys(self) -> None:
         meta = frontmatter(OPENCODE / "commands" / "opencode-lane.md")

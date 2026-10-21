@@ -27,7 +27,7 @@ import { diagnoseFailure } from "./diagnose.ts"
 import { skillHint } from "./skill-hint.ts"
 import { evidenceNotes } from "./evidence.ts"
 import { recentAttempts, recordTool, repeatHint, toolRepeatN } from "./budget.ts"
-import { guardMcpV2, guardTool } from "./guard.ts"
+import { guardMcpV2, guardTool, projectHasSkill } from "./guard.ts"
 import { agentDenies, hubShellDenial, isLaneAgent, type PermissionRule } from "./hub-guard.ts"
 import { ensureStickyContent, lastAssistantTextV2, toOcMessages, type V2Message } from "./messages.ts"
 
@@ -258,7 +258,9 @@ export async function laneSetup(ctx: Ctx): Promise<() => void> {
   await ctx.tool.hook("execute.before", async (e: { tool: string; sessionID: string; agent: string; input: unknown }) => {
     if (!isLaneAgent(e.agent)) return
     const session = sessions.get(e.sessionID) ?? (await refreshSession(e.sessionID))
-    const msg = guardTool(e.tool, e.input, session.directory) || guardMcpV2(e.tool, await mcpServers())
+    const ownSkills = e.agent === "lane-critic" || e.agent === "lane-reviewer"
+    const msg =
+      guardTool(e.tool, e.input, session.directory, { skills: !ownSkills }) || guardMcpV2(e.tool, await mcpServers(), e.agent)
     if (!msg) return
     laneLog({ mod: "guard", ok: false, session: e.sessionID, err: msg })
     throw new Error(msg)
@@ -330,6 +332,11 @@ export async function laneSetup(ctx: Ctx): Promise<() => void> {
         e.effect = "deny"
         e.message = message
         laneLog({ mod: "guard", ok: false, session: e.sessionID, err: message })
+      }
+      // A skill Lane Pilot linked into the session directory's .opencode/skills is the thread's own: the agent file's skill rules do not apply.
+      if (e.action === "skill") {
+        const session = sessions.get(e.sessionID) ?? (await refreshSession(e.sessionID))
+        if (e.resources.every((skill) => projectHasSkill(session.directory, skill.toLowerCase()))) return
       }
       if (agentDenies(await agentRules(e.agent), e.action, e.resources)) {
         return deny(`[opencode-lane guard] ${e.action} is denied for ${e.agent} by its agent file.`)
