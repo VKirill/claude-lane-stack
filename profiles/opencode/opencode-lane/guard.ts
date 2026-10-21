@@ -2,6 +2,8 @@ import { existsSync, statSync } from "node:fs"
 import { join, resolve } from "node:path"
 
 const GIT_RESTORE = /\bgit\s+(?:checkout|restore|reset|switch)\b/i
+// The lane controller commits and merges; no lane agent does (the lane-writer agent file denies the same commands).
+const GIT_SHIP = /\bgit\s+(?:commit|push|merge)\b/i
 // Lane Pilot gives every writer writer-practices and karpathy-guidelines (its writer role profile); the guard
 // refused them with «skill blocked» on OpenCode writers (2026-10-03).
 const ALLOWED_SKILLS = new Set(["ui-ux-pro-max", "writer-practices", "karpathy-guidelines"])
@@ -76,8 +78,11 @@ export function guardTool(tool: string, args: unknown, cwd = process.cwd()): str
       "Emit LANE_REPORT STATUS: partial instead of restoring a truncated write."
     )
   }
+  if ((name === "bash" || name === "shell") && GIT_SHIP.test(toolCommand(args))) {
+    return "[opencode-lane guard] git commit/push/merge blocked: the controller commits and merges. Emit LANE_REPORT instead."
+  }
   if (name === "skill" || name === "skills") {
-    const skill = toolArg(args, ["name", "skill", "skillName"]).toLowerCase()
+    const skill = toolArg(args, ["name", "skill", "skillName", "id"]).toLowerCase()
     const allowed = ALLOWED_SKILLS.has(skill) || projectHasSkill(cwd, skill)
     if (!allowed) {
       return (
@@ -98,4 +103,15 @@ export function guardTool(tool: string, args: unknown, cwd = process.cwd()): str
     )
   }
   return ""
+}
+
+// OpenCode v2 names an MCP tool `<server>_<tool>` (v1: mcp__<server>__<tool>); `servers` are the connected MCP server names.
+export function guardMcpV2(tool: string, servers: readonly string[]): string {
+  const name = tool.toLowerCase()
+  const server = [...servers]
+    .map((item) => item.toLowerCase())
+    .sort((a, b) => b.length - a.length)
+    .find((item) => name.startsWith(`${item}_`))
+  if (!server || ALLOWED_MCP.has(server)) return ""
+  return `[opencode-lane guard] MCP blocked: ${server}. Only gitnexus and agentmemory.`
 }

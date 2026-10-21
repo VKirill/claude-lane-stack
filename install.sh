@@ -161,10 +161,18 @@ for name in opencode.json opencode.jsonc; do
   if [[ -f "$HOME/.config/opencode/$name" ]]; then OPENCODE_CONFIG="$HOME/.config/opencode/$name"; break; fi
 done
 if [[ -n "$OPENCODE_CONFIG" && -f "$STACK_ROOT/profiles/opencode/opencode-lane.ts" ]]; then
-  mkdir -p "$HOME/.config/opencode/plugins/opencode-lane"
-  install -m 0644 "$STACK_ROOT/profiles/opencode/opencode-lane.ts" "$HOME/.config/opencode/plugins/opencode-lane.ts"
+  # OpenCode v2 loads every .ts file and every folder under plugins/ as a plugin, so the modules live beside it, in
+  # ~/.config/opencode/opencode-lane/, and plugins/opencode-lane.ts is the entry with its import pointed one level up.
+  # v1 loaded the entry from plugins/ too and ignores the rest, so one layout serves both. The v1-era plugins/opencode-lane/ folder
+  # is removed: v2 would load its index.ts as a second plugin.
+  mkdir -p "$HOME/.config/opencode/plugins" "$HOME/.config/opencode/opencode-lane"
+  rm -rf "$HOME/.config/opencode/plugins/opencode-lane"
   rm -f "$HOME/.config/opencode/plugins/lane-context.ts"
-  cp -a "$STACK_ROOT/profiles/opencode/opencode-lane/"*.ts "$HOME/.config/opencode/plugins/opencode-lane/"
+  rm -f "$HOME/.config/opencode/opencode-lane/"*.ts
+  cp -a "$STACK_ROOT/profiles/opencode/opencode-lane/"*.ts "$HOME/.config/opencode/opencode-lane/"
+  sed 's#"\./opencode-lane/#"../opencode-lane/#' "$STACK_ROOT/profiles/opencode/opencode-lane.ts" \
+    > "$HOME/.config/opencode/plugins/opencode-lane.ts"
+  chmod 0644 "$HOME/.config/opencode/plugins/opencode-lane.ts"
   mkdir -p "$HOME/.config/opencode/commands"
   install -m 0644 "$STACK_ROOT/profiles/opencode/commands/opencode-lane.md" \
     "$HOME/.config/opencode/commands/opencode-lane.md"

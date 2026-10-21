@@ -1,9 +1,8 @@
 ---
 description: Claude Lane OpenCode half — шпаргалка, диагноз прогона, куда класть код плагина
-argument-hint: "[info]"
 ---
 
-Read `/home/ubuntu/.agents/pm-skills/opencode-lane/SKILL.md` and follow it.
+Read `~/.agents/pm-skills/opencode-lane/SKILL.md` and follow it.
 
 If `$ARGUMENTS` is empty, `info`, `справка`, or `как запускать`:
 print the **Info** block from that skill verbatim (Russian), then **stop**.

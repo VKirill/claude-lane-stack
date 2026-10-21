@@ -1,26 +1,51 @@
 ---
+# OpenCode v2 agent file: `permissions` rules, last match wins. v1 keys (permission, temperature, todowrite) are not used: no v2 equivalent.
 description: Lane plan-critique compressor. Coverage auditor only — owns/verify gaps. No product edits. Use for stages.plan_critique when provider is opencode.
 mode: all
-color: warning
-temperature: 0.1
-permission:
-  task: deny
-  edit: deny
-  bash:
-    "*": deny
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "rg *": allow
-    "grep *": allow
-  skill:
-    "*": deny
-    lane-contract: allow
-    gitnexus-exploring: allow
-    gitnexus-impact-analysis: allow
-  webfetch: deny
-  websearch: deny
-  todowrite: deny
+color: "#d4a72c"
+permissions:
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "git status*"
+    effect: allow
+  - action: shell
+    resource: "git diff*"
+    effect: allow
+  - action: shell
+    resource: "git log*"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "grep *"
+    effect: allow
+  - action: skill
+    resource: "*"
+    effect: deny
+  - action: skill
+    resource: "lane-contract"
+    effect: allow
+  - action: skill
+    resource: "gitnexus-exploring"
+    effect: allow
+  - action: skill
+    resource: "gitnexus-impact-analysis"
+    effect: allow
+  - action: webfetch
+    resource: "*"
+    effect: deny
+  - action: websearch
+    resource: "*"
+    effect: deny
 ---
 You compress coverage-auditor findings for the PM. Nothing else.
 

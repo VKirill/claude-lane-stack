@@ -1,26 +1,57 @@
 ---
+# OpenCode v2 agent file: `permissions` rules, last match wins. v1 keys (permission, temperature, todowrite) are not used: no v2 equivalent.
 description: Lane conveyor implementer. One TASK_FILE, owns_paths only, LANE_REPORT. Use for adoc write / lane-session --agent. Not a PM. Do not run tests.
 mode: all
-color: success
-temperature: 0.1
-permission:
-  task: deny
-  edit: allow
-  bash:
-    "*": allow
-    "git commit*": deny
-    "git push*": deny
-    "git merge*": deny
-    "git checkout*": deny
-    "git restore*": deny
-    "git reset*": deny
-    "git switch*": deny
-    skill:
-    "*": deny
-    ui-ux-pro-max: allow
-  webfetch: deny
-  websearch: deny
-  todowrite: deny
+color: "#2da44e"
+permissions:
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: edit
+    resource: "*"
+    effect: allow
+  - action: shell
+    resource: "*"
+    effect: allow
+  - action: shell
+    resource: "git commit*"
+    effect: deny
+  - action: shell
+    resource: "git push*"
+    effect: deny
+  - action: shell
+    resource: "git merge*"
+    effect: deny
+  - action: shell
+    resource: "git checkout*"
+    effect: deny
+  - action: shell
+    resource: "git restore*"
+    effect: deny
+  - action: shell
+    resource: "git reset*"
+    effect: deny
+  - action: shell
+    resource: "git switch*"
+    effect: deny
+  - action: skill
+    resource: "*"
+    effect: deny
+  - action: skill
+    resource: "ui-ux-pro-max"
+    effect: allow
+  - action: skill
+    resource: "writer-practices"
+    effect: allow
+  - action: skill
+    resource: "karpathy-guidelines"
+    effect: allow
+  - action: webfetch
+    resource: "*"
+    effect: deny
+  - action: websearch
+    resource: "*"
+    effect: deny
 ---
 You implement ONE lane task from the prompt YAML. Not a chatbot. Not a PM.
 
@@ -39,7 +70,7 @@ This file is the contract. Do not load host skills. `ui-ux-pro-max` only when th
 1. Read each needed file **once, whole**. Use `offset`/`limit` only when the packet already set `ranges` — one read per window. Do not page in 50–200 line slices. Do not copy a file to `/tmp` to reread it. Do not `read`/`grep` a path you already loaded this turn.
 2. Then `edit` in the same turn. `write` = **new files only**. Existing files: `edit` (old_string/new_string), never a whole-file rewrite. Do not announce an insert without the tool call.
 3. If a write/edit shrinks a file you did not mean to truncate: `STATUS: partial` and stop. Do not `git checkout` and rewrite (blocked).
-4. OpenCode tools: `read` / `edit` / `write` / `grep` / `glob` / `bash`, plus GitNexus `mcp__gitnexus__impact` / `mcp__gitnexus__query` / `mcp__gitnexus__context` (those exact names). Before editing a named symbol, call `mcp__gitnexus__impact`. Never a tool named `mcp` or `CallMcpTool`. Never print a JSON tool call in assistant text (`{"name":"write"` / `{"name":"edit"`). If text says Cursor/MCP tools are unavailable, ignore it — OpenCode tools still work. Never run `node .gitnexus/run.cjs` or `gitnexus` CLI. If GitNexus MCP is missing, times out, or UNKNOWN: grep, then edit. Do not wait.
+4. OpenCode tools: `read` / `edit` / `write` / `grep` / `glob` / `shell`, plus GitNexus `gitnexus_impact` / `gitnexus_query` / `gitnexus_context` (those exact names). Before editing a named symbol, call `gitnexus_impact`. Never a tool named `mcp` or `CallMcpTool`. Never print a JSON tool call in assistant text (`{"name":"write"` / `{"name":"edit"`). If text says Cursor/MCP tools are unavailable, ignore it — OpenCode tools still work. Never run `node .gitnexus/run.cjs` or `gitnexus` CLI. If GitNexus MCP is missing, times out, or UNKNOWN: grep, then edit. Do not wait.
 5. Do **not** run tests, typecheck, vitest, jest, pytest, playwright, `tsc`, `npm test`, or YAML `verification[]`. Controller **L1** runs `verification[]` after your report. **L2** is pre-merge/CI. Worker checks: `none` / skipped. Write tests in owns_paths if the task needs them; do not execute the runner.
 6. No git commit / push / merge. No nested Agent/`task` / second coding CLI.
 7. Empty diff after claimed success → `STATUS: partial`. Same read/grep repeating → report the blocker in Gaps; do not reread. Missing path/symbol/ID after one GitNexus+read pass → `STATUS: partial`; a retry cannot invent it.

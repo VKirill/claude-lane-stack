@@ -125,8 +125,85 @@ export function createTelemetry(): Telemetry {
     })
   }
 
+  // OpenCode v2 events: { type, data } with the session id inside data; they replace the v1 { type, properties } events below.
+  const v2Tools = new Map<string, { name: string; input: unknown }>()
+
+  function textOfContent(content: unknown): string {
+    if (typeof content === "string") return content
+    if (!Array.isArray(content)) return ""
+    return content.map((part) => (typeof record(part).text === "string" ? (record(part).text as string) : "")).join("")
+  }
+
+  function eventV2(event: AnyRecord): void {
+    const type = typeof event.type === "string" ? event.type : ""
+    const data = record(event.data)
+    const session = typeof data.sessionID === "string" ? data.sessionID : ""
+    const id = typeof data.id === "string" ? data.id : ""
+
+    if (type === "session.execution.failed" || type === "session.step.failed") {
+      emit(session, false, { event: "session.error" }, data.error)
+    } else if (type === "session.retry.scheduled") {
+      emit(session, false, {
+        event: "session.retry",
+        attempt: data.attempt,
+        next_ms: typeof data.at === "number" ? Math.max(0, data.at - Date.now()) : undefined,
+      }, data.error)
+    } else if (type === "session.execution.succeeded") {
+      emit(session, true, { event: "session.idle" })
+    } else if (type === "session.compaction.started") {
+      emit(session, true, { event: "session.compaction.started", reason: data.reason })
+    } else if (type === "session.compaction.ended") {
+      emit(session, true, { event: "session.compacted", reason: data.reason })
+    } else if (type === "session.compaction.failed") {
+      emit(session, false, { event: "session.compaction.failed", reason: data.reason }, data.error)
+    } else if (type === "session.tool.input.started") {
+      v2Tools.set(`${session}|${id}`, { name: typeof data.name === "string" ? data.name : "", input: undefined })
+      if (v2Tools.size > MAX_SEEN) v2Tools.delete(v2Tools.keys().next().value as string)
+    } else if (type === "session.tool.called") {
+      const known = v2Tools.get(`${session}|${id}`)
+      v2Tools.set(`${session}|${id}`, { name: known?.name ?? "", input: data.input })
+      markToolStarted(session)
+      emit(session, true, {
+        event: "tool.running",
+        call_id: id,
+        tool: known?.name ?? "",
+        input_sha256: digest(data.input),
+        input_chars: lengthOf(data.input),
+      })
+    } else if (type === "session.tool.success" || type === "session.tool.failed") {
+      const known = v2Tools.get(`${session}|${id}`)
+      v2Tools.delete(`${session}|${id}`)
+      const failed = type === "session.tool.failed"
+      const result = failed ? (record(data.error).message ?? data.error) : textOfContent(data.content)
+      const tool = known?.name ?? ""
+      const row: AnyRecord = {
+        event: failed ? "tool.error" : "tool.completed",
+        call_id: id,
+        tool,
+        input_sha256: digest(known?.input),
+        input_chars: lengthOf(known?.input),
+      }
+      if (failed) row.error_chars = lengthOf(result)
+      else {
+        row.output_sha256 = digest(result)
+        row.output_chars = lengthOf(result)
+      }
+      emit(session, !failed, row, failed ? result : undefined)
+      const observed = observeToolProgress(session, tool, known?.input, result, failed ? "error" : "completed", "event", id)
+      if (!observed.deduped) recordTool(session, tool, known?.input, result)
+    } else if (type === "permission.asked" || type === "permission.replied") {
+      emit(session, true, {
+        event: type,
+        permission_id: typeof data.id === "string" ? data.id : typeof data.requestID === "string" ? data.requestID : "",
+        permission_type: typeof data.action === "string" ? data.action : "",
+        response: typeof data.reply === "string" ? data.reply : typeof data.response === "string" ? data.response : undefined,
+      })
+    }
+  }
+
   async function event(input: EventInput): Promise<void> {
     const event = record(input.event)
+    if (event.properties === undefined && event.data !== undefined) return eventV2(event)
     const type = typeof event.type === "string" ? event.type : ""
     const props = record(event.properties)
     const session = eventSessionID(event)

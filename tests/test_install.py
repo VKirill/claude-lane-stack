@@ -775,6 +775,10 @@ class InstallTest(unittest.TestCase):
             home = tmp / "home"
             config = home / ".config" / "opencode" / "opencode.jsonc"
             config.parent.mkdir(parents=True)
+            # A v1-era install: v2 loads this folder's index.ts as a second plugin, so the install must remove it.
+            stale = home / ".config" / "opencode" / "plugins" / "opencode-lane"
+            stale.mkdir(parents=True)
+            (stale / "index.ts").write_text("export default () => ({})\n", encoding="utf-8")
             config.write_text(
                 '{\n  // the owner\'s comment\n  "model": "router9/x",\n'
                 '  "plugin": ["./plugins/opencode-lane.ts"],\n'
@@ -791,8 +795,18 @@ class InstallTest(unittest.TestCase):
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=60,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            guard = home / ".config" / "opencode" / "plugins" / "opencode-lane" / "guard.ts"
-            self.assertIn("laneMarked", guard.read_text(encoding="utf-8"))
+            opencode = home / ".config" / "opencode"
+            # v2 treats every file and folder under plugins/ as a plugin: the modules sit beside it.
+            self.assertIn("laneMarked", (opencode / "opencode-lane" / "guard.ts").read_text(encoding="utf-8"))
+            self.assertIn("setup", (opencode / "opencode-lane" / "v2.ts").read_text(encoding="utf-8"))
+            self.assertFalse(stale.exists())
+            self.assertEqual([path.name for path in (opencode / "plugins").iterdir()], ["opencode-lane.ts"])
+            self.assertIn(
+                'from "../opencode-lane/index.ts"',
+                (opencode / "plugins" / "opencode-lane.ts").read_text(encoding="utf-8"),
+            )
+            agent = (opencode / "agents" / "lane-writer.md").read_text(encoding="utf-8")
+            self.assertIn("permissions:", agent)
             text = config.read_text(encoding="utf-8")
             self.assertNotIn("compaction", text)
             self.assertIn("// the owner's comment", text)

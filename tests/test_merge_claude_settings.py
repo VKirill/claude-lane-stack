@@ -262,7 +262,7 @@ class MergeStackCapabilitiesTests(unittest.TestCase):
         self.assertIn("from './jev-router.js'", (ROOT / "plugins" / "lane-stack" / "hooks" / "lane-mods.ts").read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "plugins" / "lane-stack" / "hooks" / "jev-router.ts").is_file())
         self.assertTrue((ROOT / "plugins" / "lane-stack" / "hooks" / "jev-route-core.ts").is_file())
-        self.assertIn('"chat.params"', (ROOT / "profiles" / "opencode" / "opencode-lane" / "index.ts").read_text(encoding="utf-8"))
+        self.assertIn('"chat.params"', (ROOT / "profiles" / "opencode" / "opencode-lane" / "v1.ts").read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "profiles" / "opencode" / "opencode-lane.ts").is_file())
         self.assertTrue((ROOT / "profiles" / "opencode" / "opencode-lane" / "index.ts").is_file())
         self.assertIn("winnow serve --ensure", json.dumps(hooks))

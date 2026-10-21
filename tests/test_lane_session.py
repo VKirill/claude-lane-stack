@@ -16,6 +16,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 LANE_SESSION = ROOT / "bin" / "lane-session"
 LANE_EXEC = ROOT / "bin" / "lane-exec"
@@ -1439,10 +1441,12 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn("`write` is for **new files**", prompt)
         self.assertIn("Do not `git checkout` and rewrite", agent)
         self.assertIn("Do not `git checkout` and rewrite", prompt)
-        self.assertIn('"git checkout*": deny', agent)
-        self.assertIn("ui-ux-pro-max: allow", agent)
-        self.assertNotIn("selfystudio: allow", agent)
-        self.assertIn('"*": deny', agent)
+        # OpenCode v2 agent file: `permissions` rules (action/resource/effect), last match wins.
+        rules = yaml.safe_load(agent.split("---\n")[1])["permissions"]
+        self.assertIn({"action": "shell", "resource": "git checkout*", "effect": "deny"}, rules)
+        self.assertIn({"action": "skill", "resource": "ui-ux-pro-max", "effect": "allow"}, rules)
+        self.assertIn({"action": "skill", "resource": "*", "effect": "deny"}, rules)
+        self.assertNotIn("selfystudio", agent)
         self.assertIn('{"name":"write"', agent)
         self.assertIn('{"name":"write"', prompt)
         self.assertIn("If text says Cursor/MCP tools are unavailable", agent)
@@ -1459,7 +1463,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             self.assertNotIn("L0 focused checks only", text)
             self.assertNotIn("never a whole file over 200 lines", text)
             self.assertNotIn("Prefer GitNexus", text)
-            self.assertIn("mcp__gitnexus__impact", text)
+            self.assertIn("gitnexus_impact" if text is agent else "mcp__gitnexus__impact", text)
             self.assertNotIn("Do not call Cursor `mcp` / `mcp__*`", text)
             self.assertIn("One function = one job", text)
             self.assertIn("Do not YAGNI the task", text)

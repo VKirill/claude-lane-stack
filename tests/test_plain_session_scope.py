@@ -43,7 +43,7 @@ SCOPE = {
     "session-start.py": (LANE, "prints only for LANE_CODEX_WORKER"),
     "user-prompt-submit.py": (MACHINE, "skill suggestions, same as skillranker-hook.sh"),
     # OpenCode global plugin
-    "opencode-lane": (LANE, "writer guard, notes and sticky contract only with a lane marker; winnow for every session"),
+    "opencode-lane": (LANE, "writer guard, notes, hub guard and sticky contract only for a lane-* agent (v2 shared service) or a LANE_* marker (v1); winnow and telemetry for every session"),
 }
 
 SCRIPT = re.compile(r"([\w.-]+\.(?:py|sh|cjs|js|ts)|lane-statusline)\b")

@@ -22,7 +22,8 @@ opencode-lane — OpenCode-половина Claude Lane
 Куда класть код
 - Вход: profiles/opencode/opencode-lane.ts (только re-export).
 - Код:  profiles/opencode/opencode-lane/<mod>.ts + проводка в index.ts.
-- Живое: ~/.config/opencode/plugins/opencode-lane.ts + plugins/opencode-lane/.
+- Живое: ~/.config/opencode/plugins/opencode-lane.ts (вход) + ~/.config/opencode/opencode-lane/ (модули, НЕ в plugins/: v2 грузит каждую папку там как плагин).
+- Гейт v2: агент lane-* (общий сервис, env сервиса не тредовый). v1: LANE_* маркеры процесса.
 - Не второй plugin-файл. Не новое имя в opencode.json.
 
 Конвейер

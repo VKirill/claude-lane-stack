@@ -71,15 +71,22 @@ function capBashEvidence(chunks: string[]): string {
 
 const checked = new Map<string, string>()
 
-export async function evidenceNotes(sessionID: string, messages: { parts?: unknown[] }[]): Promise<string> {
+// `taskYaml` is the contract of a v2 session (taken from its prompt); without it the task file named by LANE_TASK_FILE is read.
+export async function evidenceNotes(
+  sessionID: string,
+  messages: { parts?: unknown[] }[],
+  taskYaml = "",
+): Promise<string> {
   if (!extraJevEnabled() || !sessionID) return ""
-  const path = stickySourcePath()
+  const path = taskYaml ? "prompt" : stickySourcePath()
   if (!path) return ""
-  let yaml = ""
-  try {
-    yaml = readFileSync(path, "utf8")
-  } catch {
-    return ""
+  let yaml = taskYaml
+  if (!yaml) {
+    try {
+      yaml = readFileSync(path, "utf8")
+    } catch {
+      return ""
+    }
   }
   const criteria = parseAcceptance(yaml)
   const evidence = collectBashEvidence(messages)

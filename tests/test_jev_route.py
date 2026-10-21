@@ -348,7 +348,8 @@ class JevRouteTest(unittest.TestCase):
             encoding="utf-8"
         )
         wrapper = WRAPPER.read_text(encoding="utf-8")
-        oc = INDEX.read_text(encoding="utf-8")
+        # The v1 hooks moved to v1.ts when index.ts became the v1 + v2 entry.
+        oc = INDEX.read_text(encoding="utf-8") + (INDEX.parent / "v1.ts").read_text(encoding="utf-8")
         sticky = (ROOT / "profiles" / "opencode" / "opencode-lane" / "sticky.ts").read_text(
             encoding="utf-8"
         )
@@ -400,7 +401,8 @@ class JevRouteTest(unittest.TestCase):
             f"{WRAPPER.resolve().as_uri()!r}; "
             "import * as mod from "
             f"{WRAPPER.resolve().as_uri()!r}; "
-            "if (typeof plugin !== 'function') throw new Error('default'); "
+            "if (plugin.id !== 'opencode-lane' || typeof plugin.setup !== 'function' || typeof plugin.server !== 'function') "
+            "throw new Error('default'); "
             "const extra = Object.keys(mod).filter((k) => k !== 'default'); "
             "if (extra.length) throw new Error('named ' + extra.join(',')); "
             "console.log('ok')"

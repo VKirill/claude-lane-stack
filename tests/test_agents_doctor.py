@@ -1104,7 +1104,8 @@ class DoctorTuiCatalogTest(unittest.TestCase):
         for name in ("lane-writer", "lane-critic", "lane-reviewer"):
             text = (root / f"{name}.md").read_text(encoding="utf-8")
             self.assertIn("mode: all", text)
-            self.assertIn("task: deny", text)
+            # v2 spelling of the v1 `task: deny` (the task tool is `subagent` in OpenCode v2).
+            self.assertIn("action: subagent\n    resource: \"*\"\n    effect: deny", text)
 
     def test_migrate_adds_docs_keeps_memory_enabled(self) -> None:
         sys.path.insert(0, str(ROOT / "bin"))

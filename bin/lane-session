@@ -1021,7 +1021,9 @@ def provider_environment(
             {
                 "OPENCODE_DISABLE_CLAUDE_CODE": "1",
                 "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
-                "OPENCODE_PERMISSION": '{"task":"deny"}',
+                # OpenCode v1 ignores the v2 `permissions` of the lane agent files, so the denials every lane agent file states
+                # (subagents, web) are repeated here for the v1 CLI lanes.
+                "OPENCODE_PERMISSION": '{"task":"deny","webfetch":"deny","websearch":"deny"}',
                 # Parallel writers share cwd: OpenCode's snapshot git index
                 # races across processes. Lane owns change tracking/acceptance.
                 # Compaction is off here and via DISABLE_* flags after every merge
