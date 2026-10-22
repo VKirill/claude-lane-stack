@@ -37,3 +37,12 @@ Docs/wiki refresh, PR review tone, CI/docker, commit/push/merge, anything outsid
 ## Done
 
 Done = the contract's `verification` commands pass; answer with the changed paths and the results. Contract unclear → no file changes and `NEEDS_HUMAN: <one question>` as the first line of the answer (Lane Pilot); in the terminal report Gaps.
+
+## Say only what you checked
+
+- «Done», «passes», «built», «version X» only after a command or a file read in this same session showed it; name the command. Not checked → say so and give the command that checks it.
+- A check that did not run is `NOT RUN: <command>`, never «no errors» and never an empty list. Where you may not run tests (terminal conveyor), write `NOT RUN` with the command, not «tests pass».
+- Green parts do not prove they are wired together: for a value or setting you add, one check that follows it to where it is read (setting → launch arguments), not only the computation. A change visible in a window is closed by running it, not by reading the code.
+- A test double may do less than the real thing, never differently: same fields, same required frames, same errors, and a loud failure on a path it does not support, not a success.
+- After a fix, re-run what it touches when the reach is known and keep the other greens with a one-line reason. A fix to a shared mechanism (launch, isolation, config, the judge, a shared library) or with unknown reach: re-run everything that goes through it.
+- The same failure twice in a row: change the angle. Name the class of the error and fix every similar place in one pass (read/grep offline), not the one you hit.

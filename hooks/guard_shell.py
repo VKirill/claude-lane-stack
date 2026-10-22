@@ -289,48 +289,214 @@ def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
     return pushes
 
 
-def _shell_c_payloads(command: str, depth: int = 4) -> list[str]:
-    """Nested bash/sh -c strings, bounded to four wrappers and parsed as commands.
+# Judge the program that really runs (SMA rule 8). Text in quotes is data for a program that only prints, stores or searches it
+# (echo, git commit -m, grep); a string a program executes (sh -c, eval, ssh host "...", xargs sh -c, su -c, text piped into a shell)
+# is a command line; a program the guard does not know is not trusted with its quoted strings.
+_SHELL_NAMES = {"sh", "bash", "zsh", "dash", "ksh", "ash"}
+# wrapper -> (options that take a value, positional words before the command): where the command it runs starts.
+_WRAPPER_ARGS: dict[str, tuple[set[str], int]] = {
+    "command": (set(), 0), "exec": ({"-a"}, 0), "nohup": (set(), 0), "time": ({"-f", "-o"}, 0), "setsid": (set(), 0),
+    "stdbuf": ({"-i", "-o", "-e"}, 0), "nice": ({"-n"}, 0), "ionice": ({"-c", "-n", "-p", "-t"}, 0), "timeout": ({"-s", "-k"}, 1),
+    "sudo": (_SUDO_VALUE_OPTS, 0), "doas": ({"-u", "-C"}, 0), "env": (_ENV_VALUE_OPTS - {"-S"}, 0),
+    "xargs": ({"-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a"}, 0), "watch": ({"-n", "--interval"}, 0), "chroot": (set(), 1),
+}
+# Programs whose later words (or a quoted command line) are the command that really runs.
+_COMMAND_WRAPPERS = {*_WRAPPER_ARGS, "ssh", "mosh", "autossh", "su", "sg"}
+_SSH_VALUE_OPTS = {"-p", "-i", "-l", "-o", "-F", "-J", "-L", "-R", "-D", "-b", "-c", "-E", "-e", "-I", "-m", "-O", "-S", "-w", "-W", "-B"}
+# A quoted argument of these is text to print, store or search, never a command.
+_DATA_PROGRAMS = {
+    "echo", "printf", "cat", "tee", "head", "tail", "wc", "grep", "egrep", "fgrep", "rg", "ag", "ack", "sort", "uniq", "cut",
+    "tr", "sed", "awk", "jq", "yq", "diff", "cmp", "git", "gh", "bb", "curl", "wget", "lane-memory", "handoff-write", "test", "[",
+    "ls", "cd", "cp", "mv", "mkdir", "touch", "stat", "file", "basename", "dirname", "realpath", "readlink", "which", "type",
+}
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+_SUBSTITUTION = re.compile(r"\$\(([^()]*)\)")
+_BACKTICKS = re.compile(r"`([^`]*)`")
 
-    Quoted payloads stay one shlex token, so token-based git checks must scan
-    them separately. Fail closed at the nesting limit rather than skip a body.
-    Non-shell heredocs remain data at every level.
-    """
-    lexer = shlex.shlex(_without_data_heredocs(command), posix=True, punctuation_chars=";&|()<>\n")
-    lexer.whitespace = " \t\r"
-    lexer.whitespace_split = True
-    lexer.commenters = ""
-    payloads: list[str] = []
-    tokens = [";" if token.strip("\n") == "" else token for token in lexer]
-    for words, _ in _shell_commands(tokens):
-        while words:
-            head = Path(words[0]).name
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]) or head in {"command", "exec"}:
-                words = words[1:]
-            elif head == "env":
-                words = _unwrap_env_args(words[1:]) or []
-            else:
-                break
-        if not words or Path(words[0]).name not in {"bash", "sh"}:
+
+def _dash_c_payload(words: list[str]) -> str | None:
+    """The command line after -c in `sh -c '...'` (also -lc, -ec), skipping --rcfile/-o style options; None without -c."""
+    index = 1
+    while index < len(words):
+        flag = words[index]
+        if flag in {"--rcfile", "--init-file", "-o", "-O"}:
+            index += 2
             continue
-        index = 1
-        while index < len(words):
-            flag = words[index]
-            if flag in {"--rcfile", "--init-file", "-o", "-O"}:
-                index += 2
-                continue
-            if re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", flag):
-                if index + 1 < len(words):
-                    if depth <= 0:
-                        raise ValueError("shell -c nesting exceeds four wrappers")
-                    payload = _without_data_heredocs(words[index + 1])
-                    payloads.append(payload)
-                    payloads.extend(_shell_c_payloads(payload, depth - 1))
-                break
-            if not flag.startswith("-") or flag == "--":
-                break
+        if re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", flag):
+            return words[index + 1] if index + 1 < len(words) else None
+        if not flag.startswith("-") or flag == "--":
+            return None
+        index += 1
+    return None
+
+
+def _ssh_remote_command(rest: list[str]) -> str | None:
+    """The command line `ssh [options] host command...` hands to the remote shell: the words after the host, joined."""
+    index = 0
+    while index < len(rest) and rest[index].startswith("-"):
+        index += 2 if rest[index] in _SSH_VALUE_OPTS else 1
+    command = rest[index + 1 :]
+    return " ".join(command) if command else None
+
+
+def _wrapped_command(head: str, rest: list[str]) -> list[tuple[str, bool]]:
+    """The command line a wrapper (sudo, timeout, xargs, ssh host, su -c ...) runs: skip its own options and arguments."""
+    if head in {"ssh", "mosh", "autossh"}:
+        remote = _ssh_remote_command(rest)
+        return [(remote, True)] if remote else []
+    if head in {"su", "sg"}:
+        return [(rest[i + 1], True) for i, word in enumerate(rest[:-1]) if word in {"-c", "--command"}][:1]
+    value_options, positional = _WRAPPER_ARGS[head]
+    out: list[tuple[str, bool]] = []
+    index = skipped = 0
+    while index < len(rest):
+        word = rest[index]
+        if head == "env" and word in {"-S", "--split-string"} and index + 1 < len(rest):
+            out.append((rest[index + 1], True))
+            index += 2
+        elif head == "env" and word.startswith("--split-string="):
+            out.append((word.split("=", 1)[1], True))
             index += 1
-    return payloads
+        elif word in value_options:
+            index += 2
+        elif word.startswith("-") or _ASSIGNMENT.fullmatch(word):
+            index += 1
+        elif skipped < positional:
+            skipped += 1
+            index += 1
+        else:
+            break
+    command = rest[index:]
+    if command and head == "watch" and len(command) == 1 and re.search(r"\s", command[0]):
+        out.append((command[0], True))  # watch hands one string to a shell
+    elif command:
+        out.append((shlex.join(command), False))
+    return out
+
+
+def _segment_payloads(words: list[str], stdin: str | None) -> list[tuple[str, bool]]:
+    """Command lines one command asks other programs to run, as (text, nested). nested: the text came out of a quoted string."""
+    while words and _ASSIGNMENT.fullmatch(words[0]):
+        words = words[1:]
+    if not words:
+        return []
+    out: list[tuple[str, bool]] = []
+    for word in words:
+        out.extend((match.group(1), True) for match in _SUBSTITUTION.finditer(word))
+    head, rest = Path(words[0]).name, words[1:]
+    if head in _SHELL_NAMES:
+        text = _dash_c_payload(words)
+        if text is None:
+            text = stdin
+        if text is not None:
+            out.append((text, True))
+    elif head == "eval":
+        out.append((" ".join(rest), True))
+    elif head in _COMMAND_WRAPPERS:
+        out.extend(_wrapped_command(head, rest))
+    elif head == "find":
+        for index, word in enumerate(rest):
+            if word in {"-exec", "-execdir", "-ok", "-okdir"}:
+                end = next((i for i in range(index + 1, len(rest)) if rest[i] in {";", "\\;", "+"}), len(rest))
+                out.append((shlex.join(rest[index + 1 : end]), False))
+    elif head in {"psql", "mysql", "mariadb", "sqlite3", "sqlcmd"}:
+        if stdin is not None:
+            out.append((stdin, True))
+    elif head not in _DATA_PROGRAMS:
+        out.extend((word, True) for word in rest if re.search(r"\s", word))
+    return out
+
+
+def _executed_strings(command: str, depth: int = 4) -> list[str]:
+    """Every command line the text makes other programs run, however deeply nested (bounded to four quoted layers; ValueError
+    beyond that or when the text is not valid shell, so the caller refuses rather than skips a body). Quoted text handed
+    to echo, git commit, grep and the like is data and is not returned. Non-shell heredocs stay data at every level."""
+    found: list[str] = []
+    seen: set[str] = set()
+    queue: list[tuple[str, int]] = [(command, depth)]
+    while queue:
+        line, left = queue.pop()
+        for match in _BACKTICKS.finditer(line):  # `cmd` runs even inside double quotes
+            body = match.group(1)
+            if body.strip() and body not in seen:
+                if left <= 0:
+                    raise ValueError("shell -c nesting exceeds four wrappers")
+                seen.add(body)
+                found.append(body)
+                queue.append((body, left - 1))
+        lexer = shlex.shlex(_without_data_heredocs(line), posix=True, punctuation_chars=";&|()<>\n")
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        segments: list[tuple[list[str], str | None, bool]] = []
+        words: list[str] = []
+        here: str | None = None
+        piped = False
+        tokens = [";" if token.strip("\n") == "" else token for token in lexer]
+        index = 0
+        while index <= len(tokens):
+            token = tokens[index] if index < len(tokens) else ";"
+            index += 1
+            if token in _CONTROL_TOKENS:
+                if words:
+                    segments.append((words, here, piped))
+                piped = token in {"|", "|&"}
+                words, here = [], None
+            elif token == "<<<":
+                if index < len(tokens):
+                    here = tokens[index]
+                    index += 1
+            elif token in _REDIRECT_TOKENS:
+                index += 1  # a redirect's word is its target, not a command word
+            else:
+                words.append(token)
+        printed: str | None = None
+        for words, here, piped in segments:
+            head = Path(next((w for w in words if not _ASSIGNMENT.fullmatch(w)), "")).name
+            stdin = here if here is not None else printed if piped else None
+            for text, nested in _segment_payloads(words, stdin):
+                text = _without_data_heredocs(text)
+                if text in seen or not text.strip():
+                    continue
+                if nested and left <= 0:
+                    raise ValueError("shell -c nesting exceeds four wrappers")
+                seen.add(text)
+                found.append(text)
+                queue.append((text, left - 1 if nested else left))
+            data = [w for w in words[1:] if not w.startswith("-")]
+            if head == "printf" and data and "%" in data[0]:
+                data = data[1:]  # the format string is not the text
+            printed = " ".join(data) if head in {"echo", "printf"} else None
+    return found
+
+
+def _skeleton(command: str) -> str:
+    """The command with the quoted arguments of data programs (echo, git commit -m, grep ...) dropped, for the SQL check:
+    a note that mentions DROP TABLE is not DROP TABLE. Text that cannot be read as shell is returned whole."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>\n")
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return command
+    kept: list[str] = []
+    segment: list[str] = []
+    for token in [*tokens, ";"]:
+        if token in _CONTROL_TOKENS or token.strip("\n") == "":
+            plain = [w for w in segment if not _ASSIGNMENT.fullmatch(w)]
+            wrapped = bool(plain) and Path(plain[0]).name in _COMMAND_WRAPPERS
+            for position, word in enumerate(segment[:12] if wrapped else segment[:1]):
+                if Path(word).name in _DATA_PROGRAMS:
+                    segment = segment[: position + 1]
+                    break
+            kept.extend(segment)
+            kept.append(";")
+            segment = []
+        else:
+            segment.append(token)
+    return " ".join(kept)
 
 
 def _is_env_secret_file(name: str) -> bool:
@@ -1559,6 +1725,11 @@ def main() -> None:
         # The PM ships its own plugin (reload/install/update) and reads BB state; every other Lane Pilot agent gets the stricter list.
         pm_session = key in LANE_PILOT_PM_AGENT_TYPES or bool(key in PM_AGENTS and os.environ.get("LANE_PILOT_AGENT_TYPE"))
         secret_cli = _secret_cli_error(shell_command(p), strict=not pm_session)
+        if not secret_cli:
+            try:  # ssh host "bb plugin remove x", xargs sh -c "...", an unknown program handed a command line
+                secret_cli = next(filter(None, (_secret_cli_error(text, 1, not pm_session) for text in _executed_strings(shell_command(p)))), None)
+            except ValueError:
+                pass  # refused below as unparseable
         if secret_cli:
             emit_deny(client, f"[hub-guard] {secret_cli} is not available to Lane Pilot agents: it can break the hub or BB's plugin runtime by mistake. "
                       "Ask the owner to run it in their own terminal.")
@@ -1613,7 +1784,7 @@ def main() -> None:
     stripped = _without_data_heredocs(cmd)
     low = stripped.lower()
     try:
-        push_scans = (stripped, *_shell_c_payloads(stripped))
+        push_scans = (stripped, *_executed_strings(stripped))
     except ValueError as exc:
         emit_deny(client, f"[agent-guard] shell command cannot be safely parsed: {exc}")
 
@@ -1658,7 +1829,7 @@ def main() -> None:
                 _deny_pm(client, error)
 
     # git hook skip
-    git_writes = _git_args(_without_data_heredocs(cmd), {"commit", "push", "merge"})
+    git_writes = [args for scan in push_scans for args in _git_args(scan, {"commit", "push", "merge"})]
     if git_writes and (
         any("--no-verify" in args for args in git_writes) or "husky=0" in low or "husky=false" in low
     ):
@@ -1677,7 +1848,8 @@ def main() -> None:
                 emit_deny(client, "[agent-guard] git push --force blocked. Use --force-with-lease after git fetch.")
 
 
-    # SQL destroyers (simple)
+    # SQL destroyers (simple). Read the commands that run, not notes that mention them (git commit -m "fix drop table").
+    low = " ; ".join(_skeleton(scan) for scan in push_scans).lower()
     if re.search(r"\b(drop\s+(table|database|schema)|truncate\s+table)\b", low):
         emit_deny(client, "[agent-guard] DROP/TRUNCATE blocked. Run schema changes through project migrations or have the owner review them explicitly.")
 
@@ -1685,7 +1857,7 @@ def main() -> None:
         emit_deny(client, "[agent-guard] DELETE without WHERE blocked. Add a WHERE clause scoping the deleted rows, or use TRUNCATE via migrations if a table wipe is intended.")
 
     # Deleting for good (rm, unlink, shred, find -delete) outside regenerated folders: the Trash can be undone.
-    delete_error = _permanent_delete_error(_without_data_heredocs(cmd))
+    delete_error = next(filter(None, map(_permanent_delete_error, push_scans)), None)
     if delete_error:
         emit_deny(client, delete_error)
 

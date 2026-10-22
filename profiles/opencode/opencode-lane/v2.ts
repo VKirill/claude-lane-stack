@@ -308,7 +308,7 @@ export async function laneSetup(ctx: Ctx): Promise<() => void> {
             const n = observed.deduped
               ? Math.max(observed.n, toolRepeatN(sessionID, e.tool, e.input))
               : recordTool(sessionID, e.tool, e.input, original).n
-            const hint = await repeatHint(task, e.tool, original, n, sessionID)
+            const hint = await repeatHint(task, e.tool, original, n, sessionID, typeof exit === "number" && exit !== 0)
             if (hint) note(hint)
           }
         } catch (err) {

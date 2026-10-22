@@ -167,5 +167,34 @@ class LaneBgTest(unittest.TestCase):
             self.assertEqual(self.wait_exit(artifact), 0)
 
 
+class WatcherDoesNotMatchItsOwnTextTest(unittest.TestCase):
+    """SMA wall 12: a watcher must not fire on text it can find in the job's own output."""
+
+    def _run_dir(self, tmp: str, log: str) -> Path:
+        run = Path(tmp) / "run"
+        artifact = run / "artifacts" / "001"
+        artifact.mkdir(parents=True)
+        (artifact / "lane-bg.supervisor.log").write_text(log, encoding="utf-8")
+        return run
+
+    def test_job_output_that_quotes_the_closing_line_is_not_done(self) -> None:
+        quoted = "[lane-bg] pid=1 start\n  the job printed: [lane-bg] exit=0 end\nsee '[lane-bg] exit=1' in the docs\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            run = self._run_dir(tmp, quoted)
+            wait = subprocess.run([str(ROOT / "bin" / "lane-wait"), "--once", "--dir", str(run / "artifacts" / "001")], text=True, capture_output=True)
+            self.assertEqual(wait.returncode, 3, wait.stdout)
+            self.assertIn("status=unknown", wait.stdout)
+            poll = subprocess.run([str(ROOT / "bin" / "lane-poll"), "--run-dir", str(run)], text=True, capture_output=True)
+            self.assertIn("task=001 status=unknown", poll.stdout)
+
+    def test_the_supervisors_own_closing_line_still_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run = self._run_dir(tmp, "[lane-bg] pid=1 start\nwork\n[lane-bg] exit=0 end 2026-10-22T00:00:00Z\n")
+            wait = subprocess.run([str(ROOT / "bin" / "lane-wait"), "--once", "--dir", str(run / "artifacts" / "001")], text=True, capture_output=True)
+            self.assertEqual(wait.returncode, 0, wait.stdout)
+            poll = subprocess.run([str(ROOT / "bin" / "lane-poll"), "--run-dir", str(run)], text=True, capture_output=True)
+            self.assertIn("task=001 status=done", poll.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

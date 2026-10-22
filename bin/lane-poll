@@ -121,7 +121,8 @@ for DIR in "${DIRS[@]}"; do
     status="running"
     started=$((started + 1))
     running=$((running + 1))
-  elif [[ -f "$sup_log" ]] && grep -q '\[lane-bg\] exit=' "$sup_log" 2>/dev/null; then
+  # The supervisor's own closing line, anchored to the line start: a watcher that matches loose text fires on job output that merely quotes it.
+  elif [[ -f "$sup_log" ]] && grep -qE '^\[lane-bg\] exit=[0-9]+( |$)' "$sup_log" 2>/dev/null; then
     status="done"
     started=$((started + 1))
     done_n=$((done_n + 1))

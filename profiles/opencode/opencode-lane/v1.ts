@@ -324,7 +324,8 @@ export const OpenCodeLanePlugin = async (ctx?: PluginContext) => {
             const n = observed.deduped
               ? Math.max(observed.n, toolRepeatN(sessionID, input.tool, input.args))
               : recordTool(sessionID, input.tool, input.args, original).n
-            const note = await repeatHint(task, input.tool, original, n, sessionID)
+            const exit = output.metadata?.exit
+            const note = await repeatHint(task, input.tool, original, n, sessionID, typeof exit === "number" && exit !== 0)
             if (note) {
               pushNote(sessionID, note)
               output.output = `${output.output}\n${note}`

@@ -73,6 +73,8 @@ one sequential writer task (Kimi/Grok/…).
 ## Verification rules
 - Actionable findings need ≥1 focused project-local command
 - Prefer path-scoped unit tests / typecheck for the owned files
+- A fix that touches a shared mechanism (launcher, isolation, config loader, the judge, a shared library) or whose reach you cannot bound
+  needs verification that covers everything going through it, not only the owned file's test
 - Forbidden: shell composition (&&, |, ;), expansion, globbing, package install,
   network fetch, or paths outside the project
 

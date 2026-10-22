@@ -102,6 +102,10 @@ class LaneSessionTest(unittest.TestCase):
                         print(os.environ["FAKE_VERSION_WARNING"])
                     print(os.environ.get("FAKE_VERSION_TEXT", "grok 0.2.103-test (fake)"))
                     raise SystemExit(0)
+                if os.environ.get("FAKE_PROVIDER_KIND", "") not in {"", "grok", "codex", "agy", "qwen", "cursor", "opencode", "kimi"}:
+                    # a double that answers success on a path it does not implement hides a wrong test
+                    print("fake-provider: unsupported FAKE_PROVIDER_KIND", file=sys.stderr)
+                    raise SystemExit(97)
                 streaming = "--output-format" in args and args[
                     args.index("--output-format") + 1
                 ] == "streaming-json"

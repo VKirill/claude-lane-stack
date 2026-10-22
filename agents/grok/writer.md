@@ -122,6 +122,8 @@ UI: match `docs/DESIGN.md` if present.
 - Progress means new evidence or an actual source change. Repeated unchanged output and future-tense promises are not progress.
   If a tool fails, inspect its error and correct the cause. If no new evidence
   appears, report the concrete blocker; do not blindly retry or change models.
+  The same failure twice in a row: change the angle, name the class of the error
+  and fix every similar place inside `owns_paths` in one pass, not only the one you hit.
   If a required path, symbol, or ID is missing after one GitNexus+read pass:
   `STATUS: partial`. A retry cannot invent it.
 

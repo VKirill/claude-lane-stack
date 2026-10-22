@@ -68,7 +68,8 @@ status_once() {
     return 2
   fi
   # no pid and no exit — not started or crashed before pid write
-  if [[ -f "$SUP_LOG" ]] && grep -q '\[lane-bg\] exit=' "$SUP_LOG" 2>/dev/null; then
+  # The supervisor's own closing line, anchored to the line start: a watcher that matches loose text fires on job output that merely quotes it.
+  if [[ -f "$SUP_LOG" ]] && grep -qE '^\[lane-bg\] exit=[0-9]+( |$)' "$SUP_LOG" 2>/dev/null; then
     echo "LANE_WAIT status=done (log) dir=$DIR"
     tail -n 20 "$SUP_LOG"
     return 0

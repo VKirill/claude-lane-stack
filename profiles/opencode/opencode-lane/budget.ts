@@ -210,15 +210,23 @@ export function observeToolProgress(
   return { fp, n, duplicate, deduped: false, skipped: false, ...(firstEditMs === undefined ? {} : { firstEditCallbackMs: firstEditMs }) }
 }
 
+// Two identical walls in a row (SMA rule 12): change the angle, name the class, sweep the whole class offline.
+const CLASS_SWEEP = "Name the class of this failure, then sweep every similar place offline in one pass (read/grep, no reruns), fix the whole class, and run once to confirm."
+
 export async function repeatHint(
   task: string,
   tool: string,
   output: string,
   n: number,
   sessionID = "",
+  failed = false,
 ): Promise<string> {
-  if (n < 3) return ""
   const name = tool.toLowerCase()
+  if (failed && n === 2 && !isEditTool(name)) {
+    laneLog({ mod: "budget", ok: true, session: sessionID, data: { event: "class_sweep", tool: name, n } })
+    return `[opencode-lane class] The same ${name} call failed the same way twice. Do not run it a third time: change the angle. ${CLASS_SWEEP}`
+  }
+  if (n < 3) return ""
   if (name === "read" || name === "grep") {
     laneLog({ mod: "budget", ok: true, session: sessionID, data: { event: "repeated_read", tool: name, n } })
     return `[opencode-lane budget] Identical ${name} content has already been returned ${n} times. Reuse the earlier result and take the next task step. If you cannot proceed, report the concrete blocker instead of rereading it.`
@@ -239,7 +247,7 @@ export async function repeatHint(
       tail: string
     }[]
   if (!extraJevEnabled()) {
-    return `[opencode-lane budget] same ${name} result ${n} times. Change the hypothesis before retrying.`
+    return `[opencode-lane budget] same ${name} result ${n} times. Change the hypothesis before retrying. ${CLASS_SWEEP}`
   }
   const answers = await askJev(
     { task: redactText(task), output: redactText(output), repeats: n, prior },
@@ -261,5 +269,5 @@ export async function repeatHint(
   if (choice !== "same_loop" || conf < 0.55) return ""
   const cmds = prior.map((row) => row.cmd).filter(Boolean)
   const extra = cmds.length ? ` Last: ${cmds[cmds.length - 1]}.` : ""
-  return `[opencode-lane budget] same_loop ×${n} (conf ${conf.toFixed(2)}).${extra} Do not retry the same command; check env or change the patch.`
+  return `[opencode-lane budget] same_loop ×${n} (conf ${conf.toFixed(2)}).${extra} Do not retry the same command; check env or change the patch. ${CLASS_SWEEP}`
 }

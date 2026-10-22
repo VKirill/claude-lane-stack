@@ -64,6 +64,9 @@ Canonical: `FILE-CONTRACT.md`, `SOLO-ORCHESTRATION.md`,
 
 - [ ] Observable behavior, not “all packages green”  
 - [ ] Matches objective; greps/sweeps named when deletion tasks  
+- [ ] A task that adds a value or setting has a `verification` that follows it to its reader (setting → launch arguments), not only the computation  
+- [ ] A change visible in a window has a `verification` that runs it (Playwright or equivalent); a run that did not happen is NOT RUN, never «no findings»  
+- [ ] The task touches a shared mechanism (launch, isolation, config, the judge, a shared library) or its reach is unknown → `verification` covers everything that goes through it, not only the owned file's test  
 
 ---
 

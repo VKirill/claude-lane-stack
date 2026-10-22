@@ -271,6 +271,28 @@ out.errorSurvived = true
         self.assertTrue(out["errorSurvived"])
 
 
+    def test_second_identical_failure_gets_the_class_sweep_hint_in_lane_sessions_only(self) -> None:
+        out = run_harness(r"""
+const after = hooks["tool.execute.after"]
+const call = async (agent, session, i, exit) => {
+  const result = { content: [{ type: "text", text: exit ? "FAILED tests/a.test.ts" : "all green" }], metadata: { exit } }
+  await after({ tool: "shell", sessionID: session, agent, id: `${session}-${i}`, input: { command: "npm test" }, status: "completed", result })
+  return result.content.map((p) => p.text).join("|")
+}
+out.first = await call("lane-writer", "sweep-lane", 1, 1)
+out.second = await call("lane-writer", "sweep-lane", 2, 1)
+out.okFirst = await call("lane-writer", "sweep-ok", 1, 0)
+out.okSecond = await call("lane-writer", "sweep-ok", 2, 0)
+await call("build", "sweep-plain", 1, 1)
+out.plainSecond = await call("build", "sweep-plain", 2, 1)
+""")
+        self.assertNotIn("[opencode-lane class]", out["first"])
+        self.assertIn("[opencode-lane class]", out["second"])
+        self.assertIn("sweep every similar place offline", out["second"])
+        self.assertNotIn("[opencode-lane class]", out["okSecond"])
+        self.assertEqual(out["plainSecond"], "FAILED tests/a.test.ts")
+
+
 class TelemetryV2Tests(unittest.TestCase):
     def test_v2_events_are_logged_like_the_v1_ones(self) -> None:
         script = r"""

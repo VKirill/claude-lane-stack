@@ -444,5 +444,87 @@ class PermanentDeleteTest(unittest.TestCase):
                 self.assertNotIn("deny", run_hook("writer", command).stdout)
 
 
+class ProgramThatRunsTest(unittest.TestCase):
+    """SMA rule 8: a dangerous command is judged by the program that really runs. Quoted text handed to a program that only prints,
+    stores or searches it is data; a string that gets executed is a command."""
+
+    @staticmethod
+    def _run(command: str, *, lane_pilot: bool = False) -> subprocess.CompletedProcess[str]:
+        env = {k: v for k, v in os.environ.items() if k != "LANE_PILOT_AGENT_TYPE"}
+        env["AGENT_HOOK_CLIENT"] = "claude"
+        if lane_pilot:
+            env["LANE_PILOT_AGENT_TYPE"] = "writer"
+        payload = {"agent_type": "writer", "tool_name": "Bash", "tool_input": {"command": command}, "cwd": "/tmp"}
+        return subprocess.run([str(HOOK)], input=json.dumps(payload), text=True, capture_output=True, env=env, check=False)
+
+    def test_text_that_only_mentions_a_dangerous_command_is_data(self) -> None:
+        for command in (
+            'echo "rm -rf /home/x"',
+            'echo "drop table users"',
+            'echo "delete from users" >> note.txt',
+            'git commit -m "fix: drop table handling, never run rm -rf /home/x or git push --force"',
+            'timeout 5 git commit -m "drop table users note"',
+            'sudo -u bob git commit -m "rm -rf /home/x"',
+            'git log --grep "rm -rf /home/x"',
+            'grep "drop table" schema.sql',
+            'gh pr create --title t --body "do not run rm -rf /home/x"',
+            'bb thread tell abc "never ssh ovh-main or bb plugin remove x"',
+            'printf "%s\\n" "rm -rf /home/x" >> log.txt',
+            'ssh devbox echo "rm -rf /home/x"',
+            'ssh devbox "git push --force-with-lease origin main"',
+            'echo "ls" | sh',
+            "cat > note.md <<'EOF'\nrm -rf /home/x\nssh ovh-main; drop table x\nEOF",
+        ):
+            for lane_pilot in (False, True):
+                with self.subTest(command=command, lane_pilot=lane_pilot):
+                    result = self._run(command, lane_pilot=lane_pilot)
+                    self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_a_string_that_gets_executed_is_a_command(self) -> None:
+        for command in (
+            'sh -c "rm -rf /home/x"',
+            'bash -lc "git push --force origin main"',
+            'eval "rm -rf /home/x"',
+            'ssh devbox "rm -rf /home/x"',
+            'ssh -p 2222 -i key devbox "cd /srv && git push --force origin main"',
+            'ssh -p 2222 devbox rm -rf /home/x',
+            'ssh devbox "drop table users"',
+            'xargs sh -c "rm -rf /home/x"',
+            'echo x | xargs -I{} sh -c "rm -rf /home/x"',
+            'timeout 5 bash -c "rm -rf /home/x"',
+            'sudo -u bob env X=1 nohup rm -rf /home/x',
+            'su -c "rm -rf /home/x" bob',
+            'watch -n 5 "rm -rf /home/x"',
+            'env -S "rm -rf /home/x"',
+            'find . -type f -exec sh -c "rm -rf /home/x" \\;',
+            'echo "$(rm -rf /home/x)"',
+            'echo `rm -rf /home/x`',
+            'echo "rm -rf /home/x" | sh',
+            'printf "%s" "rm -rf /home/x" | bash',
+            'bash <<< "rm -rf /home/x"',
+            'echo "drop table users" | psql db',
+            'psql db <<< "truncate table users"',
+            'mysql -e "truncate table users"',
+            # a program the guard does not know is never trusted with a quoted command line
+            'mytool "rm -rf /home/x"',
+            'mytool --run "git push --force origin main"',
+            'mytool "ssh devbox rm -rf /home/x"',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self._run(command).returncode, 2, command)
+
+    def test_hub_commands_inside_executed_strings_are_refused_for_lane_pilot_agents(self) -> None:
+        for command in (
+            'ssh somehost "ssh ovh-main uptime"',
+            'mytool "bb plugin remove x"',
+            'xargs sh -c "bb plugin remove x"',
+            'echo "bb plugin remove x" | sh',
+        ):
+            with self.subTest(command=command):
+                result = self._run(command, lane_pilot=True)
+                self.assertEqual(result.returncode, 2, command)
+                self.assertIn("hub-guard", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
