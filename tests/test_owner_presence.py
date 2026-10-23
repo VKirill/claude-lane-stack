@@ -31,6 +31,16 @@ class OwnerPresenceTest(unittest.TestCase):
         lane = subprocess.run([sys.executable, str(ROOT / "hooks/owner_presence.py")], input="{}", capture_output=True, text=True, env={**env, "HOME": str(Path(tempfile.mkdtemp())), "LANE_PILOT_AGENT_TYPE": "lane-pilot-writer"})
         self.assertEqual(lane.returncode, 0)
 
+    def test_turns_no_person_typed_mark_nothing(self) -> None:
+        for prompt in ["<task-notification>done</task-notification>", "[SYSTEM NOTIFICATION - NOT USER INPUT] x", "<system-reminder>r</system-reminder>",
+                       "[bb message from thread:thr_1] hi", "Lane Pilot: results of your tasks", "", None]:
+            self.assertFalse(owner_presence.typed_by_a_person(prompt), prompt)
+        self.assertTrue(owner_presence.typed_by_a_person("так делай"))
+        home = Path(tempfile.mkdtemp())
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(home)}
+        subprocess.run([sys.executable, str(ROOT / "hooks/owner_presence.py")], input=json.dumps({"prompt": "<task-notification>x</task-notification>"}), capture_output=True, text=True, env=env)
+        self.assertFalse((home / ".agents/state/owner-presence.json").exists())
+
     def test_a_later_mark_keeps_other_providers(self) -> None:
         home = Path(tempfile.mkdtemp())
         owner_presence.record(home, 1, "mini", provider="codex")

@@ -1,3 +1,7 @@
+## 1.66.5 — 2026-10-23
+
+- `owner_presence.py` counts only a prompt a person typed: a harness notification (`<task-notification>`, `[SYSTEM NOTIFICATION`), a reminder, another thread's message (`[bb message from thread:`) or a Lane Pilot service message no longer marks the owner present (an agent's own session marked itself on every background-task notification).
+
 ## 1.66.4 — 2026-10-23
 
 - **The owner at the keyboard (SMA D2-6, «Daytime owner left alone»).** New `hooks/owner_presence.py` (UserPromptSubmit, wired by `merge_claude_settings.py`): a prompt typed in a Claude Code session with no lane marker writes the time and the host (never the prompt) to `~/.agents/state/owner-presence.json`. Lane Pilot reads it on every machine and keeps its writers off a provider the owner used in the last 10 minutes. No output, never blocks; `LANE_OWNER_PRESENCE=0` turns it off. Tests: `tests/test_owner_presence.py`, scope entry (machine-wide, why) in `tests/test_plain_session_scope.py`.
