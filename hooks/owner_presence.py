@@ -27,6 +27,11 @@ def typed_by_a_person(prompt: object) -> bool:
     return isinstance(prompt, str) and bool(prompt.strip()) and not MACHINE_TURN.match(prompt)
 
 
+def model_list_probe(prompt: object, environ: dict[str, str]) -> bool:
+    """BB's Claude Code provider reads the model list with an SDK query of "." outside any thread (provider-claude-code model-list.ts)."""
+    return prompt == "." and not environ.get("BB_THREAD_ID") and environ.get("CLAUDE_CODE_ENTRYPOINT", "") != "cli"
+
+
 def owner_session(environ: dict[str, str]) -> bool:
     return environ.get("LANE_OWNER_PRESENCE", "1") != "0" and not any(environ.get(name) for name in MARKERS)
 
@@ -53,7 +58,8 @@ def main() -> int:
     except (OSError, ValueError):
         payload = {}
     prompt = payload.get("prompt") if isinstance(payload, dict) else None
-    if owner_session(dict(os.environ)) and typed_by_a_person(prompt):
+    environ = dict(os.environ)
+    if owner_session(environ) and typed_by_a_person(prompt) and not model_list_probe(prompt, environ):
         try:
             record(Path.home(), int(time.time() * 1000), socket.gethostname())
         except OSError:

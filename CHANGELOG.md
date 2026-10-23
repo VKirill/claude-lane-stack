@@ -1,3 +1,7 @@
+## 1.66.7 — 2026-10-23
+
+- `owner_presence.py`: BB's Claude Code provider reads the model list with an SDK query of `.` outside any thread; that prompt (exactly `.`, no `BB_THREAD_ID`, entrypoint not `cli`) no longer marks the owner present. Every model-list read (each Lane Pilot probe, each hub restart) held Claude Code writers for 10 minutes. A `.` typed in a terminal still counts.
+
 ## 1.66.6 — 2026-10-23
 
 - `owner_presence.py`: the opening prompt Lane Pilot writes for a PM or a self-repair thread it starts (`You are the Lane Pilot …`) no longer marks the owner present (every run start held Claude Code writers for 10 minutes).

@@ -31,6 +31,16 @@ class OwnerPresenceTest(unittest.TestCase):
         lane = subprocess.run([sys.executable, str(ROOT / "hooks/owner_presence.py")], input="{}", capture_output=True, text=True, env={**env, "HOME": str(Path(tempfile.mkdtemp())), "LANE_PILOT_AGENT_TYPE": "lane-pilot-writer"})
         self.assertEqual(lane.returncode, 0)
 
+    def test_bbs_model_list_probe_is_not_the_owner(self) -> None:
+        self.assertTrue(owner_presence.model_list_probe(".", {"CLAUDE_CODE_ENTRYPOINT": "sdk-ts"}))
+        self.assertFalse(owner_presence.model_list_probe(".", {"CLAUDE_CODE_ENTRYPOINT": "cli"}))
+        self.assertFalse(owner_presence.model_list_probe(".", {"CLAUDE_CODE_ENTRYPOINT": "sdk-ts", "BB_THREAD_ID": "thr_1"}))
+        self.assertFalse(owner_presence.model_list_probe("так делай", {"CLAUDE_CODE_ENTRYPOINT": "sdk-ts"}))
+        home = Path(tempfile.mkdtemp())
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "CLAUDE_CODE_ENTRYPOINT": "sdk-ts"}
+        subprocess.run([sys.executable, str(ROOT / "hooks/owner_presence.py")], input=json.dumps({"prompt": "."}), capture_output=True, text=True, env=env)
+        self.assertFalse((home / ".agents/state/owner-presence.json").exists())
+
     def test_turns_no_person_typed_mark_nothing(self) -> None:
         for prompt in ["<task-notification>done</task-notification>", "[SYSTEM NOTIFICATION - NOT USER INPUT] x", "<system-reminder>r</system-reminder>",
                        "[bb message from thread:thr_1] hi", "Lane Pilot: results of your tasks",
