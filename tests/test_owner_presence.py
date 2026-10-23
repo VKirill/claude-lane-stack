@@ -33,7 +33,8 @@ class OwnerPresenceTest(unittest.TestCase):
 
     def test_turns_no_person_typed_mark_nothing(self) -> None:
         for prompt in ["<task-notification>done</task-notification>", "[SYSTEM NOTIFICATION - NOT USER INPUT] x", "<system-reminder>r</system-reminder>",
-                       "[bb message from thread:thr_1] hi", "Lane Pilot: results of your tasks", "", None]:
+                       "[bb message from thread:thr_1] hi", "Lane Pilot: results of your tasks",
+                       "You are the Lane Pilot PM. Do not write production code yourself.", "", None]:
             self.assertFalse(owner_presence.typed_by_a_person(prompt), prompt)
         self.assertTrue(owner_presence.typed_by_a_person("так делай"))
         home = Path(tempfile.mkdtemp())

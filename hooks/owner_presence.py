@@ -20,7 +20,7 @@ from pathlib import Path
 MARKERS = ("LANE_STACK_SESSION", "LANE_PILOT_AGENT_TYPE", "LANE_PILOT_ROLE", "LANE_PROMPT_FILE", "LANE_TASK_FILE", "LANE_CODEX_WORKER")
 PROVIDER = "claude-code"
 # Turns no person typed: harness notifications, reminders, messages of other threads and bots.
-MACHINE_TURN = re.compile(r"^\s*(<task-notification>|<system-reminder>|\[SYSTEM NOTIFICATION|\[bb message from thread:|Lane Pilot:|<command-)", re.I)
+MACHINE_TURN = re.compile(r"^\s*(<task-notification>|<system-reminder>|\[SYSTEM NOTIFICATION|\[bb message from thread:|Lane Pilot:|You are the Lane Pilot |<command-)", re.I)
 
 
 def typed_by_a_person(prompt: object) -> bool:

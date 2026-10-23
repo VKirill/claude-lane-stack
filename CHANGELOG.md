@@ -1,3 +1,7 @@
+## 1.66.6 — 2026-10-23
+
+- `owner_presence.py`: the opening prompt Lane Pilot writes for a PM or a self-repair thread it starts (`You are the Lane Pilot …`) no longer marks the owner present (every run start held Claude Code writers for 10 minutes).
+
 ## 1.66.5 — 2026-10-23
 
 - `owner_presence.py` counts only a prompt a person typed: a harness notification (`<task-notification>`, `[SYSTEM NOTIFICATION`), a reminder, another thread's message (`[bb message from thread:`) or a Lane Pilot service message no longer marks the owner present (an agent's own session marked itself on every background-task notification).
