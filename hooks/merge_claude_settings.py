@@ -113,6 +113,7 @@ SESSION_LEDGER_RE = re.compile(r"session_ledger\.py")
 PM_STOP_RE = re.compile(r"pm_stop_sentinel\.py")
 PM_BULK_READ_RE = re.compile(r"pm_bulk_read\.py")
 STALL_CHECK_RE = re.compile(r"stall_check\.py")
+OWNER_PRESENCE_RE = re.compile(r"owner_presence\.py")
 GITNEXUS_HOOK_RE = re.compile(r"gitnexus-hook")
 GITNEXUS_HOOK_FILES = (
     "gitnexus-hook.cjs",
@@ -200,6 +201,13 @@ def merge_stall_check(settings: dict[str, Any], hook_path: Path) -> dict[str, An
     """PostToolUse stall rules for lane sessions only (the hook itself checks the lane markers)."""
     cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
     _replace_event_hooks(settings, "PostToolUse", cmd, STALL_CHECK_RE, timeout=3)
+    return settings
+
+
+def merge_owner_presence(settings: dict[str, Any], hook_path: Path) -> dict[str, Any]:
+    """UserPromptSubmit: the owner's own prompts mark his presence (the hook skips lane sessions itself)."""
+    cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
+    _replace_event_hooks(settings, "UserPromptSubmit", cmd, OWNER_PRESENCE_RE, timeout=2)
     return settings
 
 
@@ -822,6 +830,9 @@ def main() -> int:
     stall = hooks_dir / "stall_check.py"
     if stall.is_file():
         settings = merge_stall_check(settings, stall)
+    presence = hooks_dir / "owner_presence.py"
+    if presence.is_file():
+        settings = merge_owner_presence(settings, presence)
     gn_hook = install_gitnexus_claude_files(
         args.settings.parent / "hooks" / "gitnexus"
     )
