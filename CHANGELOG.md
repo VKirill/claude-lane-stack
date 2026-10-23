@@ -1,3 +1,9 @@
+## 1.66.3 — 2026-10-23
+
+SMA atlas D2-6 and D2-9 on the Lane Stack side.
+- **Stall rules in Claude Code lane sessions (D2-6).** New `hooks/stall_check.py` (PostToolUse, wired by `merge_claude_settings.py`): the same failing call twice → change the angle, name the class, sweep it offline; the same read/grep result three times → reuse it; the same write/edit three times → targeted edit; any other identical result three times → change the hypothesis. The same rules as `opencode-lane` budget.ts. Lane sessions only (LANE_* markers); advice, never a block; `LANE_STALL_CHECK=0` turns it off. Tests: `tests/test_stall_check.py`, scope entry in `tests/test_plain_session_scope.py`.
+- **Backlog fields (D2-9).** The todo `meta.yaml` template has `estimate` (1..13) and `depends_on`: Lane Pilot's backlog scanner hands a ready item with both settled to the project's PM.
+
 ## 1.66.2 — 2026-10-22
 
 Twelve SMA rules and thirteen walls audited against Lane Stack; the missing mechanisms added (text-only rules stay text).

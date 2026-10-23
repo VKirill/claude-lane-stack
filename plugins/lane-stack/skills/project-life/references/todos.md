@@ -90,7 +90,12 @@ tags: []
 source: chat          # chat | user-file | run-followup
 related_runs: []      # .agents/runs/<slug> if spawned later
 owner: user
+estimate: 5           # optional: points 1..13 (Fibonacci); above 13 split the item first
+depends_on: []        # optional: todo ids that must be done first
 ```
+
+A `ready` item with an `estimate` of at most 13 and every `depends_on` done is handed by Lane Pilot's backlog scanner to the project's PM,
+one a day (`bb lane-pilot backlog <project>`); without an estimate or above 13 it waits to be estimated or split.
 
 ## INDEX.md
 

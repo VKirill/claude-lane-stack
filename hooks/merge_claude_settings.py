@@ -112,6 +112,7 @@ TEAMMATE_IDLE_RE = re.compile(r"teammate_idle_sentinel\.py")
 SESSION_LEDGER_RE = re.compile(r"session_ledger\.py")
 PM_STOP_RE = re.compile(r"pm_stop_sentinel\.py")
 PM_BULK_READ_RE = re.compile(r"pm_bulk_read\.py")
+STALL_CHECK_RE = re.compile(r"stall_check\.py")
 GITNEXUS_HOOK_RE = re.compile(r"gitnexus-hook")
 GITNEXUS_HOOK_FILES = (
     "gitnexus-hook.cjs",
@@ -192,6 +193,13 @@ def merge_teammate_idle(settings: dict[str, Any], hook_path: Path) -> dict[str, 
     """Wire TeammateIdle sentinel (DONE|FAILED|WAIT) for agent teams."""
     cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
     _replace_event_hooks(settings, "TeammateIdle", cmd, TEAMMATE_IDLE_RE, timeout=5)
+    return settings
+
+
+def merge_stall_check(settings: dict[str, Any], hook_path: Path) -> dict[str, Any]:
+    """PostToolUse stall rules for lane sessions only (the hook itself checks the lane markers)."""
+    cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
+    _replace_event_hooks(settings, "PostToolUse", cmd, STALL_CHECK_RE, timeout=3)
     return settings
 
 
@@ -811,6 +819,9 @@ def main() -> int:
     bulk = hooks_dir / "pm_bulk_read.py"
     if bulk.is_file():
         settings = merge_pm_bulk_read(settings, bulk)
+    stall = hooks_dir / "stall_check.py"
+    if stall.is_file():
+        settings = merge_stall_check(settings, stall)
     gn_hook = install_gitnexus_claude_files(
         args.settings.parent / "hooks" / "gitnexus"
     )

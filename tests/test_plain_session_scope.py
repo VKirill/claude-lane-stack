@@ -27,6 +27,7 @@ SCOPE = {
     # Claude Code settings.json (merge_claude_settings.py)
     "guard_shell.py": (MACHINE, "protection from mistakes (rm → agent-trash, force push, SQL wipes); role rules need agent_type or LANE_PILOT_AGENT_TYPE"),
     "pm_bulk_read.py": (LANE, "only when a routing profile enables pm_read"),
+    "stall_check.py": (LANE, "LANE_STACK_SESSION/LANE_PILOT_AGENT_TYPE/LANE_PILOT_ROLE/LANE_PROMPT_FILE/LANE_TASK_FILE/LANE_CODEX_WORKER"),
     "lane_statusline_session.py": (MACHINE, "records agent_type only; the lane HUD shows for lane agents"),
     "teammate_idle_sentinel.py": (LANE, "lane-stack/rs-* teammate or LANE_STACK_SESSION/LANE_PILOT_AGENT_TYPE"),
     "pm_stop_sentinel.py": (LANE, "PM agent_type only"),
