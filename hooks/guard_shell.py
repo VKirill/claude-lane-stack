@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse: block destructive shell across CLIs."""
 from __future__ import annotations
-import ipaddress, json, os, re, shlex, socket, sys, threading
+import ipaddress, json, os, re, shlex, socket, subprocess, sys, threading, time
 from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -261,7 +261,14 @@ def _without_data_heredocs(command: str) -> str:
         line_end = command.find("\n", match.start())
         if _feeds_shell(command[line_start : line_end if line_end >= 0 else len(command)]):
             return match.group(0)
-        return match.group(0)[: match.start(3) - match.start(0)] + "\n"
+        kept = match.group(0)[: match.start(3) - match.start(0)] + "\n"
+        if not match.group(1):  # an unquoted delimiter: $(...) and `...` in the body still run
+            try:
+                runs = _lift_substitutions(match.group(3).replace("'", " ").replace('"', " "))[1]
+            except ValueError:
+                runs = []
+            kept += "".join(f"true $({body})\n" for body in runs)
+        return kept
     return _HEREDOC.sub(strip, command)
 
 
@@ -312,6 +319,96 @@ _DATA_PROGRAMS = {
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
 _SUBSTITUTION = re.compile(r"\$\(([^()]*)\)")
 _BACKTICKS = re.compile(r"`([^`]*)`")
+
+
+class _TooDeep(ValueError):
+    """More wrappers than the guard follows: refused even when bash accepts the text."""
+
+
+def _closing(text: str, start: int) -> int:
+    """Index just past the `)` that closes the `$(` or `(` before `start`; quotes, escapes and nested substitutions inside
+    are skipped the way bash reads them. ValueError when the text ends first."""
+    depth, index, quote = 1, start, None
+    while index < len(text):
+        ch = text[index]
+        if ch == "\\" and quote != "'":
+            index += 2
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            elif quote == '"' and text.startswith("$(", index):
+                index = _closing(text, index + 2)
+                continue
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "`":
+            end = text.find("`", index + 1)
+            index = end + 1 if end >= 0 else len(text)
+            continue
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    raise ValueError("unclosed command substitution")
+
+
+def _lift_substitutions(text: str) -> tuple[str, list[str]]:
+    """The text with each command substitution ($(...) and `...`, also inside double quotes) replaced by one plain word,
+    and the bodies they run. Python's shlex cannot read a quote inside $(...) inside double quotes, which bash reads
+    fine: `printf "%s" "$(grep -c 'a="b"' f)"` was refused as unparseable (26 valid commands in two days, 2026-10-24).
+    The bodies are command lines that run, so the caller checks them like any other. Single-quoted text stays as is."""
+    out: list[str] = []
+    bodies: list[str] = []
+    index, quote = 0, None
+    while index < len(text):
+        ch = text[index]
+        if quote == "'":
+            out.append(ch)
+            if ch == "'":
+                quote = None
+            index += 1
+            continue
+        if ch == "\\":
+            nxt = text[index + 1 : index + 2]
+            out.append(ch + nxt if nxt != "`" else "_")
+            index += 2
+            continue
+        if text.startswith("$(", index):
+            end = _closing(text, index + 2)
+            body = text[index + 2 : end - 1]
+            if not body.startswith("("):  # $(( arithmetic )) runs nothing
+                bodies.append(body)
+            out.append("__SUBST__")
+            index = end
+            continue
+        if ch == "`":
+            end = index + 1
+            while end < len(text) and text[end] != "`":
+                end += 2 if text[end] == "\\" else 1
+            if end >= len(text):
+                raise ValueError("unclosed backquote")
+            bodies.append(text[index + 1 : end].replace("\\`", "`"))
+            out.append("__SUBST__")
+            index = end + 1
+            continue
+        if quote is None and text.startswith("$'", index):
+            end = index + 2
+            while end < len(text) and text[end] != "'":
+                end += 2 if text[end] == "\\" else 1
+            out.append("__ANSI__")
+            index = end + 1
+            continue
+        if ch == '"':
+            quote = None if quote == '"' else '"'
+        elif ch == "'" and quote is None:
+            quote = "'"
+        out.append(ch)
+        index += 1
+    return "".join(out), bodies
 
 
 def _dash_c_payload(words: list[str]) -> str | None:
@@ -416,15 +513,15 @@ def _executed_strings(command: str, depth: int = 4) -> list[str]:
     queue: list[tuple[str, int]] = [(command, depth)]
     while queue:
         line, left = queue.pop()
-        for match in _BACKTICKS.finditer(line):  # `cmd` runs even inside double quotes
-            body = match.group(1)
+        lifted, bodies = _lift_substitutions(_without_data_heredocs(line))
+        for body in bodies:  # $(cmd) and `cmd` run, even inside double quotes
             if body.strip() and body not in seen:
                 if left <= 0:
-                    raise ValueError("shell -c nesting exceeds four wrappers")
+                    raise _TooDeep("shell -c nesting exceeds four wrappers")
                 seen.add(body)
                 found.append(body)
                 queue.append((body, left - 1))
-        lexer = shlex.shlex(_without_data_heredocs(line), posix=True, punctuation_chars=";&|()<>\n")
+        lexer = shlex.shlex(lifted, posix=True, punctuation_chars=";&|()<>\n")
         lexer.whitespace = " \t\r"
         lexer.whitespace_split = True
         lexer.commenters = ""
@@ -459,7 +556,7 @@ def _executed_strings(command: str, depth: int = 4) -> list[str]:
                 if text in seen or not text.strip():
                     continue
                 if nested and left <= 0:
-                    raise ValueError("shell -c nesting exceeds four wrappers")
+                    raise _TooDeep("shell -c nesting exceeds four wrappers")
                 seen.add(text)
                 found.append(text)
                 queue.append((text, left - 1 if nested else left))
@@ -673,20 +770,31 @@ def _delete_targets(args: list[str]) -> list[str] | None:
 def _delete_commands(command: str) -> list[list[str]]:
     """Targets of every real rm/unlink/shred/find -delete in a command; text inside quotes (a grep pattern) is not one."""
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        # Lines are commands of their own and a redirect's word is its target, not a file to delete: `rm -f x 2>/dev/null`
+        # named "2>/dev/null" and the next line's words as targets (2026-10-24).
+        lexer = shlex.shlex(_lift_substitutions(command)[0], posix=True, punctuation_chars=";&|()<>\n")
+        lexer.whitespace = " \t\r"
         lexer.whitespace_split = True
         lexer.commenters = ""
-        tokens = list(lexer)
+        tokens = [";" if token.strip("\n") == "" else token for token in lexer]
     except ValueError:
         return [["?"]] if re.search(r"(?:^|[;&|(]\s*)(?:sudo\s+)?(?:rm|unlink|shred)\s", command) else []
     found: list[list[str]] = []
     segment: list[str] = []
+    skip_next = False
     for token in [*tokens, ";"]:
+        if skip_next:
+            skip_next = False
+            continue
         if token in _CONTROL_TOKENS:
             targets = _delete_targets(segment)
             if targets is not None:
                 found.append(targets)
             segment = []
+        elif token in _REDIRECT_TOKENS or (token and set(token) <= set("<>&|") and token[0] in "<>"):
+            if segment and segment[-1].isdigit():
+                segment.pop()  # the file descriptor of `2>`
+            skip_next = True
         else:
             segment.append(token)
     return found
@@ -1710,6 +1818,25 @@ def _route_first(client: str, name: str, p: dict) -> None:
                   "that no workflow fits, this search is allowed in the same turn.")
 
 
+def _bash_accepts(command: str) -> bool:
+    """Whether bash itself parses the command (`bash -n`: syntax only, nothing runs)."""
+    try:
+        return subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True, timeout=2).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _note_guard_crash(exc: BaseException) -> None:
+    """A crash of the guard itself is written down here, so a refusal caused by the guard's own bug can be found."""
+    try:
+        path = Path.home() / ".agents" / "state" / "guard-crashes.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {type(exc).__name__}: {exc}\n")
+    except OSError:
+        pass
+
+
 def main() -> None:
     p = read_payload()
     if not isinstance(p, dict):
@@ -1786,7 +1913,10 @@ def main() -> None:
     try:
         push_scans = (stripped, *_executed_strings(stripped))
     except ValueError as exc:
-        emit_deny(client, f"[agent-guard] shell command cannot be safely parsed: {exc}")
+        # Valid bash that the Python lexer still cannot follow is checked as text below instead of refused whole.
+        if isinstance(exc, _TooDeep) or not _bash_accepts(cmd):
+            emit_deny(client, f"[agent-guard] shell command cannot be safely parsed: {exc}")
+        push_scans = (stripped,)
 
     # A Lane Pilot BB chat (its launcher sets LANE_PILOT_AGENT_TYPE) runs writers as BB threads,
     # and Lane Pilot itself critiques, accepts and merges them into main.
@@ -1866,7 +1996,10 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except SystemExit:
+        raise
+    except Exception as exc:
+        _note_guard_crash(exc)
         emit_deny(
             detect_client({}),
             "[agent-guard] malformed PreToolUse payload blocked.",

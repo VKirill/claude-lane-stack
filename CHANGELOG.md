@@ -1,3 +1,9 @@
+## 1.66.8 — 2026-10-24
+
+- `guard_shell.py` reads valid bash the Python lexer could not: command substitutions (`$(...)`, backquotes, also inside double quotes and in an unquoted heredoc body) are lifted out and checked as the commands they run, `$'...'` is read as one word, and a command bash itself accepts (`bash -n`) is checked as text instead of refused whole. 26 valid commands in two days had been refused as «cannot be safely parsed». Nesting deeper than four wrappers and invalid shell are still refused.
+- Delete targets stop at redirects and line ends: `rm -f x 2>/dev/null` no longer names `2>/dev/null`, and the next line's words are no longer taken as targets (a `rm /tmp/...` before a `python3 scripts/...` line was refused).
+- A crash of the guard itself is written to `~/.agents/state/guard-crashes.log` (still refused).
+
 ## 1.66.7 — 2026-10-23
 
 - `owner_presence.py`: BB's Claude Code provider reads the model list with an SDK query of `.` outside any thread; that prompt (exactly `.`, no `BB_THREAD_ID`, entrypoint not `cli`) no longer marks the owner present. Every model-list read (each Lane Pilot probe, each hub restart) held Claude Code writers for 10 minutes. A `.` typed in a terminal still counts.

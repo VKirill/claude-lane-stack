@@ -528,3 +528,38 @@ class ProgramThatRunsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubstitutionAndValidBashTest(unittest.TestCase):
+    """2026-10-24: 26 valid commands in two days were refused as unparseable (a quote inside $(...) inside double quotes,
+    an escaped backquote). Valid bash is read; what a substitution runs is still checked."""
+
+    def test_valid_bash_with_nested_quotes_passes(self) -> None:
+        for command in (
+            'printf "%s events=%s\\n" "$f" "$(grep -c \'name="GenerationSpeed"\' $f)"',
+            'grep -o "\\`$c\\`\\*\\*[^|]*|[^|]*" "$B" | head -1',
+            "echo $'it\\'s' && ls",
+            "echo $((1+2))",
+            'gen noob "a recruit of the kingdom\'s army" &',
+        ):
+            with self.subTest(command=command):
+                self.assertNotIn("deny", run_hook("writer", command).stdout)
+
+    def test_what_a_substitution_runs_is_checked(self) -> None:
+        for command in (
+            'echo "$(rm -rf src)"',
+            "x=`git push --force origin main`",
+            'printf "%s" "$(git push -f)"',
+            "cat <<EOF\n$(rm -rf src)\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertIn("deny", run_hook("writer", command).stdout)
+
+    def test_invalid_shell_is_still_refused(self) -> None:
+        self.assertIn("cannot be safely parsed", run_hook("writer", 'echo "unterminated').stdout)
+
+    def test_delete_targets_stop_at_redirects_and_line_ends(self) -> None:
+        self.assertNotIn("deny", run_hook("writer", "python3 -c 'print(1)'; rm /tmp/sp_before.json\npython3 scripts/x.py reference/data").stdout)
+        result = run_hook("writer", 'rm -f "$V"/preview_[0-2].png 2>/dev/null; ls')
+        self.assertIn("deny", result.stdout)
+        self.assertNotIn("/dev/null", json.loads(result.stdout)["reason"])
