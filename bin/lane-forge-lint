@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""lane-forge-lint <skill|role|workflow> <name> <file> — the forge's draft lint, the check a Creator task runs (Lane Pilot's
+src/rooms/forge/logic.ts lintDraft holds the same rules and decides the receipt). Exit 0 clean, 1 with findings, 2 on bad arguments."""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+FORBIDDEN = [
+    (r"--dangerously-skip-permissions|bypassPermissions|permission-mode\s+bypass", "bypasses the permission prompts", re.I),
+    (r"^tools:\s*\*\s*$|allowed-tools:\s*\*|\"tools\"\s*:\s*\"\*\"", "asks for every tool", re.I | re.M),
+    (r"Bash\(\s*\*\s*\)|Bash\(rm\b|Bash\(sudo\b", "an unrestricted or destructive shell grant", re.I),
+    (r"env_get|Env Catalog|\.env\b|secrets?/", "reads secrets", re.I),
+    (r"guard_shell|LANE_GUARD|agent-guard|disable[_ -]?hooks?", "touches the guard or the hooks", re.I),
+    (r"curl[^\n]*\|\s*(ba)?sh|wget[^\n]*\|\s*(ba)?sh", "pipes a download into a shell", re.I),
+]
+
+
+def lint(kind: str, name: str, text: str) -> list[str]:
+    if not text.strip():
+        return ["empty: the draft is empty"]
+    out = []
+    if len(text.encode()) > 40_000:
+        out.append("too_big: over 40 KB")
+    if kind == "workflow":
+        try:
+            data = json.loads(text)
+            if data.get("id") != name:
+                out.append(f"id: must be {name}")
+            if not data.get("nodes"):
+                out.append("nodes: none")
+            if not isinstance(data.get("entry"), str):
+                out.append("entry: none")
+            if not data.get("description"):
+                out.append("description: none")
+        except ValueError:
+            out.append("json: not JSON")
+    else:
+        if not text.startswith("---\n"):
+            out.append("frontmatter: none")
+        else:
+            head = text[4:].split("\n---", 1)[0]
+            meta = {line.split(":", 1)[0].strip(): line.split(":", 1)[1].strip().strip('"') for line in head.splitlines() if re.match(r"^[A-Za-z_-]+:", line)}
+            if meta.get("name") != name:
+                out.append(f"name: must be {name}")
+            desc = meta.get("description", "")
+            if len(desc) < 40:
+                out.append("description: too short")
+            if not re.search(r"use when|применяется|используй|when:", desc, re.I):
+                out.append("trigger: no «Use when …»")
+            if re.search(r"draft:\s*true", head):
+                out.append("draft_mark: remove draft: true")
+    out += [f"forbidden_grant: {why}" for pattern, why, flags in FORBIDDEN if re.search(pattern, text, flags)]
+    return out
+
+
+def main() -> int:
+    if len(sys.argv) != 4 or sys.argv[1] not in ("skill", "role", "workflow"):
+        print(__doc__, file=sys.stderr)
+        return 2
+    findings = lint(sys.argv[1], sys.argv[2], Path(sys.argv[3]).read_text(encoding="utf-8") if Path(sys.argv[3]).is_file() else "")
+    print("\n".join(findings) if findings else "lint ok")
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
