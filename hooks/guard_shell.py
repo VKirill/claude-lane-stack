@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse: block destructive shell across CLIs."""
 from __future__ import annotations
-import ipaddress, json, os, re, shlex, socket, subprocess, sys, threading, time
+import hashlib, ipaddress, json, os, re, shlex, socket, subprocess, sys, threading, time
 from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1818,6 +1818,44 @@ def _route_first(client: str, name: str, p: dict) -> None:
                   "that no workflow fits, this search is allowed in the same turn.")
 
 
+PERMIT_DIR = Path.home() / ".agents" / "permits"
+
+
+def _permit_session(p: dict) -> str | None:
+    """A Lane Pilot writer session asks for a permit instead of a flat refusal; any other session keeps the refusal."""
+    if not (os.environ.get("LANE_PILOT_ROLE") == "writer" or os.environ.get("LANE_PILOT_AGENT_TYPE") == "writer"):
+        return None
+    sid = str(p.get("session_id") or "")
+    return re.sub(r"[^A-Za-z0-9_-]", "_", sid)[:80] or None
+
+
+def _permit_or_ticket(p: dict, command: str, category: str, refusal: str) -> str | None:
+    """Permission before an act (SMA): a granted permit for exactly this command is used once and the call goes on (None); otherwise a
+    ticket is written to the permit channel (~/.agents/permits/<session>/) for Lane Pilot to hand to the PM, and the refusal names it."""
+    session = _permit_session(p)
+    if not session:
+        return refusal
+    digest = hashlib.sha256(f"{category}\n{command}".encode()).hexdigest()[:16]
+    folder = PERMIT_DIR / session
+    answer = folder / f"{digest}.answer.json"
+    try:
+        if answer.exists():
+            verdict = json.loads(answer.read_text())
+            if verdict.get("decision") == "allow" and not verdict.get("used"):
+                verdict["used"] = time.time()
+                answer.write_text(json.dumps(verdict))
+                return None
+            if verdict.get("decision") == "deny":
+                return f"{refusal} The PM refused this permit: {verdict.get('why', '')}"
+        folder.mkdir(parents=True, exist_ok=True)
+        ticket = folder / f"{digest}.ticket.json"
+        if not ticket.exists():
+            ticket.write_text(json.dumps({"ticket": digest, "category": category, "command": command[:2000], "cwd": str(p.get("cwd") or ""), "at": time.time(), "refusal": refusal[:500]}))
+    except OSError:
+        return refusal
+    return f"{refusal} Permit ticket {digest} is filed: Lane Pilot hands it to the PM; when it is granted, run the same command again (once). Meanwhile do the rest of the task."
+
+
 def _bash_accepts(command: str) -> bool:
     """Whether bash itself parses the command (`bash -n`: syntax only, nothing runs)."""
     try:
@@ -1981,7 +2019,9 @@ def main() -> None:
     # SQL destroyers (simple). Read the commands that run, not notes that mention them (git commit -m "fix drop table").
     low = " ; ".join(_skeleton(scan) for scan in push_scans).lower()
     if re.search(r"\b(drop\s+(table|database|schema)|truncate\s+table)\b", low):
-        emit_deny(client, "[agent-guard] DROP/TRUNCATE blocked. Run schema changes through project migrations or have the owner review them explicitly.")
+        refusal = _permit_or_ticket(p, cmd, "sql_drop", "[agent-guard] DROP/TRUNCATE blocked. Run schema changes through project migrations or have the owner review them explicitly.")
+        if refusal:
+            emit_deny(client, refusal)
 
     if re.search(r"\bdelete\s+from\s+\w+\b", low) and "where" not in low:
         emit_deny(client, "[agent-guard] DELETE without WHERE blocked. Add a WHERE clause scoping the deleted rows, or use TRUNCATE via migrations if a table wipe is intended.")
@@ -1989,7 +2029,9 @@ def main() -> None:
     # Deleting for good (rm, unlink, shred, find -delete) outside regenerated folders: the Trash can be undone.
     delete_error = next(filter(None, map(_permanent_delete_error, push_scans)), None)
     if delete_error:
-        emit_deny(client, delete_error)
+        refusal = _permit_or_ticket(p, cmd, "delete_for_good", delete_error)
+        if refusal:
+            emit_deny(client, refusal)
 
     emit_allow(client)
 
