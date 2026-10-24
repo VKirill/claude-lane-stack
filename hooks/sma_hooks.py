@@ -316,9 +316,21 @@ def pre_tool(p: dict) -> dict | None:
     return None
 
 
+DOCUMENTARY_AGENTS = frozenset({"Explore", "Plan", "statusline-setup"})
+
+
 def pretask_pack(p: dict, tin: dict, sid: str, cwd: str) -> dict | None:
     """Spend cap on subagents, then the context pack sewn into the prompt; each spawn is recorded."""
     st = state_of(sid)
+    kind = str(tin.get("subagent_type") or "general-purpose")
+    # Execution stage without Agent: a writer does the work itself; only documentary subagents (read and report) are allowed.
+    if os.environ.get("LANE_PILOT_ROLE") == "writer" and kind not in DOCUMENTARY_AGENTS:
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                       "permissionDecisionReason": f"[execution-without-agent] a writer does its task itself; subagent «{kind}» is refused here — only {', '.join(sorted(DOCUMENTARY_AGENTS))} (read and report) may help."}}
+    # Subagent in the foreground only: a background subagent outlives the turn that owns its result.
+    if tin.get("run_in_background") is True:
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                       "permissionDecisionReason": "[subagent-foreground] in a lane session a subagent runs in the foreground: call it again without run_in_background."}}
     spawned = int(st.get("subagents", 0))
     if spawned >= SUBAGENT_CAP:
         return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
