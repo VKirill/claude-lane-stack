@@ -368,7 +368,20 @@ def read_capsule(session: str, cwd: str | None = None) -> dict[str, Any] | None:
 
 USAGE = """lane-coord status | claim <session> <glob>... [--why text] | release <session> [<glob>...] | force-clear <glob> --reason text
           | next-slot <name> | consume <name> <n> | tia [<file>...] | state <STATE.md> [--set text] | exec-journal [add <json>]
-          | open <session> | digest <session> | journal-ok <session>"""
+          | open <session> | digest <session> | journal-ok <session> | outside [--days N]"""
+
+
+def outside(days: int = 7, cwd: str | None = None) -> dict[str, Any]:
+    """How much was done outside: commits of the last days without a Lane Pilot attempt trailer, by author, against those with one."""
+    out = subprocess.run(["git", "log", f"--since={days} days ago", "--format=%H%x1f%an%x1f%(trailers:key=Lane-Pilot-Attempt,valueonly)%x1e"],
+                         cwd=cwd or repo_root(), capture_output=True, text=True, timeout=30).stdout
+    rows = [row.strip("\n").split("\x1f") for row in out.split("\x1e") if row.strip()]
+    inside = [r for r in rows if len(r) > 2 and r[2].strip()]
+    by_author: dict[str, int] = {}
+    for r in rows:
+        if not (len(r) > 2 and r[2].strip()):
+            by_author[r[1]] = by_author.get(r[1], 0) + 1
+    return {"days": days, "commits": len(rows), "by_lane_pilot": len(inside), "outside": len(rows) - len(inside), "outside_by_author": by_author}
 
 
 def main(argv: list[str]) -> int:
@@ -418,6 +431,9 @@ def main(argv: list[str]) -> int:
         return 0 if rec or thread else 1
     if cmd == "digest" and args:
         print(digest(args[0]))
+        return 0
+    if cmd == "outside":
+        print(json.dumps(outside(int(args[args.index("--days") + 1]) if "--days" in args else 7), ensure_ascii=False))
         return 0
     if cmd == "journal-ok" and args:
         ok = chain_ok(args[0])
