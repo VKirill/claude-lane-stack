@@ -1,3 +1,17 @@
+## 1.67.0 — 2026-10-24
+
+The SMA product map in Lane Stack (Matvey Maslov's graph, 1768 nodes; the map and its proofs live in Lane Pilot's `src/rooms/sma-map`).
+
+- **Session hooks** (`hooks/sma_hooks.py`, lane sessions only): the SessionStart chain (what changed since last time, protections switched off, the MEMORY.md budget, the session's subscription), prompt recall without repeating what was given, PreToolUse streams in order with a 1.5 s soft budget and a timing journal (claims, hard rules, git airbag, dependency store, fingerprint, reflexes from lessons, rule loops, the file card at the act), the subagent pack and spend cap, a writer spawns only documentary subagents and a lane subagent runs in the foreground, SubagentStop checks the files a subagent says it wrote, the capsule before compaction, the turn diff at Stop, claims released at SessionEnd.
+- **Terminal coordination** (`hooks/lane_coord.py`, `bin/lane-coord`): leases, atomic glob claims, counters, hash-chained window journals, the digest between terminals, test impact, the STATE section, `outside` (how much was done outside Lane Pilot).
+- **Guard**: a refused delete-for-good or DROP/TRUNCATE becomes a permit ticket the PM answers once; the disarm-path guard keeps lane agents off the hooks and the guard's settings.
+- **Memory** (`lane-memory`): one credential mask, the citation ledger, fact fragments with triggers, the file card catalog (`catalog`, `card`), the five books in `history`, `miss` into the gold set, `emit`, `consolidate` (proposals only), `migrate` (preview).
+- **Planning** (`bin/lane-plan`): state, roadmap, phases (add, insert, edit, complete, remove, UAT), templates of the phase documents (CONTEXT, SPEC, RESEARCH, PATTERNS, PLAN, SUMMARY in three forms, VERIFICATION, VALIDATION, UAT, UI-SPEC, AI-SPEC, EVAL-REVIEW, SECURITY) and references, the discussion log, debug/spike/sketch/research/thread, notes, seeds, the inbox, `wrap` (a spike or sketch into a skill draft), milestones, the infra profile, render-hooks, the planning commit, the capability manifest, the version check.
+- **Roles**: framework-selector, ai-researcher, eval-planner, eval-auditor, animator, doc-classifier, mempalace-curator, nyquist-auditor, ui-researcher, advisor-researcher, domain-researcher.
+- **Forge**: `lane-forge-lint` (shape, trigger, forbidden grants).
+- **Installer**: refuses the clone, an older version (`--allow-downgrade`) and a broken settings.json before anything is written; keeps lines appended below `<!-- lane-stack:user -->` in roles; `/gsd-*` aliases with `--gsd-aliases`; records what it owns. `lane-stack-remove` (dry-run plan, one explicit `--yes`, the own status line restored, memory untouched, removes itself last, removes only what the install owns) and `lane-stack-update` (version report, the newest tag of origin, the standard installer).
+- The statusline prints the person line first.
+
 ## 1.66.8 — 2026-10-24
 
 - `guard_shell.py` reads valid bash the Python lexer could not: command substitutions (`$(...)`, backquotes, also inside double quotes and in an unquoted heredoc body) are lifted out and checked as the commands they run, `$'...'` is read as one word, and a command bash itself accepts (`bash -n`) is checked as text instead of refused whole. 26 valid commands in two days had been refused as «cannot be safely parsed». Nesting deeper than four wrappers and invalid shell are still refused.
