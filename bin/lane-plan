@@ -13,7 +13,11 @@ RESEARCH, PATTERNS, PLAN, SUMMARY, VERIFICATION, VALIDATION, UAT, UI-SPEC, AI-SP
   lane-plan audit-uat                      open UAT lines of every phase
   lane-plan template list | fill <NAME> [--phase N] [--form F] [--set k=v …] [--force]
   lane-plan discuss <n> <text>             one line into the phase discussion log
-  lane-plan debug|spike|sketch|research new <title>
+  lane-plan debug|spike|sketch|research|thread new <title>
+  lane-plan note|seed add <text> | list       a note without questions; an idea seed for later
+  lane-plan inbox                          what waits: notes, seeds, todos, threads, open UAT, open debug sessions
+  lane-plan wrap spike|sketch <file> --skill <name>   a finished spike or sketch into a skill draft for the forge
+  lane-plan phase edit <n> [--name N] [--goal G]
   lane-plan milestone archive <name>       completed phases into milestones/<name>.md, roadmap trimmed
   lane-plan profile [--set k=v …]          the infra profile (profile.json)
   lane-plan render-hooks [step]            extension points: hooks/<step>*.md appended to a workflow step
@@ -38,7 +42,7 @@ TEMPLATES = STACK / "templates" / "planning"
 PHASE_DOCS = ("CONTEXT", "DISCUSSION", "SPEC", "RESEARCH", "PATTERNS", "PLAN", "SUMMARY", "VERIFICATION", "VALIDATION", "UAT",
               "UI-SPEC", "AI-SPEC", "EVAL-REVIEW", "SECURITY")
 PROJECT_DOCS = ("STATE", "ROADMAP", "REQUIREMENTS")
-KIND_FOLDERS = {"debug": "debug", "spike": "spikes", "sketch": "sketches", "research": "research"}
+KIND_FOLDERS = {"debug": "debug", "spike": "spikes", "sketch": "sketches", "research": "research", "thread": "threads"}
 ROW = re.compile(r"^- \[(?P<done>[ xX])\] (?P<n>\d+(?:\.\d+)*) (?P<name>.+?)(?: — (?P<goal>.*))?$")
 
 
@@ -253,6 +257,70 @@ def new_item(repo: Path, kind: str, title: str) -> Path:
     return dest
 
 
+def phase_edit(repo: Path, n: str, name: str | None, goal: str | None) -> dict:
+    """edit-phase: rename a phase or change its goal in place; its folder keeps its documents."""
+    rows = roadmap(repo)
+    row = next((r for r in rows if r["n"] == n), None)
+    if not row:
+        raise ValueError(f"no phase {n}")
+    old_folder = phase_folder(repo, n)
+    if name:
+        row["name"] = name.strip()
+    if goal is not None:
+        row["goal"] = goal.strip()
+    write_roadmap(repo, rows)
+    new_folder = phase_folder(repo, n)
+    if old_folder.is_dir() and old_folder != new_folder and not new_folder.exists():
+        old_folder.rename(new_folder)
+    return row
+
+
+def jot(repo: Path, kind: str, text: str) -> Path:
+    """note (a note without questions) and seed (an idea seed for later): one line each in notes.md / seeds.md."""
+    path = planning(repo) / f"{kind}s.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file():
+        path.write_text(f"# {kind.capitalize()}s\n\n", encoding="utf-8")
+    with path.open("a", encoding="utf-8") as out:
+        out.write(f"- {date.today().isoformat()} {' '.join(text.split())}\n")
+    return path
+
+
+def listed(repo: Path, kind: str) -> list[str]:
+    path = planning(repo) / f"{kind}s.md"
+    return [line[2:] for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("- ")] if path.is_file() else []
+
+
+def inbox(repo: Path) -> dict:
+    """The inbox: what waits for a decision — notes, seeds, todos, open threads, open UAT lines, debug sessions without a root cause."""
+    todos = repo / ".agents" / "todos"
+    debug = planning(repo) / "debug"
+    return {
+        "notes": listed(repo, "note")[-20:], "seeds": listed(repo, "seed")[-20:],
+        "todos": sorted(p.name for p in todos.glob("*.md")) if todos.is_dir() else [],
+        "threads": sorted(p.name for p in (planning(repo) / "threads").glob("*.md")) if (planning(repo) / "threads").is_dir() else [],
+        "uat_open": audit_uat(repo),
+        "debug_open": [p.name for p in sorted(debug.glob("*.md")) if "## Root cause\n\n## " in p.read_text(encoding="utf-8")] if debug.is_dir() else [],
+    }
+
+
+def wrap(repo: Path, kind: str, source: str, skill: str) -> Path:
+    """spike-wrap-up / sketch-wrap-up: a finished spike or sketch becomes a skill draft (.agents/skill-drafts/<name>/SKILL.md) for the forge."""
+    src = Path(source) if Path(source).is_absolute() else repo / source
+    if not src.is_file():
+        raise ValueError(f"no {kind} file {source}")
+    text = src.read_text(encoding="utf-8")
+    if kind == "spike" and "## Decision" in text and not text.split("## Decision", 1)[1].strip():
+        raise ValueError("the spike has no decision yet: write the result and the decision first")
+    name = slug(skill)
+    dest = repo / ".agents" / "skill-drafts" / name / "SKILL.md"
+    if dest.exists():
+        raise ValueError(f"{dest} exists")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(f"---\nname: {name}\ndescription: Use when … (from the {kind} {src.name}; fill the trigger before the forge lints it)\ndraft: true\nsource: {src.relative_to(repo) if src.is_relative_to(repo) else src}\n---\n\n# {skill}\n\n## What the {kind} found\n\n{text.strip()}\n\n## How to apply it\n\n", encoding="utf-8")
+    return dest
+
+
 def discuss(repo: Path, n: str, text: str) -> Path:
     path = phase_folder(repo, n) / "DISCUSSION.md"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -318,7 +386,7 @@ def version_check() -> dict:
 
 
 def capabilities() -> dict:
-    return {"tool": "lane-plan", "commands": ["query", "state", "roadmap", "phase", "audit-uat", "template", "discuss", "debug", "spike", "sketch", "research", "milestone", "profile", "render-hooks", "commit", "capabilities", "version-check"],
+    return {"tool": "lane-plan", "commands": ["query", "state", "roadmap", "phase", "audit-uat", "template", "discuss", "debug", "spike", "sketch", "research", "thread", "note", "seed", "inbox", "wrap", "milestone", "profile", "render-hooks", "commit", "capabilities", "version-check"],
             "phase_docs": list(PHASE_DOCS), "project_docs": list(PROJECT_DOCS), "templates": templates()}
 
 
@@ -351,7 +419,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("query").add_argument("dotted")
     p = sub.add_parser("state"); p.add_argument("op", choices=("get", "set")); p.add_argument("key", nargs="?"); p.add_argument("value", nargs="?", default="")
     sub.add_parser("roadmap").add_argument("op", choices=("show", "analyze"))
-    p = sub.add_parser("phase"); p.add_argument("op", choices=("add", "insert", "complete", "reopen", "remove", "uat-passed")); p.add_argument("args", nargs="+"); p.add_argument("--goal", default="")
+    p = sub.add_parser("phase"); p.add_argument("op", choices=("add", "insert", "complete", "reopen", "remove", "uat-passed", "edit")); p.add_argument("args", nargs="+"); p.add_argument("--goal", default=None); p.add_argument("--name", default=None)
+    for kind in ("note", "seed"):
+        p = sub.add_parser(kind); p.add_argument("op", choices=("add", "list")); p.add_argument("text", nargs="?", default="")
+    sub.add_parser("inbox")
+    p = sub.add_parser("wrap"); p.add_argument("kind", choices=("spike", "sketch")); p.add_argument("source"); p.add_argument("--skill", required=True)
     sub.add_parser("audit-uat")
     p = sub.add_parser("template"); p.add_argument("op", choices=("list", "fill")); p.add_argument("name", nargs="?"); p.add_argument("--phase"); p.add_argument("--form"); p.add_argument("--set", action="append", default=[]); p.add_argument("--force", action="store_true")
     p = sub.add_parser("discuss"); p.add_argument("n"); p.add_argument("text")
@@ -375,12 +447,19 @@ def main(argv: list[str] | None = None) -> int:
         out = roadmap(repo) if args.op == "show" else analyze(repo)
     elif args.cmd == "phase":
         op, rest = args.op, args.args
-        out = (phase_add(repo, " ".join(rest), args.goal) if op == "add"
-               else phase_add(repo, " ".join(rest[1:]), args.goal, after=rest[0]) if op == "insert"
+        out = (phase_add(repo, " ".join(rest), args.goal or "") if op == "add"
+               else phase_add(repo, " ".join(rest[1:]), args.goal or "", after=rest[0]) if op == "insert"
+               else phase_edit(repo, rest[0], args.name, args.goal) if op == "edit"
                else phase_complete(repo, rest[0]) if op == "complete"
                else phase_complete(repo, rest[0], done=False) if op == "reopen"
                else phase_remove(repo, rest[0]) if op == "remove"
                else uat_passed(repo, rest[0]))
+    elif args.cmd in ("note", "seed"):
+        out = str(jot(repo, args.cmd, args.text)) if args.op == "add" else listed(repo, args.cmd)
+    elif args.cmd == "inbox":
+        out = inbox(repo)
+    elif args.cmd == "wrap":
+        out = str(wrap(repo, args.kind, args.source, args.skill))
     elif args.cmd == "audit-uat":
         out = audit_uat(repo)
     elif args.cmd == "template":
