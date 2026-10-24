@@ -114,6 +114,7 @@ PM_STOP_RE = re.compile(r"pm_stop_sentinel\.py")
 PM_BULK_READ_RE = re.compile(r"pm_bulk_read\.py")
 STALL_CHECK_RE = re.compile(r"stall_check\.py")
 OWNER_PRESENCE_RE = re.compile(r"owner_presence\.py")
+SMA_HOOKS_RE = re.compile(r"sma_hooks\.py")
 GITNEXUS_HOOK_RE = re.compile(r"gitnexus-hook")
 GITNEXUS_HOOK_FILES = (
     "gitnexus-hook.cjs",
@@ -208,6 +209,17 @@ def merge_owner_presence(settings: dict[str, Any], hook_path: Path) -> dict[str,
     """UserPromptSubmit: the owner's own prompts mark his presence (the hook skips lane sessions itself)."""
     cmd = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
     _replace_event_hooks(settings, "UserPromptSubmit", cmd, OWNER_PRESENCE_RE, timeout=2)
+    return settings
+
+
+SMA_HOOK_EVENTS = {"SessionStart": 5, "UserPromptSubmit": 3, "PreToolUse": 3, "PostToolUse": 2, "Stop": 5, "SubagentStop": 5, "PreCompact": 5, "SessionEnd": 5}
+
+
+def merge_sma_hooks(settings: dict[str, Any], hook_path: Path) -> dict[str, Any]:
+    """The SMA session hooks (sma_hooks.py <Event>): coordination, recall, streams, receipts, capsules; the hook checks the lane markers itself."""
+    base = f"python3 {shlex.quote(str(hook_path.expanduser().resolve()))}"
+    for event, timeout in SMA_HOOK_EVENTS.items():
+        _replace_event_hooks(settings, event, f"{base} {event}", SMA_HOOKS_RE, timeout=timeout)
     return settings
 
 
@@ -833,6 +845,9 @@ def main() -> int:
     presence = hooks_dir / "owner_presence.py"
     if presence.is_file():
         settings = merge_owner_presence(settings, presence)
+    sma = hooks_dir / "sma_hooks.py"
+    if sma.is_file():
+        settings = merge_sma_hooks(settings, sma)
     gn_hook = install_gitnexus_claude_files(
         args.settings.parent / "hooks" / "gitnexus"
     )

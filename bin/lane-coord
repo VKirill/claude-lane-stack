@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Terminal coordination between windows of one repository (claims, leases, counters, journals, test impact): see hooks/lane_coord.py."""
+import sys
+from pathlib import Path
+
+for hooks in (Path.home() / ".agents" / "hooks", Path(__file__).resolve().parent.parent / "hooks"):
+    if (hooks / "lane_coord.py").exists():
+        sys.path.insert(0, str(hooks))
+        break
+import lane_coord  # noqa: E402
+
+sys.exit(lane_coord.main(sys.argv[1:]))
