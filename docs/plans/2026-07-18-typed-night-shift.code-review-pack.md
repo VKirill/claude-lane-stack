@@ -2,9 +2,9 @@
 title: Claude Companion code-review pack
 type: component
 created: 2026-07-18
-updated: 2026-10-19
+updated: 2026-10-24
 status: stale
-confidence: medium
+confidence: low
 tags: [review, night-shift, historical]
 sources:
   - bin/jev_slots.py
@@ -31,7 +31,7 @@ Reviewer-only pass. Do not modify source files.
 | Mode or state | What changes | Failure behavior |
 |---|---|---|
 | No eligible findings | Jev is not called and triage returns an empty list (`bin/jev_slots.py:16-26`). | Nothing is dismissed. |
-| Judge succeeds | Findings below the `0.35` cutoff are dismissed; findings at or above it keep their current status (`bin/jev_slots.py:12`, `bin/jev_slots.py:47-59`). | — |
+| Judge succeeds | Scores below `DISMISS_CUT` (`0.35`) set the finding to non-actionable and `dismissed`; scores at or above the cutoff are left unchanged (`bin/jev_slots.py:12`, `bin/jev_slots.py:53-58`). | — |
 | Judge errors | Triage returns an empty dismissed-fingerprint list (`bin/jev_slots.py:47-50`). | Findings remain unchanged by this function. |
 | Acceptance valid | Schema and task evidence checks finish without errors (`bin/run-validate:348-398`). | — |
 | Acceptance missing, malformed, stale, or inconsistent | Validation adds an error for the missing file, parse/schema problem, mismatched task/hash/attempt, or non-accepted state (`bin/run-validate:348-398`). | Receipt validation fails. |

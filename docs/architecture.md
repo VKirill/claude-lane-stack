@@ -2,9 +2,9 @@
 title: Claude Lane Stack architecture
 type: architecture
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-24
 status: active
-confidence: high
+confidence: medium
 tags: [architecture, orchestration, board, memory]
 sources:
   - bin/run-controller
@@ -31,6 +31,7 @@ sources:
   - bin/lane_memory_hub.py
   - plugins/lane-stack/.claude-plugin/plugin.json
   - schemas/task-v2.schema.json
+  - profiles/opencode/opencode-lane/v1.ts
 ---
 # Claude Lane Stack architecture
 
@@ -38,7 +39,7 @@ TL;DR: Host CLIs and plugin hooks assemble task context, run provider processes,
 
 ## System Context
 
-The owner interacts with a host CLI or Claude Code. Provider CLIs execute scoped tasks; Git worktrees and files carry run state. The optional board reads project files and serves a browser UI (`bin/lane-pm:1-25`, `plugins/lane-stack/.claude-plugin/plugin.json:1-19`, `board/server/server.mjs:106-230`).
+The owner interacts with a host CLI or Claude Code. Provider CLIs execute scoped tasks; Git worktrees and files carry run state. The optional board reads project files and serves a browser UI (`bin/lane-pm:1-25`, `bin/pipeline_stages.py:205-300`, `board/server/server.mjs:106-230`).
 
 ```mermaid
 C4Context
@@ -81,7 +82,7 @@ The server factory binds request handlers and a project watcher; the start funct
 
 - Host run lifecycle: controller, contract validation, provider dispatch, and receipt handling (`bin/run-controller:734-808`, `bin/run-controller:811-840`, `bin/run-controller:566-594`, `bin/run-validate:410-450`).
 - Stage defaults and allowed providers: [ROUTING.md](ROUTING.md), implemented in `bin/pipeline_stages.py:33-50` and `bin/pipeline_stages.py:205-300`.
-- Plugin hooks: [HOOKS.md](HOOKS.md); plugin assets are registered by `plugins/lane-stack/.claude-plugin/plugin.json:1-19`.
+- Plugin hooks: [HOOKS.md](HOOKS.md); plugin metadata is in `plugins/lane-stack/.claude-plugin/plugin.json:1-19`, while hook implementations live in plugin hook files such as `plugins/lane-stack/hooks/jev-router.ts:105-129`.
 - Durable run contracts and receipts: [data model](data-model.md), with schema validation in `bin/run-validate:348-421`.
 - Lane Board server and browser views: `board/server/server.mjs:106-230`, `board/web/js/api.js:29-48`.
 - Project memory hub-first search and local-index fallback: `bin/lane_memory.py:412-417`, `bin/lane_memory.py:634-680`, `bin/lane_memory_hub.py:100-165`.
@@ -138,7 +139,7 @@ The browser router parses the hash into overview, project section, or not-found 
 
 ### Hook-driven routing
 
-The `jev-router` registration only classifies non-fork agent spawns when lane markers enable routing; a fail-open result passes the original event through. It caches successful routes by agent ID and applies the chosen effort during that agent’s later turn steps (`plugins/lane-stack/hooks/jev-router.ts:90-129`). The OpenCode plugin initializes telemetry, starts its Winnow sidecar, and enables lane-only behavior from lane markers; user chat updates per-session prompt state and skill hints (`profiles/opencode/opencode-lane/index.ts:207-262`). Lane chat parameters use the cached session route; `tool.execute.before` applies the lane guard, and `tool.execute.after` filters supported tool outputs through Winnow before adding failure and repeated-tool hints (`profiles/opencode/opencode-lane/index.ts:264-318`).
+The `jev-router` registration only classifies non-fork agent spawns when lane markers enable routing; a fail-open result passes the original event through. It caches successful routes by agent ID and applies the chosen effort during that agent’s later turn steps (`plugins/lane-stack/hooks/jev-router.ts:90-129`). The OpenCode plugin initializes telemetry, starts its Winnow sidecar, and enables lane-only behavior from lane markers; user chat updates per-session prompt state and skill hints (`profiles/opencode/opencode-lane/v1.ts:208-262`). Lane chat parameters use the cached session route; `tool.execute.before` applies the lane guard, and `tool.execute.after` filters supported tool outputs through Winnow before adding failure and repeated-tool hints (`profiles/opencode/opencode-lane/v1.ts:265-347`).
 
 ## Invariants
 

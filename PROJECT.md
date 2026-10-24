@@ -1,12 +1,14 @@
 ---
 title: Claude Lane Stack agent reference
-updated: 2026-10-19
+updated: 2026-10-24
 sources:
   - bin/run-controller
   - bin/run-init
   - bin/run-validate
   - bin/pipeline_stages.py
   - plugins/lane-stack/.claude-plugin/plugin.json
+  - hooks/guard_code_quality.py
+  - hooks/lane_statusline_session.py
   - plugins/lane-stack/hooks/jev-router.ts
   - board/server/server.mjs
   - bin/lane_memory.py
@@ -18,7 +20,7 @@ sources:
 
 ## Identity
 
-- CLI orchestration for coding agents; plugin metadata: `plugins/lane-stack/.claude-plugin/plugin.json:1-40`.
+- CLI orchestration for coding agents; plugin metadata: `plugins/lane-stack/.claude-plugin/plugin.json:1-19`.
 - Read [overview](docs/overview.md) and [architecture](docs/architecture.md).
 
 ## Entry points
