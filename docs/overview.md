@@ -2,9 +2,9 @@
 title: Claude Lane Stack overview
 type: overview
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-24
 status: active
-confidence: low
+confidence: medium
 tags: [overview, orchestration, cli-agents]
 sources:
   - bin/run-controller
@@ -12,6 +12,9 @@ sources:
   - bin/lane-ctl
   - bin/pipeline_stages.py
   - plugins/lane-stack/.claude-plugin/plugin.json
+  - plugins/lane-stack/agents/dev-orchestrator.md
+  - plugins/lane-stack/skills/lane-contract/SKILL.md
+  - plugins/lane-stack/hooks/hooks.json
   - schemas/run-v2.schema.json
   - schemas/task-v2.schema.json
   - board/server/server.mjs
@@ -27,13 +30,13 @@ TL;DR: Claude Lane Stack coordinates CLI coding agents through task contracts, v
 
 ## What it is
 
-The repository combines a Claude Code plugin, host CLI tools, agent profiles, and JSON-schema contracts. The plugin manifest registers skills, agents, hooks, and commands (`plugins/lane-stack/.claude-plugin/plugin.json:1-19`). The installer deploys the host tools and plugin assets into the user environment (`install.sh:1-30`).
+The repository combines a Claude Code plugin, host CLI tools, agent profiles, and JSON-schema contracts. The plugin manifest supplies plugin metadata; plugin agents, skills, and hooks are separate files (`plugins/lane-stack/.claude-plugin/plugin.json:1-19`, `plugins/lane-stack/agents/dev-orchestrator.md:1-20`, `plugins/lane-stack/skills/lane-contract/SKILL.md:1-20`, `plugins/lane-stack/hooks/hooks.json:1-30`). The installer deploys host tools and plugin assets into the user environment (`install.sh:1-30`).
 
 A run is described by a run contract and task contracts. The controller validates the run contract before supervising tasks, and terminal task state is represented by outcome and acceptance artifacts (`bin/run-controller:117-159`, `schemas/run-v2.schema.json:1-71`, `schemas/task-v2.schema.json:1-125`).
 
 ## Stack
 
-- Claude Code plugin for commands, agents, skills, and hooks (`plugins/lane-stack/.claude-plugin/plugin.json:1-19`).
+- Claude Code plugin metadata and separate agent, skill, and hook files (`plugins/lane-stack/.claude-plugin/plugin.json:1-19`, `plugins/lane-stack/agents/dev-orchestrator.md:1-20`, `plugins/lane-stack/skills/lane-contract/SKILL.md:1-20`, `plugins/lane-stack/hooks/hooks.json:1-30`).
 - Host automation in Python and shell under `bin/` and `hooks/` (`bin/run-controller:1-30`, `hooks/session_ledger.py:1-27`).
 - Lane Board server in Node.js with browser JavaScript views (`board/server/server.mjs:1-16`, `board/web/js/api.js:1-10`).
 - JSON Schema contracts for run, task, and receipt data (`schemas/run-v2.schema.json:1-30`, `schemas/task-v2.schema.json:1-30`).

@@ -2,7 +2,7 @@
 title: Claude Lane Stack data model
 type: data-model
 created: 2026-10-19
-updated: 2026-10-19
+updated: 2026-10-24
 status: active
 confidence: medium
 tags: [data-model, receipts, sqlite, memory]
@@ -91,7 +91,7 @@ Purpose: one task’s objective, ownership boundaries, dependencies, verificatio
 
 ### Acceptance, outcome, and controller records
 
-Purpose: machine-readable evidence for acceptance, terminal outcome, and run supervision. `run-validate` validates the acceptance schema before checking its task identity and evidence (`schemas/acceptance-v2.schema.json:1-40`, `schemas/outcome-v1.schema.json:1-82`, `schemas/run-controller-v1.schema.json:1-130`, `bin/run-validate:348-421`).
+Purpose: machine-readable evidence for acceptance, terminal outcome, and run supervision. `run-validate` loads the acceptance schema and validates the run contract first; for each acceptance file it checks presence and parseability, checks schema errors, then checks task identity, task hash, attempt, accepted state, and any required pre-merge review (`bin/run-validate:340-398`, `bin/run-validate:409-425`). The schemas define the record shapes (`schemas/acceptance-v2.schema.json:1-40`, `schemas/outcome-v1.schema.json:1-82`, `schemas/run-controller-v1.schema.json:1-130`).
 
 | Record | Fields and meanings |
 |---|---|
@@ -241,7 +241,7 @@ The per-project `memory-lexical.sqlite` index has one table, `mem_axis(rid, body
 
 | `status` transition | From | To | Function and condition |
 |---|---|---|---|
-| Record write | author-supplied status | persisted status | Writer requires status and checks its vocabulary; it does not infer or activate the status (`bin/lane_memory.py:1195-1201`, `bin/lane_memory.py:1267-1284`). |
+| Record write | required author-supplied status | persisted status | The writer requires metadata fields and rejects memory type or truth mode outside their closed vocabularies; this write path does not assign a status (`bin/lane_memory.py:1202-1209`, `bin/lane_memory.py:1274-1288`). |
 | Supersession | active | superseded | Replacing a prior rule updates the prior record’s status (`bin/lane_memory.py:1270-1285`). |
 | Forget | stored | expired | `forget(..., mode="expire")` writes expired status (`bin/lane_memory.py:1331-1355`). |
 | Archive | stored | archived | `forget(..., mode="archive")` writes archived status (`bin/lane_memory.py:1331-1355`). |

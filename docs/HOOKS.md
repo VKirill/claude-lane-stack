@@ -2,12 +2,15 @@
 title: Agent hooks / guards — multi-CLI
 type: component
 created: 2026-07-11
-updated: 2026-10-19
+updated: 2026-10-24
 status: active
 confidence: medium
 tags: [hooks, guards, cli]
 sources:
   - hooks/guard_shell.py
+  - hooks/guard_code_quality.py
+  - hooks/lane_statusline_session.py
+  - bin/lane_statusline_lib.py
   - hooks/session_ledger.py
   - hooks/pm_stop_sentinel.py
   - plugins/lane-stack/hooks/jev-router.ts
@@ -18,6 +21,7 @@ sources:
   - plugins/lane-stack/winnow/sidecar/src/winnow/policy.py
   - plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py
   - plugins/lane-stack/winnow/sidecar/src/winnow/chunk.py
+  - profiles/opencode/opencode-lane/v1.ts
 ---
 # Agent hooks / guards — multi-CLI
 
@@ -35,7 +39,7 @@ Deterministic guards that catch agents mid-flight. Shared logic lives in
 | Script | When | What |
 |--------|------|------|
 | `guard_shell.py` | PreToolUse (shell + PM edits) | PM read/verify/control-plane allowlist; delegates package, source, process/service/container, and DB mutations; also blocks controller bypass, `--no-verify`, force-push, destructive SQL, and reckless `rm -rf` |
-| `guard_code_quality.py` | PostToolUse (edit) | `any`, Prisma `$queryRawUnsafe`, `@ts-ignore`, eval, hardcoded secrets |
+| `guard_code_quality.py` | PostToolUse (edit) | JavaScript/TypeScript `any`, Prisma unsafe raw SQL, TypeScript suppression comments, dynamic evaluation, likely hardcoded credentials; skips `.agents` and `node_modules` (`hooks/guard_code_quality.py:21-23`, `hooks/guard_code_quality.py:34-69`) |
 | `lib_payload.py` | — | Normalize stdin JSON for Claude / Codex / Grok |
 | `pm_stop_sentinel.py` | Stop + PostToolUse `Agent\|Task` (`asyncRewake`) | PM: do not idle while `run-supervisor` is live or a recent controller is terminal/orphan; wake idle PM when stage becomes accepted/blocked/failed |
 
@@ -186,13 +190,25 @@ Skill: `project-life`.
 
 The Cursor `before_read.py` hook reads one JSON payload from stdin, imports `decide_read`, and writes its permission response. A malformed result or exception returns `{"permission":"allow"}` (`profiles/cursor/lane-writer/scripts/before_read.py:25-37`). This hook therefore fails open on its own import or parsing failures.
 
+## Lane status-line session routing
+
+`lane_statusline_session.py` stores the `agent_type` for recognized lane-agent sessions so the status-line command can select the lane HUD. It extracts a session ID from session fields or transcript paths, including nested `data`; SessionEnd removes that session's marker. A non-lane agent also removes a known stale marker. A lane agent with no session ID writes a timestamped `last_lane_agent.json` fallback (`hooks/lane_statusline_session.py:56-67`, `hooks/lane_statusline_session.py:70-117`).
+
+Malformed JSON, non-object payloads, and marker filesystem errors exit without blocking the host session (`hooks/lane_statusline_session.py:70-77`, `hooks/lane_statusline_session.py:84-101`, `hooks/lane_statusline_session.py:104-116`).
+
+## Code quality post-edit guard
+
+`guard_code_quality.py` reads the hook payload, resolves its file path, and exits when the file is missing, is under `.agents` or `node_modules`, or has no detected findings. For JavaScript and TypeScript extensions it scans for `any`, Prisma unsafe raw SQL, TypeScript suppression comments, and dynamic evaluation; it scans all supported files for credential-like hardcoded string assignments. A `guardian: allow` marker suppresses a matching line. Findings are formatted and passed to the client-specific post-block emitter (`hooks/guard_code_quality.py:11-28`, `hooks/guard_code_quality.py:34-69`, `hooks/guard_code_quality.py:71-78`).
+
+If payload parsing or scanning raises, the outer handler exits successfully without blocking (`hooks/guard_code_quality.py:80-84`).
+
 ## Jev agent-spawn routing
 
 The `jev-router` plugin routes only lane-marked non-fork agent spawns. It strips a raw task YAML preamble before classification, falls back to the default route on missing credentials, timeout, or request/parse errors, caches the result by spawned agent ID, then applies the cached effort to that agent’s turn steps (`plugins/lane-stack/hooks/jev-router.ts:16-20`, `plugins/lane-stack/hooks/jev-router.ts:61-88`, `plugins/lane-stack/hooks/jev-router.ts:90-129`).
 
 ## OpenCode lane plugin
 
-`OpenCodeLanePlugin` starts telemetry and the Winnow sidecar in every session, and gates writer guard, notes, sticky task context, and effort routing on lane markers (`profiles/opencode/opencode-lane/index.ts:207-234`). Lane chat messages update per-session prompt state and add a skill hint; failures are logged and contained (`profiles/opencode/opencode-lane/index.ts:243-262`).
+`OpenCodeLanePlugin` starts telemetry and the Winnow sidecar in every session, and gates writer guard, notes, sticky task context, and effort routing on lane markers (`profiles/opencode/opencode-lane/v1.ts:208-234`). Lane chat messages update per-session prompt state and add a skill hint; failures are logged and contained (`profiles/opencode/opencode-lane/v1.ts:244-262`).
 
 ## Winnow response filtering
 
@@ -244,7 +260,7 @@ Mid-session policy flips without install are a defect class
 
 1. The host CLI emits a hook event and payload.
 2. The adapter normalizes that payload and calls shared policy or provider-specific logic (`hooks/guard_shell.py:1-40`, `profiles/cursor/lane-writer/scripts/before_read.py:25-37`).
-3. A guard returns an allow/deny response or raises a provider-recognized error; observer hooks append session or telemetry data (`hooks/session_ledger.py:1-40`, `profiles/opencode/opencode-lane/index.ts:282-309`).
+3. A guard returns an allow/deny response or raises a provider-recognized error; observer hooks append session or telemetry data (`hooks/session_ledger.py:1-40`, `profiles/opencode/opencode-lane/v1.ts:293-309`).
 
 | Hook mode | Input | Output | Failure behavior |
 |---|---|---|---|
