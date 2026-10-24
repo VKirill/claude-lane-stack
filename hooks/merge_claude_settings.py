@@ -212,6 +212,30 @@ def merge_owner_presence(settings: dict[str, Any], hook_path: Path) -> dict[str,
     return settings
 
 
+def drop_unreadable_hooks(settings: dict[str, Any]) -> dict[str, Any]:
+    """Unreadable hooks removed (SMA): a command hook whose python script no longer exists is dropped instead of failing every call."""
+    for event, entries in list((settings.get("hooks") or {}).items()):
+        if not isinstance(entries, list):
+            continue
+        kept = []
+        for item in entries:
+            hlist = item.get("hooks") if isinstance(item, dict) else None
+            if not isinstance(hlist, list):
+                kept.append(item)
+                continue
+            alive = []
+            for hook in hlist:
+                command = hook.get("command") if isinstance(hook, dict) else None
+                script = re.search(r"python3\s+(?:-\S+\s+)*['\"]?(/[^\s'\"]+\.py)", command or "")
+                if script and not Path(script.group(1)).exists():
+                    continue
+                alive.append(hook)
+            if alive:
+                kept.append({**item, "hooks": alive})
+        settings["hooks"][event] = kept
+    return settings
+
+
 SMA_HOOK_EVENTS = {"SessionStart": 5, "UserPromptSubmit": 3, "PreToolUse": 3, "PostToolUse": 2, "Stop": 5, "SubagentStop": 5, "PreCompact": 5, "SessionEnd": 5}
 
 
@@ -848,6 +872,7 @@ def main() -> int:
     sma = hooks_dir / "sma_hooks.py"
     if sma.is_file():
         settings = merge_sma_hooks(settings, sma)
+    settings = drop_unreadable_hooks(settings)
     gn_hook = install_gitnexus_claude_files(
         args.settings.parent / "hooks" / "gitnexus"
     )

@@ -118,6 +118,14 @@ def session_start(p: dict) -> dict | None:
     others = coord.digest(sid, cwd, since=float(st.get("last_seen", 0)) or None)
     if others:
         parts.append("Other windows in this repository:\n" + others)
+    # Whose subscription is this session: the account Claude Code is signed in with (or the config folder that names one).
+    account = os.environ.get("CLAUDE_CONFIG_DIR", "")
+    try:
+        account = account or json.loads((HOME / ".claude.json").read_text()).get("oauthAccount", {}).get("emailAddress", "")
+    except (OSError, ValueError):
+        pass
+    if account:
+        parts.append(f"Subscription of this session: {account}")
     off = protections_off()
     if off:
         parts.append("Protections switched off: " + "; ".join(off))

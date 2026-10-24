@@ -1819,6 +1819,24 @@ def _route_first(client: str, name: str, p: dict) -> None:
 
 
 PERMIT_DIR = Path.home() / ".agents" / "permits"
+# Disarm-path guard (SMA): the files that hold the protections themselves. An agent in a lane session does not change them.
+_DISARM_PATHS = re.compile(r"(\.agents/hooks/|\.claude/settings(\.local)?\.json|\.agents/permits/|\.agents/config/coord\.json)")
+_WRITE_VERBS = re.compile(r"(^|[\s;&|(])(rm|mv|cp|tee|truncate|chmod|ln|sed\s+-i|perl\s+-p?i)\b|>>?\s*\S")
+
+
+def _lane_marked() -> bool:
+    return any(os.environ.get(name) for name in ("LANE_STACK_SESSION", "LANE_PILOT_AGENT_TYPE", "LANE_PILOT_ROLE", "LANE_PROMPT_FILE", "LANE_TASK_FILE", "LANE_CODEX_WORKER"))
+
+
+def _disarm_error(name: str, p: dict) -> str | None:
+    if not _lane_marked():
+        return None
+    if is_edit_tool(name) and _DISARM_PATHS.search(file_path(p) or ""):
+        return "[agent-guard] The hooks, the guard's settings and the permit channel are not changed by an agent: they are the protections. Report what should change instead."
+    command = shell_command(p) if is_shell_tool(name) else ""
+    if command and _DISARM_PATHS.search(command) and _WRITE_VERBS.search(command):
+        return "[agent-guard] This command writes into the protections (hooks, the guard's settings, the permit channel). An agent does not change them; report what should change."
+    return None
 
 
 def _permit_session(p: dict) -> str | None:
@@ -1884,6 +1902,9 @@ def main() -> None:
         )
     client = detect_client(p)
     name = tool_name(p)
+    disarm = _disarm_error(name, p)
+    if disarm:
+        emit_deny(client, disarm)
     agent = p.get("agent_type")
     key = agent_key(agent)
     if is_shell_tool(name) and _lane_pilot_agent_session(key):
