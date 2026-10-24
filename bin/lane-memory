@@ -183,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             print(rec.get("_path"))
         return 0
     if args.cmd == "history":
-        print("\n".join(lm.history_search(repo, args.query)))
+        print("\n".join(f"{hit['book']}\t{hit['path']}\t{hit['line']}" for hit in lm.history_hits(repo, args.query)))
         return 0
     if args.cmd == "core":
         print(lm.core_text(repo), end="")

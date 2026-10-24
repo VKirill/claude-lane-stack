@@ -44,32 +44,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Never install into the clone: the stack's own checkout is not a project, and ~/.agents is not a source.
-if [[ -n "$APPLY_PROJECT" ]] && [[ "$(cd "$APPLY_PROJECT" 2>/dev/null && pwd -P)" == "$(cd "$STACK_ROOT" && pwd -P)" ]]; then
-  echo "error: --apply-project points at the Lane Stack checkout itself; apply it to a project folder" >&2
-  exit 2
-fi
-case "$(cd "$STACK_ROOT" && pwd -P)/" in
-  "$(mkdir -p "$DEST" && cd "$DEST" && pwd -P)/"*)
-    echo "error: this checkout is inside $DEST; clone Lane Stack elsewhere and run its install.sh" >&2
-    exit 2
-    ;;
-esac
-# Never installs an older version: the installed one is recorded in ~/.agents/.lane-stack-version.
-if [[ -f "$DEST/.lane-stack-version" && "$ALLOW_DOWNGRADE" != 1 ]]; then
-  INSTALLED_VERSION="$(cat "$DEST/.lane-stack-version")"
-  if python3 -c 'import sys
-v = lambda s: [int(x) for x in s.strip().lstrip("v").split(".")[:3]]
-sys.exit(0 if v(sys.argv[1]) < v(sys.argv[2]) else 1)' "$VERSION" "$INSTALLED_VERSION"; then
-    echo "error: this checkout is $VERSION, older than the installed $INSTALLED_VERSION; update the checkout, or pass --allow-downgrade" >&2
-    exit 2
-  fi
-fi
-# Broken settings.json — refuse before anything is written.
-if [[ -f "$CLAUDE/settings.json" ]]; then
-  python3 "$STACK_ROOT/hooks/merge_claude_settings.py" --check "$CLAUDE/settings.json" || exit 3
-fi
-
 UNAME_S="$(uname -s 2>/dev/null || echo unknown)"
 IS_DARWIN=0
 [[ "$UNAME_S" == "Darwin" ]] && IS_DARWIN=1
@@ -100,6 +74,30 @@ for command in flock git python3 rsync node; do
     exit 1
   }
 done
+# Never install into the clone: the stack's own checkout is not a project, and ~/.agents is not a source.
+if [[ -n "$APPLY_PROJECT" ]] && [[ "$(cd "$APPLY_PROJECT" 2>/dev/null && pwd -P)" == "$(cd "$STACK_ROOT" && pwd -P)" ]]; then
+  echo "error: --apply-project points at the Lane Stack checkout itself; apply it to a project folder" >&2
+  exit 2
+fi
+if [[ -d "$DEST" ]] && [[ "$(cd "$STACK_ROOT" && pwd -P)/" == "$(cd "$DEST" && pwd -P)/"* ]]; then
+  echo "error: this checkout is inside $DEST; clone Lane Stack elsewhere and run its install.sh" >&2
+  exit 2
+fi
+# Never installs an older version: the installed one is recorded in ~/.agents/.lane-stack-version.
+if [[ -f "$DEST/.lane-stack-version" && "$ALLOW_DOWNGRADE" != 1 ]]; then
+  INSTALLED_VERSION="$(cat "$DEST/.lane-stack-version")"
+  if python3 -c 'import sys
+v = lambda s: [int(x) for x in s.strip().lstrip("v").split(".")[:3]]
+sys.exit(0 if v(sys.argv[1]) < v(sys.argv[2]) else 1)' "$VERSION" "$INSTALLED_VERSION"; then
+    echo "error: this checkout is $VERSION, older than the installed $INSTALLED_VERSION; update the checkout, or pass --allow-downgrade" >&2
+    exit 2
+  fi
+fi
+# Broken settings.json — refuse before anything is written.
+if [[ -f "$CLAUDE/settings.json" ]]; then
+  python3 "$STACK_ROOT/hooks/merge_claude_settings.py" --check "$CLAUDE/settings.json" || exit 3
+fi
+
 python3 -c 'import jsonschema, yaml' >/dev/null 2>&1 || {
   if [[ "$IS_DARWIN" == 1 ]]; then
     PY_HINT="pip3 install --break-system-packages pyyaml jsonschema (or: brew install python-yaml, then pip3 install --break-system-packages jsonschema)"

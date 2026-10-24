@@ -1403,8 +1403,8 @@ def neighbors(repo: Path, rec_id: str) -> list[str]:
 
 
 def history_search(repo: Path, words: str) -> list[str]:
-    """The five books (five_books), one masked line per hit: book, path, the line around the first match."""
-    return [f"{hit['book']}\t{hit['path']}\t{hit['line']}" for hit in history_hits(repo, words)]
+    """The paths of the five books' hits (five_books); history_hits gives each with its book and a masked line."""
+    return [hit["path"] for hit in history_hits(repo, words)]
 
 
 def _history_search_v1(repo: Path, words: str) -> list[str]:
