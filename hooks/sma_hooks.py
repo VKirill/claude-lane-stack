@@ -266,15 +266,14 @@ def stream_knowledge(ctx: dict) -> tuple[str | None, str | None]:
     lm = lane_memory()
     if ctx["tool"] not in EDIT_TOOLS or not ctx["path"] or not lm:
         return None, None
-    name = Path(ctx["path"]).name
-    out = run([lm, "search", name, "--limit", "2", "--json"], timeout=0.6, cwd=ctx["cwd"])
+    # The file card catalog (lane-memory card): notes that name this file, masked, and cited in the usage ledger.
+    out = run([lm, "card", ctx["path"], "--json", ctx["cwd"]], timeout=0.6, cwd=ctx["cwd"])
     try:
-        hits = json.loads(out) if out.strip() else []
+        notes = json.loads(out) if out.strip() else []
     except ValueError:
         return None, None
-    hits = hits.get("results", hits) if isinstance(hits, dict) else hits
-    named = [hit for hit in hits if isinstance(hit, dict) and name in str(hit.get("content") or hit.get("text") or "")]
-    return (None, "[file-card] " + " | ".join(str(hit.get("content") or hit.get("text"))[:200] for hit in named)) if named else (None, None)
+    notes = [note for note in notes if isinstance(note, dict) and note.get("claim")][:2]
+    return (None, "[file-card] " + " | ".join(str(note["claim"])[:200] for note in notes)) if notes else (None, None)
 
 
 STREAMS: list[tuple[str, Callable[[dict], tuple[str | None, str | None]]]] = [

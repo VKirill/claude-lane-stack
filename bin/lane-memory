@@ -112,6 +112,33 @@ def main(argv: list[str] | None = None) -> int:
 
     add_repo(sub.add_parser("flush"))
 
+    p_miss = sub.add_parser("miss")
+    p_miss.add_argument("query")
+    p_miss.add_argument("--must", required=True, help="note ids the query should have found, comma-separated")
+    p_miss.add_argument("--critical", action="store_true")
+    add_repo(p_miss)
+
+    p_emit = sub.add_parser("emit")
+    p_emit.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    add_repo(p_emit)
+
+    p_cons = sub.add_parser("consolidate")
+    p_cons.add_argument("--stale-days", type=int, default=90)
+    add_repo(p_cons)
+
+    add_repo(sub.add_parser("catalog"))
+
+    p_card = sub.add_parser("card")
+    p_card.add_argument("path")
+    p_card.add_argument("--json", action="store_true")
+    add_repo(p_card)
+
+    p_mig = sub.add_parser("migrate")
+    p_mig.add_argument("--apply", action="store_true")
+    add_repo(p_mig)
+
+    add_repo(sub.add_parser("usage"))
+
     p_exw = sub.add_parser("export-worktree")
     p_exw.add_argument("--from", dest="worktree", required=True)
     add_repo(p_exw)
@@ -206,6 +233,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "lesson":
         scope = [part for part in args.scope.split(",") if part.strip()]
         print(json.dumps(lm.lesson(repo, args.rule, evidence=args.evidence, scope=scope, audience=args.audience, always=args.always), ensure_ascii=False))
+        return 0
+    if args.cmd == "miss":
+        print(json.dumps(lm.miss(repo, args.query, [m.strip() for m in args.must.split(",") if m.strip()], critical=args.critical), ensure_ascii=False))
+        return 0
+    if args.cmd == "emit":
+        print(lm.emit(repo, fmt=args.format), end="")
+        return 0
+    if args.cmd == "consolidate":
+        proposals = lm.consolidate(repo, stale_days=args.stale_days)
+        print("\n".join(proposals) if proposals else "no proposals")
+        return 0
+    if args.cmd == "catalog":
+        cards = lm.build_catalog(repo)
+        print(f"catalog: {len(cards)} files, {sum(len(v) for v in cards.values())} cards → {lm.catalog_path(repo)}")
+        return 0
+    if args.cmd == "card":
+        notes = lm.card(repo, args.path)
+        print(json.dumps(notes, ensure_ascii=False) if args.json else "\n".join(f"{n['id']}\t{n['claim']}" for n in notes))
+        return 0
+    if args.cmd == "migrate":
+        print("\n".join(lm.migrate(repo, apply=args.apply)))
+        return 0
+    if args.cmd == "usage":
+        print(json.dumps(lm.citations(repo), ensure_ascii=False, indent=1))
         return 0
     if args.cmd == "flush":
         print(f"sent {lm._hub().flush(repo)}")

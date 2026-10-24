@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -699,6 +700,7 @@ def load_tags(repo: Path, tags: list[str], audience: str | None = None) -> list[
         if facets and not all(facet & areas for facet in facets):
             continue
         hits.append(rec)
+    cite(repo, [str(rec.get("id")) for rec in hits], via="load")
     return hits
 
 
@@ -747,6 +749,11 @@ def context_pack(
         for rec in pointed:
             path = rec.get("_path")
             parts.append(f"- [[{rec.get('id')}]] {path}")
+    triggered = [rec for rec in fragments_for(repo, query, aud) if rec.get("id") not in {c.get("id") for c in cards}]
+    if triggered:
+        parts.extend(["", "# Triggered", ""])
+        parts.extend(f"- [[{rec.get('id')}]] {mask_secrets(str(rec.get('claim') or ''))}" for rec in triggered[:5])
+    cite(repo, [str(rec.get("id")) for rec in cards + triggered[:5]], via="context")
     parts.extend(["", f"# Manifest  audience={aud}  used={used}/{budget}"])
     return "\n".join(parts).rstrip() + "\n"
 
@@ -1396,6 +1403,11 @@ def neighbors(repo: Path, rec_id: str) -> list[str]:
 
 
 def history_search(repo: Path, words: str) -> list[str]:
+    """The five books (five_books), one masked line per hit: book, path, the line around the first match."""
+    return [f"{hit['book']}\t{hit['path']}\t{hit['line']}" for hit in history_hits(repo, words)]
+
+
+def _history_search_v1(repo: Path, words: str) -> list[str]:
     q = set(tokenize(words))
     hits = []
     roots = [
@@ -1639,3 +1651,215 @@ def export_worktree(main: Path, worktree: Path) -> list[Path]:
     if leftover:
         raise ValueError(f"worktree memory not exported: {', '.join(leftover)}")
     return copied
+
+
+# --- SMA corpus care and how memory reaches a session (W11) ---------------------------------------------------------------------
+
+SECRET_MASK = "[secret]"
+
+
+def mask_secrets(text: str) -> str:
+    """One credential mask: every place that shows corpus or history text to a session masks what looks like a key the same way."""
+    return SECRET_RE.sub(SECRET_MASK, text)
+
+
+def usage_path(repo: Path) -> Path:
+    return cls_dir(repo) / "usage" / "citations.jsonl"
+
+
+def cite(repo: Path, ids: list[str], *, via: str) -> None:
+    """Note citation ledger: which notes reached a session and by which door (load, context, card); consolidate reads it."""
+    ids = [str(i) for i in ids if str(i).strip()]
+    if not ids:
+        return
+    path = usage_path(repo)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with path.open("a", encoding="utf-8") as out:
+            for rid in ids:
+                out.write(json.dumps({"id": rid, "via": via, "at": stamp}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def citations(repo: Path) -> dict[str, dict[str, Any]]:
+    """Counts and the last date per note from the citation ledger."""
+    out: dict[str, dict[str, Any]] = {}
+    path = usage_path(repo)
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        entry = out.setdefault(str(row.get("id")), {"count": 0, "last": "", "via": {}})
+        entry["count"] += 1
+        entry["last"] = max(entry["last"], str(row.get("at") or ""))
+        entry["via"][str(row.get("via"))] = entry["via"].get(str(row.get("via")), 0) + 1
+    return out
+
+
+def triggers_of(rec: dict[str, Any]) -> list[str]:
+    retrieval = rec.get("retrieval") if isinstance(rec.get("retrieval"), dict) else {}
+    return [str(t).strip().lower() for t in (retrieval or {}).get("triggers") or [] if str(t).strip()]
+
+
+def fragments_for(repo: Path, text: str, audience: str | None = None) -> list[dict[str, Any]]:
+    """Fact fragments with triggers: a note whose retrieval.triggers word or path occurs in the text comes along as a short fragment."""
+    low = text.lower()
+    return [rec for rec in _live_records(repo, audience or settings(repo)["audience"]) if any(t in low for t in triggers_of(rec))]
+
+
+def catalog_path(repo: Path) -> Path:
+    return cls_dir(repo) / "catalog.json"
+
+
+def build_catalog(repo: Path) -> dict[str, list[str]]:
+    """File card catalog: every project file a live note names (fingerprint paths, paths in its claim) → the notes about it."""
+    cards: dict[str, list[str]] = {}
+    for rec in _live_records(repo, "owner"):
+        paths = set(_fp_paths(rec)) | set(PATH_RE.findall(str(rec.get("claim") or "")))
+        for raw in paths:
+            norm = raw.strip("./")
+            if norm and (Path(repo) / norm).exists():
+                cards.setdefault(norm, []).append(str(rec.get("id")))
+    path = catalog_path(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"built": datetime.now(timezone.utc).isoformat(timespec="seconds"), "cards": cards}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return cards
+
+
+def card(repo: Path, file_path: str) -> list[dict[str, Any]]:
+    """The file card: notes about this file from the catalog (built when missing), each masked and cited."""
+    path = catalog_path(repo)
+    try:
+        cards = json.loads(path.read_text(encoding="utf-8"))["cards"] if path.is_file() else build_catalog(repo)
+    except (OSError, ValueError, KeyError):
+        cards = build_catalog(repo)
+    rel = str(Path(file_path).resolve().relative_to(Path(repo).resolve())) if Path(file_path).is_absolute() and str(Path(file_path).resolve()).startswith(str(Path(repo).resolve())) else file_path.strip("./")
+    ids = cards.get(rel, [])
+    records = {str(r.get("id")): r for r in _live_records(repo, "owner")}
+    out = [{"id": i, "claim": mask_secrets(str(records[i].get("claim") or ""))} for i in ids if i in records]
+    cite(repo, [r["id"] for r in out], via="card")
+    return out
+
+
+def five_books(repo: Path) -> list[tuple[str, Path]]:
+    """Search across five books: episodes, session logs, lessons, episodic notes and the phases' work books."""
+    books: list[tuple[str, Path]] = []
+    for name, root in (("episodes", corpus_dir(repo) / "episodes"), ("session-log", Path(repo) / ".agents" / "session-log")):
+        if root.is_dir():
+            books += [(name, p) for p in sorted(root.rglob("*.md")) if not p.name.startswith("INDEX")]
+    lessons = Path(repo) / ".agents" / "LESSONS.md"
+    if lessons.is_file():
+        books.append(("lessons", lessons))
+    books += [("episodic", rec["_path"]) for rec in (load_record(p) for p in iter_record_paths(repo)) if rec.get("memory_type") == "episodic"]
+    phases = Path(repo) / ".agents" / "phases"
+    if phases.is_dir():
+        books += [("work-book", p) for p in sorted(phases.glob("*/BOOK.md"))]
+    return books
+
+
+def history_hits(repo: Path, words: str) -> list[dict[str, str]]:
+    """The five books searched by words; each hit carries its book and a masked line around the first match."""
+    q = set(tokenize(words))
+    hits = []
+    for book, path in five_books(repo):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if not q & set(tokenize(text)):
+            continue
+        line = next((ln for ln in text.splitlines() if q & set(tokenize(ln))), "")
+        hits.append({"book": book, "path": str(path), "line": mask_secrets(line.strip())[:300]})
+    return hits
+
+
+def gold_path(repo: Path) -> Path:
+    return corpus_dir(repo) / "GOLDEN.yaml"
+
+
+def miss(repo: Path, query: str, must: list[str], *, critical: bool = False) -> dict[str, Any]:
+    """A real miss into the gold set: the question a session asked and the notes it should have got become a GOLDEN.yaml case."""
+    query = " ".join(query.split())
+    if len(query) < 3 or not must:
+        raise ValueError("miss: give the query and at least one note id it should have found (--must id1,id2)")
+    redact_or_raise(query)
+    known = {str(load_record(p).get("id")) for p in iter_record_paths(repo)}
+    unknown = [m for m in must if m not in known]
+    if unknown:
+        raise ValueError(f"miss: no note {', '.join(unknown)} in the corpus")
+    path = gold_path(repo)
+    cases = (yaml.safe_load(path.read_text(encoding="utf-8")) or []) if path.is_file() else []
+    if any(str(c.get("query")) == query for c in cases):
+        raise ValueError("miss: this query is already in the gold set")
+    case: dict[str, Any] = {"query": query, "must": must, "source": "miss", "added": date.today().isoformat()}
+    if critical:
+        case["critical"] = True
+    cases.append(case)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(cases, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return case
+
+
+def emit(repo: Path, *, fmt: str = "markdown") -> str:
+    """Corpus export into blocks: CORE and the catalog of live notes as one block, for a session or another tool (nothing written)."""
+    records = _live_records(repo, "export")
+    if fmt == "json":
+        return json.dumps({"core": mask_secrets(core_text(repo)), "notes": [{"id": r.get("id"), "claim": mask_secrets(str(r.get("claim") or "")), "type": r.get("memory_type")} for r in records]}, ensure_ascii=False, indent=1) + "\n"
+    lines = [CORE_MARK_START, mask_secrets(core_text(repo)).rstrip(), CORE_MARK_END, "", "<!-- lane-memory:catalog -->"]
+    lines += [f"- [[{r.get('id')}]] {mask_secrets(str(r.get('claim') or ''))}" for r in records]
+    lines.append("<!-- /lane-memory:catalog -->")
+    return "\n".join(lines) + "\n"
+
+
+def consolidate(repo: Path, *, stale_days: int = 90) -> list[str]:
+    """Corpus review, proposals only: near twins to merge, notes nobody cited in stale_days, fingerprints that no longer match the code."""
+    proposals: list[str] = []
+    cited = citations(repo)
+    horizon = (datetime.now(timezone.utc) - timedelta(days=stale_days)).isoformat(timespec="seconds")
+    seen: set[frozenset[str]] = set()
+    for rec in _live_records(repo, "owner"):
+        rid = str(rec.get("id"))
+        for twin in _twins(repo, str(rec.get("claim") or ""), rid):
+            other = twin.split(" ", 1)[1]
+            pair = frozenset({rid, other})
+            if pair not in seen:
+                seen.add(pair)
+                proposals.append(f"merge? [[{rid}]] and [[{other}]] say nearly the same")
+        if rec.get("context_priority") != "always" and cited.get(rid, {}).get("last", "") < horizon:
+            proposals.append(f"demote? [[{rid}]] reached no session in {stale_days} days")
+        fp = rec.get("fingerprint") if isinstance(rec.get("fingerprint"), dict) else None
+        if fp and fp.get("paths") and fp.get("hash") and fingerprint(repo, list(fp["paths"])) != fp["hash"]:
+            proposals.append(f"reverify? [[{rid}]]: the files it describes changed since it was written")
+    return proposals
+
+
+LEGACY_PLACES = (
+    (".agents/memory.local", ".cls/local-memory"),
+    (".agents/sma/local-memory", ".cls/local-memory"),
+    (".agents/sma/index", ".cls/index"),
+    (".agents/memory/.index", ".cls/index"),
+)
+
+
+def migrate(repo: Path, *, apply: bool = False) -> list[str]:
+    """v1 → v2, preview by default: legacy folders move under .cls/, notes missing a v2 field are listed; --apply moves the folders only."""
+    plan: list[str] = []
+    for old, new in LEGACY_PLACES:
+        src, dst = Path(repo) / old, Path(repo) / new
+        if src.is_dir() and any(src.iterdir()):
+            plan.append(f"move {old} → {new}" + (" (target exists: merge by hand)" if dst.exists() else ""))
+            if apply and not dst.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                src.rename(dst)
+                plan[-1] += " — moved"
+    for path in iter_record_paths(repo):
+        rec = load_record(path)
+        lacking = [key for key in REQUIRED if rec.get(key) in (None, "")]
+        if lacking:
+            plan.append(f"note {rec.get('id') or path.name}: add {', '.join(lacking)} (the write door refuses it until then)")
+    return plan or ["nothing to migrate: the corpus is v2"]
