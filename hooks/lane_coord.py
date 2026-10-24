@@ -41,7 +41,8 @@ def coord_enabled(environ: dict[str, str] | None = None) -> bool:
     if any(env.get(name) for name in MARKERS):
         return True
     try:
-        return bool(json.loads((Path.home() / ".agents" / "config" / "coord.json").read_text()).get("plain_sessions"))
+        home = Path(env.get("HOME") or Path.home())
+        return bool(json.loads((home / ".agents" / "config" / "coord.json").read_text()).get("plain_sessions"))
     except (OSError, ValueError):
         return False
 

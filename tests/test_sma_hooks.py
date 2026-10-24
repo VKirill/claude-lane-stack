@@ -42,7 +42,8 @@ class SmaHooksTest(unittest.TestCase):
         self.assertIsNone(call("PreToolUse", {"session_id": "p", "cwd": self.tmp, "tool_name": "Edit", "tool_input": {"file_path": f"{self.tmp}/a.ts"}}, env))
         Path(self.tmp, ".agents", "config").mkdir(parents=True)
         Path(self.tmp, ".agents", "config", "coord.json").write_text('{"plain_sessions": true}')
-        self.assertTrue(lane_coord.coord_enabled({"HOME": self.tmp}) or True)
+        self.assertTrue(lane_coord.coord_enabled({"HOME": self.tmp}))
+        self.assertFalse(lane_coord.coord_enabled({"HOME": self.tmp, "LANE_COORD": "0"}))
 
     def test_git_airbag_saves_uncommitted_work_before_a_destructive_command(self) -> None:
         subprocess.run(["git", "add", "-A"], cwd=self.tmp, check=True)
