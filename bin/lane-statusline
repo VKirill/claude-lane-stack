@@ -74,6 +74,10 @@ def main() -> int:
     if use_lane_hud(raw):
         mode = (os.environ.get("LANE_STATUSLINE_MODE") or "compact").strip().lower()
         line = build_status_line(raw, mode=mode)
+        # The person line prints first (SMA): the owner's own claude-pulse line, then the lane segment under it.
+        person = _run_pulse(raw) if os.environ.get("LANE_STATUSLINE_PERSON", "1") != "0" else ""
+        if person:
+            sys.stdout.write(person.rstrip("\n") + "\n")
         sys.stdout.write(line.rstrip("\n") + "\n")
         return 0
 
