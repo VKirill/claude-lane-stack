@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""lane-stack-remove — take Lane Stack off this machine. Without --yes it only prints the plan (dry-run removal plan).
+
+Reversed, in order: the SMA hooks and the status line in ~/.claude/settings.json (the own status line comes back), the managed
+blocks in CLAUDE.md / AGENTS.md of the projects given with --project, the /gsd-* aliases, the stack's skills and agents copies,
+~/.agents/{hooks,board,docs,templates,schemas,pm-skills,lib}, and last its own bins — the workflow removes itself.
+The memory corpus is untouched: .agents/memory of every project and the hub memory stay.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+DEST = HOME / ".agents"
+CLAUDE = HOME / ".claude"
+BLOCKS = re.compile(r"\n?<!-- (lane-memory:core|lane-stack:[\w-]+) -->.*?<!-- /\1 -->\n?", re.S)
+TRASH = DEST / "bin" / "agent-trash"
+KEEP = {"project-life"}  # user-owned skills the installer never overwrites
+
+
+def plan(projects: list[Path]) -> list[tuple[str, Path | None]]:
+    steps: list[tuple[str, Path | None]] = [("settings: strip SMA hooks, restore the own status line, drop the plugin", CLAUDE / "settings.json")]
+    for project in projects:
+        for name in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
+            path = project / name
+            if path.is_file() and BLOCKS.search(path.read_text(encoding="utf-8")):
+                steps.append((f"cut the managed blocks in {path}", path))
+    commands = CLAUDE / "commands"
+    steps += [(f"remove alias {p.name}", p) for p in sorted(commands.glob("gsd-*.md")) if "lane-stack:gsd-alias" in p.read_text(encoding="utf-8", errors="replace")]
+    for name in ("hooks", "board", "docs", "templates", "schemas", "pm-skills", "lib"):
+        if (DEST / name).exists():
+            steps.append((f"move {DEST / name} to the Trash", DEST / name))
+    # Skills and roles: only the ones this install wrote (~/.agents/.lane-stack-owned); the skills canon and user copies stay.
+    owned = DEST / ".lane-stack-owned"
+    for line in owned.read_text(encoding="utf-8").splitlines() if owned.is_file() else []:
+        kind, _, name = line.partition(" ")
+        if kind == "bin":
+            continue
+        path = DEST / ("skills" if kind == "skill" else "agents") / name
+        if name and name not in KEEP and path.exists():
+            steps.append((f"move {path} to the Trash", path))
+    if not owned.is_file():
+        steps.append(("skills and roles: no ~/.agents/.lane-stack-owned, so none is removed (reinstall once to record them)", None))
+    marketplace = CLAUDE / "plugins" / "marketplaces" / "claude-lane-stack"
+    if marketplace.exists() or marketplace.is_symlink():
+        steps.append((f"remove the marketplace link {marketplace}", marketplace))
+    steps.append((f"remove the stack's own bins in {DEST / 'bin'} (last; other tools there stay)", DEST / "bin"))
+    return steps
+
+
+def trash(path: Path) -> None:
+    """Into the Trash (agent-trash keeps it 7 days on servers); a bare link is just unlinked."""
+    if path.is_symlink():
+        path.unlink()
+    elif TRASH.is_file():
+        subprocess.run([str(TRASH), "-r", str(path)], check=False)
+    else:
+        raise SystemExit(f"error: no agent-trash to move {path} with; nothing more removed")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="lane-stack-remove", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--project", action="append", default=[], help="a project whose managed blocks to cut (repeat)")
+    parser.add_argument("--yes", action="store_true", help="one explicit yes: without it nothing changes")
+    args = parser.parse_args()
+    projects = [Path(p).resolve() for p in args.project]
+    steps = plan(projects)
+    for text, _ in steps:
+        print(("do   " if args.yes else "plan ") + text)
+    print("keep the memory corpus (.agents/memory in projects, hub memory)")
+    if not args.yes:
+        print("\nnothing changed; run again with --yes to remove")
+        return 0
+    merge = DEST / "hooks" / "merge_claude_settings.py"
+    if merge.is_file():
+        subprocess.run([sys.executable, str(merge), "--remove", "--yes", str(CLAUDE / "settings.json")], check=False)
+    owned = DEST / ".lane-stack-owned"
+    own_bins = [line.split(" ", 1)[1] for line in owned.read_text(encoding="utf-8").splitlines() if line.startswith("bin ")] if owned.is_file() else []
+    for text, path in steps[1:]:
+        if path is None or path == DEST / "bin":
+            continue
+        if path.name in ("CLAUDE.md", "AGENTS.md", "GEMINI.md"):
+            path.write_text(BLOCKS.sub("\n", path.read_text(encoding="utf-8")).rstrip() + "\n", encoding="utf-8")
+        elif path.suffix == ".md" and path.parent.name == "commands":
+            path.unlink()
+        else:
+            trash(path)
+    (DEST / ".lane-stack-version").unlink(missing_ok=True)
+    (DEST / ".lane-stack-owned").unlink(missing_ok=True)
+    # The workflow removes itself: the stack's bins go last, this script with them.
+    for name in own_bins:
+        target = DEST / "bin" / name
+        if target.exists() and name != "agent-trash":
+            target.unlink()
+    (DEST / "bin" / "agent-trash").unlink(missing_ok=True)
+    print("removed; restart Claude Code sessions to drop the loaded hooks")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,413 @@
+#!/usr/bin/env python3
+"""lane-plan — project planning queries and edits (the SMA map's sma-tools and the project planning folder).
+
+Project level lives in .agents/planning/: STATE.md (where we are), ROADMAP.md (phases and goals), REQUIREMENTS.md, config.json,
+profile.json (infra profile), debug/, spikes/, sketches/, research/, quick/, milestones/, hooks/ (extension points).
+A phase lives in .agents/phases/<id>/ — the folder Lane Pilot's phase driver writes BOOK.md into — with CONTEXT, DISCUSSION, SPEC,
+RESEARCH, PATTERNS, PLAN, SUMMARY, VERIFICATION, VALIDATION, UAT, UI-SPEC, AI-SPEC, EVAL-REVIEW, SECURITY made from templates/planning.
+
+  lane-plan query <dotted>                 state.phase, roadmap.next, phase.<n>.docs … (one value, JSON)
+  lane-plan state get [key] | set <key> <value>
+  lane-plan roadmap show | analyze
+  lane-plan phase add <name> [--goal G] | insert <after> <name> [--goal G] | complete <n> | remove <n> | uat-passed <n>
+  lane-plan audit-uat                      open UAT lines of every phase
+  lane-plan template list | fill <NAME> [--phase N] [--form F] [--set k=v …] [--force]
+  lane-plan discuss <n> <text>             one line into the phase discussion log
+  lane-plan debug|spike|sketch|research new <title>
+  lane-plan milestone archive <name>       completed phases into milestones/<name>.md, roadmap trimmed
+  lane-plan profile [--set k=v …]          the infra profile (profile.json)
+  lane-plan render-hooks [step]            extension points: hooks/<step>*.md appended to a workflow step
+  lane-plan commit [-m message]            commit only the planning and phase folders
+  lane-plan capabilities                   the capability manifest (commands, templates, version)
+  lane-plan version-check                  installed Lane Stack against the newest tag of its origin
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+import yaml
+
+STACK = Path(__file__).resolve().parent.parent
+TEMPLATES = STACK / "templates" / "planning"
+PHASE_DOCS = ("CONTEXT", "DISCUSSION", "SPEC", "RESEARCH", "PATTERNS", "PLAN", "SUMMARY", "VERIFICATION", "VALIDATION", "UAT",
+              "UI-SPEC", "AI-SPEC", "EVAL-REVIEW", "SECURITY")
+PROJECT_DOCS = ("STATE", "ROADMAP", "REQUIREMENTS")
+KIND_FOLDERS = {"debug": "debug", "spike": "spikes", "sketch": "sketches", "research": "research"}
+ROW = re.compile(r"^- \[(?P<done>[ xX])\] (?P<n>\d+(?:\.\d+)*) (?P<name>.+?)(?: — (?P<goal>.*))?$")
+
+
+def planning(repo: Path) -> Path:
+    return repo / ".agents" / "planning"
+
+
+def phases_dir(repo: Path) -> Path:
+    return repo / ".agents" / "phases"
+
+
+def slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9а-яё]+", "-", text.lower()).strip("-")[:48] or "item"
+
+
+def split_fm(text: str) -> tuple[dict, str]:
+    if text.startswith("---\n"):
+        head, _, body = text[4:].partition("\n---\n")
+        return (yaml.safe_load(head) or {}), body
+    return {}, text
+
+
+def dump_fm(meta: dict, body: str) -> str:
+    return "---\n" + yaml.safe_dump(meta, allow_unicode=True, sort_keys=False) + "---\n" + body
+
+
+# --- STATE --------------------------------------------------------------------------------------------------------------------------
+
+def state_path(repo: Path) -> Path:
+    return planning(repo) / "STATE.md"
+
+
+def state(repo: Path) -> dict:
+    path = state_path(repo)
+    return split_fm(path.read_text(encoding="utf-8"))[0] if path.is_file() else {}
+
+
+def state_set(repo: Path, key: str, value: str) -> dict:
+    path = state_path(repo)
+    meta, body = split_fm(path.read_text(encoding="utf-8")) if path.is_file() else ({}, "\n# State\n\nWhere the project is now; lane-plan state set writes the header.\n")
+    meta[key] = value
+    meta["updated"] = date.today().isoformat()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_fm(meta, body), encoding="utf-8")
+    return meta
+
+
+# --- ROADMAP ------------------------------------------------------------------------------------------------------------------------
+
+def roadmap_path(repo: Path) -> Path:
+    return planning(repo) / "ROADMAP.md"
+
+
+def roadmap(repo: Path) -> list[dict]:
+    path = roadmap_path(repo)
+    rows = []
+    for line in (path.read_text(encoding="utf-8").splitlines() if path.is_file() else []):
+        found = ROW.match(line.strip())
+        if found:
+            rows.append({"n": found["n"], "name": found["name"].strip(), "goal": (found["goal"] or "").strip(), "done": found["done"] != " "})
+    return rows
+
+
+def write_roadmap(repo: Path, rows: list[dict]) -> None:
+    path = roadmap_path(repo)
+    head = path.read_text(encoding="utf-8").split("\n## Phases", 1)[0] if path.is_file() else "# Roadmap\n"
+    lines = [head.rstrip(), "", "## Phases", ""]
+    lines += [f"- [{'x' if r['done'] else ' '}] {r['n']} {r['name']}" + (f" — {r['goal']}" if r["goal"] else "") for r in sorted(rows, key=lambda r: [int(p) for p in r["n"].split(".")])]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def phase_folder(repo: Path, n: str) -> Path:
+    row = next((r for r in roadmap(repo) if r["n"] == n), None)
+    if not row:
+        raise ValueError(f"no phase {n} in ROADMAP.md")
+    return phases_dir(repo) / f"{n}-{slug(row['name'])}"
+
+
+def phase_docs(repo: Path, n: str) -> list[str]:
+    folder = phase_folder(repo, n)
+    return sorted(p.stem for p in folder.glob("*.md")) if folder.is_dir() else []
+
+
+def analyze(repo: Path) -> dict:
+    rows = roadmap(repo)
+    open_rows = [r for r in rows if not r["done"]]
+    nxt = open_rows[0] if open_rows else None
+    return {
+        "phases": len(rows), "done": len(rows) - len(open_rows), "open": len(open_rows),
+        "next": nxt and {"n": nxt["n"], "name": nxt["name"], "docs": phase_docs(repo, nxt["n"])},
+        "without_goal": [r["n"] for r in rows if not r["goal"]],
+        "open_without_context": [r["n"] for r in open_rows if "CONTEXT" not in phase_docs(repo, r["n"])],
+        "uat_open": audit_uat(repo),
+    }
+
+
+def phase_add(repo: Path, name: str, goal: str, after: str | None = None) -> dict:
+    rows = roadmap(repo)
+    if after is None:
+        tops = [int(r["n"].split(".")[0]) for r in rows]
+        n = str(max(tops, default=0) + 1)
+    else:
+        if not any(r["n"] == after for r in rows):
+            raise ValueError(f"no phase {after} to insert after")
+        kids = [int(r["n"].split(".")[-1]) for r in rows if r["n"].startswith(after + ".") and r["n"].count(".") == after.count(".") + 1]
+        n = f"{after}.{max(kids, default=0) + 1}"
+    row = {"n": n, "name": name.strip(), "goal": goal.strip(), "done": False}
+    write_roadmap(repo, rows + [row])
+    (phases_dir(repo) / f"{n}-{slug(name)}").mkdir(parents=True, exist_ok=True)
+    return row
+
+
+def phase_complete(repo: Path, n: str, done: bool = True) -> dict:
+    rows = roadmap(repo)
+    row = next((r for r in rows if r["n"] == n), None)
+    if not row:
+        raise ValueError(f"no phase {n}")
+    if done and not uat_passed(repo, n)["passed"]:
+        raise ValueError(f"phase {n}: UAT.md has open or failed lines — lane-plan audit-uat")
+    row["done"] = done
+    write_roadmap(repo, rows)
+    state_set(repo, "phase", n if not done else (next((r["n"] for r in rows if not r["done"]), "") or ""))
+    return row
+
+
+def phase_remove(repo: Path, n: str) -> dict:
+    rows = roadmap(repo)
+    row = next((r for r in rows if r["n"] == n), None)
+    if not row:
+        raise ValueError(f"no phase {n}")
+    if row["done"]:
+        raise ValueError(f"phase {n} is done: archive it with lane-plan milestone archive instead")
+    folder = phase_folder(repo, n)
+    if folder.is_dir() and any(folder.iterdir()):
+        raise ValueError(f"phase {n} has documents in {folder}: move them first, nothing is deleted")
+    write_roadmap(repo, [r for r in rows if r["n"] != n])
+    return row
+
+
+# --- UAT ----------------------------------------------------------------------------------------------------------------------------
+
+UAT_LINE = re.compile(r"^- \[(?P<mark>[ xX!])\] (?P<text>.+)$")
+
+
+def uat_lines(path: Path) -> list[dict]:
+    if not path.is_file():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        found = UAT_LINE.match(line.strip())
+        if found:
+            out.append({"text": found["text"], "state": {" ": "open", "!": "failed"}.get(found["mark"], "passed")})
+    return out
+
+
+def uat_passed(repo: Path, n: str) -> dict:
+    path = phase_folder(repo, n) / "UAT.md"
+    lines = uat_lines(path)
+    bad = [line for line in lines if line["state"] != "passed"]
+    # A UAT.md with no test line is not a passed acceptance: it was started and not written.
+    empty = path.is_file() and not lines
+    return {"phase": n, "lines": len(lines), "passed": not bad and not empty, "open": bad + ([{"text": "UAT.md has no test lines", "state": "open"}] if empty else [])}
+
+
+def audit_uat(repo: Path) -> list[dict]:
+    out = []
+    for row in roadmap(repo):
+        for line in uat_lines(phase_folder(repo, row["n"]) / "UAT.md"):
+            if line["state"] != "passed":
+                out.append({"phase": row["n"], **line})
+    return out
+
+
+# --- templates ----------------------------------------------------------------------------------------------------------------------
+
+def templates() -> list[str]:
+    return sorted(p.stem for p in TEMPLATES.glob("*.md")) if TEMPLATES.is_dir() else []
+
+
+def fill(repo: Path, name: str, *, phase: str | None, form: str | None, values: dict[str, str], force: bool) -> Path:
+    name = name.upper()
+    source = TEMPLATES / f"{name}{('.' + form) if form else ''}.md"
+    if not source.is_file():
+        raise ValueError(f"no template {source.name}; lane-plan template list")
+    if name in PHASE_DOCS:
+        if not phase:
+            raise ValueError(f"{name} belongs to a phase: --phase <n>")
+        dest = phase_folder(repo, phase) / f"{name}.md"
+        row = next(r for r in roadmap(repo) if r["n"] == phase)
+        values = {"phase": phase, "phase_name": row["name"], "goal": row["goal"], **values}
+    else:
+        dest = planning(repo) / f"{name}.md"
+    if dest.exists() and not force:
+        raise ValueError(f"{dest} exists; --force to overwrite")
+    values = {"date": date.today().isoformat(), "project": repo.name, **values}
+    text = re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m[1], m[0]), source.read_text(encoding="utf-8"))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(text, encoding="utf-8")
+    return dest
+
+
+def new_item(repo: Path, kind: str, title: str) -> Path:
+    folder = planning(repo) / KIND_FOLDERS[kind]
+    dest = folder / f"{date.today().isoformat()}-{slug(title)}.md"
+    if dest.exists():
+        raise ValueError(f"{dest} exists")
+    template = TEMPLATES / f"{kind.upper()}.md"
+    body = template.read_text(encoding="utf-8") if template.is_file() else "# {{title}}\n"
+    folder.mkdir(parents=True, exist_ok=True)
+    dest.write_text(body.replace("{{title}}", title).replace("{{date}}", date.today().isoformat()), encoding="utf-8")
+    return dest
+
+
+def discuss(repo: Path, n: str, text: str) -> Path:
+    path = phase_folder(repo, n) / "DISCUSSION.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file():
+        path.write_text(f"# Discussion log — phase {n}\n\nOne line per exchange: what was asked, what was decided (locked / free / deferred).\n\n", encoding="utf-8")
+    with path.open("a", encoding="utf-8") as out:
+        out.write(f"- {date.today().isoformat()} {' '.join(text.split())}\n")
+    return path
+
+
+def milestone_archive(repo: Path, name: str) -> Path:
+    rows = roadmap(repo)
+    done = [r for r in rows if r["done"]]
+    if not done:
+        raise ValueError("no completed phase to archive")
+    dest = planning(repo) / "milestones" / f"{slug(name)}.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    lines = [f"# Milestone {name}", "", f"Archived {date.today().isoformat()}.", "", "## Phases", ""]
+    lines += [f"- {r['n']} {r['name']}" + (f" — {r['goal']}" if r["goal"] else "") + f" ({', '.join(phase_docs(repo, r['n'])) or 'no documents'})" for r in done]
+    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_roadmap(repo, [r for r in rows if not r["done"]])
+    return dest
+
+
+def profile(repo: Path, values: dict[str, str]) -> dict:
+    path = planning(repo) / "profile.json"
+    data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"hosts": [], "deploy": "", "databases": [], "secrets_in": "Env Catalog", "notes": ""}
+    for key, value in values.items():
+        data[key] = json.loads(value) if value[:1] in "[{" else value
+    if values:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return data
+
+
+def render_hooks(repo: Path, step: str | None) -> list[dict]:
+    folder = planning(repo) / "hooks"
+    files = sorted(folder.glob(f"{step}*.md" if step else "*.md")) if folder.is_dir() else []
+    return [{"step": f.stem.split(".")[0], "file": str(f), "text": f.read_text(encoding="utf-8").strip()} for f in files]
+
+
+def commit(repo: Path, message: str) -> str:
+    paths = [str(p.relative_to(repo)) for p in (planning(repo), phases_dir(repo)) if p.exists()]
+    if not paths:
+        return "nothing to commit"
+    subprocess.run(["git", "add", "--", *paths], cwd=repo, check=True)
+    staged = subprocess.run(["git", "diff", "--cached", "--name-only", "--", *paths], cwd=repo, capture_output=True, text=True).stdout.split()
+    if not staged:
+        return "nothing to commit"
+    subprocess.run(["git", "commit", "-q", "-m", message, "--", *paths], cwd=repo, check=True)
+    return f"committed {len(staged)} planning files"
+
+
+def version_check() -> dict:
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=STACK, capture_output=True, text=True, timeout=20).stdout.strip()
+    installed = git("describe", "--tags", "--always")
+    tags = [line.split("refs/tags/")[-1] for line in git("ls-remote", "--tags", "origin").splitlines() if "^{}" not in line]
+    def key(tag: str) -> list[int]:
+        return [int(x) for x in re.findall(r"\d+", tag)[:3]] or [0]
+    newest = max(tags, key=key) if tags else None
+    return {"installed": installed, "newest": newest, "behind": bool(newest and key(newest) > key(installed))}
+
+
+def capabilities() -> dict:
+    return {"tool": "lane-plan", "commands": ["query", "state", "roadmap", "phase", "audit-uat", "template", "discuss", "debug", "spike", "sketch", "research", "milestone", "profile", "render-hooks", "commit", "capabilities", "version-check"],
+            "phase_docs": list(PHASE_DOCS), "project_docs": list(PROJECT_DOCS), "templates": templates()}
+
+
+def query(repo: Path, dotted: str):
+    parts = dotted.split(".")
+    if parts[0] == "state":
+        data = state(repo)
+        return data.get(parts[1]) if len(parts) > 1 else data
+    if parts[0] == "roadmap":
+        data = analyze(repo)
+        return data.get(parts[1]) if len(parts) > 1 else roadmap(repo)
+    if parts[0] == "phase" and len(parts) >= 2:
+        n = ".".join(p for p in parts[1:] if p.isdigit())
+        rest = [p for p in parts[1:] if not p.isdigit()]
+        row = next((r for r in roadmap(repo) if r["n"] == n), None)
+        if not row:
+            raise ValueError(f"no phase {n}")
+        info = {**row, "docs": phase_docs(repo, n), "uat": uat_passed(repo, n)}
+        return info.get(rest[0]) if rest else info
+    if parts[0] == "profile":
+        data = profile(repo, {})
+        return data.get(parts[1]) if len(parts) > 1 else data
+    raise ValueError(f"unknown query {dotted}: state.*, roadmap.*, phase.<n>.*, profile.*")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="lane-plan", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--repo", default=".")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("query").add_argument("dotted")
+    p = sub.add_parser("state"); p.add_argument("op", choices=("get", "set")); p.add_argument("key", nargs="?"); p.add_argument("value", nargs="?", default="")
+    sub.add_parser("roadmap").add_argument("op", choices=("show", "analyze"))
+    p = sub.add_parser("phase"); p.add_argument("op", choices=("add", "insert", "complete", "reopen", "remove", "uat-passed")); p.add_argument("args", nargs="+"); p.add_argument("--goal", default="")
+    sub.add_parser("audit-uat")
+    p = sub.add_parser("template"); p.add_argument("op", choices=("list", "fill")); p.add_argument("name", nargs="?"); p.add_argument("--phase"); p.add_argument("--form"); p.add_argument("--set", action="append", default=[]); p.add_argument("--force", action="store_true")
+    p = sub.add_parser("discuss"); p.add_argument("n"); p.add_argument("text")
+    for kind in KIND_FOLDERS:
+        p = sub.add_parser(kind); p.add_argument("op", choices=("new",)); p.add_argument("title")
+    p = sub.add_parser("milestone"); p.add_argument("op", choices=("archive",)); p.add_argument("name")
+    p = sub.add_parser("profile"); p.add_argument("--set", action="append", default=[])
+    sub.add_parser("render-hooks").add_argument("step", nargs="?")
+    p = sub.add_parser("commit"); p.add_argument("-m", "--message", default="planning: update")
+    sub.add_parser("capabilities")
+    sub.add_parser("version-check")
+    args = parser.parse_args(argv)
+    repo = Path(args.repo).resolve()
+    pairs = lambda raw: dict(item.split("=", 1) for item in raw if "=" in item)  # noqa: E731
+    out: object
+    if args.cmd == "query":
+        out = query(repo, args.dotted)
+    elif args.cmd == "state":
+        out = state_set(repo, args.key, args.value) if args.op == "set" else (state(repo).get(args.key) if args.key else state(repo))
+    elif args.cmd == "roadmap":
+        out = roadmap(repo) if args.op == "show" else analyze(repo)
+    elif args.cmd == "phase":
+        op, rest = args.op, args.args
+        out = (phase_add(repo, " ".join(rest), args.goal) if op == "add"
+               else phase_add(repo, " ".join(rest[1:]), args.goal, after=rest[0]) if op == "insert"
+               else phase_complete(repo, rest[0]) if op == "complete"
+               else phase_complete(repo, rest[0], done=False) if op == "reopen"
+               else phase_remove(repo, rest[0]) if op == "remove"
+               else uat_passed(repo, rest[0]))
+    elif args.cmd == "audit-uat":
+        out = audit_uat(repo)
+    elif args.cmd == "template":
+        out = templates() if args.op == "list" else str(fill(repo, args.name or "", phase=args.phase, form=args.form, values=pairs(args.set), force=args.force))
+    elif args.cmd == "discuss":
+        out = str(discuss(repo, args.n, args.text))
+    elif args.cmd in KIND_FOLDERS:
+        out = str(new_item(repo, args.cmd, args.title))
+    elif args.cmd == "milestone":
+        out = str(milestone_archive(repo, args.name))
+    elif args.cmd == "profile":
+        out = profile(repo, pairs(args.set))
+    elif args.cmd == "render-hooks":
+        out = render_hooks(repo, args.step)
+    elif args.cmd == "commit":
+        out = commit(repo, args.message)
+    elif args.cmd == "capabilities":
+        out = capabilities()
+    else:
+        out = version_check()
+    print(out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

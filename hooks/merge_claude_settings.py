@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import json
 import os
 import re
@@ -79,6 +80,13 @@ def merge_guard(settings: dict[str, Any], guard_path: Path) -> dict[str, Any]:
     return settings
 
 
+PREV_STATUSLINE = Path.home() / ".agents" / "state" / "statusline.prev.json"
+
+
+def _ours_statusline(cmd: str) -> bool:
+    return "lane-statusline" in cmd or "claude_status" in cmd or "claude-pulse" in cmd
+
+
 def merge_statusline(settings: dict[str, Any], statusline_path: Path) -> dict[str, Any]:
     """Wire lane-statusline router (pulse for normal, HUD for orchestrators).
 
@@ -98,6 +106,10 @@ def merge_statusline(settings: dict[str, Any], statusline_path: Path) -> dict[st
         if cmd and not ours:
             return settings
 
+    if isinstance(existing, dict) and existing.get("command") and not _ours_statusline(str(existing.get("command"))):
+        # Restore the own status line: the one a person had before is kept for lane-stack-remove.
+        PREV_STATUSLINE.parent.mkdir(parents=True, exist_ok=True)
+        PREV_STATUSLINE.write_text(json.dumps(existing, ensure_ascii=False), encoding="utf-8")
     path = statusline_path.expanduser().resolve()
     settings["statusLine"] = {
         "type": "command",
@@ -753,6 +765,34 @@ def persist_known_marketplace(
     write_settings(path, data)
 
 
+def strip_stack(settings: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Strip SMA hooks and restore the own status line (lane-stack-remove): every hook command of ours goes, other hooks stay."""
+    done: list[str] = []
+    ours = re.compile(r"(guard_shell\.py|guard-orchestrator-no-direct-edits\.sh|lane_statusline_session\.py|teammate_idle_sentinel\.py|session_ledger\.py|"
+                      r"pm_stop_sentinel\.py|pm_bulk_read\.py|stall_check\.py|owner_presence\.py|sma_hooks\.py|skill_hint\.py|gitnexus-hook)")
+    hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
+    for event in list(hooks):
+        before = json.dumps(hooks[event])
+        _drop_command_hooks(settings, event, ours)
+        if json.dumps(settings["hooks"][event]) != before:
+            done.append(f"hooks.{event}: lane-stack commands removed")
+        if not settings["hooks"][event]:
+            del settings["hooks"][event]
+    line = settings.get("statusLine")
+    if isinstance(line, dict) and _ours_statusline(str(line.get("command") or "")):
+        if PREV_STATUSLINE.is_file():
+            settings["statusLine"] = json.loads(PREV_STATUSLINE.read_text(encoding="utf-8"))
+            done.append("statusLine: the own status line restored")
+        else:
+            del settings["statusLine"]
+            done.append("statusLine: lane-statusline removed")
+    plugins = settings.get("enabledPlugins")
+    if isinstance(plugins, dict) and PLUGIN_ID in plugins:
+        del plugins[PLUGIN_ID]
+        done.append(f"enabledPlugins: {PLUGIN_ID} removed")
+    return settings, done
+
+
 def write_settings(path: Path, settings: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
@@ -809,11 +849,24 @@ def main() -> int:
         action="store_true",
         help="directory marketplace (no GitHub autoUpdate); or LANE_INSTALL_LOCAL_MARKETPLACE=1",
     )
+    parser.add_argument("--remove", action="store_true", help="strip lane-stack hooks, restore the own status line (dry run without --yes)")
+    parser.add_argument("--yes", action="store_true")
     parser.add_argument("settings", type=Path)
     parser.add_argument("guard", type=Path, nargs="?")
     args = parser.parse_args()
-    settings = load_settings(args.settings)
+    try:
+        settings = load_settings(args.settings)
+    except ValueError as exc:
+        # Broken settings.json — refuse: nothing is merged into a file that does not parse, and nothing was changed.
+        print(f"error: {args.settings} does not parse ({exc}); fix it or move it away, then run the installer again — nothing was changed", file=sys.stderr)
+        return 3
     if args.check:
+        return 0
+    if args.remove:
+        stripped, done = strip_stack(settings)
+        print("\n".join(done) if done else "nothing of lane-stack in the settings")
+        if args.yes and done:
+            write_settings(args.settings, stripped)
         return 0
     if args.refresh_jev:
         write_settings(args.settings, merge_jev_provider(settings))

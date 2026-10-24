@@ -8,9 +8,13 @@ CLAUDE="${HOME}/.claude"
 CODEX="${CODEX_HOME:-${HOME}/.codex}"
 AGY="${HOME}/.gemini/config"
 APPLY_PROJECT=""
+ALLOW_DOWNGRADE=0
+GSD_ALIASES=0
+VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$STACK_ROOT/plugins/lane-stack/.claude-plugin/plugin.json")"
 
 usage() {
-  echo "Usage: ./install.sh [--apply-project /path/to/project]"
+  echo "Usage: ./install.sh [--apply-project /path/to/project] [--gsd-aliases] [--allow-downgrade]"
+  echo "Remove: lane-stack-remove [--yes]   Update: lane-stack-update [--yes]"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -19,6 +23,14 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "error: --apply-project requires a path" >&2; exit 2; }
       APPLY_PROJECT="$2"
       shift 2
+      ;;
+    --gsd-aliases)
+      GSD_ALIASES=1
+      shift
+      ;;
+    --allow-downgrade)
+      ALLOW_DOWNGRADE=1
+      shift
       ;;
     -h|--help)
       usage
@@ -31,6 +43,32 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Never install into the clone: the stack's own checkout is not a project, and ~/.agents is not a source.
+if [[ -n "$APPLY_PROJECT" ]] && [[ "$(cd "$APPLY_PROJECT" 2>/dev/null && pwd -P)" == "$(cd "$STACK_ROOT" && pwd -P)" ]]; then
+  echo "error: --apply-project points at the Lane Stack checkout itself; apply it to a project folder" >&2
+  exit 2
+fi
+case "$(cd "$STACK_ROOT" && pwd -P)/" in
+  "$(mkdir -p "$DEST" && cd "$DEST" && pwd -P)/"*)
+    echo "error: this checkout is inside $DEST; clone Lane Stack elsewhere and run its install.sh" >&2
+    exit 2
+    ;;
+esac
+# Never installs an older version: the installed one is recorded in ~/.agents/.lane-stack-version.
+if [[ -f "$DEST/.lane-stack-version" && "$ALLOW_DOWNGRADE" != 1 ]]; then
+  INSTALLED_VERSION="$(cat "$DEST/.lane-stack-version")"
+  if python3 -c 'import sys
+v = lambda s: [int(x) for x in s.strip().lstrip("v").split(".")[:3]]
+sys.exit(0 if v(sys.argv[1]) < v(sys.argv[2]) else 1)' "$VERSION" "$INSTALLED_VERSION"; then
+    echo "error: this checkout is $VERSION, older than the installed $INSTALLED_VERSION; update the checkout, or pass --allow-downgrade" >&2
+    exit 2
+  fi
+fi
+# Broken settings.json — refuse before anything is written.
+if [[ -f "$CLAUDE/settings.json" ]]; then
+  python3 "$STACK_ROOT/hooks/merge_claude_settings.py" --check "$CLAUDE/settings.json" || exit 3
+fi
 
 UNAME_S="$(uname -s 2>/dev/null || echo unknown)"
 IS_DARWIN=0
@@ -361,7 +399,11 @@ if text != original:
 PY
 
 # platform agents (-L: agents/claude is a compat symlink into the plugin)
+# Appended role lines are kept: what a person wrote below the «lane-stack:user» mark survives the reinstall.
+USER_ROLE_LINES="$(mktemp -d)"
+python3 "$STACK_ROOT/bin/lane_role_lines.py" save "$DEST/agents" "$USER_ROLE_LINES"
 rsync -aL "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/ "$DEST/agents/"
+python3 "$STACK_ROOT/bin/lane_role_lines.py" restore "$DEST/agents" "$USER_ROLE_LINES"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/agy/ "$DEST/agy/instructions/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/grok/ "$DEST/grok/instructions/"
 rsync -a "${RSYNC_FILTERS[@]}" "$STACK_ROOT"/agents/codex/instructions/ "$DEST/codex/instructions/"
@@ -559,6 +601,14 @@ if changed:
 PY
 fi
 
+# /gsd-* aliases by flag: SMA's transitional command names, only on request; without the flag the ones we made are removed.
+python3 "$STACK_ROOT/bin/lane_role_lines.py" gsd "$CLAUDE/commands" "$GSD_ALIASES"
+printf '%s\n' "$VERSION" > "$DEST/.lane-stack-version"
+# What this install owns, for lane-stack-remove: only these skills and roles go, user and canon ones stay.
+{ for d in "$STACK_ROOT"/skills/*/; do echo "skill $(basename "$d")"; done
+  for f in "$STACK_ROOT"/agents/*.md; do [[ -f "$f" ]] && echo "agent $(basename "$f")"; done
+  for f in "$STACK_ROOT"/bin/*; do [[ -f "$f" && "$f" != *.py[co] ]] && echo "bin $(basename "$f")"; done; } > "$DEST/.lane-stack-owned"
+
 echo ""
 if [[ -n "$APPLY_PROJECT" ]]; then
   echo "==> Applying agents-doctor profile to: $APPLY_PROJECT"
@@ -569,7 +619,8 @@ else
 fi
 
 echo ""
-echo "Done. Start PM:"
+echo "Done ($VERSION). Next: lane-plan roadmap analyze in a project, or /lane-stack:resume-project"
+echo "Start PM:"
 echo " export PATH=\"\$HOME/.agents/bin:\$PATH\""
 echo " Claude plugin: lane-stack@claude-lane-stack (GitHub autoUpdate; host ~/.agents still needs ./install.sh)"
 echo " lane-pm   # or: claude --agent dev-orchestrator (boot may not auto-send)"

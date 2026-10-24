@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""lane-stack-update — the update library: dry-run version report, then the standard installer on --yes.
+
+Reads the installed version (~/.agents/.lane-stack-version) and the checkout it came from (the local product checkout nearby:
+~/.local/share/claude-lane-stack-installed, LANE_STACK_CHECKOUT, or ~/tools/claude-lane-stack), asks the checkout's origin for its
+newest release tag (the registry of our releases), and with --yes checks that tag out and re-runs ./install.sh. It never installs
+an older version than the installed one. What an update preserves: settings merged losslessly, appended role lines, the memory corpus.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+CANDIDATES = [os.environ.get("LANE_STACK_CHECKOUT", ""), str(HOME / ".local/share/claude-lane-stack-installed"), str(HOME / "tools/claude-lane-stack")]
+
+
+def version_key(text: str) -> list[int]:
+    return [int(x) for x in re.findall(r"\d+", text)[:3]] or [0]
+
+
+def checkout() -> Path:
+    for raw in CANDIDATES:
+        if raw and (Path(raw) / "install.sh").is_file():
+            return Path(raw)
+    raise SystemExit("error: no Lane Stack checkout found; set LANE_STACK_CHECKOUT")
+
+
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, timeout=60).stdout.strip()
+
+
+def report(repo: Path) -> dict:
+    installed_file = HOME / ".agents" / ".lane-stack-version"
+    installed = installed_file.read_text(encoding="utf-8").strip() if installed_file.is_file() else None
+    here = json.loads((repo / "plugins/lane-stack/.claude-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
+    tags = [line.split("refs/tags/")[-1] for line in git(repo, "ls-remote", "--tags", "origin").splitlines() if "^{}" not in line]
+    newest = max(tags, key=version_key) if tags else None
+    base = installed or here
+    return {"checkout": str(repo), "installed": installed, "checkout_version": here, "newest": newest,
+            "update": bool(newest and version_key(newest) > version_key(base))}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="lane-stack-update", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--yes", action="store_true", help="one explicit yes: without it only the report")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    repo = checkout()
+    info = report(repo)
+    print(json.dumps(info, indent=1) if args.json else f"installed {info['installed']}, checkout {info['checkout_version']}, newest {info['newest']}: " + ("update available" if info["update"] else "up to date"))
+    if not args.yes or not info["update"]:
+        return 0
+    if git(repo, "status", "--porcelain"):
+        raise SystemExit(f"error: {repo} has local changes; commit or stash them first")
+    subprocess.run(["git", "fetch", "--tags", "origin"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "--detach", info["newest"]], cwd=repo, check=True)
+    # Re-run the standard installer; it refuses an older version itself.
+    code = subprocess.run(["bash", str(repo / "install.sh")], cwd=repo).returncode
+    if code == 0:
+        subprocess.run(["claude", "plugin", "update", "lane-stack@claude-lane-stack"], check=False)
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
