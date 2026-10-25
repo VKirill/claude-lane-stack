@@ -2,12 +2,13 @@
 title: Project memory pack
 type: component
 created: 2026-07-11
-updated: 2026-10-19
+updated: 2026-10-25
 status: active
-confidence: high
+confidence: medium
 tags: [memory, project-state, retrieval]
 sources:
   - bin/lane_memory.py
+  - bin/lane-memory
   - bin/lane_memory_hub.py
   - bin/project-memory-init
   - bin/resume-project
@@ -106,14 +107,16 @@ The memory layer prefers one project memory on the BB hub when the hub and proje
 | Transition | From | To | Function and condition |
 |---|---|---|---|
 | Replacement | active | superseded | A new record names `supersedes`; the old file receives `superseded_by` (`bin/lane_memory.py:1267-1284`). |
-| Explicit forget | stored | expired / archived | `forget` writes the requested status and rebuilds derived files (`bin/lane_memory.py:1331-1355`). |
-| Explicit erase | stored | removed | `forget --mode erase --yes` unlinks the Markdown file and checks remaining traces (`bin/lane_memory.py:1331-1345`). |
+| Explicit forget | stored | expired / archived | `forget` writes the requested status and rebuilds derived files (`bin/lane_memory.py:1338-1362`). |
+| Explicit erase | stored | removed | `forget --mode erase --yes` unlinks the Markdown file and checks remaining traces (`bin/lane_memory.py:1338-1353`). |
 
 Hub searches return hub records when the RPC succeeds; when it does not, local search uses the project's Markdown corpus and generated SQLite index (`bin/lane_memory.py:634-680`). The local index stores tokenized record ID, claim, retrieval hint/areas, and memory type (`bin/lane_memory.py:370-382`, `bin/lane_memory.py:468-498`). When the local corpus hash differs, the next search rebuilds the index; a failed rebuild reports the index as unavailable (`bin/lane_memory.py:461-510`). Memory data fields and cleanup behavior are documented in [the data model](data-model.md).
 
+The `lane-memory` CLI also manages memory quality and delivery. `context` adds up to five matching trigger fragments to the normal context pack; `card PATH` returns live owner notes attached to a project file, building `.cls/catalog.json` when needed; both mask secrets and record which notes reached a session in `.cls/usage/citations.jsonl` (`bin/lane_memory.py:1661-1712`, `bin/lane_memory.py:1715-1746`, `bin/lane_memory.py:749-758`). `history QUERY` searches episodes, session logs, lessons, episodic notes, and phase work books, returning the first matching line with secret masking (`bin/lane_memory.py:1749-1778`). `miss QUERY --must IDS` adds a unique, redacted query and expected note IDs to `GOLDEN.yaml`; `emit` exports masked core plus live notes as Markdown or JSON (`bin/lane_memory.py:1781-1816`). `consolidate` reports merge, stale-use, and fingerprint-change proposals without applying them (`bin/lane_memory.py:1819-1838`).
+
 ## Night finding triage
 
-Night Jev triage considers only actionable findings in `open`, `needs_human`, or `in_progress`. A Jev error dismisses none; findings scoring below the dismissal cutoff are marked non-actionable and `dismissed` (`bin/jev_slots.py:12-59`).
+Night Jev triage considers only actionable findings in `open`, `needs_human`, or `in_progress`. A Jev error dismisses none; findings scoring below the dismissal cutoff are marked non-actionable and `dismissed` (`bin/jev_slots.py:16-60`).
 
 ## How it works
 
@@ -121,6 +124,7 @@ Night Jev triage considers only actionable findings in `open`, `needs_human`, or
 2. Session hooks record tool and Git evidence into the session ledger (`hooks/session_ledger.py:1-40`).
 3. When enabled, `lane-memory` validates source records, filters them by status/trust/audience, and searches the generated local index (`bin/lane_memory.py:345-394`, `bin/lane_memory.py:468-510`).
 4. The configured memory stage can maintain or inject memory during a run; it is disabled in the default stage map (`bin/pipeline_stages.py:264-279`).
+5. `lane-memory` can serve file cards and triggered fragments, audit retrieval through a citation ledger, search historical records, add retrieval misses to a gold set, export masked memory, and produce consolidation proposals (`bin/lane-memory:115-140`, `bin/lane_memory.py:1661-1838`).
 
 | Mode | Input | Behavior | Output |
 |---|---|---|---|
@@ -128,6 +132,7 @@ Night Jev triage considers only actionable findings in `open`, `needs_human`, or
 | Session evidence | Hook tool/Git observations | Records evidence and flushes session notes | `.agents/session-log/` and agent notes (`hooks/session_ledger.py:1-40`). |
 | Structured memory | Hub RPC when available; local Markdown record otherwise | Searches hub first, then local records and index; sensitive local records stay machine-local (`bin/lane_memory.py:634-680`, `bin/lane_memory.py:1227-1267`). |
 | Queued hub write | Method and payload in `.cls/memory-outbox/` | Flushes files in sorted order and stops at first failure to preserve order (`bin/lane_memory_hub.py:125-154`). |
+| Memory care | Queries, file paths, or corpus records | Produces file cards, history hits, masked exports, gold-set cases, usage reports, and consolidation proposals; consolidation does not mutate records (`bin/lane_memory.py:1719-1838`, `bin/lane-memory:115-140`). |
 
 **Failure behavior:** a failed hub call returns no result and writes are queued locally; queued flush stops at the first failed send (`bin/lane_memory_hub.py:65-88`, `bin/lane_memory_hub.py:137-165`). Invalid local records are excluded from deliverable records; a stale index rebuild failure returns an unavailable index result (`bin/lane_memory.py:385-394`, `bin/lane_memory.py:501-510`). Sensitive records bypass shared hub writes and are stored in local memory, outside the owner lexical index (`bin/lane_memory.py:1227-1235`, `bin/lane_memory.py:427-430`).
 
@@ -146,12 +151,14 @@ Night Jev triage considers only actionable findings in `open`, `needs_human`, or
 | `project-onboard PATH` | Create a project passport (`bin/project-onboard:40-55`). |
 | `resume-project PATH` | Read current project state (`bin/resume-project:1-55`). |
 | `lane-memory` | Manage structured memory; configured in the optional memory stage (`bin/lane_memory.py:1-45`, `bin/pipeline_stages.py:264-279`). |
+| `lane-memory card PATH`, `history QUERY`, `miss QUERY --must IDS`, `emit`, `consolidate` | Inspect file-linked notes and history, record a retrieval miss, export memory, or review non-applied cleanup proposals (`bin/lane-memory:115-140`, `bin/lane_memory.py:1749-1838`). |
 
 ## Gotchas
 
 - The SQLite memory index is disposable derived data; Markdown records remain the source (`bin/lane_memory.py:468-510`).
-- Expire and archive change status but preserve the record file; erase requires explicit confirmation (`bin/lane_memory.py:1331-1355`).
+- Expire and archive change status but preserve the record file; erase requires explicit confirmation (`bin/lane_memory.py:1338-1353`).
 - When hub mode is available, shared records are not stored in the local corpus; local writes are used for sensitive records or when hub mode is off/unavailable (`bin/lane_memory.py:412-417`, `bin/lane_memory.py:1227-1267`).
+- `consolidate` returns suggested merges, stale-use demotions, and changed-fingerprint reviews; it does not apply the proposals (`bin/lane_memory.py:1819-1838`).
 
 <!-- lane-pilot:backlinks -->
 ## Referenced by
