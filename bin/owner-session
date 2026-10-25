@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# owner-session <session-id> <domain[,domain...]> [--profile <Chrome profile>]
+#
+# Gives a headless bb browser-automation session the owner's sign-in to a site, without the screen: the owner's Chrome cookies for
+# those domains are read on this machine and set in the session with CDP Storage.setCookies (each with its url — Network.setCookies
+# drops secure and httpOnly cookies). For errands when the owner's Chrome cannot be driven: the screen is locked, Chrome waits for
+# someone to click «Allow» on remote debugging, or no BB desktop window is connected (Vampirism Fire, 2026-10-24).
+#
+# Run it on the machine whose Chrome is signed in (the project's browser machine), against a session opened there:
+#   bb browser-automation open --backend local --headless --machine <that host> --json
+# Cookie values never reach stdout or a file that stays: the export lives in a private temp folder removed on exit.
+set -euo pipefail
+SESSION="${1:?usage: owner-session <session-id> <domain[,domain...]> [--profile <name>]}"
+DOMAINS="${2:?usage: owner-session <session-id> <domain[,domain...]> [--profile <name>]}"
+PROFILE="Default"
+if [ "${3:-}" = "--profile" ]; then PROFILE="${4:?--profile needs a name}"; fi
+EXPORTER="$HOME/.local/share/bb-local-plugins/cookie-sync/export-chrome-cookies.mjs"
+[ -f "$EXPORTER" ] || { echo "owner-session: no Chrome cookie exporter on this machine ($EXPORTER); run it on the browser machine" >&2; exit 2; }
+# The script file is read on the session's own machine: its host comes from this thread's session list.
+HOST_ID="$(bb browser-automation list --json 2>/dev/null | python3 -c 'import json,sys; s=sys.argv[1]; d=json.load(sys.stdin); rows=d if isinstance(d,list) else d.get("sessions",[]); print(next((r.get("hostId","") for r in rows if r.get("id")==s),""))' "$SESSION" 2>/dev/null || true)"
+[ -n "$HOST_ID" ] || { echo "owner-session: session $SESSION is not one of this thread's sessions (bb browser-automation list)" >&2; exit 2; }
+WORK="$(mktemp -d)"; chmod 700 "$WORK"; trap 'rm -rf "$WORK"' EXIT
+node "$EXPORTER" --profile "$PROFILE" --domains "$DOMAINS" --out "$WORK/cookies.json" >/dev/null
+python3 - "$WORK/cookies.json" "$WORK/set.js" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+cookies = data if isinstance(data, list) else data.get("cookies", [])
+out = []
+for c in cookies:
+    host = c["domain"].lstrip(".")
+    k = {"name": c["name"], "value": c["value"], "domain": c["domain"], "path": c.get("path", "/"), "secure": c.get("secure", False),
+         "httpOnly": c.get("httpOnly", False), "url": ("https://" if c.get("secure", True) else "http://") + host + c.get("path", "/")}
+    if c.get("expires", -1) and c["expires"] > 0: k["expires"] = c["expires"]
+    if c.get("sameSite") in ("Strict", "Lax", "None"): k["sameSite"] = c["sameSite"]
+    out.append(k)
+script = ("const p = await browser.getPage('main'); const s = await p.createCDPSession(); await s.send('Storage.setCookies', {cookies: "
+          + json.dumps(out) + "}); const all = (await s.send('Storage.getCookies')).cookies; return {set: " + str(len(out)) + ", inSession: all.length, domains: [...new Set(all.map((c) => c.domain))]};")
+open(sys.argv[2], "w").write(script)
+print(f"owner-session: {len(out)} cookie(s) of {len({c['domain'] for c in out})} domain(s)", file=sys.stderr)
+PY
+bb browser-automation run "$SESSION" --script-file "$WORK/set.js" --script-host "$HOST_ID" --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("text","")[:400]); sys.exit(d.get("exitCode",0))'
