@@ -2,9 +2,9 @@
 title: Agent hooks / guards — multi-CLI
 type: component
 created: 2026-07-11
-updated: 2026-10-24
+updated: 2026-10-25
 status: active
-confidence: medium
+confidence: high
 tags: [hooks, guards, cli]
 sources:
   - hooks/guard_shell.py
@@ -14,6 +14,7 @@ sources:
   - hooks/session_ledger.py
   - hooks/pm_stop_sentinel.py
   - plugins/lane-stack/hooks/jev-router.ts
+  - plugins/lane-stack/hooks/jev-route-core.ts
   - profiles/cursor/lane-writer/scripts/before_read.py
   - profiles/opencode/opencode-lane/index.ts
   - plugins/lane-stack/winnow/sidecar/src/winnow/serve.py
@@ -21,6 +22,8 @@ sources:
   - plugins/lane-stack/winnow/sidecar/src/winnow/policy.py
   - plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py
   - plugins/lane-stack/winnow/sidecar/src/winnow/chunk.py
+  - plugins/lane-stack/winnow/sidecar/src/winnow/labels.py
+  - plugins/lane-stack/winnow/sidecar/src/winnow/cli.py
   - profiles/opencode/opencode-lane/v1.ts
 ---
 # Agent hooks / guards — multi-CLI
@@ -204,7 +207,7 @@ If payload parsing or scanning raises, the outer handler exits successfully with
 
 ## Jev agent-spawn routing
 
-The `jev-router` plugin routes only lane-marked non-fork agent spawns. It strips a raw task YAML preamble before classification, falls back to the default route on missing credentials, timeout, or request/parse errors, caches the result by spawned agent ID, then applies the cached effort to that agent’s turn steps (`plugins/lane-stack/hooks/jev-router.ts:16-20`, `plugins/lane-stack/hooks/jev-router.ts:61-88`, `plugins/lane-stack/hooks/jev-router.ts:90-129`).
+The `jev-router` plugin defaults `LANE_JEV_EFFORT` to enabled; values `0`, `off`, `false`, and `no` disable routing. It routes a non-fork agent spawn only when at least one lane marker is non-empty. The router strips a raw task YAML preamble before classification, falls back to the default route on missing credentials, timeout, or request/parse errors, caches the result by spawned agent ID, then applies the cached effort to that agent’s turn steps (`plugins/lane-stack/hooks/jev-route-core.ts:57-60`, `plugins/lane-stack/hooks/jev-router.ts:16-20`, `plugins/lane-stack/hooks/jev-router.ts:61-88`, `plugins/lane-stack/hooks/jev-router.ts:93-129`).
 
 ## OpenCode lane plugin
 
@@ -217,6 +220,8 @@ The `jev-router` plugin routes only lane-marked non-fork agent spawns. It strips
 The response extractor rewrites Bash `stdout`, Read file content, Grep content, or a string response. Other response shapes return `None` and remain unchanged (`plugins/lane-stack/winnow/sidecar/src/winnow/extract.py:30-82`). `decide` keeps blocks with missing probabilities and uncertain scores; it prunes only scores below `drop`, unless the error score reaches `keep` or the proposed pruning ratio is below `min_prune_ratio` (`plugins/lane-stack/winnow/sidecar/src/winnow/policy.py:23-59`).
 
 `winnow_recall` uses the stub’s key to load cached output, optionally returns an inclusive line range, and reports a missing key when the cache entry is absent (`plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py:21-37`).
+
+Winnow replay can draw a seeded, blind hand-labeling sample from a judged file. It bins labeled blocks by probability (`low` [0, 0.2), `mid` [0.2, 0.5), `high` [0.5, 1.01)), defaults to 50/25/25 blocks per bin, skips blocks without a probability or usable weak label, and skips samples whose case or block cannot be resolved (`plugins/lane-stack/winnow/sidecar/src/winnow/labels.py:26`, `plugins/lane-stack/winnow/sidecar/src/winnow/labels.py:37-91`, `plugins/lane-stack/winnow/sidecar/src/winnow/cli.py:353-360`). The command writes JSONL and a Markdown sheet that hides the judge probability and weak label; a person can label interactively or import numbered answers, then compare agreement or score against hand labels (`plugins/lane-stack/winnow/sidecar/src/winnow/labels.py:94-121`, `plugins/lane-stack/winnow/sidecar/src/winnow/cli.py:189-219`, `plugins/lane-stack/winnow/sidecar/src/winnow/cli.py:348-375`).
 
 ## Before-read extraction limits
 
@@ -271,7 +276,7 @@ Mid-session policy flips without install are a defect class
 
 ## Business rules
 
-- A non-fork spawn is routed only when a lane marker is present (`plugins/lane-stack/hooks/jev-router.ts:90-113`).
+- A non-fork spawn is routed only when routing is enabled and at least one lane marker is non-empty (`plugins/lane-stack/hooks/jev-route-core.ts:57-60`, `plugins/lane-stack/hooks/jev-router.ts:93-113`).
 - Winnow keeps missing-probability and uncertain blocks; it prunes only low-probability blocks when the overall savings pass the configured threshold (`plugins/lane-stack/winnow/sidecar/src/winnow/policy.py:29-59`).
 - Winnow recall line bounds are inclusive and use the line numbering printed in the stub (`plugins/lane-stack/winnow/sidecar/src/winnow/mcp_server.py:22-37`).
 

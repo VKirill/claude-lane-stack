@@ -2,7 +2,7 @@
 title: Model routing (Fable conductor — solo)
 type: component
 created: 2026-07-11
-updated: 2026-10-19
+updated: 2026-10-25
 status: active
 confidence: high
 tags: [routing, providers, jev]
@@ -13,12 +13,12 @@ sources:
   - plugins/lane-stack/hooks/jev-route-core.ts
   - plugins/lane-stack/fast-jev/src/provider.ts
   - plugins/lane-stack/fast-jev/src/request.ts
-  - profiles/opencode/opencode-lane/index.ts
+  - profiles/opencode/opencode-lane/v1.ts
   - board/web/js/router.js
 ---
 # Model routing (Fable conductor — solo)
 
-TL;DR: Routing defaults come from `stages:`; Jev provider selection is credential-aware, while agent-spawn routing classifies eligible lane agents and caches each selected route for later effort updates (`bin/pipeline_stages.py:205-300`, `plugins/lane-stack/hooks/jev-router.ts:90-129`).
+TL;DR: Routing defaults come from `stages:`; Jev provider selection is credential-aware, while agent-spawn routing defaults on, requires a non-empty lane marker, and caches each selected route for later effort updates (`bin/pipeline_stages.py:205-300`, `plugins/lane-stack/hooks/jev-route-core.ts:57-60`, `plugins/lane-stack/hooks/jev-router.ts:90-129`).
 
 ## Purpose
 
@@ -33,7 +33,7 @@ state fits; this is a request-size bound, not an unbounded full-text transfer
 (`plugins/lane-stack/fast-jev/src/request.ts:5-38`, `plugins/lane-stack/fast-jev/src/request.ts:41-46`).
 The request body contains the provider model, bounded state, and questions
 (`plugins/lane-stack/fast-jev/src/request.ts:60-83`). The OpenCode lane logs
-history compaction as off at startup (`profiles/opencode/opencode-lane/index.ts:220-228`).
+history compaction as off at startup (`profiles/opencode/opencode-lane/v1.ts:224-229`).
 
 ## Jev provider and agent route
 
@@ -233,7 +233,7 @@ produce `owns-check.json`, and run `lane-ctl accept` immediately. Its
 ## How it works
 
 1. Stage defaults are created from the selected write provider and optional night-review provider (`bin/pipeline_stages.py:205-256`).
-2. The router checks lane markers and classifies eligible spawned agents with Jev (`plugins/lane-stack/hooks/jev-router.ts:90-113`).
+2. Routing defaults on; `0`, `off`, `false`, or `no` disable it. The router also requires at least one non-empty lane marker before classifying a non-fork spawned agent with Jev (`plugins/lane-stack/hooks/jev-route-core.ts:57-60`, `plugins/lane-stack/hooks/jev-router.ts:93-113`).
 3. Provider selection reads explicit provider and credentials; the default order is OpenLux then TypeSafe (`plugins/lane-stack/fast-jev/src/provider.ts:39-67`).
 4. Requests are bounded to the configured token budget by abridging the longest string fields while retaining their head and tail (`plugins/lane-stack/fast-jev/src/request.ts:11-46`).
 5. The router caches successful route choice by agent ID and applies its effort on turn steps (`plugins/lane-stack/hooks/jev-router.ts:105-129`).

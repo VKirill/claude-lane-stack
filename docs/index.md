@@ -10,7 +10,7 @@ Built by Lane Pilot from page frontmatter.
 
 | Page | Type | Status | Updated |
 |---|---|---|---|
-| [Claude Lane Stack architecture](architecture.md) | architecture | active | 2026-10-24 |
+| [Claude Lane Stack architecture](architecture.md) | architecture | active | 2026-10-25 |
 | [docs/BEGINNER.de.md](BEGINNER.de.md) | — | — | — |
 | [docs/BEGINNER.es.md](BEGINNER.es.md) | — | — | — |
 | [docs/BEGINNER.fr.md](BEGINNER.fr.md) | — | — | — |
@@ -21,7 +21,7 @@ Built by Lane Pilot from page frontmatter.
 | [Beginner guide](BEGINNER.ru.md) | overview | active | 2026-10-19 |
 | [docs/BEGINNER.zh-CN.md](BEGINNER.zh-CN.md) | — | — | — |
 | [docs/COMPARISON.md](COMPARISON.md) | — | — | — |
-| [Claude Lane Stack data model](data-model.md) | data-model | active | 2026-10-24 |
+| [Claude Lane Stack data model](data-model.md) | data-model | active | 2026-10-25 |
 | [docs/decisions.md](decisions.md) | — | — | — |
 | [docs/decisions/ADR-codex-effort.md](decisions/ADR-codex-effort.md) | — | — | — |
 | [docs/decisions/ADR-orchestration-model.md](decisions/ADR-orchestration-model.md) | — | — | — |
@@ -31,7 +31,7 @@ Built by Lane Pilot from page frontmatter.
 | [Claude Lane Stack gotchas](gotchas.md) | gotchas | active | 2026-10-19 |
 | [Какую нейросеть выбрать в 2026](guides/ai-models-guide-2026.md) | — | — | — |
 | [GPT-5.6: методичка по выбору модели и уровня размышлений](guides/gpt-5.6-model-reasoning-guide.md) | — | — | — |
-| [Agent hooks / guards — multi-CLI](HOOKS.md) | component | active | 2026-10-24 |
+| [Agent hooks / guards — multi-CLI](HOOKS.md) | component | active | 2026-10-25 |
 | [docs/LANE-EXEC.md](LANE-EXEC.md) | — | — | — |
 | [docs/LANGUAGE.md](LANGUAGE.md) | — | — | — |
 | [docs/MCP-HYBRID.md](MCP-HYBRID.md) | — | — | — |
@@ -43,12 +43,12 @@ Built by Lane Pilot from page frontmatter.
 | [docs/plans/2026-07-18-live-e2e-validation.md](plans/2026-07-18-live-e2e-validation.md) | — | — | — |
 | [docs/plans/2026-07-18-typed-night-shift.claude-review-triage.md](plans/2026-07-18-typed-night-shift.claude-review-triage.md) | — | — | — |
 | [docs/plans/2026-07-18-typed-night-shift.claude-suggestions.md](plans/2026-07-18-typed-night-shift.claude-suggestions.md) | — | — | — |
-| [Claude Companion code-review pack](plans/2026-07-18-typed-night-shift.code-review-pack.md) | component | stale | 2026-10-24 |
+| [Claude Companion code-review pack](plans/2026-07-18-typed-night-shift.code-review-pack.md) | component | stale | 2026-10-25 |
 | [docs/plans/2026-07-18-typed-night-shift.md](plans/2026-07-18-typed-night-shift.md) | — | — | — |
 | [docs/plans/2026-08-04-stable-solo-to-multica-fleet.md](plans/2026-08-04-stable-solo-to-multica-fleet.md) | — | — | — |
 | [docs/PLATFORM-CAPABILITIES.md](PLATFORM-CAPABILITIES.md) | — | — | — |
-| [Project memory pack](PROJECT-MEMORY.md) | component | active | 2026-10-19 |
-| [Model routing (Fable conductor — solo)](ROUTING.md) | component | active | 2026-10-19 |
+| [Project memory pack](PROJECT-MEMORY.md) | component | active | 2026-10-25 |
+| [Model routing (Fable conductor — solo)](ROUTING.md) | component | active | 2026-10-25 |
 | [DrMax SEO system](seo/DRMAX-SYSTEM-2026.md) | overview | active | 2026-10-19 |
 | [docs/seo/METHODOLOGY-END-TO-END.md](seo/METHODOLOGY-END-TO-END.md) | — | — | — |
 | [docs/seo/MODULES.md](seo/MODULES.md) | — | — | — |

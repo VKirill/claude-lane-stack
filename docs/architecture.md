@@ -2,7 +2,7 @@
 title: Claude Lane Stack architecture
 type: architecture
 created: 2026-10-19
-updated: 2026-10-24
+updated: 2026-10-25
 status: active
 confidence: medium
 tags: [architecture, orchestration, board, memory]
@@ -16,6 +16,7 @@ sources:
   - board/server/lib/parsers.mjs
   - board/server/lib/snapshot.mjs
   - board/server/lib/search.mjs
+  - board/server/lib/discover.mjs
   - board/web/js/views/board.js
   - board/web/js/views/overview.js
   - board/web/js/views/todos.js
@@ -23,6 +24,7 @@ sources:
   - board/web/js/api.js
   - board/web/js/router.js
   - plugins/lane-stack/hooks/jev-router.ts
+  - plugins/lane-stack/hooks/jev-route-core.ts
   - profiles/opencode/opencode-lane/index.ts
   - plugins/lane-stack/winnow/sidecar/src/winnow/serve.py
   - plugins/lane-stack/winnow/sidecar/src/winnow/policy.py
@@ -111,7 +113,7 @@ sequenceDiagram
 
 ### Board read path
 
-The server discovers repositories, builds snapshots for searches or project detail, and serializes JSON; browser API calls map project, todo, task, review, and search requests to `/api` routes (`board/server/server.mjs:126-194`, `board/web/js/api.js:29-48`).
+The server discovers repositories, builds snapshots for searches or project detail, and serializes JSON; browser API calls map project, todo, task, review, and search requests to `/api` routes (`board/server/server.mjs:126-194`, `board/web/js/api.js:29-48`). Discovery performs a breadth-first walk from configured roots, includes a directory only when it has a real `.git` directory and `.agents/runs` directory, prunes `.agents`, `.git`, `node_modules`, and `postgres_data` from traversal, stops descending at `maxDepth` (default 3), deduplicates paths, and sorts results by path (`board/server/lib/discover.mjs:5-5`, `board/server/lib/discover.mjs:38-70`).
 
 ```mermaid
 sequenceDiagram
@@ -139,7 +141,7 @@ The browser router parses the hash into overview, project section, or not-found 
 
 ### Hook-driven routing
 
-The `jev-router` registration only classifies non-fork agent spawns when lane markers enable routing; a fail-open result passes the original event through. It caches successful routes by agent ID and applies the chosen effort during that agent’s later turn steps (`plugins/lane-stack/hooks/jev-router.ts:90-129`). The OpenCode plugin initializes telemetry, starts its Winnow sidecar, and enables lane-only behavior from lane markers; user chat updates per-session prompt state and skill hints (`profiles/opencode/opencode-lane/v1.ts:208-262`). Lane chat parameters use the cached session route; `tool.execute.before` applies the lane guard, and `tool.execute.after` filters supported tool outputs through Winnow before adding failure and repeated-tool hints (`profiles/opencode/opencode-lane/v1.ts:265-347`).
+The `jev-router` registration defaults `LANE_JEV_EFFORT` to enabled and disables it for `0`, `off`, `false`, or `no`; classifying a non-fork spawn also requires at least one non-empty lane marker. A fail-open result passes the original event through. The router caches successful routes by agent ID and applies the chosen effort during that agent’s later turn steps (`plugins/lane-stack/hooks/jev-route-core.ts:57-60`, `plugins/lane-stack/hooks/jev-router.ts:90-129`). The OpenCode plugin initializes telemetry, starts its Winnow sidecar, and enables lane-only behavior from lane markers; user chat updates per-session prompt state and skill hints (`profiles/opencode/opencode-lane/v1.ts:208-262`). Lane chat parameters use the cached session route; `tool.execute.before` applies the lane guard, and `tool.execute.after` filters supported tool outputs through Winnow before adding failure and repeated-tool hints (`profiles/opencode/opencode-lane/v1.ts:265-347`).
 
 ## Invariants
 

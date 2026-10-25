@@ -2,7 +2,7 @@
 title: Claude Lane Stack data model
 type: data-model
 created: 2026-10-19
-updated: 2026-10-24
+updated: 2026-10-25
 status: active
 confidence: medium
 tags: [data-model, receipts, sqlite, memory]
@@ -129,7 +129,7 @@ Purpose: preserve structured night-review findings, exact task re-review evidenc
 | Finding `status` | fixed | open | A fresh reviewed recurrence of the same fingerprint clears prior closure and reopens it (`bin/night-review-engine:920-934`). |
 | Finding `status` | open | needs_human | Invalid or overlapping ownership scope prevents safe task creation (`bin/night-review-engine:1135-1175`). |
 | Finding `status` | unresolved | fixed | Repair completion records acceptance, review receipt, commit, and closure time (`bin/night-fix-runner:760-789`). |
-| Finding `status` | open / needs_human / in_progress | dismissed | Jev triage sets non-actionable and dismissed when confidence is below `DISMISS_CUT` (`bin/jev_slots.py:12-59`). |
+| Finding `status` | open / needs_human / in_progress | dismissed | Jev triage sets non-actionable and dismissed when confidence is below `DISMISS_CUT` (`bin/jev_slots.py:16-60`). |
 | Gate event `status` | evaluated | passed / rejected / failed / skipped | Gate logger appends one result per evaluation; events are append-only (`schemas/gate-event-v1.schema.json:8-15`, `bin/gate_log.py:1-45`). |
 | Controller `stage` | not_started | running | Starting a new controller writes the running receipt (`bin/run-controller:700-719`). |
 | Controller `stage` | running | accepted | All task stages are accepted (`bin/run-controller:327-337`, `bin/run-controller:442-448`). |
@@ -243,15 +243,15 @@ The per-project `memory-lexical.sqlite` index has one table, `mem_axis(rid, body
 |---|---|---|---|
 | Record write | required author-supplied status | persisted status | The writer requires metadata fields and rejects memory type or truth mode outside their closed vocabularies; this write path does not assign a status (`bin/lane_memory.py:1202-1209`, `bin/lane_memory.py:1274-1288`). |
 | Supersession | active | superseded | Replacing a prior rule updates the prior record’s status (`bin/lane_memory.py:1270-1285`). |
-| Forget | stored | expired | `forget(..., mode="expire")` writes expired status (`bin/lane_memory.py:1331-1355`). |
-| Archive | stored | archived | `forget(..., mode="archive")` writes archived status (`bin/lane_memory.py:1331-1355`). |
-| Erase | any stored record | removed | `forget(..., mode="erase", yes=True)` unlinks the Markdown record, rebuilds the index, and checks for leftover traces (`bin/lane_memory.py:1331-1345`). |
+| Forget | stored | expired | `forget(..., mode="expire")` selects the record, loads its metadata, writes `expired`, then rebuilds the index and injects core context (`bin/lane_memory.py:1338-1362`). |
+| Archive | stored | archived | `forget(..., mode="archive")` selects the record, loads its metadata, writes `archived`, then rebuilds the index and injects core context (`bin/lane_memory.py:1338-1362`). |
+| Erase | any stored record | removed | `forget(..., mode="erase", yes=True)` unlinks the Markdown record, rebuilds the index, and checks for leftover traces (`bin/lane_memory.py:1338-1353`). |
 
-**Invariants and ownership.** In local mode, Markdown records are authoritative and the index stores only tokenized retrieval fields that can be rebuilt (`bin/lane_memory.py:468-498`). Owner memory indexing excludes records whose sensitivity is `sensitive` or `encrypted-required` (`bin/lane_memory.py:427-430`). `lane_memory.py` resolves hub-first storage/search and handles local records and index fallback; `lane_memory_hub.py` resolves the project ID, calls remote RPC, and queues failed writes (`bin/lane_memory.py:412-417`, `bin/lane_memory.py:634-680`, `bin/lane_memory_hub.py:100-118`, `bin/lane_memory_hub.py:137-165`). Memory cleanup in local mode is explicit through expire, archive, or erase; expired and archived records remain as files (`bin/lane_memory.py:1331-1355`).
+**Invariants and ownership.** In local mode, Markdown records are authoritative and the index stores only tokenized retrieval fields that can be rebuilt (`bin/lane_memory.py:468-498`). Owner memory indexing excludes records whose sensitivity is `sensitive` or `encrypted-required` (`bin/lane_memory.py:427-430`). `lane_memory.py` resolves hub-first storage/search and handles local records and index fallback; `lane_memory_hub.py` resolves the project ID, calls remote RPC, and queues failed writes (`bin/lane_memory.py:412-417`, `bin/lane_memory.py:634-680`, `bin/lane_memory_hub.py:100-118`, `bin/lane_memory_hub.py:137-165`). Memory cleanup in local mode is explicit through expire, archive, or erase; expired and archived records remain as files (`bin/lane_memory.py:1338-1362`).
 
 ## Retention and cleanup
 
-Usage reconstruction is day-scoped and replaces that day’s aggregate rows; no retention job for usage rows or critique events is defined in `usage_ledger.py` (`bin/usage_ledger.py:850-881`, `bin/usage_ledger.py:567-675`). Memory `expire` and `archive` retain the record with a terminal status; `erase` removes it and rebuilds derived state (`bin/lane_memory.py:1331-1355`). Successful hub outbox writes are unlinked, malformed queue files are discarded, and a failed send leaves the current and later entries queued; this client defines no remote-record retention schedule (`bin/lane_memory_hub.py:137-154`). Run artifacts are created in project `.agents/runs/<slug>/` directories and remain file-backed; the contract schemas do not define a cleanup schedule (`bin/run-init:185-270`, `schemas/run-v2.schema.json:1-71`).
+Usage reconstruction is day-scoped and replaces that day’s aggregate rows; no retention job for usage rows or critique events is defined in `usage_ledger.py` (`bin/usage_ledger.py:850-881`, `bin/usage_ledger.py:567-675`). Memory `expire` and `archive` retain the record with a terminal status; `erase` removes it and rebuilds derived state (`bin/lane_memory.py:1338-1362`). Successful hub outbox writes are unlinked, malformed queue files are discarded, and a failed send leaves the current and later entries queued; this client defines no remote-record retention schedule (`bin/lane_memory_hub.py:137-154`). Run artifacts are created in project `.agents/runs/<slug>/` directories and remain file-backed; the contract schemas do not define a cleanup schedule (`bin/run-init:185-270`, `schemas/run-v2.schema.json:1-71`).
 
 <!-- lane-pilot:backlinks -->
 ## Referenced by
