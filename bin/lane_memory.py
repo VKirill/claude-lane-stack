@@ -797,8 +797,24 @@ def core_text(repo: Path) -> str:
     lines = ["# Memory CORE (always)", "", "## shared", ""]
     if not shared:
         lines.append("_no always-on shared facts_")
+    # The budget is kept, not only shown: BB-сервис's CORE was 15 KB against 3 KB, the same i18n and migration rules four times over
+    # (2026-10-26). The hub gives the proven facts first; a near-repeat of a kept fact is dropped; the rest stays one search away.
+    budget = int(cfg["core_budget"])
+    kept: list[set[str]] = []
+    left = 0
     for rec in shared:
-        lines.append(f"- {rec.get('id')}: {_core_claim(rec)}")
+        claim = _core_claim(rec)
+        words = _claim_words(claim)
+        if any(_near_repeat(words, other) for other in kept):
+            continue
+        line = f"- {rec.get('id')}: {claim}"
+        if len(("\n".join(lines + [line]) + "\n").encode("utf-8")) > budget:
+            left += 1
+            continue
+        kept.append(words)
+        lines.append(line)
+    if left:
+        lines.append(f"_{left} more always-on fact(s) over the {budget}-byte budget: `lane-memory search <words>`_")
     if bot:
         lines.extend(["", f"## personal/{bot}", ""])
         if not personal:
@@ -809,6 +825,17 @@ def core_text(repo: Path) -> str:
     used = len(text.encode("utf-8"))
     header = f"# Memory CORE (always)  {used}/{cfg['core_budget']} bytes\n"
     return header + "\n".join(lines[1:]) + "\n"
+
+
+def _claim_words(claim: str) -> set[str]:
+    return {word for word in re.findall(r"[\w./-]{3,}", claim.lower())}
+
+
+def _near_repeat(words: set[str], other: set[str]) -> bool:
+    """Two claims that share most of their words say one thing («UI translation entries in ui/i18n.ts…» / «UI localization keys…»)."""
+    if not words or not other:
+        return False
+    return len(words & other) / len(words | other) >= 0.4
 
 
 def _core_claim(rec: dict[str, Any]) -> str:

@@ -1,3 +1,7 @@
+## 1.67.2 — 2026-10-27
+
+- **The Memory CORE keeps its byte budget.** BB-сервис's CORE block was 15 199 bytes against `core_budget` 3 072 (48 always-on facts, the same i18n-order, migration and theme rules three to eight times): every session loaded it whole. `core_text` now drops a fact that repeats one already kept (word overlap ≥ 0.4) and stops at the budget, with one line saying how many facts are left and that `lane-memory search` finds them. Lane Pilot 0.1.335 gives the hub's CORE facts most-accepted first, so the budget keeps the proven ones. Found by an independent review of Lane Pilot (Astra, 2026-10-26).
+
 ## 1.67.1 — 2026-10-26
 
 - **Memory CORE and GitNexus load once per Claude session.** `lane-memory` wrote the Memory CORE block into both `CLAUDE.md` and `AGENTS.md`, and GitNexus does the same with its rules, while `CLAUDE.md` imports `@AGENTS.md`: a Claude session read both blocks twice. When `CLAUDE.md` imports `AGENTS.md` (or is a link to it), `inject_core` writes the core only into `AGENTS.md`, removes it from `CLAUDE.md`, and turns the GitNexus block of `CLAUDE.md` into GitNexus's own `gitnexus:keep` stub (one stats line), which `gitnexus analyze` keeps instead of writing the full rules back. Without the import both files get the core, as before. Idea from `agent-rules-gen` in Matvey Maslov's agent-dev-tools.
