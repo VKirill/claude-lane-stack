@@ -305,6 +305,38 @@ x
         )
         self.assertIn("always-read-progress", (tmp / "CLAUDE.md").read_text(encoding="utf-8"))
 
+    def test_claude_md_importing_agents_md_gets_no_second_copy(self) -> None:
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / ".agents").mkdir()
+        (tmp / ".agents" / "routing.profile.yaml").write_text(
+            "stages:\n  memory:\n    enabled: true\n    inject: true\n",
+            encoding="utf-8",
+        )
+        gitnexus = (
+            "<!-- gitnexus:start -->\n# GitNexus — Code Intelligence\n\n"
+            "This project is indexed by GitNexus as **app** (10 symbols, 20 relationships, 3 execution flows).\n\n"
+            "## Always Do\n\n- run impact\n<!-- gitnexus:end -->"
+        )
+        (tmp / "AGENTS.md").write_text(f"# Agents\n\n{gitnexus}\n", encoding="utf-8")
+        (tmp / "CLAUDE.md").write_text(
+            f"@AGENTS.md\n\n{gitnexus}\n\n<!-- lane-memory:core -->\nold core\n<!-- /lane-memory:core -->\n",
+            encoding="utf-8",
+        )
+        lm.init_corpus(tmp)
+        agents = (tmp / "AGENTS.md").read_text(encoding="utf-8")
+        claude = (tmp / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("<!-- lane-memory:core -->", agents)
+        self.assertIn("## Always Do", agents)
+        self.assertNotIn("lane-memory:core", claude)
+        self.assertNotIn("old core", claude)
+        self.assertNotIn("## Always Do", claude)
+        self.assertIn("<!-- gitnexus:keep -->", claude)
+        self.assertIn("Indexed as **app** (10 symbols, 20 relationships, 3 execution flows).", claude)
+        self.assertTrue(claude.startswith("@AGENTS.md\n"))
+        # A second pass changes nothing: the stub and the absent core stay as they are.
+        self.assertEqual(lm.inject_core(tmp), [tmp / "AGENTS.md"])
+        self.assertEqual((tmp / "CLAUDE.md").read_text(encoding="utf-8"), claude)
+
     def test_init_injects_empty_core_into_claude_md(self) -> None:
         tmp = Path(tempfile.mkdtemp())
         (tmp / ".agents").mkdir()

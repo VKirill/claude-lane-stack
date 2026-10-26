@@ -825,14 +825,60 @@ def last_episode(repo: Path) -> Path | None:
     return files[0] if files else None
 
 
+AGENTS_IMPORT = re.compile(r"(?m)^[ \t]*@(?:\./)?AGENTS\.md[ \t]*$")
+GITNEXUS_BLOCK = re.compile(r"(?ms)^<!-- gitnexus:start -->[ \t]*$.*?^<!-- gitnexus:end -->[ \t]*$")
+GITNEXUS_STATS = re.compile(r"[Ii]ndexed (?:by GitNexus )?as \*\*([^*]+)\*\*(?: \(([^)]+)\))?")
+
+
+def claude_imports_agents(repo: Path) -> bool:
+    """CLAUDE.md pulls AGENTS.md in (`@AGENTS.md`, or is a link to it): a block written into both loads twice in a Claude session."""
+    claude, agents = Path(repo) / "CLAUDE.md", Path(repo) / "AGENTS.md"
+    if not claude.is_file() or not agents.is_file():
+        return False
+    if claude.resolve() == agents.resolve():
+        return True
+    return bool(AGENTS_IMPORT.search(claude.read_text(encoding="utf-8")))
+
+
+def _gitnexus_keep_stub(agents_text: str) -> str | None:
+    """GitNexus's own lean form for CLAUDE.md: its `gitnexus:keep` marker makes `gitnexus analyze` refresh only the stats line."""
+    block = GITNEXUS_BLOCK.search(agents_text)
+    stats = GITNEXUS_STATS.search(block.group(0)) if block else None
+    if not stats:
+        return None
+    counts = f" ({stats.group(2)})" if stats.group(2) else ""
+    return (
+        "<!-- gitnexus:start -->\n<!-- gitnexus:keep -->\n"
+        f"Indexed as **{stats.group(1)}**{counts}. The GitNexus rules are in AGENTS.md, imported above.\n"
+        "<!-- gitnexus:end -->"
+    )
+
+
 def inject_core(repo: Path) -> list[Path]:
     if not enabled(repo) or not settings(repo)["inject"]:
         return []
     block = f"{CORE_MARK_START}\n{core_text(repo).rstrip()}\n{CORE_MARK_END}\n"
+    core_re = re.escape(CORE_MARK_START) + r"\n?.*?" + re.escape(CORE_MARK_END) + r"\n?"
+    imported = claude_imports_agents(repo)
     touched: list[Path] = []
-    for name in ("CLAUDE.md", "AGENTS.md"):
+    for name in ("AGENTS.md", "CLAUDE.md"):
         path = Path(repo) / name
         if not path.is_file():
+            continue
+        if name == "CLAUDE.md" and imported:
+            if path.resolve() == (Path(repo) / "AGENTS.md").resolve():
+                continue
+            # AGENTS.md already carries the core and GitNexus's rules into this session: CLAUDE.md keeps neither copy.
+            before = path.read_text(encoding="utf-8")
+            text = re.sub(core_re, "", before, flags=re.S)
+            stub = _gitnexus_keep_stub((Path(repo) / "AGENTS.md").read_text(encoding="utf-8"))
+            current = GITNEXUS_BLOCK.search(text)
+            if stub and current and "<!-- gitnexus:keep -->" not in current.group(0):
+                text = text[: current.start()] + stub + text[current.end():]
+            text = re.sub(r"\n{3,}", "\n\n", text).rstrip() + "\n"
+            if text != before:
+                path.write_text(text, encoding="utf-8")
+                touched.append(path)
             continue
         text = path.read_text(encoding="utf-8")
         if CORE_MARK_START in text and CORE_MARK_END in text:

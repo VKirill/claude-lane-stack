@@ -1,3 +1,7 @@
+## 1.67.1 — 2026-10-26
+
+- **Memory CORE and GitNexus load once per Claude session.** `lane-memory` wrote the Memory CORE block into both `CLAUDE.md` and `AGENTS.md`, and GitNexus does the same with its rules, while `CLAUDE.md` imports `@AGENTS.md`: a Claude session read both blocks twice. When `CLAUDE.md` imports `AGENTS.md` (or is a link to it), `inject_core` writes the core only into `AGENTS.md`, removes it from `CLAUDE.md`, and turns the GitNexus block of `CLAUDE.md` into GitNexus's own `gitnexus:keep` stub (one stats line), which `gitnexus analyze` keeps instead of writing the full rules back. Without the import both files get the core, as before. Idea from `agent-rules-gen` in Matvey Maslov's agent-dev-tools.
+
 ## 1.67.0 — 2026-10-24
 
 The SMA product map in Lane Stack (Matvey Maslov's graph, 1768 nodes; the map and its proofs live in Lane Pilot's `src/rooms/sma-map`).
