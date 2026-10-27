@@ -75,7 +75,7 @@ PM_BB_MESSAGE_COMMANDS = {
     ("thread", "queue", "create"), ("thread", "queue", "send"), ("thread", "queue", "list"),
 }
 # A Lane Pilot PM stops a stuck thread, archives it and cancels its plan (owner, 2026-10-09). Starting one (bb thread new) stays
-# with Lane Pilot's tools (lane_pilot_dispatch_writer, lane_pilot_specialist, lane_pilot_errand), so a writer never bypasses critique.
+# with Lane Pilot's tools (lane_pilot_dispatch_writer, lane_pilot_helpers, lane_pilot_errand), so a writer never bypasses critique.
 PM_BB_THREAD_CONTROL = {("thread", "stop"), ("thread", "archive"), ("thread", "unarchive"), ("thread", "cancel-plan")}
 # Settings are read-only for the PM; the setters (bb settings general …) stay denied.
 PM_BB_SETTINGS_READ = {("settings", "show"), ("settings", "usage"), ("settings", "version")}
@@ -188,9 +188,9 @@ def _lane_pilot_edit_tail(path: str) -> str:
         return ("Lane Pilot keeps PROGRESS.md and CHANGELOG.md; the PM records decisions in .agents/decisions/ "
                 "and plans in .agents/plans/.")
     if name == "LESSONS.md":
-        return "Lessons are rules on the hub now: call lane_pilot_lesson (audience pm, writer or both)."
+        return "Lessons are rules on the hub now: call lane_pilot_memory with action lesson (runId, rule, audience pm, writer or both)."
     if name == "DESIGN.md":
-        return "DESIGN.md belongs to design-lead: lane_pilot_specialist with role design-lead."
+        return "DESIGN.md belongs to design-lead: lane_pilot_helpers with action specialist, role design-lead and the task."
     if normalized.startswith("docs/") or "/docs/" in normalized or name in {"README.md", "PROJECT.md"}:
         return ("Lane Pilot writes docs/, README.md and PROJECT.md nightly from the code and reverts other edits there; "
                 "record the decision as a draft in .agents/decisions/<date>-<slug>.md.")
@@ -207,7 +207,7 @@ def _deny_pm(client: str, detail: str, lane_pilot: bool = False, path: str | Non
     tail = (
         "Product changes go through lane_pilot_dispatch_writer (then poll lane_pilot_wait_writer); "
         "Lane Pilot critiques, accepts and merges them. Other work is its own graph, not your edit: a browser step in the "
-        "owner's Chrome goes through lane_pilot_browser (graph browser-step); other work outside the code (consoles, mail, "
+        "owner's Chrome goes through lane_pilot_helpers with action browser (graph browser-step); other work outside the code (consoles, mail, "
         "accounts, recordings) through lane_pilot_errand (graph errand)."
         if lane_pilot
         else "Keep PM work read-only/control-plane-only; delegate mutations "
@@ -643,7 +643,7 @@ def _pm_edit_allowed(path: str, cwd: object) -> bool:
         return False
     relative = target.relative_to(root)
     normalized = relative.as_posix()
-    # LESSONS.md is not kept any more: lessons are rules on the hub (lane_pilot_lesson / lane-memory lesson).
+    # LESSONS.md is not kept any more: lessons are rules on the hub (lane_pilot_memory action lesson / lane-memory lesson).
     if normalized.rsplit("/", 1)[-1] == "LESSONS.md":
         return False
     # The repository-local git exclude (main repo or a linked worktree's): the PM keeps local ignores there.
@@ -1387,7 +1387,7 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
                   "(a path plugin runs from the hub's copy of its folder: bb-plugin-push <id> from BB-сервис/infrastructure/plugin-deploy "
                   "copies the code there and reloads; bb plugin reload alone re-reads the old copy). "
                   "Work that needs a thread starts as a graph, not with bb thread new: lane_pilot_dispatch_writer for a writer task, "
-                  "lane_pilot_specialist for a specialist, lane_pilot_errand for an errand, lane_pilot_browser for a browser step. "
+                  "lane_pilot_helpers (action specialist) for a specialist, lane_pilot_errand for an errand, lane_pilot_helpers (action browser) for a browser step. "
                   "Settings are changed in BB, not by the PM.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if edit:
