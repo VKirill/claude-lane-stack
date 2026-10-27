@@ -1,6 +1,6 @@
 ---
 name: opencode-lane
-description: Claude Lane OpenCode half. How to add OpenCode behavior, diagnose a writer run, and what stays in lane-ctl. Use when user says opencode-lane, делай диагноз, OpenCode plugin, sticky contract, winnow on OpenCode, Jev effort, writer session plugin, or any new OpenCode feature in claude-lane-stack. SKIP: product task YAML (lane-contract); run DAG (orchestrator-lanes); third-party OpenCode plugins (agentmemory, gemini-auth, open-cursor).
+description: "Claude Lane OpenCode half. How to add OpenCode behavior, diagnose a writer run, and what stays in lane-ctl. Use when user says opencode-lane, делай диагноз, OpenCode plugin, sticky contract, winnow on OpenCode, Jev effort, writer session plugin, or any new OpenCode feature in claude-lane-stack. SKIP: product task YAML (lane-contract); run DAG (orchestrator-lanes); third-party OpenCode plugins (agentmemory, gemini-auth, open-cursor)."
 argument-hint: "[info]"
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: project-onboard
-description: Primary project onboarding for Claude Lane Stack. Diátaxis-classified LLM pack (MODULE_MAP, API_SURFACE, TEST_INDEX, TAXONOMY, RUNBOOK, Google DESIGN.md). Schemas + validation in references/. Weekly docs-maintainer. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, deep onboard, wiki→llm docs in the terminal Lane Stack; `$ARGUMENTS` exactly info prints the card. Not inside Lane Pilot chats (reference only).
+description: "Primary project onboarding for Claude Lane Stack. Diátaxis-classified LLM pack (MODULE_MAP, API_SURFACE, TEST_INDEX, TAXONOMY, RUNBOOK, Google DESIGN.md). Schemas + validation in references/. Weekly docs-maintainer. Use when: /project-onboard, онбординг, init project, bootstrap CLAUDE.md, deep onboard, wiki→llm docs in the terminal Lane Stack; `$ARGUMENTS` exactly info prints the card. Not inside Lane Pilot chats (reference only)."
 argument-hint: "[info]"
 user-invocable: false
 ---

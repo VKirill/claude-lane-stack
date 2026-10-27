@@ -1,6 +1,6 @@
 ---
 name: docs-maintain
-description: Keep living docs/ honest after code changes. Use when: nightly docs, docs-maintain, обновить документацию, актуализировать ARCHITECTURE; `$ARGUMENTS` exactly info prints the card.
+description: "Keep living docs/ honest after code changes. Use when: nightly docs, docs-maintain, обновить документацию, актуализировать ARCHITECTURE; `$ARGUMENTS` exactly info prints the card."
 argument-hint: "[info]"
 ---
 

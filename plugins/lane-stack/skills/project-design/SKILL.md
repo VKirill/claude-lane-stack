@@ -1,6 +1,6 @@
 ---
 name: project-design
-description: Lane-stack router for design/brand. Load ui-ux-pro-max. Full DESIGN.md at root and every UI app. Use when user says дизайн, токены, DESIGN.md, brand, UI, баннер, соцсети, or a UI run has no DESIGN.md; `$ARGUMENTS` exactly info prints the card. SKIP: UI slop / layout review (web-design).
+description: "Lane-stack router for design/brand. Load ui-ux-pro-max. Full DESIGN.md at root and every UI app. Use when user says дизайн, токены, DESIGN.md, brand, UI, баннер, соцсети, or a UI run has no DESIGN.md; `$ARGUMENTS` exactly info prints the card. SKIP: UI slop / layout review (web-design)."
 argument-hint: "[info]"
 ---
 

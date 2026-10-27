@@ -1,6 +1,6 @@
 ---
 name: orchestrator-lanes
-description: Terminal Lane Stack Claude Code `dev-orchestrator` only (run-controller harness: score, DAG, run-supervisor, L0/L1/L2, wt-merge-main). Use when the session runs that terminal harness, or when `$ARGUMENTS` is exactly `info`. SKIP: Lane Pilot / BB chats (dispatch there is `lane_pilot_dispatch_writer`, `LANE_PILOT_AGENT_TYPE` set); Grok, Codex, Kimi, Qwen, AGY, Cursor writer CLIs and any default coding agent — do not load, do not wt-create.
+description: "Terminal Lane Stack Claude Code `dev-orchestrator` only (run-controller harness: score, DAG, run-supervisor, L0/L1/L2, wt-merge-main). Use when the session runs that terminal harness, or when `$ARGUMENTS` is exactly `info`. SKIP: Lane Pilot / BB chats (dispatch there is `lane_pilot_dispatch_writer`, `LANE_PILOT_AGENT_TYPE` set); Grok, Codex, Kimi, Qwen, AGY, Cursor writer CLIs and any default coding agent — do not load, do not wt-create."
 argument-hint: "[info]"
 ---
 
