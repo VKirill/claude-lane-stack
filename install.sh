@@ -324,6 +324,7 @@ python3 "$DEST/hooks/merge_claude_settings.py" \
   --session-mark "$DEST/hooks/lane_statusline_session.py" \
   "${MERGE_PLUGIN_ARGS[@]}"
 
+HUB_PUBLISH=()
 # skills — writers get ~/.agents/skills. Claude loads them from the plugin
 # (namespaced). Do not link stack skills into ~/.claude/skills (Codex also
 # scans that catalog; user copies override plugin agents too).
@@ -333,6 +334,11 @@ for d in "$STACK_ROOT"/skills/*/; do
     dest_dir="$DEST/pm-skills/$name"
     rm -rf "$DEST/skills/$name"
     rsync -a "${RSYNC_FILTERS[@]}" "$d" "$dest_dir/"
+  elif [[ -e "$DEST/skills-on-hub" ]]; then
+    # Skills live on the BB hub (Agent Tools cleaned this machine): keep
+    # ~/.agents/skills empty and publish the stack copy to the hub instead.
+    rm -rf "$DEST/skills/$name"
+    HUB_PUBLISH+=("$d")
   else
     dest_dir="$DEST/skills/$name"
     if [[ " $KEEP_AGENTS_SKILLS " == *" $name "* && -e "$dest_dir" ]]; then
@@ -345,6 +351,17 @@ for d in "$STACK_ROOT"/skills/*/; do
     rm -rf "$CLAUDE/skills/$name"
   fi
 done
+if [[ ${#HUB_PUBLISH[@]} -gt 0 ]]; then
+  if command -v bb >/dev/null 2>&1; then
+    for d in "${HUB_PUBLISH[@]}"; do
+      bb tools skills-publish "${d%/}" >/dev/null 2>&1 \
+        || echo "warning: could not publish $(basename "$d") to the BB hub" >&2
+    done
+    echo " skills: ${#HUB_PUBLISH[@]} published to the BB hub (~/.agents/skills-on-hub)"
+  else
+    echo "warning: ~/.agents/skills-on-hub is set but bb is not on PATH; stack skills were not published" >&2
+  fi
+fi
 # Drop stale shared-catalog copies even if a name was removed from skills/
 for name in $PM_ONLY_SKILLS $STALE_SKILLS; do
   rm -rf "$DEST/skills/$name"

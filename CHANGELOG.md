@@ -1,3 +1,8 @@
+## 1.67.4 — 2026-10-27
+
+- **Skills can live on the BB hub.** When `~/.agents/skills-on-hub` exists (Agent Tools writes it when it moves a machine's skill copies out), the installer no longer copies the stack skills into `~/.agents/skills`; it publishes them to the hub with `bb tools skills-publish`, and BB hands them to every session. Without the marker nothing changes.
+- **`skill_hint.py` sees the hub skills.** Besides `~/.claude/skills`, `~/.agents/skills`, the project and the plugin, it now reads the newest BB-staged copy of the hub skills (`~/.bb-machines/*/runtime/global-skills/<hash>/skills`), so hints keep working on a machine whose CLI skill folders are empty.
+
 ## 1.67.3 — 2026-10-27
 
 - **The Memory CORE drops only exact repeats, and its budget covers the whole block.** 1.67.2 merged facts by word overlap ≥ 0.4, which joined «Always run tests before merging production changes» with «Never run tests before merging production changes» (Astra's recheck): now only a fact equal to a kept one (case and spacing aside) is dropped. The budget counted only the shared facts, so personal facts and the header went past it (a 600-byte budget gave 2 144 bytes); the whole block is now measured, personal facts go first, and facts over the budget stay one `lane-memory search` away.

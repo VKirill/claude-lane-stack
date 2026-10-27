@@ -73,7 +73,26 @@ def _skill_roots() -> list[Path]:
         roots.append(Path(plugin) / "skills")
     roots.append(HOOK.parent / "skills")
     roots.extend((Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills"))
+    hub = _bb_hub_skills_root()
+    if hub:
+        roots.append(hub)
     return roots
+
+
+def _bb_hub_skills_root() -> Path | None:
+    """Newest copy of the BB hub skills that BB staged on this machine.
+
+    With ~/.agents/skills-on-hub the CLI folders are empty and the hub skills
+    reach sessions only through BB's runtime/global-skills/<hash>/skills.
+    """
+    candidates = [
+        path
+        for path in Path.home().glob(".bb-machines/*/runtime/global-skills/*/skills")
+        if path.is_dir()
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
 def _skill_paths(root: Path):
