@@ -337,29 +337,31 @@ x
         self.assertEqual(lm.inject_core(tmp), [tmp / "AGENTS.md"])
         self.assertEqual((tmp / "CLAUDE.md").read_text(encoding="utf-8"), claude)
 
-    def test_core_keeps_its_budget_and_drops_near_repeats(self) -> None:
+    def test_core_keeps_its_budget_on_the_whole_block_and_drops_only_exact_repeats(self) -> None:
         tmp = Path(tempfile.mkdtemp())
         (tmp / ".agents").mkdir()
         (tmp / ".agents" / "routing.profile.yaml").write_text(
-            "stages:\n  memory:\n    enabled: true\n    inject: true\n    core_budget: 600\n", encoding="utf-8",
+            "stages:\n  memory:\n    enabled: true\n    inject: true\n    core_budget: 700\n    personal_bot: bot1\n", encoding="utf-8",
         )
         rows = [
-            {"id": "a", "claim": "UI translation entries in ui/i18n.ts are ordered English first, then Russian."},
-            {"id": "b", "claim": "UI localization keys in ui/i18n.ts are ordered English first, then Russian."},
-            {"id": "c", "claim": "Database migrations are append-only; preserve existing migration text and indexes."},
+            {"id": "a", "claim": "Always run tests before merging production changes"},
+            {"id": "b", "claim": "Never run tests before merging production changes"},
+            {"id": "c", "claim": "always run  tests before merging production changes"},
         ] + [{"id": f"x{i}", "claim": " ".join(f"{w}{i}" for w in ("alpha", "bravo", "carta", "delta", "eagle", "fable", "gamma", "hotel"))} for i in range(12)]
-        original = lm.core_records
-        lm.core_records = lambda repo: rows
+        original_records, original_bot = lm.core_records, lm._is_bot_record
+        lm.core_records = lambda repo: rows + [{"id": "p", "claim": "personal rule of bot1 " + "z" * 300, "bot": "bot1"}]
+        lm._is_bot_record = lambda rec, bot: rec.get("bot") == bot
         try:
             text = lm.core_text(tmp)
         finally:
-            lm.core_records = original
-        body = text.split("\n", 1)[1]
+            lm.core_records, lm._is_bot_record = original_records, original_bot
         self.assertIn("- a:", text)
-        self.assertNotIn("- b:", text)
-        self.assertIn("- c:", text)
-        self.assertLessEqual(len(body.encode("utf-8")), 600 + 120)
-        self.assertRegex(text, r"more always-on fact\(s\) over the 600-byte budget")
+        self.assertIn("- b:", text)  # the opposite rule is not a duplicate
+        self.assertNotIn("- c:", text)  # an exact repeat (case and spacing aside) is
+        self.assertIn("- p:", text)
+        self.assertLessEqual(len(text.encode("utf-8")), 700)
+        self.assertRegex(text, r"more always-on fact\(s\) over the 700-byte budget")
+        self.assertRegex(text.splitlines()[0], r"^# Memory CORE \(always\)  \d+/700 bytes$")
 
     def test_init_injects_empty_core_into_claude_md(self) -> None:
         tmp = Path(tempfile.mkdtemp())

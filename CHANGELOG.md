@@ -1,3 +1,7 @@
+## 1.67.3 — 2026-10-27
+
+- **The Memory CORE drops only exact repeats, and its budget covers the whole block.** 1.67.2 merged facts by word overlap ≥ 0.4, which joined «Always run tests before merging production changes» with «Never run tests before merging production changes» (Astra's recheck): now only a fact equal to a kept one (case and spacing aside) is dropped. The budget counted only the shared facts, so personal facts and the header went past it (a 600-byte budget gave 2 144 bytes); the whole block is now measured, personal facts go first, and facts over the budget stay one `lane-memory search` away.
+
 ## 1.67.2 — 2026-10-27
 
 - **The Memory CORE keeps its byte budget.** BB-сервис's CORE block was 15 199 bytes against `core_budget` 3 072 (48 always-on facts, the same i18n-order, migration and theme rules three to eight times): every session loaded it whole. `core_text` now drops a fact that repeats one already kept (word overlap ≥ 0.4) and stops at the budget, with one line saying how many facts are left and that `lane-memory search` finds them. Lane Pilot 0.1.335 gives the hub's CORE facts most-accepted first, so the budget keeps the proven ones. Found by an independent review of Lane Pilot (Astra, 2026-10-26).

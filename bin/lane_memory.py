@@ -794,48 +794,44 @@ def core_text(repo: Path) -> str:
             personal.append(rec)
         else:
             shared.append(rec)
-    lines = ["# Memory CORE (always)", "", "## shared", ""]
-    if not shared:
-        lines.append("_no always-on shared facts_")
-    # The budget is kept, not only shown: BB-сервис's CORE was 15 KB against 3 KB, the same i18n and migration rules four times over
-    # (2026-10-26). The hub gives the proven facts first; a near-repeat of a kept fact is dropped; the rest stays one search away.
+    # The budget is kept on the whole block (header, shared, personal), not only shown: BB-сервис's CORE was 15 KB against 3 KB (2026-10-26).
+    # The hub gives the proven facts first. Only an exact repeat (same words, case and spacing aside) is dropped: word overlap merged
+    # «Always run tests…» with «Never run tests…» (Astra's recheck, 2026-10-27). A fact over the budget stays one search away, never lost.
     budget = int(cfg["core_budget"])
-    kept: list[set[str]] = []
+    seen: set[str] = set()
+    sections: list[tuple[str, list[str], str]] = [("## shared", [], "_no always-on shared facts_")]
+    if bot:
+        sections.append((f"## personal/{bot}", [], "_no personal always-on facts_"))
     left = 0
-    for rec in shared:
+
+    def render(note: str = "") -> str:
+        out = ["# Memory CORE (always)  00000/00000 bytes"]
+        for title, rows, empty in sections:
+            out.extend(["", title, ""])
+            out.extend(rows if rows else [empty])
+        if note:
+            out.append(note)
+        return "\n".join(out) + "\n"
+
+    # Personal facts first: they belong to this session's own bot and are few; then the shared ones in the hub's order.
+    queue = [(len(sections) - 1, rec) for rec in personal] + [(0, rec) for rec in shared]
+    for index, rec in queue:
         claim = _core_claim(rec)
-        words = _claim_words(claim)
-        if any(_near_repeat(words, other) for other in kept):
+        key = " ".join(claim.lower().split())
+        if key in seen:
             continue
         line = f"- {rec.get('id')}: {claim}"
-        if len(("\n".join(lines + [line]) + "\n").encode("utf-8")) > budget:
+        sections[index][1].append(line)
+        if len(render(f"_{len(queue)} more always-on fact(s) over the {budget}-byte budget: `lane-memory search <words>`_").encode("utf-8")) > budget:
+            sections[index][1].pop()
             left += 1
             continue
-        kept.append(words)
-        lines.append(line)
-    if left:
-        lines.append(f"_{left} more always-on fact(s) over the {budget}-byte budget: `lane-memory search <words>`_")
-    if bot:
-        lines.extend(["", f"## personal/{bot}", ""])
-        if not personal:
-            lines.append("_no personal always-on facts_")
-        for rec in personal:
-            lines.append(f"- {rec.get('id')}: {_core_claim(rec)}")
-    text = "\n".join(lines) + "\n"
+        seen.add(key)
+    note = f"_{left} more always-on fact(s) over the {budget}-byte budget: `lane-memory search <words>`_" if left else ""
+    text = render(note)
+    body = text.split("\n", 1)[1]
     used = len(text.encode("utf-8"))
-    header = f"# Memory CORE (always)  {used}/{cfg['core_budget']} bytes\n"
-    return header + "\n".join(lines[1:]) + "\n"
-
-
-def _claim_words(claim: str) -> set[str]:
-    return {word for word in re.findall(r"[\w./-]{3,}", claim.lower())}
-
-
-def _near_repeat(words: set[str], other: set[str]) -> bool:
-    """Two claims that share most of their words say one thing («UI translation entries in ui/i18n.ts…» / «UI localization keys…»)."""
-    if not words or not other:
-        return False
-    return len(words & other) / len(words | other) >= 0.4
+    return f"# Memory CORE (always)  {used}/{budget} bytes\n" + body
 
 
 def _core_claim(rec: dict[str, Any]) -> str:
