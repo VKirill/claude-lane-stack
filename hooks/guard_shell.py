@@ -197,7 +197,7 @@ def _lane_pilot_edit_tail(path: str) -> str:
     return ("Product changes go through lane_pilot_dispatch_writer: Lane Pilot critiques, accepts and merges them "
             f"(the PM writes only {_LANE_PILOT_PM_WRITES}). Send this edit as a lane_pilot_dispatch_writer task "
             "(a one-line change is a fine task); never hand the owner a command to paste and never route a repository "
-            "edit through an errand.")
+            "edit through the errand or specialist graph.")
 
 
 def _deny_pm(client: str, detail: str, lane_pilot: bool = False, path: str | None = None) -> None:
@@ -206,8 +206,9 @@ def _deny_pm(client: str, detail: str, lane_pilot: bool = False, path: str | Non
     # A Lane Pilot PM has no run supervisor: its writers are BB threads it dispatches itself.
     tail = (
         "Product changes go through lane_pilot_dispatch_writer (then poll lane_pilot_wait_writer); "
-        "Lane Pilot critiques, accepts and merges them. A browser step in the owner's Chrome goes through "
-        "lane_pilot_browser; other work outside the code (consoles, mail, accounts, recordings) through lane_pilot_errand."
+        "Lane Pilot critiques, accepts and merges them. Other work is its own graph, not your edit: a browser step in the "
+        "owner's Chrome goes through lane_pilot_browser (graph browser-step); other work outside the code (consoles, mail, "
+        "accounts, recordings) through lane_pilot_errand (graph errand)."
         if lane_pilot
         else "Keep PM work read-only/control-plane-only; delegate mutations "
         "to the run supervisor and its writer/recovery lane."
@@ -1385,8 +1386,9 @@ def _lane_pilot_shell_checks(client: str, cmd: str, payload: dict) -> None:
                   "and cancels the plans of threads, and in a bb-plugin-* checkout builds, reloads, installs or updates plugins "
                   "(a path plugin runs from the hub's copy of its folder: bb-plugin-push <id> from BB-сервис/infrastructure/plugin-deploy "
                   "copies the code there and reloads; bb plugin reload alone re-reads the old copy). "
-                  "Starting a thread (bb thread new) goes through lane_pilot_dispatch_writer for a writer, lane_pilot_specialist or "
-                  "lane_pilot_errand for a helper; a browser step: lane_pilot_browser. Settings are changed in BB, not by the PM.")
+                  "Work that needs a thread starts as a graph, not with bb thread new: lane_pilot_dispatch_writer for a writer task, "
+                  "lane_pilot_specialist for a specialist, lane_pilot_errand for an errand, lane_pilot_browser for a browser step. "
+                  "Settings are changed in BB, not by the PM.")
     edit = _lane_pilot_shell_write_error(cmd, payload.get("cwd") or payload.get("workspaceRoot"))
     if edit:
         emit_deny(client, f"[lane-pilot-guard] {edit}: shell edits of project files skip plan critique, code critique and acceptance. "
