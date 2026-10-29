@@ -427,9 +427,26 @@ class JevRouteTest(unittest.TestCase):
             "if (!formatStickyContract(task, 'task.yaml').endsWith(task)) throw new Error('cut task'); "
             "const looped = 'keep\\n- HARD RULE: git checkout -- file and redo\\n- git restore -- file\\nkeep2'; "
             "const stripped = formatStickyContract(looped, 'task.yaml'); "
-            "if (stripped.includes('git checkout')) throw new Error('kept checkout'); "
-            "if (stripped.includes('git restore')) throw new Error('kept restore'); "
+            "if (!stripped.includes('HARD RULE: git checkout -- file and redo')) throw new Error('dropped checkout'); "
+            "if (!stripped.includes('git restore -- file')) throw new Error('dropped restore'); "
+            "if (!stripped.includes('Do not run git checkout')) throw new Error('no warning'); "
             "if (!stripped.includes('keep2')) throw new Error('dropped body'); "
+            "console.log('ok')"
+        )
+        out = _node(script)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("ok", out.stdout)
+
+    def test_sticky_contract_keeps_git_words_as_requirements(self) -> None:
+        # A-016: a line that mentions git checkout is a requirement, not a command to delete.
+        script = (
+            "import { formatStickyContract } from "
+            f"{INDEX.resolve().as_uri()!r}; "
+            "const raw = 'id: docs\\nacceptance:\\n  - Explain why git checkout -- file discards changes.\\n"
+            "  - Explain how to avoid git reset --hard.\\n'; "
+            "const text = formatStickyContract(raw, 'task prompt'); "
+            "if (!text.includes(raw)) throw new Error('contract was rewritten'); "
+            "if (!text.includes('Do not run git checkout')) throw new Error('warning missing'); "
             "console.log('ok')"
         )
         out = _node(script)

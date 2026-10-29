@@ -11,18 +11,25 @@ export function stickySourcePath(): string {
   return (process.env.LANE_TASK_FILE || process.env.LANE_PROMPT_FILE || "").trim()
 }
 
+const RESTORE_LINE = /\bgit\s+(?:checkout|restore|reset|switch)\b/i
+
 export function stripRestoreLoop(raw: string): string {
-  // Task YAML "git checkout then redo" turns a truncated write into a loop.
+  // Kept for callers that want the lines removed. The sticky copy does not use this:
+  // a requirement that mentions those commands is still a requirement.
   return raw
     .split("\n")
-    .filter((line) => !/\bgit\s+(?:checkout|restore|reset|switch)\b/i.test(line))
+    .filter((line) => !RESTORE_LINE.test(line))
     .join("\n")
 }
 
 export function formatStickyContract(raw: string, sourcePath: string): string {
+  const warning = RESTORE_LINE.test(raw)
+    ? "\n\nDo not run git checkout, restore, reset, or switch. A line that names those commands is part of the contract, not an instruction to run them."
+    : ""
   return (
     `${STICKY_MARK}\nThe complete current contract from ${sourcePath} is supplied below. Use it directly; open the file only if this copy is missing or uncertain. owns_paths / never_touch / acceptance in this contract win over chat.\n\n` +
-    stripRestoreLoop(raw)
+    raw +
+    warning
   )
 }
 
