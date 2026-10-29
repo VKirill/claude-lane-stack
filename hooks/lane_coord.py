@@ -157,6 +157,14 @@ def drop(session: str, cwd: str | None = None) -> None:
 
 # ------------------------------------------------------------------ claims
 
+def _path_covers(prefix: str, path: str) -> bool:
+    """A directory prefix covers a path only at a slash boundary. `src/app.ts` does not cover `src/app.tsx`."""
+    prefix = prefix.rstrip("/")
+    if not prefix or not path:
+        return False
+    return path == prefix or path.startswith(prefix + "/")
+
+
 def _overlap(a: str, b: str) -> bool:
     """Glob collision: two patterns can name one file (one matches the other, or one is a folder prefix of the other)."""
     a, b = a.strip("./"), b.strip("./")
@@ -164,7 +172,7 @@ def _overlap(a: str, b: str) -> bool:
         return True
     fixed = lambda p: re.split(r"[*?\[]", p, maxsplit=1)[0]
     pa, pb = fixed(a), fixed(b)
-    return bool(pa) and bool(pb) and (pa.startswith(pb) or pb.startswith(pa))
+    return _path_covers(pa, pb) or _path_covers(pb, pa)
 
 
 def collisions(patterns: list[str], session: str, cwd: str | None = None) -> list[dict[str, Any]]:

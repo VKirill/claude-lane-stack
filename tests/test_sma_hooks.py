@@ -97,6 +97,13 @@ class LaneCoordTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         os.environ["LANE_COORD_HOME"] = str(Path(self.tmp, "coord"))
 
+    def test_file_prefix_is_not_a_claim_collision(self) -> None:
+        # A-019: src/app.ts is not a directory prefix of src/app.tsx.
+        self.assertFalse(lane_coord._overlap("src/app.ts", "src/app.tsx"))
+        self.assertTrue(lane_coord._overlap("src/app.ts", "src/app.ts"))
+        self.assertTrue(lane_coord._overlap("src/", "src/app.ts"))
+        self.assertTrue(lane_coord._overlap("src/**", "src/app.ts"))
+
     def test_claims_are_atomic_and_collide_on_overlapping_globs(self) -> None:
         lane_coord.register("a", cwd=self.tmp)
         lane_coord.register("b", cwd=self.tmp)
