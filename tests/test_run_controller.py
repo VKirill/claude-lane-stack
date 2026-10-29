@@ -980,6 +980,62 @@ class RunControllerTest(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["stage"], "running")
 
+    def test_stop_actions_kills_verification_descendant(self) -> None:
+        # A-014: stop_actions must reap the session lane-ctl starts for verification.
+        controller = runpy.run_path(str(CONTROLLER))
+        root = self.root / "stop-tree"
+        root.mkdir()
+        pidfile = root / "child.pid"
+        marker = root / "after-stop.txt"
+        child_script = (
+            "import os,pathlib,time;"
+            f"pathlib.Path({str(pidfile)!r}).write_text(str(os.getpid()));"
+            "time.sleep(1.2);"
+            f"pathlib.Path({str(marker)!r}).write_text('executed')"
+        )
+        parent_script = (
+            "import importlib.machinery,importlib.util,pathlib,sys;"
+            "sys.dont_write_bytecode=True;"
+            f"sys.path.insert(0,{str(ROOT / 'bin')!r});"
+            "loader=importlib.machinery.SourceFileLoader('audit_lane_ctl',"
+            f"{str(ROOT / 'bin' / 'lane-ctl')!r});"
+            "spec=importlib.util.spec_from_loader(loader.name,loader);"
+            "m=importlib.util.module_from_spec(spec);sys.modules[loader.name]=m;loader.exec_module(m);"
+            "m.run_verification_command([sys.executable,'-c',"
+            f"{child_script!r}],cwd=pathlib.Path({str(root)!r}),timeout=20)"
+        )
+        launched = None
+        child = None
+        try:
+            launched = controller["launch_action"](
+                [sys.executable, "-c", parent_script],
+                label="fixture verify descendant",
+                json_output=False,
+            )
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and not pidfile.exists():
+                time.sleep(0.02)
+            self.assertTrue(pidfile.exists(), "verification child did not start")
+            child = int(pidfile.read_text(encoding="utf-8"))
+            controller["stop_actions"]({"t": launched})
+            launched = None
+            time.sleep(1.4)
+            self.assertFalse(marker.exists(), "verification descendant ran after stop")
+            try:
+                os.kill(child, 0)
+            except ProcessLookupError:
+                dead = True
+            else:
+                dead = False
+            self.assertTrue(dead, f"verification pid {child} still alive")
+        finally:
+            if launched is not None:
+                controller["stop_actions"]({"t": launched})
+            if child is not None:
+                try:
+                    os.kill(child, 15)
+                except ProcessLookupError:
+                    pass
 
     def test_accepted_receipt_resumes_idempotently_and_status_is_read_only(self) -> None:
         self.write_run(provider_slots=1)

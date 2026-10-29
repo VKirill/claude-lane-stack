@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -664,18 +665,122 @@ def finish_action(launched: dict[str, Any]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _child_pids(pid: int) -> list[int]:
+    found: list[int] = []
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return found
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            status = (entry / "status").read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in status.splitlines():
+            if line.startswith("PPid:"):
+                if int(line.split()[1]) == pid:
+                    found.append(int(entry.name))
+                break
+    return found
+
+
+def _process_tree(root: int) -> list[int]:
+    pids = [root]
+    index = 0
+    while index < len(pids):
+        pids.extend(_child_pids(pids[index]))
+        index += 1
+    return pids
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    end = stat.rfind(")")
+    if end < 0 or end + 2 >= len(stat):
+        return True
+    return stat[end + 2] != "Z"
+
+
+def _signal_tree(root: int, sig: int) -> list[int]:
+    # Snapshot first: a new session (verification) stops being a child once its parent dies.
+    pids = _process_tree(root)
+    own = os.getpgrp()
+    groups: set[int] = set()
+    for pid in pids:
+        try:
+            pgid = os.getpgid(pid)
+        except ProcessLookupError:
+            continue
+        if pgid != own:
+            groups.add(pgid)
+    for pgid in groups:
+        try:
+            os.killpg(pgid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+    for pid in pids:
+        try:
+            if os.getpgid(pid) == own:
+                os.kill(pid, sig)
+        except ProcessLookupError:
+            pass
+    return pids
+
+
+def _wait_until_dead(pids: list[int], timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(not _alive(pid) for pid in pids):
+            return
+        time.sleep(0.02)
+    for pid in pids:
+        if _alive(pid):
+            try:
+                pgid = os.getpgid(pid)
+            except ProcessLookupError:
+                continue
+            if pgid != os.getpgrp():
+                try:
+                    os.killpg(pgid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if all(not _alive(pid) for pid in pids):
+            return
+        time.sleep(0.02)
+
+
 def stop_actions(actions: dict[str, dict[str, Any]]) -> None:
+    trees: list[list[int]] = []
     for launched in actions.values():
         process = launched["process"]
         if process.poll() is None:
-            process.terminate()
-    for launched in actions.values():
+            trees.append(_signal_tree(process.pid, signal.SIGTERM))
+        else:
+            trees.append([])
+    for launched, pids in zip(actions.values(), trees, strict=True):
         process = launched["process"]
         try:
             process.wait(timeout=1)
         except subprocess.TimeoutExpired:
+            if process.poll() is None:
+                _signal_tree(process.pid, signal.SIGKILL)
             process.kill()
             process.wait()
+        _wait_until_dead(pids, 1)
         launched["stdout_capture"].close()
         launched["stderr_capture"].close()
 
