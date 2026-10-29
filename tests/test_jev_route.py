@@ -496,6 +496,23 @@ class JevRouteTest(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("ok", out.stdout)
 
+    def test_guard_allows_git_words_inside_quoted_search(self) -> None:
+        # A-017: a search for the text "git commit" is not a git commit.
+        script = (
+            "import { guardTool } from "
+            f"{INDEX.resolve().as_uri()!r}; "
+            "const search = guardTool('shell', { command: \"rg -n 'git commit' docs/README.md\" }, '/fixture'); "
+            "if (search) throw new Error('search blocked: ' + search); "
+            "for (const command of ['git commit -m ship', 'git push origin main', 'git merge main', 'git checkout -- a.ts']) { "
+            "  const blocked = guardTool('bash', { command }, '/fixture'); "
+            "  if (!blocked.includes('blocked')) throw new Error('allowed ' + command + ' ' + blocked); "
+            " } "
+            "console.log('ok')"
+        )
+        out = _node(script)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("ok", out.stdout)
+
     def test_claude_router_routes_only_lane_subagents(self) -> None:
         # Owner 2026-10-13: Jev picks a subagent's model and effort once, when a lane session spawns it; the session's own
         # turns (the owner's messages) keep their effort, and a plain session is never routed.
