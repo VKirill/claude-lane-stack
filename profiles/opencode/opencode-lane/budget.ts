@@ -14,6 +14,11 @@ export type ToolAttempt = {
   tail: string
 }
 
+// Window of recent attempts sent to Jev. Full tool output stays out; `fp` identifies it.
+export const RECENT_MAX_ENTRIES = 24
+export const RECENT_MAX_BYTES = 12_000
+const TAIL_CHARS = 480
+
 const recent = new Map<string, ToolAttempt[]>()
 const progressCounts = new Map<string, Map<string, number>>()
 const observedCalls = new Map<string, Map<string, number>>()
@@ -84,6 +89,29 @@ export function recentAttempts(sessionID: string): ToolAttempt[] {
   return recent.get(sessionID) || []
 }
 
+function boundedTail(text: string, fp: string): string {
+  if (text.length <= TAIL_CHARS) return text
+  const mark = ` […${text.length} fp ${fp}…] `
+  const room = TAIL_CHARS - mark.length
+  if (room < 40) return `${text.slice(0, TAIL_CHARS - fp.length - 1)} ${fp}`
+  const head = Math.floor(room * 0.55)
+  const end = room - head
+  return text.slice(0, head) + mark + text.slice(text.length - end)
+}
+
+function trimRecent(list: ToolAttempt[]): ToolAttempt[] {
+  let kept = list.slice(-RECENT_MAX_ENTRIES)
+  let bytes = kept.reduce((sum, row) => sum + row.tail.length, 0)
+  while (kept.length > 1 && bytes > RECENT_MAX_BYTES) {
+    bytes -= kept[0]!.tail.length
+    kept = kept.slice(1)
+  }
+  if (kept.length === 1 && kept[0]!.tail.length > RECENT_MAX_BYTES) {
+    kept = [{ ...kept[0]!, tail: kept[0]!.tail.slice(0, RECENT_MAX_BYTES) }]
+  }
+  return kept
+}
+
 function toolPath(args: unknown): string {
   if (!args || typeof args !== "object" || Array.isArray(args)) return ""
   const a = args as Record<string, unknown>
@@ -112,15 +140,16 @@ export function recordTool(
   }
   const cmd = argKey(tool, args)
   const list = recent.get(sessionID) || []
+  const full = typeof output === "string" ? output : stable(output)
   list.push({
     tool: tool.toLowerCase(),
     cmd,
     fp,
     n,
     chars: valueLength(output),
-    tail: typeof output === "string" ? output : stable(output),
+    tail: boundedTail(full, fp),
   })
-  recent.set(sessionID, list)
+  recent.set(sessionID, trimRecent(list))
   laneLog({
     mod: "budget",
     ok: true,

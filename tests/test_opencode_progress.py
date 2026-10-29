@@ -60,6 +60,43 @@ console.log("redaction-ok")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("redaction-ok", result.stdout)
 
+    def test_recent_tool_history_is_bounded(self):
+        # A-015: recordTool must not keep every full tool output, and must not forward it to Jev.
+        script = r'''
+import { recordTool, recentAttempts, repeatHint, RECENT_MAX_BYTES, RECENT_MAX_ENTRIES } from "./profiles/opencode/opencode-lane/budget.ts"
+process.env.LANE_LOG = "0"
+process.env.LANE_OPENCODE_JEV = "1"
+process.env.TYPESAFE_API_KEY = "fixture-key"
+let prior = null
+globalThis.fetch = async (_url, request) => {
+  prior = JSON.parse(request.body).state.prior
+  return new Response(JSON.stringify({ answers: { kind: { choice: "unclear", confidence: 1 } } }))
+}
+const sid = "audit-history"
+for (let i = 0; i < 100; i++) recordTool(sid, "shell", { command: `printf fixture-${i}` }, "x".repeat(8000))
+const recent = recentAttempts(sid)
+const bytes = recent.reduce((n, row) => n + row.tail.length, 0)
+if (recent.length > RECENT_MAX_ENTRIES) throw new Error("entries " + recent.length)
+if (bytes > RECENT_MAX_BYTES) throw new Error("bytes " + bytes)
+if (recent.some((row) => row.tail.length === 8000)) throw new Error("full output kept")
+if (recent.some((row) => !row.fp || !row.tail.includes(row.fp))) throw new Error("fingerprint missing from stored tail")
+await repeatHint("fixture", "shell", "same-output", 3, sid, false)
+if (!prior) throw new Error("Jev was not asked")
+const sent = prior.reduce((n, row) => n + String(row.tail ?? "").length, 0)
+if (prior.length > RECENT_MAX_ENTRIES || sent > RECENT_MAX_BYTES) throw new Error("forwarded " + prior.length + " " + sent)
+console.log("bounded-history-ok")
+'''
+        result = subprocess.run(
+            ["bun", "-e", script],
+            cwd=ROOT,
+            env={**os.environ, "LANE_LOG": "0", "LANE_STACK_ROOT": str(ROOT)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bounded-history-ok", result.stdout)
+
     def test_all_tool_progress_is_session_scoped_and_preserves_output(self):
         script = r'''
 import { OpenCodeLanePlugin } from "./profiles/opencode/opencode-lane/index.ts"

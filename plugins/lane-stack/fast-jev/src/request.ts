@@ -10,32 +10,74 @@ import type { JevAnswer, JevQuestions, JevResponse, JevState } from './types.js'
  */
 export const MAX_STATE_TOKENS = 28_000;
 
+function abridgeLongest(copy: unknown, maxTokens: number, tokens: number): boolean {
+  const keepRatio = Math.max(0.1, (maxTokens / tokens) * 0.95);
+  if (typeof copy === 'string') return false;
+  let longest: { holder: Record<string | number, unknown>; key: string | number; size: number } | null = null;
+  const visit = (value: unknown, holder: Record<string | number, unknown> | null, key: string | number | null): void => {
+    if (typeof value === 'string') {
+      if (holder && key !== null && (!longest || value.length > longest.size)) longest = { holder, key, size: value.length };
+    } else if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, value as unknown as Record<number, unknown>, index));
+    } else if (value && typeof value === 'object') {
+      for (const [name, item] of Object.entries(value)) visit(item, value as Record<string, unknown>, name);
+    }
+  };
+  visit(copy, null, null);
+  if (!longest) return false;
+  const target = longest as { holder: Record<string | number, unknown>; key: string | number; size: number };
+  const next = abridge(target.holder[target.key] as string, keepRatio);
+  if (next === target.holder[target.key]) return false;
+  target.holder[target.key] = next;
+  return true;
+}
+
+function dropWidestArray(copy: unknown): boolean {
+  let best: unknown[] | null = null;
+  let bestSize = 0;
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      if (value.length > 1) {
+        const size = JSON.stringify(value).length;
+        if (size > bestSize) {
+          best = value;
+          bestSize = size;
+        }
+      }
+      value.forEach(visit);
+    } else if (value && typeof value === 'object') {
+      for (const item of Object.values(value)) visit(item);
+    }
+  };
+  visit(copy);
+  if (!best) return false;
+  const target = best as unknown[];
+  target.splice(0, Math.max(1, Math.floor(target.length / 2)));
+  return true;
+}
+
 export function boundState(state: JevState, maxTokens = MAX_STATE_TOKENS): JevState {
   let copy = JSON.parse(JSON.stringify(state)) as unknown;
   for (let round = 0; round < 24; round++) {
     const tokens = estimateTokens(JSON.stringify(copy));
-    if (tokens <= maxTokens) break;
-    const keepRatio = Math.max(0.1, (maxTokens / tokens) * 0.95);
+    if (tokens <= maxTokens) return copy as JevState;
     if (typeof copy === 'string') {
-      copy = abridge(copy, keepRatio);
+      const next = abridge(copy, Math.max(0.1, (maxTokens / tokens) * 0.95));
+      if (next === copy) break;
+      copy = next;
       continue;
     }
-    let longest: { holder: Record<string | number, unknown>; key: string | number; size: number } | null = null;
-    const visit = (value: unknown, holder: Record<string | number, unknown> | null, key: string | number | null): void => {
-      if (typeof value === 'string') {
-        if (holder && key !== null && (!longest || value.length > longest.size)) longest = { holder, key, size: value.length };
-      } else if (Array.isArray(value)) {
-        value.forEach((item, index) => visit(item, value as unknown as Record<number, unknown>, index));
-      } else if (value && typeof value === 'object') {
-        for (const [name, item] of Object.entries(value)) visit(item, value as Record<string, unknown>, name);
-      }
-    };
-    visit(copy, null, null);
-    if (!longest) break;
-    const target = longest as { holder: Record<string | number, unknown>; key: string | number };
-    target.holder[target.key] = abridge(target.holder[target.key] as string, keepRatio);
+    if (!abridgeLongest(copy, maxTokens, tokens)) break;
   }
-  return copy as JevState;
+  // A wide array of long strings survives one-string abridgement. Drop oldest items until it fits.
+  for (let round = 0; round < 32; round++) {
+    const tokens = estimateTokens(JSON.stringify(copy));
+    if (tokens <= maxTokens) return copy as JevState;
+    if (!dropWidestArray(copy)) break;
+  }
+  const tokens = estimateTokens(JSON.stringify(copy));
+  if (tokens <= maxTokens) return copy as JevState;
+  throw new Error(`Jev state exceeds ${maxTokens} tokens (${tokens})`);
 }
 
 function abridge(text: string, keepRatio: number): string {

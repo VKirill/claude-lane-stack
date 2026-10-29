@@ -15,6 +15,22 @@ def _bun(script: str) -> subprocess.CompletedProcess[str]:
 
 
 class FastJevInputsTest(unittest.TestCase):
+    def test_bound_state_fits_or_refuses_a_wide_tool_history(self) -> None:
+        # A-015: shrinking one long string per pass leaves a wide history over the limit.
+        out = _bun(r"""
+            import assert from 'node:assert/strict';
+            import { boundState, MAX_STATE_TOKENS } from './plugins/lane-stack/fast-jev/src/request.ts';
+            import { estimateTokens } from './plugins/lane-stack/fast-jev/src/state.ts';
+            const state = { task: 'fixture', prior: Array.from({ length: 100 }, (_, i) => ({ cmd: `read-${i}`, tail: 'x'.repeat(8000) })) };
+            const bounded = boundState(state);
+            const tokens = estimateTokens(JSON.stringify(bounded));
+            assert.ok(tokens <= MAX_STATE_TOKENS, `bounded state estimate=${tokens}; limit=${MAX_STATE_TOKENS}`);
+            assert.throws(() => boundState({ task: 'x'.repeat(5000) }, 10), /exceeds 10 tokens/);
+            console.log('bound-state-ok');
+        """)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("bound-state-ok", out.stdout)
+
     def test_upstream_fits_large_text_without_clipping_session_text(self) -> None:
         out = _bun(r"""
             import assert from 'node:assert/strict';

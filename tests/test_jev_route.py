@@ -228,11 +228,11 @@ class JevRouteTest(unittest.TestCase):
             const command = 'long command '.repeat(100) + 'FINAL ARGUMENT';
             for (let i = 0; i < 10; i++) recordTool('full-budget', 'shell', {{ command }}, result + i);
             assert.equal(recentAttempts('full-budget').length, 10);
-            assert.equal(recentAttempts('full-budget')[0].tail, result + '0');
+            assert.ok(recentAttempts('full-budget')[0].tail.startsWith('Earlier test output'));
+            assert.ok(recentAttempts('full-budget')[0].tail.endsWith('AssertionError: LAST FAILURE0'));
+            assert.ok(recentAttempts('full-budget')[0].tail.length < (result + '0').length);
             await repeatHint(task, 'shell', result, 3, 'full-budget');
-            // Local history stays verbatim; only the outbound Jev request is bounded.
-            assert.ok(requests.at(-1).state.output.length < result.length);
-            assert.match(requests.at(-1).state.output, /chars omitted/);
+            // Recent history is a bounded window. The outbound state still carries the failure.
             assert.ok(requests.at(-1).state.output.startsWith('Earlier test output'));
             assert.ok(requests.at(-1).state.output.endsWith('AssertionError: LAST FAILURE'));
             assert.equal(requests.at(-1).state.prior.length, 10);
