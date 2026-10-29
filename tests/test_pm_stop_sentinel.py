@@ -9,6 +9,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 HOOK = ROOT / "hooks" / "pm_stop_sentinel.py"
@@ -344,6 +345,28 @@ class SpawnAndWatchTests(unittest.TestCase):
             code, err = watch_run(cwd, "late-block", timeout_s=2.0, poll_s=0.05)
             self.assertEqual(code, 2)
             self.assertIn("blocked", err)
+
+    def test_degraded_controller_holds_the_pm(self) -> None:
+        # A-021: degraded means some tasks are still running. Stop must not treat the run as gone.
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            _ctrl(cwd, "r", "degraded")
+            path = cwd / ".agents" / "runs" / "r" / "controller.json"
+            path.write_text(
+                json.dumps({"stage": "degraded", "tasks": {"a": {"stage": "blocked"}, "b": {"stage": "running"}}}),
+                encoding="utf-8",
+            )
+            payload = {
+                "hook_event_name": "Stop",
+                "agent_type": "dev-orchestrator",
+                "cwd": tmp,
+                "session_id": "fixture",
+                "background_tasks": [],
+            }
+            with patch.dict(os.environ, {"LANE_PM_STOP_SENTINEL": "1"}):
+                code, _message = decide_stop(payload)
+            self.assertIsNotNone(pick_controller(cwd))
+            self.assertEqual(code, 2)
 
     def test_pick_newest_terminal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

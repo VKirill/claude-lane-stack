@@ -38,7 +38,7 @@ SUPERVISOR_RE = re.compile(
     re.IGNORECASE,
 )
 RUN_DIR_RE = re.compile(r"\.agents/runs/([A-Za-z0-9._-]+)")
-TERMINAL = frozenset({"accepted", "blocked", "failed"})
+from controller_stages import ACTIVE_STAGES, TERMINAL_STAGES as TERMINAL  # noqa: E402
 TAIL_CHARS = 8000
 DEFAULT_POLL = 5.0
 DEFAULT_WATCH_SEC = 7200.0
@@ -259,7 +259,7 @@ def pick_controller(cwd: Path, *, now: float | None = None, slug: str = "") -> P
         except OSError:
             continue
         age = now - mtime
-        if stage == "running" and age <= RUNNING_AGE_SEC:
+        if stage in ACTIVE_STAGES and age <= RUNNING_AGE_SEC:
             pass
         elif stage in TERMINAL and age <= TERMINAL_AGE_SEC:
             pass
@@ -388,12 +388,12 @@ def decide_stop(payload: dict) -> tuple[int, str]:
                 f"do not watch or poll; end this turn.",
             )
         return 0, ""
-    if stage == "running" and tasks:
+    if stage in ACTIVE_STAGES and tasks:
         return 0, ""
-    if stage == "running":
+    if stage in ACTIVE_STAGES:
         return (
             2,
-            f"lane pm_stop_sentinel: {slug} stage=running but no supervisor task. "
+            f"lane pm_stop_sentinel: {slug} stage={stage} but no supervisor task. "
             f"Re-dispatch run-supervisor. Read {path}.",
         )
     if stage in TERMINAL:

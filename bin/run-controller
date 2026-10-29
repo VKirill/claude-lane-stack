@@ -59,8 +59,9 @@ PRIMARY_EFFORTS = {
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 TERMINAL_OUTCOME_EVENTS = frozenset({"task_accepted", "task_blocked"})
 TERMINAL_TASK_STAGES = frozenset({"accepted", "blocked"})
-RUN_TERMINAL_STAGES = frozenset({"accepted", "blocked", "failed"})
-RUN_ACTIVE_STAGES = frozenset({"running", "degraded"})
+if str(ROOT / "hooks") not in sys.path:
+    sys.path.insert(0, str(ROOT / "hooks"))
+from controller_stages import ACTIVE_STAGES as RUN_ACTIVE_STAGES, TERMINAL_STAGES as RUN_TERMINAL_STAGES  # noqa: E402
 OUTCOME_CRASH_FAILURES = frozenset(
     {"provider_failed", "provider_incomplete", "failed", "cancelled"}
 )
