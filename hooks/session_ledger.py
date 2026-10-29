@@ -147,6 +147,18 @@ def do_record(p: dict) -> None:
     st["updated"] = datetime.now(timezone.utc).isoformat()
     save_state(st)
 
+def git_worktree_dirty(snapshot: str) -> bool:
+    """True when `git status -sb` or `git diff` shows a change. A clean branch is only `## <name>`."""
+    for line in snapshot.splitlines():
+        text = line.strip()
+        if not text or text.startswith("##"):
+            continue
+        if text.startswith("(clean") or text.startswith("(git unavailable"):
+            continue
+        return True
+    return False
+
+
 def git_snapshot(root: Path) -> str:
     parts = []
     try:
@@ -203,6 +215,9 @@ def do_flush(p: dict) -> None:
     shell = st.get("shell") or []
     # also merge git changed names
     git_txt = git_snapshot(root)
+    # No tool events and a clean status -sb (`## main`, not the phrase "nothing to commit").
+    if not files and not shell and not git_worktree_dirty(git_txt) and os.environ.get("AGENT_LEDGER_ALWAYS") != "1":
+        return
     client = st.get("client") or detect_client(p) or "agent"
     agent = st.get("agent") or "unknown"
     now = datetime.now().astimezone()
@@ -212,12 +227,6 @@ def do_flush(p: dict) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     short = key[-8:] if len(key) > 8 else key
     out = log_dir / f"{stamp}-{client}-{short}.md"
-
-    # skip empty sessions (no edits, no shell)
-    if not files and not shell and "nothing to commit" in git_txt and not re.search(r"^\s*M |\?\?", git_txt, re.M):
-        # still write micro marker only if env forces
-        if os.environ.get("AGENT_LEDGER_ALWAYS") != "1":
-            return
 
     debt = extract_debt_from_files(files)
     file_list = "\n".join(f"- `{f}`" for f in files) or "- (none recorded via edit tools)"
