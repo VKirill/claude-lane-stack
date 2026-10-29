@@ -1,13 +1,16 @@
 """The SMA session hooks and terminal coordination (hooks/sma_hooks.py, hooks/lane_coord.py)."""
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOK = ROOT / "hooks" / "sma_hooks.py"
@@ -61,6 +64,32 @@ class SmaHooksTest(unittest.TestCase):
         self.assertIn("[context pack]", first["hookSpecificOutput"]["updatedInput"]["prompt"])
         second = call("PreToolUse", {"session_id": "s1", "cwd": self.tmp, "tool_name": "Task", "tool_input": {"prompt": "do y"}}, env)
         self.assertEqual(second["hookSpecificOutput"]["permissionDecision"], "deny")
+
+
+class ClaimRaceTest(unittest.TestCase):
+    def test_atomic_claim_refusal_denies_the_edit(self) -> None:
+        # A-018: both windows can miss foreign_holder; only the claim lock may allow the edit.
+        import sma_hooks
+
+        with tempfile.TemporaryDirectory(prefix="coord-race-") as td, patch.dict(os.environ, {"LANE_COORD_HOME": td}), patch.object(lane_coord, "repo_root", return_value=td):
+            lane_coord.register("a", cwd=td)
+            lane_coord.register("b", cwd=td)
+            original = lane_coord.foreign_holder
+            barrier = threading.Barrier(2)
+
+            def before(*args):
+                result = original(*args)
+                barrier.wait(timeout=3)
+                return result
+
+            def worker(sid):
+                return sma_hooks.stream_claims({"tool": "edit", "path": "src/shared.ts", "sid": sid, "cwd": td})
+
+            with patch.object(lane_coord, "foreign_holder", side_effect=before):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                    results = list(pool.map(worker, ["a", "b"]))
+        denies = sum(deny is not None for deny, _advice in results)
+        self.assertEqual(denies, 1)
 
 
 class LaneCoordTest(unittest.TestCase):

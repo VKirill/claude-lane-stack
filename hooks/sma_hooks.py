@@ -184,16 +184,33 @@ def prompt_recall(p: dict) -> dict | None:
 
 # ------------------------------------------------------------------ PreToolUse streams
 
+def _claim_denial(path: str, holder: dict | None) -> str:
+    who = ""
+    if holder:
+        who = f" ({str(holder.get('session', ''))[:8]}: {holder.get('why') or holder.get('pattern')})"
+        pattern = holder.get("pattern") or path
+    else:
+        pattern = path
+    return (
+        f"[lane-coord] {path} is claimed by another live window{who}. Work elsewhere, or ask that window; "
+        f"`lane-coord force-clear '{pattern}' --reason <why>` clears a claim of a window that is gone."
+    )
+
+
 def stream_claims(ctx: dict) -> tuple[str | None, str | None]:
     """Claim collision and enforcing foreign claims: an edit claims its file for this window; a file a live other window claimed is refused."""
     if ctx["tool"] not in EDIT_TOOLS or not ctx["path"]:
         return None, None
-    holder = coord.foreign_holder(ctx["path"], ctx["sid"], ctx["cwd"])
-    if holder:
-        return f"[lane-coord] {ctx['path']} is claimed by another live window ({holder.get('session', '')[:8]}: {holder.get('why') or holder.get('pattern')}). Work elsewhere, or ask that window; `lane-coord force-clear '{holder.get('pattern')}' --reason <why>` clears a claim of a window that is gone.", None
+    # The pre-check is only the message. The lock inside claim is what allows or refuses the edit.
+    seen = coord.foreign_holder(ctx["path"], ctx["sid"], ctx["cwd"])
+    if seen:
+        return _claim_denial(ctx["path"], seen), None
     rel = os.path.relpath(os.path.realpath(ctx["path"]), coord.repo_root(ctx["cwd"])) if os.path.isabs(ctx["path"]) else ctx["path"]
-    coord.claim(ctx["sid"], [rel], ctx["cwd"], why="edited")
-    return None, None
+    taken = coord.claim(ctx["sid"], [rel], ctx["cwd"], why="edited")
+    if taken.get("ok"):
+        return None, None
+    holder = ((taken.get("collisions") or [None])[0]) or seen
+    return _claim_denial(ctx["path"], holder), None
 
 
 def stream_hard_rules(ctx: dict) -> tuple[str | None, str | None]:
