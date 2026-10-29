@@ -66,6 +66,28 @@ class SmaHooksTest(unittest.TestCase):
         self.assertEqual(second["hookSpecificOutput"]["permissionDecision"], "deny")
 
 
+class HardRuleBudgetTest(unittest.TestCase):
+    def test_hard_rule_is_not_skipped_when_advice_budget_expires(self) -> None:
+        # A-020: a slow earlier stream must not skip the hard-rule denial.
+        import sma_hooks
+
+        with tempfile.TemporaryDirectory(prefix="coord-budget-") as td, patch.dict(os.environ, {"LANE_COORD_HOME": td}), patch.object(lane_coord, "repo_root", return_value=td), patch.object(sma_hooks, "STATE", Path(td) / "state"):
+            rules = Path(td) / ".agents" / "hard-rules.json"
+            rules.parent.mkdir()
+            rules.write_text(json.dumps([{"tool": "write", "pattern": "protected", "message": "fixture denied"}]))
+            clock = [0.0]
+
+            def slow_prior(ctx):
+                clock[0] = 2.0
+                return None, None
+
+            ctx = {"tool_name": "Write", "tool_input": {"file_path": "protected.txt"}, "cwd": td, "session_id": "fixture"}
+            with patch.object(sma_hooks.time, "time", side_effect=lambda: clock[0]), patch.object(sma_hooks, "STREAMS", [("claims", slow_prior), ("hard_rules", sma_hooks.stream_hard_rules)]):
+                result = sma_hooks.pre_tool(ctx)
+        self.assertIsNotNone(result)
+        self.assertIn("fixture denied", result["hookSpecificOutput"]["permissionDecisionReason"])
+
+
 class ClaimRaceTest(unittest.TestCase):
     def test_atomic_claim_refusal_denies_the_edit(self) -> None:
         # A-018: both windows can miss foreign_holder; only the claim lock may allow the edit.

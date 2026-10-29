@@ -297,6 +297,8 @@ STREAMS: list[tuple[str, Callable[[dict], tuple[str | None, str | None]]]] = [
     ("claims", stream_claims), ("hard_rules", stream_hard_rules), ("git_airbag", stream_git_airbag), ("dependency_store", stream_dependency_store),
     ("fingerprint", stream_fingerprint), ("reflexes", stream_reflexes), ("rule_loops", stream_rule_loops), ("knowledge", stream_knowledge),
 ]
+# Advice may be skipped after the soft budget. A hard rule is a denial and always runs.
+REQUIRED_STREAMS = frozenset({"hard_rules"})
 
 
 def pre_tool(p: dict) -> dict | None:
@@ -310,7 +312,7 @@ def pre_tool(p: dict) -> dict | None:
     begun = time.time()
     deny, advice = None, []
     for name, stream in STREAMS:
-        if time.time() - begun > SOFT_BUDGET_SEC:   # soft budget: the remaining streams skip this call
+        if name not in REQUIRED_STREAMS and time.time() - begun > SOFT_BUDGET_SEC:   # soft budget: advice may skip; hard rules may not
             perf(name, time.time(), "skipped: soft budget spent")
             continue
         started = time.time()
