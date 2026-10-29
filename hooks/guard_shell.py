@@ -273,28 +273,89 @@ def _without_data_heredocs(command: str) -> str:
     return _HEREDOC.sub(strip, command)
 
 
-def _git_args(command: str, subcommands: set[str]) -> list[list[str]]:
-    """Arguments of each real `git <subcommand>` in a command; quoted text such as a commit message stays one token."""
+# Git options that sit before the subcommand and take the next word (`git -C path`, `git --git-dir path`).
+# An attached form (`-Cpath`, `-ckey=value`, `--git-dir=path`) is one token. `--exec-path` without `=` does not take the next word.
+# ponytail: an unknown global that takes a separate word is skipped as a flag, so that word can be read as the subcommand.
+# Add it to this set when git grows one.
+_GIT_GLOBAL_VALUE = {
+    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--attr-source", "--list-cmds",
+}
+_GIT_GLOBAL_RE = (
+    r"(?:--(?:git-dir|work-tree|namespace|super-prefix|config-env|attr-source|list-cmds)(?:=\S+|\s+\S+)"
+    r"|--exec-path(?:=\S+)?"
+    r"|--(?:no-pager|paginate|bare|no-replace-objects|literal-pathspecs|glob-pathspecs|noglob-pathspecs|icase-pathspecs|no-optional-locks|no-advice|no-lazy-fetch)"
+    r"|-C(?:\S+|\s+\S+)|-c(?:\S+|\s+\S+)|-[Pp])"
+)
+
+
+def _git_subcommand_at(tokens: list[str], index: int) -> int:
+    """Index of the subcommand after git's global options, or past the end when the command stops first (2026-10-29 audit A-023)."""
+    while index < len(tokens) and tokens[index] not in _CONTROL_TOKENS:
+        token = tokens[index]
+        if token == "--":
+            return index + 1
+        if not token.startswith("-"):
+            return index
+        if "=" in token or (token.startswith("-C") and token != "-C" and not token.startswith("--")) or (
+            len(token) > 2 and token.startswith("-c") and not token.startswith("--")
+        ):
+            index += 1
+            continue
+        index += 2 if token in _GIT_GLOBAL_VALUE else 1
+    return index
+
+
+def _git_in_segment(segment: list[str], subcommands: set[str], found: list[list[str]], depth: int) -> None:
+    index = 0
+    while index < len(segment) and (_ASSIGNMENT.fullmatch(segment[index]) or segment[index] in _REDIRECT_TOKENS):
+        index += 2 if segment[index] in _REDIRECT_TOKENS else 1
+    if index >= len(segment):
+        return
+    command = Path(segment[index]).name
+    # (2026-10-29 audit A-017) arguments of echo, grep and the other data programs are not a git command.
+    if command in _DATA_PROGRAMS and command != "git":
+        return
+    if depth > 0 and (command in _COMMAND_WRAPPERS or command in _SHELL_NAMES):
+        for text, _nested in _segment_payloads(segment[index:], None):
+            found.extend(_git_args(text, subcommands, depth - 1))
+        return
+    while index < len(segment):
+        if Path(segment[index]).name == "git":
+            sub = _git_subcommand_at(segment, index + 1)
+            if sub < len(segment) and segment[sub] in subcommands:
+                found.append(segment[sub + 1 :])
+            return
+        index += 1
+
+
+def _git_args(command: str, subcommands: set[str], _depth: int = 4) -> list[list[str]]:
+    """Arguments of each real `git <subcommand>` in a command; quoted text such as a commit message stays one token.
+
+    Global options (-C, -c, --git-dir, --work-tree, --namespace, --no-pager, --bare, -P, --exec-path, ...) sit between
+    `git` and the subcommand (2026-10-29 audit A-023)."""
+    # A quoted heredoc body is data, also inside a `bash -c` script: newlines split commands only outside it.
+    command = _without_data_heredocs(command)
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
+        lexer.whitespace = " \t\r"  # a newline separates commands; it is not a space
         lexer.whitespace_split = True
         lexer.commenters = ""
-        tokens = list(lexer)
+        tokens = [";" if token.strip("\n") == "" else token for token in lexer]
     except ValueError:
         alternatives = "|".join(sorted(subcommands))
-        return [m.group(1).split() for m in re.finditer(rf"\bgit\s+(?:{alternatives})\b([^;&|\n]*)", command)]
-    pushes: list[list[str]] = []
-    i = 0
-    while i < len(tokens) - 1:
-        if Path(tokens[i]).name == "git" and tokens[i + 1] in subcommands:
-            j = i + 2
-            while j < len(tokens) and tokens[j] not in _CONTROL_TOKENS:
-                j += 1
-            pushes.append(tokens[i + 2 : j])
-            i = j
-        else:
-            i += 1
-    return pushes
+        return [m.group(1).split() for m in re.finditer(rf"\bgit(?:\s+{_GIT_GLOBAL_RE})*\s+(?:{alternatives})\b([^;&|\n]*)", command)]
+    found: list[list[str]] = []
+    index = 0
+    while index < len(tokens):
+        if tokens[index] in _CONTROL_TOKENS:
+            index += 1
+            continue
+        end = index + 1
+        while end < len(tokens) and tokens[end] not in _CONTROL_TOKENS:
+            end += 1
+        _git_in_segment(tokens[index:end], subcommands, found, _depth)
+        index = end
+    return found
 
 
 # Judge the program that really runs (SMA rule 8). Text in quotes is data for a program that only prints, stores or searches it
@@ -1849,28 +1910,47 @@ def _permit_session(p: dict) -> str | None:
     return re.sub(r"[^A-Za-z0-9_-]", "_", sid)[:80] or None
 
 
+def _permit_cwd(p: dict) -> str:
+    """Directory a permit is bound to, with ``..`` and symlinks resolved (2026-10-29 audit A-024)."""
+    raw = p.get("cwd")
+    text = raw if isinstance(raw, str) and raw.strip() else "."
+    try:
+        return os.path.realpath(text)
+    except (OSError, ValueError):
+        return os.path.abspath(text)
+
+
 def _permit_or_ticket(p: dict, command: str, category: str, refusal: str) -> str | None:
-    """Permission before an act (SMA): a granted permit for exactly this command is used once and the call goes on (None); otherwise a
-    ticket is written to the permit channel (~/.agents/permits/<session>/) for Lane Pilot to hand to the PM, and the refusal names it."""
+    """Permission before an act (SMA): a granted permit for exactly this command in this directory is used once and the call goes on
+    (None); otherwise a ticket is written to the permit channel (~/.agents/permits/<session>/) for Lane Pilot to hand to the PM, and
+    the refusal names it. A grant for another directory is a different ticket (2026-10-29 audit A-024)."""
     session = _permit_session(p)
     if not session:
         return refusal
-    digest = hashlib.sha256(f"{category}\n{command}".encode()).hexdigest()[:16]
+    cwd = _permit_cwd(p)
+    digest = hashlib.sha256(f"{category}\n{command}\n{cwd}".encode()).hexdigest()[:16]
     folder = PERMIT_DIR / session
     answer = folder / f"{digest}.answer.json"
+    ticket = folder / f"{digest}.ticket.json"
     try:
         if answer.exists():
             verdict = json.loads(answer.read_text())
-            if verdict.get("decision") == "allow" and not verdict.get("used"):
+            recorded = ""
+            if ticket.exists():
+                recorded = str(json.loads(ticket.read_text()).get("cwd") or "")
+            try:
+                same_dir = bool(recorded) and os.path.realpath(recorded) == cwd
+            except (OSError, ValueError):
+                same_dir = False
+            if verdict.get("decision") == "allow" and not verdict.get("used") and same_dir:
                 verdict["used"] = time.time()
                 answer.write_text(json.dumps(verdict))
                 return None
             if verdict.get("decision") == "deny":
                 return f"{refusal} The PM refused this permit: {verdict.get('why', '')}"
         folder.mkdir(parents=True, exist_ok=True)
-        ticket = folder / f"{digest}.ticket.json"
         if not ticket.exists():
-            ticket.write_text(json.dumps({"ticket": digest, "category": category, "command": command[:2000], "cwd": str(p.get("cwd") or ""), "at": time.time(), "refusal": refusal[:500]}))
+            ticket.write_text(json.dumps({"ticket": digest, "category": category, "command": command[:2000], "cwd": cwd, "at": time.time(), "refusal": refusal[:500]}))
     except OSError:
         return refusal
     return f"{refusal} Permit ticket {digest} is filed: Lane Pilot hands it to the PM; when it is granted, run the same command again (once). Meanwhile do the rest of the task."
