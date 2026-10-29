@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -944,6 +945,41 @@ class RunControllerTest(unittest.TestCase):
         self.assertIsNone(first.poll())
         first.terminate()
         first.communicate(timeout=3)
+
+    def test_second_controller_does_not_rewrite_locked_receipt(self) -> None:
+        # A-013: the loser of controller.lock must not write controller_failed over the owner.
+        self.write_run(provider_slots=1)
+        task = self.write_task("001")
+        controller = runpy.run_path(str(CONTROLLER))
+        receipt = controller["initial_receipt"](
+            self.run_dir,
+            self.project,
+            [{"id": "001", "path": str(task), "depends_on": []}],
+            provider="qwen",
+            model="qwen3.8-max-preview",
+        )
+        receipt["tasks"]["001"]["stage"] = "running"
+        path = self.run_dir / "controller.json"
+        controller["persist"](path, receipt)
+        before = path.read_bytes()
+        lock_path = self.run_dir / "controller" / "controller.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = subprocess.run(
+                [sys.executable, str(CONTROLLER), "run", "--run-dir", str(self.run_dir), "--provider", "qwen"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                check=False,
+                timeout=10,
+            )
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("already active", result.stderr)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["stage"], "running")
+
 
     def test_accepted_receipt_resumes_idempotently_and_status_is_read_only(self) -> None:
         self.write_run(provider_slots=1)

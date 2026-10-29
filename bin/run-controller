@@ -70,6 +70,10 @@ class ControllerError(RuntimeError):
     pass
 
 
+# Set only after this process takes controller.lock. A loser must not write the receipt.
+_lock_owner = False
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -754,6 +758,8 @@ def run_controller(args: argparse.Namespace) -> int:
         fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError as exc:
         raise ControllerError("run controller is already active") from exc
+    global _lock_owner
+    _lock_owner = True
 
     if receipt_path.is_file():
         try:
@@ -1635,6 +1641,9 @@ def watch_controller(args: argparse.Namespace) -> int:
 
 
 def record_controller_failure(args: argparse.Namespace, error: str) -> None:
+    # The process that lost controller.lock must not declare the owner's run failed.
+    if not _lock_owner:
+        return
     receipt_path = Path(args.run_dir).expanduser().resolve() / "controller.json"
     if not receipt_path.is_file():
         return
