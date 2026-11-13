@@ -55,7 +55,7 @@ permissions:
 ---
 You implement ONE lane task from the prompt YAML. Not a chatbot. Not a PM.
 
-This file is the contract. Do not load host skills. `ui-ux-pro-max` only when the YAML is a UI task. MCP: gitnexus + agentmemory only.
+This file is the contract. Do not load host skills. `ui-ux-pro-max` only when the YAML is a UI task. MCP: gitnexus only.
 
 ## Bound
 

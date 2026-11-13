@@ -1210,13 +1210,12 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             {
                 "plugin": [
                     "opencode-gemini-auth@latest",
-                    "./plugins/agentmemory-capture.ts",
+                    "./plugins/other-capture.ts",
                     "@rama_nigg/open-cursor@latest",
                     "cursor-acp",
                     "./plugins/opencode-lane.ts",
                 ],
                 "mcp": {
-                    "agentmemory": {"type": "local", "command": ["/bin/am"]},
                     "gitnexus": {"type": "local", "command": ["/bin/gn"]},
                     "metamcp": {"type": "remote", "url": "http://127.0.0.1:12010/mcp"},
                     "extra": {"type": "local", "command": ["/bin/no"]},
@@ -1229,9 +1228,9 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(sliced["plugin"], ["cursor-acp", "./plugins/opencode-lane.ts"])
         self.assertEqual(
             set(sliced["mcp"]),
-            {"agentmemory", "gitnexus"},
+            {"gitnexus"},
         )
-        self.assertEqual(sliced["mcp"]["agentmemory"]["type"], "local")
+        self.assertEqual(sliced["mcp"]["gitnexus"]["type"], "local")
         self.assertNotIn("agent", sliced)
         self.assertNotIn("command", sliced)
         self.assertNotIn("permission", sliced)
@@ -1246,7 +1245,6 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
             json.dumps(
                 {
                     "mcp": {
-                        "agentmemory": {"type": "local", "command": ["/bin/am"]},
                         "gitnexus": {"type": "local", "command": ["/bin/gn"]},
                         "metamcp": {
                             "type": "remote",
@@ -1267,7 +1265,7 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertEqual(env["CURSOR_ACP_MCP_BRIDGE"], "true")
         self.assertEqual(env["OPENCODE_CONFIG"], str(dest.resolve()))
         mcp = json.loads(dest.read_text(encoding="utf-8"))["mcp"]
-        self.assertEqual(set(mcp), {"agentmemory", "gitnexus"})
+        self.assertEqual(set(mcp), {"gitnexus"})
         self.assertNotIn("metamcp", mcp)
         written = json.loads(dest.read_text(encoding="utf-8"))
         self.assertNotIn("agent", written)
@@ -1488,13 +1486,11 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         self.assertIn('lane-ctl verify --run-dir "$RUN_DIR" --task-file "$TASK_FILE"', coordinator)
         self.assertIn("Failed checks or missing receipts", coordinator)
         self.assertNotIn("No task MCP.", prompt)
-        self.assertIn("AgentMemory", prompt)
 
-    def test_codex_lane_writer_mcp_is_gitnexus_and_agentmemory_only(self) -> None:
+    def test_codex_lane_writer_mcp_is_gitnexus_only(self) -> None:
         module = self._load_lane_session()
         text = module.lane_writer_mcp_toml()
         self.assertIn("[mcp_servers.gitnexus]", text)
-        self.assertIn("[mcp_servers.agentmemory]", text)
         self.assertNotIn("[mcp_servers.metamcp]", text)
         self.assertIn("args = [\"mcp\"]", text)
 
@@ -2411,7 +2407,6 @@ print(json.dumps({'sha256': hashlib.sha256(data).hexdigest(), 'readonly': readon
         home_cfg = Path(codex_home["path"]) / "config.toml"
         written = home_cfg.read_text(encoding="utf-8")
         self.assertIn("[mcp_servers.gitnexus]", written)
-        self.assertIn("[mcp_servers.agentmemory]", written)
         self.assertNotIn("[mcp_servers.metamcp]", written)
         self.assertNotEqual(Path(codex_home["path"]), self.fake_home / ".codex")
         self.assertTrue(Path(codex_home["path"]).is_dir())

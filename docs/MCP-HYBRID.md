@@ -2,23 +2,22 @@
 
 ## Goal
 
-Hosts see **3** MCP servers. MetaMCP collapses the rest into **4** tools (`@mentu/metamcp@0.4.1`).
+Hosts see **2** MCP servers. MetaMCP collapses the rest into **4** tools (`@mentu/metamcp@0.4.1`).
 
 ## Host MCP (all CLIs)
 
-1. `agentmemory` — always
-2. `gitnexus` — always
-3. `metamcp` — gateway → `~/.agents/metamcp.mcp.json`
+1. `gitnexus` — always
+2. `metamcp` — gateway → `~/.agents/metamcp.mcp.json`
 
 ## CLI config map (verified)
 
 | CLI | Config | Host servers |
 |-----|--------|--------------|
-| **Claude** | `~/.claude.json` | agentmemory, gitnexus, metamcp |
-| **Grok** | `~/.grok/config.toml` | agentmemory, gitnexus, metamcp |
-| **Codex** | `~/.codex/config.toml` | agentmemory, gitnexus, metamcp (+ plugin `github@openai-curated` → GitHub Copilot MCP) |
-| **OpenCode** | `~/.config/opencode/opencode.json` → `mcp` | agentmemory, gitnexus, metamcp |
-| **Mimo** | `~/.config/mimocode/mimocode.json` → `mcp` | agentmemory, gitnexus, metamcp |
+| **Claude** | `~/.claude.json` | gitnexus, metamcp |
+| **Grok** | `~/.grok/config.toml` | gitnexus, metamcp |
+| **Codex** | `~/.codex/config.toml` | gitnexus, metamcp (+ plugin `github@openai-curated` → GitHub Copilot MCP) |
+| **OpenCode** | `~/.config/opencode/opencode.json` → `mcp` | gitnexus, metamcp |
+| **Mimo** | `~/.config/mimocode/mimocode.json` → `mcp` | gitnexus, metamcp |
 
 ## Behind MetaMCP
 

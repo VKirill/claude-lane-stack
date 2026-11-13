@@ -1,6 +1,6 @@
 ---
 name: metamcp
-description: Hybrid MetaMCP gateway — agentmemory + gitnexus direct; all other MCP tools via MetaMCP discover/call
+description: Hybrid MetaMCP gateway — gitnexus direct; all other MCP tools via MetaMCP discover/call
 ---
 
 # MetaMCP (hybrid)
@@ -9,9 +9,9 @@ description: Hybrid MetaMCP gateway — agentmemory + gitnexus direct; all other
 
 | Host-level (direct) | Behind MetaMCP (`~/.agents/metamcp.mcp.json`) |
 |---------------------|-----------------------------------------------|
-| **agentmemory** | context7, postgres, github, shadcn |
-| **gitnexus** | open-design, chrome-devtools, vue-docs |
-| **metamcp** | mcp-books, perplexity, image-gen |
+| **gitnexus** | context7, postgres, github, shadcn |
+| **metamcp** | open-design, chrome-devtools, vue-docs |
+| | mcp-books, perplexity, image-gen |
 | | remotion-documentation, codex-mcp-server |
 
 **Never behind MetaMCP (removed):** `orchestrator-mcp`, `agent-consult`, `repowise`.
@@ -32,7 +32,6 @@ Env secrets: `/home/ubuntu/.agents/metamcp.env` (600)
 ## How to call (examples)
 
 **Direct (no MetaMCP):**
-- `mcp__agentmemory__memory_recall` / `memory_remember` / …
 - `mcp__gitnexus__impact` / `query` / `context` / `detect_changes`
 
 **Via MetaMCP:**
@@ -71,7 +70,7 @@ mcp_call {
 
 ## Rules
 
-1. Prefer **direct** gitnexus + agentmemory — do not route them through MetaMCP.
+1. Prefer **direct** gitnexus — do not route it through MetaMCP.
 2. For anything else: `mcp_discover` once if unsure, then `mcp_call`.
 3. Do not invent host-level MCP servers; add children only in `metamcp.mcp.json`.
 4. After editing child config, restart CLI sessions (hot-reload may apply inside MetaMCP only).

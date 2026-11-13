@@ -4,8 +4,7 @@
 # skills/ plugins/ rules/. Host ~/.codex is tmpfs-masked (no user skills,
 # no plugins, no extra MCP servers).
 #
-# Runtime injects stdio MCP: gitnexus + agentmemory only (code graph +
-# recall). Model/effort still come from lane-session / adoc (default Luna+max).
+# Runtime injects stdio MCP: gitnexus only (code graph). Model/effort still come from lane-session / adoc (default Luna+max).
 #
 # Craft is `agents/grok/writer.md` in the prompt. The runtime also installs
 # codex-lane-worker as scratch AGENTS.md; only task-bound skills are exposed.

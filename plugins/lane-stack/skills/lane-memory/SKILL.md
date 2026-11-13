@@ -23,7 +23,7 @@ it changes (how to run or read any command); otherwise System One gives it to th
 repeats, keeps at most 12 rules in force on trial, retires unused ones and lets at most 30 wait. Never append to
 `.agents/LESSONS.md`.
 
-> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) the hub is already on: read with `lane_pilot_memory_context` or `lane-memory search|context`, write a lesson with `lane_pilot_lesson`. Do not create `.agents/memory/` files or drafts there, and do not call agentmemory tools (`memory_save`, `memory_smart_search`): that would start a second memory.
+> **Inside a Lane Pilot chat** (`LANE_PILOT_AGENT_TYPE` set / tools `lane_pilot_*` present) the hub is already on: read with `lane_pilot_memory_context` or `lane-memory search|context`, write a lesson with `lane_pilot_lesson`. Do not create `.agents/memory/` files or drafts there: that would start a second memory.
 
 > **Memory-maintainer stage:** when the host gives you an accepted task and asks for a JSON array of memory candidates, answer with that array only; do not run `lane-memory`, do not edit files.
 

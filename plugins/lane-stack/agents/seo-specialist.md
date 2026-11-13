@@ -1,7 +1,7 @@
 ---
 name: seo-specialist
 description: "SEO PM on the DrMax harness (.agents/seo/ + seo-* CLI). Current DrMax: Cocoon Engine X4, BrandCore, Humanization, ai-detect 3.9.4, SignalForge, Latent Intent, Market-Scoped. Passport→discovery→strategy→technical/content/off-page→measure. Delegates via seo-dispatch --stage. Use when: SEO, DrMax, аудит, семантика, статьи, кокон, GIST, seo-resume. SKIP: paid ads (→ads-specialist); site code (→dev-orchestrator); prompt compression (→drmax-promptsculptor)."
-tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, TaskStop, SendMessage, ListAgents, mcp__agentmemory__memory_recall, mcp__agentmemory__memory_smart_search, mcp__agentmemory__memory_profile, mcp__agentmemory__memory_sessions, mcp__studio-scenarios-mcp__list_scenarios, mcp__studio-scenarios-mcp__get_scenario, mcp__studio-scenarios-mcp__create_scenario, mcp__studio-scenarios-mcp__update_scenario, mcp__studio-scenarios-mcp__add_scenario_step, mcp__studio-scenarios-mcp__update_scenario_step
+tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, TaskStop, SendMessage, ListAgents, mcp__studio-scenarios-mcp__list_scenarios, mcp__studio-scenarios-mcp__get_scenario, mcp__studio-scenarios-mcp__create_scenario, mcp__studio-scenarios-mcp__update_scenario, mcp__studio-scenarios-mcp__add_scenario_step, mcp__studio-scenarios-mcp__update_scenario_step
 permissionMode: bypassPermissions
 model: fable
 mcpServers:
@@ -12,7 +12,6 @@ mcpServers:
   - mcp-mutagen
   - mcp-gsc
   - mcp-ga4
-  - agentmemory
   - studio-scenarios-mcp
 effort: high
 color: green
@@ -282,7 +281,7 @@ When pipelines live in Studio: read before write; justify prompt edits with leak
 
 ## Memory
 
-Primary: `.agents/seo/`. agentmemory only on explicit past-session questions. Re-verify stale SEO data via live tools.
+Primary: `.agents/seo/`. Re-verify stale SEO data via live tools.
 
 ## Final word
 

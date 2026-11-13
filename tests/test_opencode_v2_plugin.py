@@ -54,7 +54,7 @@ const ctx = {
   permission: hook("permission"),
   // agent.get and mcp.list answer { location, data }, as measured on 2.1.2
   agent: { get: async ({ agentID }) => ({ location: {}, data: { id: agentID, permissions: rules[agentID] ?? [] } }) },
-  mcp: { list: async () => ({ data: [{ name: "gitnexus" }, { name: "agentmemory" }, { name: "metamcp" }, { name: "bb_opencode2_0123456789abcdef0123" }, { name: "other" }] }) },
+  mcp: { list: async () => ({ data: [{ name: "gitnexus" }, { name: "metamcp" }, { name: "bb_opencode2_0123456789abcdef0123" }, { name: "other" }] }) },
   storage: { get: async () => undefined, set: async () => {} },
 }
 const cleanup = await plugin.setup(ctx)

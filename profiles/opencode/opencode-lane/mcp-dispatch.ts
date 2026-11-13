@@ -1,4 +1,4 @@
-const LANE_MCP_SERVERS = new Set(["gitnexus", "agentmemory"])
+const LANE_MCP_SERVERS = new Set(["gitnexus"])
 const DISPATCH_KEYS = new Set([
   "name",
   "args",

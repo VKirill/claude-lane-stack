@@ -1,6 +1,6 @@
 ---
 name: opencode-lane
-description: "Claude Lane OpenCode half. How to add OpenCode behavior, diagnose a writer run, and what stays in lane-ctl. Use when user says opencode-lane, делай диагноз, OpenCode plugin, sticky contract, winnow on OpenCode, Jev effort, writer session plugin, or any new OpenCode feature in claude-lane-stack. SKIP: product task YAML (lane-contract); run DAG (orchestrator-lanes); third-party OpenCode plugins (agentmemory, gemini-auth, open-cursor)."
+description: "Claude Lane OpenCode half. How to add OpenCode behavior, diagnose a writer run, and what stays in lane-ctl. Use when user says opencode-lane, делай диагноз, OpenCode plugin, sticky contract, winnow on OpenCode, Jev effort, writer session plugin, or any new OpenCode feature in claude-lane-stack. SKIP: product task YAML (lane-contract); run DAG (orchestrator-lanes); third-party OpenCode plugins (gemini-auth, open-cursor)."
 argument-hint: "[info]"
 ---
 
@@ -34,7 +34,7 @@ opencode-lane — OpenCode-половина Claude Lane
 
 Нельзя
 - owns / verify / accept / retry — не сюда (lane-ctl, lane-session).
-- Глотать чужие плагины (agentmemory-capture, gemini-auth, open-cursor).
+- Глотать чужие плагины (gemini-auth, open-cursor).
 - Второй планировщик на Jev. Jev = System One, не coding LLM.
 
 Как открыть шпаргалку
@@ -192,7 +192,7 @@ https://opencode.ai/docs/troubleshooting/#logs.
 Do-now (can pay, bounded):
 
 1. Conveyor dropped `--pure`, so **every** `opencode.json` plugin loads
-   (`agentmemory-capture`, `gemini-auth`, `open-cursor`). Need a lane-only
+   (`gemini-auth`, `open-cursor`). Need a lane-only
    config or an allowlist so only `opencode-lane` runs in writer sessions.
 2. `attach_lane_contract_env` now always pins `LANE_STACK_ROOT` (install.json
    if `~/.agents/bin` has no sidecar). `LANE_OPENCODE_JEV` still only if already
@@ -228,8 +228,8 @@ Cache trap: shrinking context can cost more if it busts the prompt cache.
 Net = cost_without − cost_with − Jev − extra retries from lost context.
 Compare equal-quality tasks; subscription ≠ API invoice.
 
-Do **not**: mutation-testing harness, model-stats auto-router, merging
-agentmemory into this plugin, Jev as a coding agent, separate
+Do **not**: mutation-testing harness, model-stats auto-router,
+Jev as a coding agent, separate
 `lane-budget` / `lane-insights` / `lane-resume` plugins.
 
 ---

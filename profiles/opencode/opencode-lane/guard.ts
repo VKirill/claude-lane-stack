@@ -10,7 +10,7 @@ const GIT_FLAG_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--
 // Lane Pilot gives every writer writer-practices and karpathy-guidelines (its writer role profile); the guard
 // refused them with «skill blocked» on OpenCode writers (2026-10-03).
 const ALLOWED_SKILLS = new Set(["ui-ux-pro-max", "writer-practices", "karpathy-guidelines"])
-const ALLOWED_MCP = new Set(["gitnexus", "agentmemory"])
+const ALLOWED_MCP = new Set(["gitnexus"])
 const MCP_NAME = /^mcp__([^_]+?)__/i
 
 function toolPath(args: unknown): string {
@@ -233,7 +233,7 @@ export function guardTool(tool: string, args: unknown, cwd = process.cwd(), opts
   if (mcpServer && !ALLOWED_MCP.has(mcpServer)) {
     return (
       `[opencode-lane guard] MCP blocked: ${mcpServer}. ` +
-      "Only gitnexus and agentmemory."
+      "Only gitnexus."
     )
   }
   return ""
@@ -253,5 +253,5 @@ export function guardMcpV2(tool: string, servers: readonly string[], agent = "")
     .find((item) => name.startsWith(`${item}_`))
   if (!server || ALLOWED_MCP.has(server)) return ""
   if (agent === "lane-pilot" && (PILOT_MCP.has(server) || server.startsWith(PILOT_MCP_PREFIX))) return ""
-  return `[opencode-lane guard] MCP blocked: ${server}. ` + (agent === "lane-pilot" ? "Only gitnexus, agentmemory, metamcp and BB's own tools." : "Only gitnexus and agentmemory.")
+  return `[opencode-lane guard] MCP blocked: ${server}. ` + (agent === "lane-pilot" ? "Only gitnexus, metamcp and BB's own tools." : "Only gitnexus.")
 }

@@ -13,7 +13,7 @@ REWRITE_FN = r'''
 function laneRewriteCursorMcpCall(args, allowedToolNames) {
   // LANE_MCP_DISPATCH_V1
   if (!args || typeof args !== "object" || Array.isArray(args)) return null;
-  const servers = new Set(["gitnexus", "agentmemory"]);
+  const servers = new Set(["gitnexus"]);
   const skip = new Set(["name", "args", "arguments", "toolCallId", "providerIdentifier", "toolName", "serverIdentifier", "serverName", "tool", "smartModeApprovalOnly", "skipApproval"]);
   const token = (raw) => String(raw).replace(/[^a-zA-Z0-9]/g, "_");
   let server = "";

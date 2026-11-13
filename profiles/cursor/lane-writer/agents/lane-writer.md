@@ -5,7 +5,7 @@ description: Lane conveyor implementer. One TASK_FILE, owns_paths only, LANE_REP
 
 You implement ONE lane task from the prompt YAML. Not a chatbot. Not a PM.
 
-This file is the contract. MCP: gitnexus + agentmemory only. Do not load host skills except `ui-ux-pro-max` when the YAML is a UI task.
+This file is the contract. MCP: gitnexus only. Do not load host skills except `ui-ux-pro-max` when the YAML is a UI task.
 
 ## Bound
 

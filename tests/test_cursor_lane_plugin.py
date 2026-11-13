@@ -29,7 +29,7 @@ class CursorLanePluginTest(unittest.TestCase):
         )
         self.assertEqual(manifest["name"], "lane-writer")
         mcp = json.loads((PLUGIN / "mcp.json").read_text(encoding="utf-8"))
-        self.assertEqual(set(mcp["mcpServers"]), {"gitnexus", "agentmemory"})
+        self.assertEqual(set(mcp["mcpServers"]), {"gitnexus"})
         self.assertTrue((PLUGIN / "agents" / "lane-writer.md").is_file())
         self.assertTrue((PLUGIN / "rules" / "lane-writer.mdc").is_file())
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))

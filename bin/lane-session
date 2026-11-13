@@ -3,7 +3,7 @@
 
 AGY, Grok, Qwen, Kimi, Cursor, and Codex use run-scoped warm-session affinity.
 Codex keeps an isolated per-slot CODEX_HOME (host plugins/skills stay out;
-stdio MCP is gitnexus + agentmemory only).
+stdio MCP is gitnexus only).
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ guardian_approval = false
 # Native `codex exec --disable <feature>` set for bare writer (stable flags only).
 # System skills (imagegen, skill-installer, …) cannot be fully removed via public
 # CLI. Host plugins/user skills stay out via ephemeral CODEX_HOME + sandbox mask.
-# gitnexus + agentmemory stdio MCP are injected into that home (not host ~/.codex).
+# gitnexus stdio MCP is injected into that home (not host ~/.codex).
 CODEX_DISABLE_FEATURES = (
     "multi_agent",
     "multi_agent_v2",
@@ -711,7 +711,7 @@ def provider_command(
     if args.provider == "codex":
         # Bare lane-writer (native Codex):
         # - per-slot CODEX_HOME = auth + bare config.toml + empty skills/plugins/rules
-        #   + gitnexus/agentmemory stdio MCP (not host metamcp)
+        #   + gitnexus stdio MCP (not host metamcp)
         # - `-p lane-writer` layers the same bare profile by name (also installed
         #   as ~/.codex/lane-writer.config.toml for human inspection)
         # - do NOT pass --ignore-user-config (would skip our bare config.toml)
@@ -1058,7 +1058,7 @@ def provider_environment(
     return environment
 
 
-OPENCODE_LANE_MCP = ("agentmemory", "gitnexus")
+OPENCODE_LANE_MCP = ("gitnexus",)
 OPENCODE_LANE_PLUGINS = frozenset({"cursor-acp", "opencode-lane"})
 OPENCODE_LANE_CONFIG_KEEP = (
     "$schema",
@@ -1090,7 +1090,7 @@ def _opencode_lane_plugin_name(entry: object) -> str | None:
 def slice_opencode_mcp(
     data: object, *, keep: tuple[str, ...] = OPENCODE_LANE_MCP
 ) -> dict[str, object]:
-    """Lane writer config: gitnexus+agentmemory, cursor-acp+opencode-lane.
+    """Lane writer config: gitnexus, cursor-acp+opencode-lane.
 
     Drops host wiki agents/commands, remote MCP, extra plugins.
     Provider table stays so --model still resolves.
@@ -1130,7 +1130,7 @@ def attach_opencode_lane_mcp(
     run_dir: Path,
     config_path: Path | None = None,
 ) -> Path | None:
-    """Point ACP at host OpenCode config with only agentmemory + gitnexus."""
+    """Point ACP at host OpenCode config with only gitnexus."""
     raw_src = (
         str(config_path)
         if config_path is not None
@@ -1238,21 +1238,13 @@ def _toml_string(value: str) -> str:
 
 
 def lane_writer_mcp_toml() -> str:
-    """Stdio MCP for the isolated Codex writer: gitnexus + agentmemory only."""
+    """Stdio MCP for the isolated Codex writer: gitnexus only."""
     gitnexus = shutil.which("gitnexus") or "gitnexus"
-    agentmemory = shutil.which("agentmemory-mcp") or "agentmemory-mcp"
-    url = os.environ.get("AGENTMEMORY_URL") or "http://127.0.0.1:3111"
     return (
         "\n# Injected at runtime — host plugins/skills stay out.\n"
         "[mcp_servers.gitnexus]\n"
         f"command = {_toml_string(gitnexus)}\n"
         'args = ["mcp"]\n'
-        "\n[mcp_servers.agentmemory]\n"
-        f"command = {_toml_string(agentmemory)}\n"
-        'default_tools_approval_mode = "approve"\n'
-        "\n[mcp_servers.agentmemory.env]\n"
-        'AGENTMEMORY_TOOLS = "all"\n'
-        f"AGENTMEMORY_URL = {_toml_string(url)}\n"
     )
 
 
@@ -1262,7 +1254,7 @@ def prepare_codex_home(
     """Build an isolated per-slot CODEX_HOME with auth + bare lane-writer config.
 
     Host plugins and user skills live under the real ~/.codex and are never
-    copied here. gitnexus + agentmemory stdio MCP are written explicitly.
+    copied here. gitnexus stdio MCP is written explicitly.
     Bubblewrap also tmpfs-masks ~/.codex at runtime.
     The slot home is reused across tasks so `codex exec resume` can see the
     previous thread. Reset on rotation (new lease). Auth is not stored in the

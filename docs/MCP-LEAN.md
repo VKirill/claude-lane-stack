@@ -14,7 +14,7 @@
 - **orchestrator-mcp** — file runs/todos instead
 - **repowise** — removed everywhere (use gitnexus)
 - **agent-consult** — removed everywhere
-- open-design, chrome-devtools, image-gen, agentmemory, postgres, tavily, vue-docs, nuxt-ui, mcp-books, studio-*, serena
+- open-design, chrome-devtools, image-gen, postgres, tavily, vue-docs, nuxt-ui, mcp-books, studio-*, serena
 
 ## Codex
 
@@ -30,4 +30,4 @@ Only if explicitly needed: restore from `*.bak-lean-mcp-*` or re-add to mcp_conf
 \
 ## Superseded by hybrid MetaMCP
 
-See [MCP-HYBRID.md](./MCP-HYBRID.md) — hosts use agentmemory + gitnexus + metamcp only.
+See [MCP-HYBRID.md](./MCP-HYBRID.md) — hosts use gitnexus + metamcp only.
